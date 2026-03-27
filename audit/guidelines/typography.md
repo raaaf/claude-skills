@@ -1,0 +1,199 @@
+# Typography Guidelines
+
+Typography is often the foundation of great design. Make sure to pay the attention it deserves.
+
+## I. Body Text Is Everything
+
+The typographic quality of any interface is determined primarily by the body text — there's simply more of it than anything else. Start every project by making body text beautiful, then work outward to headings, captions, and UI chrome.
+
+Four properties control body text appearance:
+
+| Property | Web Value | CSS Implementation |
+|----------|-----------|-------------------|
+| Font size | 16-22px (15px minimum) | `font-size: clamp(1rem, 1.125rem, 1.375rem)` |
+| Line height | 120-145% of font size | `line-height: 1.35` (adjust per font) |
+| Line length | 45-90 characters | `max-width: 36em` on text container |
+| Font family | Professional, distinctive | Avoid Arial, Inter, Roboto, Times, system defaults |
+
+Fonts that have a tall x-height look larger at the same point size and may need less line spacing. Fonts with a small x-height need more. Always test visually — the numbers are starting points, not absolutes.
+
+## II. Font Selection & Pairing
+
+The fastest, most visible upgrade is replacing a default font with a professional one. A well-designed font embeds the expertise of a type designer into every document.
+
+When mixing fonts, give each a consistent role (e.g., one for body, one for headings; or one for content center, one for UI periphery). You CAN pair serif+serif or sans+sans — the myth that you must mix serif with sans is false. What matters is that the two fonts are identifiably different. Lower contrast between paired fonts can actually be more effective than high contrast. Look at newspapers: serif body + different serif headlines is the norm.
+
+## III. Emphasis & Formatting
+
+**Bold or italic — pick one, not both.** These are tools for emphasis. Overuse neutralizes their effect: if everything screams, nothing is heard. Italic is for subtle emphasis within running text; bold creates more visual weight and works better for headings. Text that is neither bold nor italic is called "roman." It should be the overwhelmingly dominant style.
+
+**All caps & small caps:** Fine for labels, short headings, navigation items — anything under one line. Always add letter-spacing: `letter-spacing: 0.05em` to `0.12em`. Capitals are designed to sit next to lowercase; when grouped together they appear too tight. ALL-CAPS paragraphs are self-defeating: harder to read (we recognize words by their varied vertical contour — caps flatten everything into rectangles), and readers fatigue fast. If you use CSS `font-variant: small-caps`, ensure the font has real small-cap glyphs. Faked small caps (browser-scaled regular caps) have wrong weight and proportions.
+
+**Underlining:** On the web, underlines mean links. Don't use underline for emphasis — it creates false affordance.
+
+## IV. Spacing & Layout
+
+**Line spacing (leading):** 120-145% of font size. Single-spaced is too tight, double-spaced is too loose — both are typewriter-era relics. Fonts with tall x-heights or heavy strokes need more spacing. Light or small-x-height fonts need less. Line spacing affects document length more than font size does.
+
+**Line length (measure):** 45-90 characters including spaces. This is the single most important layout constraint for readability. Quick test: you should fit 2-3 lowercase alphabets on one line. On the web, control line length with `max-width` on text containers, NOT by relying on viewport edges.
+
+**Paragraph spacing:** Use first-line indents (1-4x the font size) OR space between paragraphs (50-100% of body text size). Never both. On the web, `margin-bottom` on paragraphs is more practical than indents.
+
+**Page margins / padding:** Generous whitespace is a feature, not a waste. The edges of the screen are not the boundaries of your text block. Professional typography never fills edge-to-edge. Set `max-width` and center the text block for comfortable reading.
+
+**Centered text:** Both edges are ragged, making blocks hard to read and hard to align with other elements. Reserve centering for short headings, hero text, or single-line labels.
+
+## V. Type Composition Details
+
+- One space between sentences. Always.
+- Curly quotes `""` `''`, not straight `""` `''`. CSS: `quotes: '"' '"' ''' ''';`
+- Proper dashes: Hyphen `-` for compound words. En dash `–` for ranges. Em dash `—` for parenthetical statements. Never `--`.
+- Ellipsis: Use the real character `...` (not three periods `...`).
+- Kerning on: `font-kerning: normal` — always. Let the font's built-in spacing intelligence work.
+
+## VI. Screen-Specific Considerations
+
+- A pixel on desktop ≠ a pixel on mobile (different viewing distances, different DPI). Text may need to be slightly larger on mobile despite smaller screens.
+- Consider dark gray body text (`#333`) over pure black on screens — emitted light creates harsher contrast than reflected light on paper.
+- Typography rules don't change with screen size. In responsive design, line length is the hardest to manage — make it the priority.
+- A well-constrained `max-width` solves most responsive typography problems.
+- Suppress hyphenation on headings. Use `hyphens: auto` on justified body text only if your language/browser supports good hyphenation.
+
+## VII. Tables & Numeric Typography
+
+- Start with no borders. Turn them on selectively only where the data needs visual separation. Cell borders create clutter — the text itself forms an implied grid. Favor whitespace over lines.
+- Use thin borders (0.5-1px) when needed. Heavy borders create noise that upstages the data.
+- Use tabular (monospaced-width) figures for number columns: `font-variant-numeric: tabular-nums`.
+- For data-heavy tables (dashboards, pricing, financial), combine lining and tabular figures: `font-variant-numeric: lining-nums tabular-nums`.
+- Use oldstyle figures for numbers in running prose — they blend with lowercase letterforms: `font-variant-numeric: oldstyle-nums`.
+- Use proper typographic fractions where applicable: `font-variant-numeric: diagonal-fractions` turns `1/2` into a stacked fraction glyph.
+
+```css
+/* Data table — aligned columns */
+.data-table td { font-variant-numeric: tabular-nums lining-nums; }
+
+/* Body text — numbers blend with prose */
+.prose { font-variant-numeric: oldstyle-nums; }
+
+/* Recipes, measurements */
+.fraction { font-variant-numeric: diagonal-fractions; }
+```
+
+## VIII. OpenType Features
+
+Modern fonts contain advanced features that most interfaces leave unused. Enable them deliberately.
+
+**Slashed zero** — distinguishes `0` from `O` in code-adjacent UIs (IDs, codes, tokens):
+
+```css
+.code, .mono, .id-display {
+  font-variant-numeric: slashed-zero;
+}
+```
+
+**Contextual alternates** — adjusts glyphs based on surrounding characters. Keep enabled (on by default in most browsers, but explicit is better):
+
+```css
+body {
+  font-feature-settings: "calt" 1;
+}
+```
+
+**Disambiguation stylistic set** — some fonts (e.g., Inter) offer `ss02` to distinguish `I`/`l`/`1` and `0`/`O`:
+
+```css
+.ui-text {
+  font-feature-settings: "ss02" 1;
+}
+```
+
+**Disable font synthesis** — prevents browsers from faking bold/italic when the font file is missing. Faux bold adds uniform stroke weight (looks wrong), faux italic slants glyphs mechanically (looks worse):
+
+```css
+body {
+  font-synthesis: none;
+}
+```
+
+## IX. Font Rendering & Loading
+
+**Optical sizing** — variable fonts with an `opsz` axis adjust stroke contrast and spacing based on size. Leave auto (the default), do not disable it:
+
+```css
+body {
+  font-optical-sizing: auto;
+}
+```
+
+**Antialiased smoothing** — on retina displays, use antialiased (thinner, lighter) over auto (subpixel, which can look heavy):
+
+```css
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+```
+
+**font-display: swap** — prevents invisible text during font loading. The browser shows a fallback immediately, then swaps when the custom font loads:
+
+```css
+@font-face {
+  font-family: 'CustomFont';
+  src: url('/fonts/custom.woff2') format('woff2');
+  font-display: swap;
+}
+```
+
+**Variable font weight** — use continuous values (100-900) instead of jumping between fixed weights. This enables fine-tuned weight control for different text sizes:
+
+```css
+h1 { font-weight: 720; }
+h2 { font-weight: 680; }
+body { font-weight: 400; }
+caption { font-weight: 340; }
+```
+
+## X. Text Wrapping & Decoration
+
+**text-wrap: balance** — distributes text evenly across lines in headings, preventing orphans and widows. Use on headings only (performance cost on long text):
+
+```css
+h1, h2, h3 {
+  text-wrap: balance;
+}
+```
+
+**text-wrap: pretty** — reduces orphans in body text (last line with a single word). Less aggressive than `balance`, suitable for paragraphs:
+
+```css
+p {
+  text-wrap: pretty;
+}
+```
+
+**Underline offset** — push underlines below descenders so they do not cut through `g`, `p`, `y`:
+
+```css
+a {
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+```
+
+**Justified text with hyphens** — if using `text-align: justify`, always pair with `hyphens: auto` to prevent rivers of whitespace:
+
+```css
+.justified-text {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+```
+
+**Letter spacing on uppercase** — uppercase and small-caps text appears too tight because capitals are designed to sit next to lowercase. Always add spacing:
+
+```css
+.uppercase, .small-caps {
+  letter-spacing: 0.05em;
+  /* Already mentioned in Section III, reinforced here with CSS */
+}

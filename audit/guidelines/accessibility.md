@@ -1,0 +1,362 @@
+# Accessibility Guidelines
+
+Accessibility is not a checklist you run before launch — it is a design constraint that shapes every decision from the first wireframe to the last line of CSS. When you build for accessibility, you build better software for everyone: keyboard users, screen reader users, people with low vision, motor impairments, cognitive differences, and situational limitations like a broken arm or bright sunlight.
+
+The target is WCAG 2.1 Level AA compliance. This is both a legal baseline in many jurisdictions and a practical standard that catches the most impactful issues.
+
+## I. Semantic HTML
+
+HTML elements carry meaning that assistive technologies rely on. A `<button>` announces as a button and responds to Enter and Space. A `<div>` announces as nothing and responds to nothing. Using the correct element is always less work than recreating its behavior.
+
+| Purpose | Correct Element | Common Mistake |
+|---------|----------------|----------------|
+| Clickable action | `<button>` | `<div onclick>`, `<a href="#">` |
+| Navigation link | `<a href="/path">` | `<button>` used for navigation |
+| Page region | `<main>`, `<nav>`, `<header>`, `<footer>`, `<aside>` | Generic `<div>` wrappers |
+| List of items | `<ul>`, `<ol>`, `<li>` | Paragraphs or divs with bullets |
+| Data grid | `<table>`, `<th>`, `<td>` | CSS grid with divs |
+| Form field label | `<label for="id">` | Placeholder text as label |
+
+**Heading hierarchy must be logical and unbroken.** One `<h1>` per page (the page title). Headings must not skip levels — do not jump from `<h2>` to `<h4>`. Screen reader users navigate by heading level to understand page structure; a broken hierarchy is like a book with missing chapter numbers.
+
+```html
+<!-- BAD — skips h2, uses heading for styling -->
+<h1>Dashboard</h1>
+<h3>Recent Activity</h3>  <!-- skipped h2 -->
+<h3 class="small-text">Tip of the day</h3>  <!-- heading used for styling, not structure -->
+
+<!-- GOOD — logical nesting -->
+<h1>Dashboard</h1>
+<h2>Recent Activity</h2>
+<h2>Quick Tips</h2>
+```
+
+**Landmarks** give screen reader users a map of the page. Every page should have at minimum: `<header>` (site banner), `<nav>` (primary navigation), `<main>` (primary content), and `<footer>`. If you have multiple `<nav>` elements, distinguish them with `aria-label`:
+
+```html
+<nav aria-label="Primary">...</nav>
+<nav aria-label="Breadcrumb">...</nav>
+```
+
+## II. ARIA Attributes
+
+ARIA (Accessible Rich Internet Applications) supplements HTML semantics for dynamic and custom components. The first rule of ARIA: **do not use ARIA if a native HTML element achieves the same result.** ARIA does not add behavior — it only adds meaning. A `<div role="button">` announces as a button but does not get keyboard handling, focus management, or form submission for free.
+
+**Essential ARIA patterns:**
+
+- **Icon-only buttons** must have `aria-label` describing the action, not the icon:
+  ```html
+  <!-- BAD — no accessible name -->
+  <button><x-icon-trash /></button>
+
+  <!-- GOOD — action described -->
+  <button aria-label="Delete comment"><x-icon-trash /></button>
+  ```
+
+- **Decorative elements** must be hidden from the accessibility tree:
+  ```html
+  <x-icon-decorative-swirl aria-hidden="true" />
+  <img src="divider.svg" alt="" aria-hidden="true">
+  ```
+
+- **Dynamic content** that updates without page reload must announce changes with live regions:
+  ```html
+  <!-- Polite: announces when screen reader is idle -->
+  <div aria-live="polite" aria-atomic="true">
+      {{ $statusMessage }}
+  </div>
+
+  <!-- Assertive: interrupts immediately (use sparingly — errors, critical alerts) -->
+  <div role="alert">
+      {{ $errorMessage }}
+  </div>
+  ```
+
+- **Expanded/collapsed state** for disclosure widgets:
+  ```html
+  <button aria-expanded="false" aria-controls="panel-1">Details</button>
+  <div id="panel-1" hidden>...</div>
+  ```
+
+- **Current page** in navigation:
+  ```html
+  <a href="/dashboard" aria-current="page">Dashboard</a>
+  ```
+
+## III. Form Accessibility
+
+Forms are where accessibility fails most often — and where it matters most, because forms are how users accomplish tasks.
+
+**Every input needs a visible, associated label.** Placeholder text is not a label — it disappears on focus and has insufficient contrast in most browsers:
+
+```html
+<!-- BAD — placeholder as label -->
+<input type="email" placeholder="Email address">
+
+<!-- GOOD — proper label association -->
+<label for="email">Email address</label>
+<input type="email" id="email" name="email">
+```
+
+**Error messages must be programmatically linked** to their field so screen readers announce them in context:
+
+```html
+<label for="email">Email address</label>
+<input
+    type="email"
+    id="email"
+    name="email"
+    aria-describedby="email-error"
+    aria-invalid="true"
+>
+<p id="email-error" class="text-red-600" role="alert">
+    Please enter a valid email address.
+</p>
+```
+
+**Required fields** need both visual and programmatic indication:
+
+```html
+<label for="name">
+    Full name <span aria-hidden="true" class="text-red-500">*</span>
+</label>
+<input type="text" id="name" name="name" required aria-required="true">
+```
+
+**Group related fields** with `<fieldset>` and `<legend>`:
+
+```html
+<fieldset>
+    <legend>Shipping address</legend>
+    <label for="street">Street</label>
+    <input type="text" id="street" name="street">
+    <!-- more fields -->
+</fieldset>
+```
+
+**Form submission feedback** must be announced. After a Livewire form submission, set focus to a success/error message or use `aria-live` to announce the result.
+
+## IV. Keyboard Navigation
+
+Every interactive element must be operable with a keyboard alone. This is non-negotiable — it serves not only screen reader users but also power users, users with motor impairments, and anyone whose mouse just stopped working.
+
+**Focus order must follow visual order.** Do not use `tabindex` values greater than 0 — they create a parallel, confusing tab order. Use `tabindex="0"` only to make a non-interactive element focusable when necessary, and `tabindex="-1"` to make an element programmatically focusable but not in the tab sequence:
+
+```html
+<!-- Programmatically focusable (for JS focus management), not in tab order -->
+<div tabindex="-1" id="modal-title">Edit Profile</div>
+
+<!-- In natural tab order (only needed for custom interactive elements) -->
+<div role="button" tabindex="0" @keydown.enter="activate" @keydown.space.prevent="activate">
+    Custom Action
+</div>
+```
+
+**Focus must be visible.** Never remove focus outlines without providing an alternative. The `:focus-visible` pseudo-class lets you show outlines only for keyboard users, not mouse clicks:
+
+```css
+/* Remove default outline for mouse users */
+:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Strong visible focus for keyboard users */
+:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+```
+
+**Skip links** let keyboard users bypass repetitive navigation. Place a skip link as the first focusable element on the page:
+
+```html
+<a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-white focus:px-4 focus:py-2">
+    Skip to main content
+</a>
+<!-- ...navigation... -->
+<main id="main-content" tabindex="-1">
+```
+
+**Focus trapping in modals:** When a modal is open, Tab and Shift+Tab must cycle within the modal. Focus must move to the modal on open and return to the triggering element on close.
+
+## V. Color & Contrast
+
+Color contrast is a hard requirement, not a design preference. Insufficient contrast makes text illegible for users with low vision — and uncomfortable for everyone in bright environments.
+
+| Element | Minimum Contrast Ratio | Notes |
+|---------|----------------------|-------|
+| Normal text (< 18px / < 14px bold) | 4.5:1 | Most body text, labels, captions |
+| Large text (>= 18px / >= 14px bold) | 3:1 | Headings, large UI text |
+| UI components and graphical objects | 3:1 | Borders, icons, form controls |
+| Disabled elements | No requirement | But should still be visually distinguishable |
+
+**Do not convey information through color alone.** A red border on an invalid field is meaningless to a colorblind user. Pair color with text, icons, or patterns:
+
+```html
+<!-- BAD — only color indicates error -->
+<input class="border-red-500" type="email">
+
+<!-- GOOD — color + icon + text -->
+<input class="border-red-500" type="email" aria-describedby="email-error" aria-invalid="true">
+<p id="email-error" class="text-red-600">
+    <x-icon-exclamation class="inline" aria-hidden="true" />
+    Please enter a valid email address.
+</p>
+```
+
+Test with a color blindness simulator. Roughly 8% of men have some form of color vision deficiency — your interface will be used by many of them.
+
+## VI. Images & Media
+
+**Content images need descriptive alt text** that conveys the image's purpose in context, not just what it depicts:
+
+```html
+<!-- BAD — describes appearance, not purpose -->
+<img src="chart.png" alt="Bar chart">
+
+<!-- GOOD — describes what the chart communicates -->
+<img src="chart.png" alt="Monthly revenue grew 23% from January to March 2026">
+
+<!-- Decorative — empty alt, not missing alt -->
+<img src="decorative-border.svg" alt="">
+```
+
+Missing `alt` attributes are always a failure. An image without `alt` causes screen readers to announce the filename, which is worse than announcing nothing. Every `<img>` must have an `alt` attribute — set it to `""` for decorative images.
+
+**SVG icons** used as content need accessible names:
+
+```html
+<svg role="img" aria-label="Warning">
+    <path d="..." />
+</svg>
+```
+
+**Video and audio** content needs captions (for deaf/hard-of-hearing users) and transcripts (for deafblind users and search engines). Auto-generated captions are a starting point, not a finish line — they must be reviewed for accuracy.
+
+## VII. Interactive Element Sizing
+
+Small touch targets cause errors for users with motor impairments and frustrate everyone on mobile devices. WCAG 2.2 requires a minimum target size of 24x24 CSS pixels (Level AA), but 44x44 pixels is the recommended practical minimum:
+
+```css
+/* Minimum interactive target size */
+button,
+a,
+input,
+select,
+[role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* For inline links in text, padding provides the target area */
+a {
+    padding-block: 0.25em;
+}
+```
+
+Ensure sufficient spacing between adjacent interactive elements so that touching one does not accidentally trigger another. A gap of at least 8px between clickable targets prevents most mis-taps.
+
+## VIII. Motion & Animation
+
+Animations that users cannot control are a barrier — they cause discomfort for people with vestibular disorders, distract users with attention-related disabilities, and drain battery on mobile.
+
+**Respect `prefers-reduced-motion`** for every animation:
+
+```css
+/* Default: enable animation */
+.fade-in {
+    animation: fadeIn 300ms ease-out;
+}
+
+/* Reduced motion: instant or no animation */
+@media (prefers-reduced-motion: reduce) {
+    .fade-in {
+        animation: none;
+    }
+
+    * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+```
+
+**No auto-playing content** that moves, blinks, or scrolls for more than 5 seconds without a pause mechanism. Carousels, animated banners, and auto-advancing slideshows must have pause/stop controls. Better yet — do not auto-play at all.
+
+**No content that flashes** more than 3 times per second. This can trigger seizures in users with photosensitive epilepsy. This is a Level A requirement — the strictest level.
+
+## IX. Screen Reader Patterns
+
+**Visually hidden text** provides context for screen reader users without affecting visual layout. Use a utility class, never `display: none` (which hides from screen readers too):
+
+```css
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+```
+
+```html
+<button>
+    <x-icon-trash aria-hidden="true" />
+    <span class="sr-only">Delete comment by {{ $author }}</span>
+</button>
+```
+
+**Live regions** announce dynamic content changes. Use them for:
+- Flash messages and toast notifications (`role="status"` or `aria-live="polite"`)
+- Error summaries after form validation (`role="alert"`)
+- Loading states (`aria-busy="true"` on the updating container)
+- Real-time data updates (stock prices, chat messages)
+
+```html
+<!-- Loading state -->
+<div aria-busy="true" aria-live="polite">
+    <span class="sr-only">Loading results...</span>
+    <x-spinner aria-hidden="true" />
+</div>
+
+<!-- After load completes -->
+<div aria-busy="false" aria-live="polite">
+    <span class="sr-only">{{ $count }} results loaded.</span>
+    <!-- results -->
+</div>
+```
+
+## X. Tables
+
+Data tables need structural markup so screen readers can navigate cells and understand their relationship to headers.
+
+```html
+<table>
+    <caption>Q1 2026 Sales by Region</caption>
+    <thead>
+        <tr>
+            <th scope="col">Region</th>
+            <th scope="col">Revenue</th>
+            <th scope="col">Growth</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th scope="row">Europe</th>
+            <td>$1.2M</td>
+            <td>+15%</td>
+        </tr>
+    </tbody>
+</table>
+```
+
+- Always use `<th>` for header cells with `scope="col"` or `scope="row"`
+- Add `<caption>` to describe the table's purpose (can be visually hidden with `sr-only` if the design does not accommodate it)
+- Never use tables for layout — only for tabular data
+- For complex tables with multi-level headers, use `id` and `headers` attributes to explicitly associate data cells with their headers
+- Responsive tables should remain accessible — do not replace the table with a visual card layout without providing an equivalent accessible structure
