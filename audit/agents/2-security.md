@@ -2,6 +2,7 @@
 
 - **subagent_type:** `security-auditor`
 - **model:** `opus`
+- **maxTurns:** `15`
 
 ## Fokus
 

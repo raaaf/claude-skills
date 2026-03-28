@@ -2,10 +2,13 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
+- **maxTurns:** `5`
 
 ## Aufgabe
 
 Prüfe technische DSGVO-relevante Aspekte: SSL, Security-Header, Formulare, Mixed Content.
+
+Lies `references/wordpress.md` für WordPress-spezifische Checks.
 
 ## Eingabe
 

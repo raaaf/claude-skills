@@ -1,5 +1,19 @@
 ---
-description: "Iterativer Plan-Builder: Idee oder bestehenden Plan analysieren, gezielt Fragen stellen, Plan aufbauen und iterativ verbessern, dann aus 5 Dimensionen challengen."
+name: plan
+description: "Use when the user says /plan, wants to plan a feature, needs to think through an implementation, or has an idea that needs structuring. Interactive sparring partner that asks targeted questions (with recommended answers), builds a structured plan, then challenges it from 5 perspectives (product, architecture, design, risk, simplicity)."
+argument-hint: "[idea or path to existing plan]"
+model: sonnet
+effort: high
+allowed-tools:
+  - Agent
+  - Bash
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Edit
+  - TodoWrite
+  - AskUserQuestion
 ---
 
 # /plan — Iterativer Plan-Builder
@@ -118,7 +132,43 @@ Dateiname: `{YYYY-MM-DD}-{slug}.md`
 3. Einarbeiten → v2
 4. Wiederholen bis User zufrieden ist
 
-Kein festes Rundenlimit. Wenn der User "go" sagt oder der Plan steht: weiter zu Phase 3.
+Kein festes Rundenlimit. Wenn der User "go" sagt oder der Plan steht: weiter zu Phase 2.5 (Codebase-Kontext sammeln).
+
+---
+
+## Phase 2.5: Codebase-Kontext sammeln
+
+Vor dem Challengen: Kontext fuer Architecture- und Risk-Agents sammeln (falls noch nicht vorhanden):
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+
+# Framework und Source-Dirs erkennen
+if [ -f "$PROJECT_ROOT/artisan" ]; then
+  FRAMEWORK="laravel"
+  SOURCE_DIRS="app/ resources/ database/ routes/ config/"
+elif [ -f "$PROJECT_ROOT/package.json" ] && grep -q '"next"' "$PROJECT_ROOT/package.json" 2>/dev/null; then
+  FRAMEWORK="nextjs"
+  SOURCE_DIRS="src/ app/ pages/ components/ lib/"
+elif [ -f "$PROJECT_ROOT/nuxt.config.ts" ] || [ -f "$PROJECT_ROOT/nuxt.config.js" ]; then
+  FRAMEWORK="nuxt"
+  SOURCE_DIRS="components/ composables/ pages/ layouts/ server/"
+elif [ -f "$PROJECT_ROOT/manage.py" ]; then
+  FRAMEWORK="django"
+  SOURCE_DIRS="$(find . -name 'apps.py' -exec dirname {} \; | head -20 | tr '\n' ' ')"
+else
+  FRAMEWORK="generic"
+  SOURCE_DIRS="src/ lib/ app/"
+fi
+
+# Dateistruktur sammeln
+find $SOURCE_DIRS -maxdepth 2 -type d 2>/dev/null | head -50
+```
+
+ZENTRALE_PATTERNS ermitteln:
+- Lies CLAUDE.md und extrahiere Architektur-Konventionen (falls vorhanden)
+- Falls keine CLAUDE.md: Analysiere die Verzeichnisstruktur auf Patterns (Services, Repositories, Traits, Mixins, Composables)
+- Kompakt zusammenfassen in max 10 Zeilen
 
 ---
 
@@ -128,14 +178,33 @@ TodoWrite: `Plan challengen — 5 Dimensionen` (in_progress)
 
 5 Subagents parallel dispatchen. Jeder liest den Plan und challenged aus seiner Perspektive.
 
+Product, Design und Simplicity erhalten nur den Plan:
 ```
-Fuer jeden Agent:
-  Agent(
-    prompt: Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
-      {PLAN_INHALT}
-    subagent_type: general-purpose
-    model: sonnet
-  )
+Agent(
+  prompt: Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
+    {PLAN_INHALT}
+  subagent_type: general-purpose
+  model: sonnet
+)
+```
+
+Architecture und Risk erhalten zusaetzlich den Codebase-Kontext:
+```
+Agent(
+  prompt: Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
+    {PLAN_INHALT}
+
+    Codebase-Kontext:
+    DATEISTRUKTUR:
+    {DATEISTRUKTUR}
+
+    ZENTRALE_PATTERNS:
+    {ZENTRALE_PATTERNS}
+
+    FRAMEWORK: {FRAMEWORK}
+  subagent_type: general-purpose
+  model: sonnet
+)
 ```
 
 Die 5 Dimensionen:
@@ -197,3 +266,56 @@ Schlecht: "Alternative approach detected. Please evaluate tradeoffs of Feature F
 
 Gut: "Wer ist eigentlich der User hier? Admin oder Endnutzer? Das aendert den ganzen Ansatz."
 Schlecht: "Target user persona not specified. Please select: A) Admin B) End user C) Both."
+
+---
+
+## Phase 4: Learning
+
+TodoWrite: `Plan-Log schreiben und Learning` (in_progress)
+
+Nach dem Plan-Abschluss: Plan-Log schreiben und Learning-Agent dispatchen.
+
+### Plan-Log schreiben
+
+```bash
+PLAN_LOG_DIR="$(git rev-parse --show-toplevel 2>/dev/null)/.claude/plans/logs"
+mkdir -p "$PLAN_LOG_DIR"
+```
+
+Schreibe `$PLAN_LOG_DIR/{YYYY-MM-DD}-{slug}.md`:
+
+```markdown
+# Plan-Log — {Titel}
+
+## Meta
+- Datum: {DATUM}
+- Runden Phase 1 (Verstehen): {N}
+- Plan-Datei: docs/plans/{datum}-{slug}.md
+
+## Fragen & Antworten
+- {Frage} → {User-Antwort oder "Einschaetzung bestaetigt"}
+
+## Challenge-Ergebnis
+- Concerns gesamt: {N}
+- Eingearbeitet: {X}
+- Akzeptiert: {Y}
+- Abgelehnt: {Z}
+
+## Bemerkenswert
+- {Pattern oder Ueberraschung, z.B. "User hat alle Design-Concerns abgelehnt"}
+```
+
+### Learning-Agent dispatchen
+
+```
+Agent(
+  prompt: Lies agents/learning-agent.md und fuehre den Ablauf aus.
+    PROJECT_ROOT={PROJECT_ROOT}
+    AKTUELLES_LOG={Inhalt des gerade geschriebenen Plan-Logs}
+  subagent_type: general-purpose
+  mode: bypassPermissions
+  run_in_background: true
+)
+```
+
+TodoWrite: `Plan-Log schreiben und Learning` (completed)

@@ -38,7 +38,8 @@ A comprehensive one-time audit of the entire codebase — not just recent change
 - Auto-detects framework and sets source directories
 - Splits the codebase into batches (e.g. 12 batches for 827 files)
 - Runs all 7 subagents per batch
-- Produces a prioritized report with fix recommendations
+- Auto-fixes all findings (Critical, Important, and Minor) per batch
+- Cross-reference round after all batches to catch cross-module inconsistencies
 - Same screenshot verification and learning loop as `/audit`
 
 ---
@@ -52,9 +53,11 @@ A sparring partner for turning ideas into solid implementation plans. Asks the r
 **What it does:**
 - Phase 1: Understands the idea — max 3 questions per round, each with a recommended answer based on codebase context
 - Phase 2: Writes a structured plan to `docs/plans/{date}-{slug}.md`
+- Phase 2.5: Gathers codebase context (directory structure, patterns, framework) for Architecture and Risk agents
 - Phase 3: Dispatches 5 challenge agents in parallel, consolidates concerns, lets you decide what to incorporate
+- Phase 4: Logs the plan session and dispatches a learning agent that detects patterns in user preferences across plans
 
-**Challenge agents:** CEO/Founder · Senior Engineer · Designer · Skeptic · Minimalist
+**Challenge agents:** CEO/Founder · Senior Engineer (with codebase context) · Designer · Skeptic (with codebase context) · Minimalist
 
 ---
 
@@ -70,12 +73,16 @@ Audits websites for GDPR/DSGVO compliance (German law). Works with live URLs and
 
 **Covers:** § 5 DDG, DSGVO Art. 6/13/14, ePrivacy, LG München I Google Fonts ruling (2022), Dark Pattern rules, WordPress-specific pitfalls (Gravatar, WP Emojis, XML-RPC)
 
+Legal reference material is stored as progressive disclosure in `dsgvo/references/` — subagents load only what they need, keeping context lean.
+
+Logs each check to `.claude/dsgvo/logs/` and dispatches a learning agent that detects recurring patterns across checks.
+
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/rafaelalex/claude-skills ~/.claude/skills/claude-skills
+git clone https://github.com/raaaf/claude-skills ~/.claude/skills/claude-skills
 
 # Then symlink individual skills
 ln -s ~/.claude/skills/claude-skills/audit ~/.claude/skills/audit
@@ -83,6 +90,8 @@ ln -s ~/.claude/skills/claude-skills/full-audit ~/.claude/skills/full-audit
 ln -s ~/.claude/skills/claude-skills/plan ~/.claude/skills/plan
 ln -s ~/.claude/skills/claude-skills/dsgvo ~/.claude/skills/dsgvo
 ```
+
+**Note:** `audit` and `full-audit` must be installed together — `full-audit` references agent definitions from `audit/agents/`. The skill resolves the path automatically (sibling directory, `~/.claude/skills/audit/`, or mono-repo layout).
 
 For the `/audit` screenshot feature, install Playwright:
 
@@ -123,6 +132,30 @@ The screenshot agent logs into your app before capturing screenshots. Credential
   "password": "secret"
 }
 ```
+
+---
+
+## Architecture
+
+Each skill follows a consistent pattern:
+
+```
+SKILL.md (orchestrator)
+  -> Dispatches subagents in parallel (agents/*.md)
+     -> Each agent reads guidelines/references on demand (progressive disclosure)
+  -> Consolidates results
+  -> Auto-fixes findings
+  -> Logs the run
+  -> Dispatches learning agent in background
+```
+
+**Key design decisions:**
+- **Frontmatter controls behavior** — `model`, `allowed-tools`, `maxTurns`, `context: fork`, `effort`, `hooks` are all set per-skill
+- **Descriptions are model triggers** — written in English, telling Claude *when* to invoke the skill, not what it does
+- **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need
+- **Deterministic control flow** — Bash scripts decide branching (e.g., whether screenshots are needed), not LLM judgment
+- **Self-learning** — every skill logs its runs and dispatches a background learning agent that detects patterns and suggests improvements
+- **On-demand hooks** — `/audit` registers a `PreToolUse` hook that blocks `git push` unless the audit passed
 
 ---
 

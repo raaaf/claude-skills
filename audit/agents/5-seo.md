@@ -2,6 +2,7 @@
 
 - **subagent_type:** `seo-auditor`
 - **model:** `haiku`
+- **maxTurns:** `10`
 
 ## Fokus
 

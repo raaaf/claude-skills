@@ -2,10 +2,13 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
+- **maxTurns:** `5`
 
 ## Aufgabe
 
 Prüfe ob eine Datenschutzerklärung vorhanden und vollständig ist. Basis: DSGVO Art. 13/14.
+
+Lies `references/datenschutzerklaerung.md` für Details.
 
 ## Eingabe
 

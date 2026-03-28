@@ -1,6 +1,19 @@
 ---
 name: dsgvo
-description: "DSGVO-Compliance-Check für Websites: Analyse + priorisierte Fixes + generierte Rechtstexte. Für eigene Projekte vor dem Launch und Kunden-Websites."
+description: "Use when the user says /dsgvo, wants a GDPR/DSGVO compliance check, asks about privacy compliance for a website, or needs legal texts (Datenschutzerklaerung, Impressum, Cookie banner). Detects external services (Google Fonts, Analytics, Maps, YouTube, CDNs, Facebook Pixel, Hotjar), dispatches 5 parallel subagents (Impressum, Datenschutz, Cookies, External Services, Technical), and generates prioritized fixes plus ready-to-use legal texts."
+argument-hint: "[url or project path]"
+model: sonnet
+effort: medium
+allowed-tools:
+  - Agent
+  - Bash
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+  - TodoWrite
+  - AskUserQuestion
 ---
 
 # /dsgvo — DSGVO-Compliance-Check
@@ -108,8 +121,8 @@ grep -r "<form" "$PROJECT_ROOT" --include="*.html" --include="*.php" --include="
 # Impressum/Datenschutz-Seite vorhanden?
 find "$PROJECT_ROOT" -name "*impressum*" -o -name "*imprint*" -o -name "*datenschutz*" -o -name "*privacy*" 2>/dev/null
 
-# Hosting-Hinweise
-cat "$PROJECT_ROOT/.env" 2>/dev/null | grep -iE "APP_URL|DB_HOST" | sed 's/=.*/=***/'
+# Hosting-Hinweise (without reading .env — check config files instead)
+grep -r "APP_URL" "$PROJECT_ROOT/config/app.php" 2>/dev/null || grep "APP_URL" "$PROJECT_ROOT/.env.example" 2>/dev/null || echo "APP_URL not found in config"
 ```
 
 ### 1c — Projekttyp erkennen
@@ -235,92 +248,19 @@ Dann: vollständigen, einsatzbereiten Text ausgeben — kein Lückentext, keine 
 
 ---
 
-## Rechtstext-Wissen (für Subagents und direkte Generierung)
+## Rechtstext-Wissen
 
-### Impressum (§ 5 DDG, Deutschland)
+Detaillierte Rechtsreferenzen sind in separate Dateien ausgelagert. Subagents und der Hauptskill lesen sie bei Bedarf:
 
-**Pflichtangaben immer:**
-- Vollständiger Name + ladungsfähige Anschrift (kein Postfach)
-- E-Mail-Adresse
-- Ein weiterer unmittelbarer Kontaktweg (Telefon ODER Kontaktformular mit schneller Reaktion)
+| Thema | Datei |
+|-------|-------|
+| Impressum (§ 5 DDG) | `references/impressum.md` |
+| Datenschutzerklärung (DSGVO Art. 13/14) | `references/datenschutzerklaerung.md` |
+| Cookie-Consent | `references/cookie-consent.md` |
+| Externe Dienste — Compliance-Status | `references/externe-dienste.md` |
+| WordPress-spezifisch | `references/wordpress.md` |
 
-**Bei juristischen Personen zusätzlich:**
-- Rechtsform + Vertretungsberechtigte
-- Handelsregisternummer + Registergericht
-- USt-IdNr. (falls vorhanden — NICHT Steuernummer vom Finanzamt!)
-
-**Bei erlaubnispflichtigen Tätigkeiten:**
-- Zuständige Aufsichtsbehörde
-
-**Nicht mehr rein:**
-- OS-Plattform-Link (EU-Plattform wurde 2023 abgeschaltet)
-
-**Erreichbarkeit:**
-- Von jeder Unterseite erreichbar — auch Fehlerseiten
-- Nicht hinter Cookie-Banner blockiert
-
-### Datenschutzerklärung (DSGVO Art. 13/14)
-
-**Pflichtabschnitte:**
-1. Verantwortlicher (Name, Adresse, E-Mail)
-2. Hosting (Provider + Serverstandort + Rechtsgrundlage Art. 6 Abs. 1 lit. f)
-3. Server-Logfiles (was wird geloggt, wie lange, Rechtsgrundlage)
-4. Kontaktformular (welche Daten, wie lange gespeichert, Rechtsgrundlage)
-5. Cookies (Unterscheidung essentiell/nicht-essentiell)
-6. Für jeden externen Dienst einzeln: was wird erhoben, Rechtsgrundlage, AVV-Hinweis, ggf. Drittlandtransfer
-7. Betroffenenrechte (Auskunft Art. 15, Berichtigung Art. 16, Löschung Art. 17, Einschränkung Art. 18, Datenübertragbarkeit Art. 20, Widerspruch Art. 21)
-8. Beschwerderecht bei Aufsichtsbehörde
-9. Widerrufsrecht für Einwilligungen
-
-**Rechtsgrundlagen:**
-- Art. 6 Abs. 1 lit. a — Einwilligung (Analytics, Marketing-Cookies)
-- Art. 6 Abs. 1 lit. b — Vertragserfüllung (Kontaktformular bei Kaufabsicht)
-- Art. 6 Abs. 1 lit. c — Rechtliche Verpflichtung
-- Art. 6 Abs. 1 lit. f — Berechtigtes Interesse (Server-Logs, Sicherheit)
-
-### Cookie-Consent
-
-**Pflicht:**
-- Banner erscheint VOR dem Setzen nicht-essentieller Cookies
-- "Ablehnen" genauso prominent wie "Akzeptieren" — kein Dark Pattern
-- Scripts laden technisch ERST nach Einwilligung (nicht nur Cookie gesetzt)
-- Consent widerrufbar (Link "Cookie-Einstellungen" im Footer)
-- Einwilligung für jeden Zweck separat (Analytics ≠ Marketing ≠ Funktional)
-
-**Essentiell (kein Consent nötig):**
-- Session-Cookie, Login-Cookie, Warenkorb, CSRF-Token, Load-Balancing
-
-**Nicht-essentiell (Consent nötig):**
-- Analytics (Google Analytics, Matomo mit Tracking), Hotjar, Facebook Pixel
-- Marketing/Retargeting
-- Personalisierung
-
-**Impressum + Datenschutz:**
-- Müssen ohne Interaktion mit dem Banner erreichbar sein
-- Entweder: Links im Banner selbst, oder: Banner lässt Footer sichtbar/scrollbar
-
-### Externe Dienste — Compliance-Status
-
-| Dienst | Problem | Konforme Alternative |
-|--------|---------|---------------------|
-| Google Fonts (extern) | IP an Google-Server → Abmahnrisiko | Lokal hosten |
-| Google Analytics (ohne Consent) | Tracking ohne Einwilligung | Consent einholen oder Matomo self-hosted |
-| Google Maps (ohne Consent) | IP-Übertragung | Zwei-Klick-Lösung oder statisches Bild |
-| YouTube-Embed (ohne Consent) | IP-Übertragung | Zwei-Klick-Embed (nocookie reicht nicht) |
-| Facebook Pixel | Tracking ohne Einwilligung | Consent einholen |
-| Hotjar | Tracking ohne Einwilligung | Consent einholen |
-| Gravatar (WordPress) | IP an US-Server | Lokal hosten oder deaktivieren |
-| jQuery/Bootstrap von CDN | IP-Übertragung | Lokal einbinden |
-| Font Awesome von CDN | IP-Übertragung | Lokal oder nur SVG-Icons verwenden |
-| Mailchimp-Formular | Drittlandtransfer | AVV + in DSE aufführen |
-| reCAPTCHA | IP + Verhaltensdaten an Google | Consent oder Alternative (hCaptcha, Honeypot) |
-
-### WordPress-spezifisch
-
-- Gravatar in Kommentaren: In `functions.php` deaktivieren oder `show_avatars` Option abschalten
-- WordPress-Emojis (laden von twemoji.maxcdn.com): In `functions.php` mit `remove_action` deaktivieren
-- Jetpack: Prüfen welche Module aktiv sind, viele übertragen Daten an Automattic (US)
-- Contact Form 7: Daten-Speicherung konfigurieren, AVV mit Flamingo wenn Einträge gespeichert werden
+Jeder Subagent liest die für seinen Bereich relevanten Dateien. Bei Rechtstext-Generierung (Schritt 4c) werden alle relevanten Referenzen geladen.
 
 ---
 
@@ -333,3 +273,59 @@ Schlecht: "Im Hinblick auf die einschlägige Rechtsprechung des LG München I is
 
 Gut: "Kein Cookie-Banner gefunden, aber Google Analytics ist eingebunden. Das ist ein klarer DSGVO-Verstoß."
 Schlecht: "Es könnte möglicherweise dazu kommen, dass gewisse Aspekte überprüft werden sollten."
+
+---
+
+Unabhängig vom Ergebnis aus Schritt 4 immer ausführen.
+
+## Schritt 5: Logging und Learning
+
+### DSGVO-Log schreiben
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+if [ -n "$PROJECT_ROOT" ]; then
+  DSGVO_LOG_DIR="$PROJECT_ROOT/.claude/dsgvo/logs"
+else
+  DSGVO_LOG_DIR="$HOME/.claude/dsgvo/logs"
+fi
+mkdir -p "$DSGVO_LOG_DIR"
+DATUM=$(date +%Y-%m-%d)
+```
+
+Schreibe `$DSGVO_LOG_DIR/$DATUM-{domain-oder-projekt}.md`:
+
+```markdown
+# DSGVO-Check — {URL oder Projektname}
+
+## Meta
+- Datum: {DATUM}
+- Framework: {FRAMEWORK}
+- URL: {URL}
+
+## Gefundene Dienste
+- {Liste}
+
+## Ergebnis
+- Kritisch: {N} (gefixt: {X})
+- Wichtig: {N} (gefixt: {X})
+- Nice-to-have: {N}
+
+## Generierte Texte
+- Datenschutzerklaerung: ja/nein
+- Impressum: ja/nein
+- Cookie-Banner: ja/nein
+```
+
+### Learning-Agent dispatchen
+
+```
+Agent(
+  prompt: Lies agents/learning-agent.md und fuehre den Ablauf aus.
+    PROJECT_ROOT={PROJECT_ROOT}
+    AKTUELLES_LOG={Inhalt des gerade geschriebenen DSGVO-Logs}
+  subagent_type: general-purpose
+  mode: bypassPermissions
+  run_in_background: true
+)
+```

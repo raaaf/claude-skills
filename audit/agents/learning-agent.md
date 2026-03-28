@@ -1,5 +1,7 @@
 # Learning Agent
 
+- **maxTurns:** `10`
+
 Du analysierst vergangene Audit-Logs, erkennst Patterns und schreibst eine Retro.
 
 ## Input
@@ -71,7 +73,7 @@ Haenge folgendes an `$PROJECT_ROOT/.claude/audits/learning-log.md` an:
 ```markdown
 ---
 
-## Retro -- {DATUM} -- {BRANCH} ({AUDIT_TYPE})
+## Retro — {DATUM} — {BRANCH} ({AUDIT_TYPE})
 
 ### Statistik
 - Audits insgesamt im Projekt: {N}
@@ -105,10 +107,10 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
 ---
 
-## Retro -- {DATUM} -- {BRANCH} ({AUDIT_TYPE})
+## Retro — {DATUM} — {BRANCH} ({AUDIT_TYPE})
 
 ### Statistik
-- Erster Audit im Projekt -- noch keine Pattern-Erkennung moeglich
+- Erster Audit im Projekt — noch keine Pattern-Erkennung moeglich
 
 ### Baseline
 - Critical: {N}, Important: {N}, Minor: {N}

@@ -1,6 +1,32 @@
 ---
 name: audit
-description: Audit aller offenen Änderungen und nicht gepushter Commits in allen relevanten Dimensionen
+description: "Use when the user says /audit, wants to push code, or asks to review uncommitted/unpushed changes before pushing. Dispatches 7 parallel subagents (architecture, security, performance, code quality, SEO, a11y, typography), auto-fixes findings, loops until clean, then verifies visual changes with screenshots before pushing."
+model: sonnet
+effort: high
+context: fork
+disable-model-invocation: true
+allowed-tools:
+  - Agent
+  - Bash
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+  - TodoWrite
+  - AskUserQuestion
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hook: |
+        # Block git push unless audit marker exists
+        if echo "$TOOL_INPUT" | grep -q "git push"; then
+          HASH=$(echo -n "$SESSION_CWD" | md5)
+          if [ ! -f "/tmp/claude-audit-passed-$HASH" ]; then
+            echo "BLOCKED: git push requires audit to pass first. Run /audit."
+            exit 2
+          fi
+        fi
 ---
 
 # Audit: Review aller offenen Änderungen

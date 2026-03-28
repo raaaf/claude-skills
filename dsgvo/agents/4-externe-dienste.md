@@ -2,10 +2,13 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
+- **maxTurns:** `5`
 
 ## Aufgabe
 
 Prüfe jeden erkannten externen Dienst auf DSGVO-Konformität. Das sind die häufigsten Abmahnfallen.
+
+Lies `references/externe-dienste.md` für Details.
 
 ## Eingabe
 
@@ -17,7 +20,7 @@ Du erhältst:
 
 ## Was du für jeden Dienst prüfst
 
-Gehe jeden erkannten Dienst durch und bewertet ihn:
+Gehe jeden erkannten Dienst durch und bewerte ihn:
 
 ### Google Fonts
 

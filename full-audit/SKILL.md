@@ -1,6 +1,20 @@
 ---
 name: full-audit
-description: Use when doing a comprehensive one-time audit of the entire codebase — not just recent changes. For pre-push audits of unpushed commits, use the audit skill instead.
+description: "Use when the user says /full-audit, wants a comprehensive one-time audit of the entire codebase, is starting on a new project, or hasn't audited in a while. Processes large codebases in batches with 7 parallel subagents. For pre-push audits of unpushed commits only, use /audit instead."
+model: sonnet
+effort: high
+context: fork
+disable-model-invocation: true
+allowed-tools:
+  - Agent
+  - Bash
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+  - TodoWrite
+  - AskUserQuestion
 ---
 
 # Full Codebase Audit
@@ -13,6 +27,25 @@ description: Use when doing a comprehensive one-time audit of the entire codebas
 - "Ich erkläre jetzt den Plan" → FALSCH. Direkt ausführen.
 - "Das Finding ist Minor, das überspringe ich" → FALSCH. Full-Audit fixt ALLES.
 - "Design-Verification kann ich überspringen weil..." → FALSCH. Das Bash-Script entscheidet deterministisch ob Screenshots gemacht werden. Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH`, wird der Screenshot-Agent dispatcht. Du hast kein Ermessen. Du interpretierst das Script-Ergebnis nicht.
+
+---
+
+## 0. Audit-Agents-Pfad auflösen
+
+```bash
+# Find the audit agents directory (works with symlinks, mono-repo, or standalone install)
+if [ -d "$HOME/.claude/skills/audit/agents" ]; then
+  AUDIT_AGENTS="$HOME/.claude/skills/audit/agents"
+elif [ -d "$HOME/.claude/skills/claude-skills/audit/agents" ]; then
+  AUDIT_AGENTS="$HOME/.claude/skills/claude-skills/audit/agents"
+else
+  echo "ERROR: audit/agents/ not found. Install the audit skill alongside full-audit."
+  exit 1
+fi
+echo "AUDIT_AGENTS=$AUDIT_AGENTS"
+```
+
+Setze `{AUDIT_AGENTS}` in allen folgenden Agent-Referenzen auf den gefundenen Pfad.
 
 ---
 
@@ -203,21 +236,21 @@ TodoWrite: Erstelle Todos:
 
 Dispatche alle Subagents **in einem einzigen Message-Block**. Übergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + **nur die Dateien des aktuellen Batches** (nicht alle Dateien!).
 
-Lies die Agent-Definitionen aus den Dateien im Audit-Skill-Verzeichnis unter `../audit/agents/*.md`. Jede Datei enthält `subagent_type`, `model` und Fokus-Beschreibung. Verwende den "Full-Audit Fokus" Abschnitt aus jeder Datei.
+Lies die Agent-Definitionen aus {AUDIT_AGENTS}/*.md.
 
 Jede Agent-Datei definiert `subagent_type` (bestimmt die verfügbaren Tools des Subagents) und `model` (opus = Claude Opus, haiku = Claude Haiku — Opus für tiefere Analyse, Haiku für schnellere Pattern-Checks).
 
 | # | Agent-Datei | Kurzname |
 |---|-------------|----------|
-| 1 | `../audit/agents/1-architecture.md` | Architektur & Code Reuse |
-| 2 | `../audit/agents/2-security.md` | Security |
-| 3 | `../audit/agents/3-performance.md` | Performance |
-| 4 | `../audit/agents/4-code-quality.md` | Code Quality |
-| 5 | `../audit/agents/5-seo.md` | SEO & Semantic HTML |
-| 6 | `../audit/agents/6-a11y.md` | UI/UX & A11y |
-| 7 | `../audit/agents/7-typography.md` | Typography |
+| 1 | `{AUDIT_AGENTS}/1-architecture.md` | Architektur & Code Reuse |
+| 2 | `{AUDIT_AGENTS}/2-security.md` | Security |
+| 3 | `{AUDIT_AGENTS}/3-performance.md` | Performance |
+| 4 | `{AUDIT_AGENTS}/4-code-quality.md` | Code Quality |
+| 5 | `{AUDIT_AGENTS}/5-seo.md` | SEO & Semantic HTML |
+| 6 | `{AUDIT_AGENTS}/6-a11y.md` | UI/UX & A11y |
+| 7 | `{AUDIT_AGENTS}/7-typography.md` | Typography |
 
-Prompt-Template: Siehe `../audit/agents/prompt-template.md` — verwende den Abschnitt "Für /full-audit (Codebase-basiert)".
+Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Abschnitt "Für /full-audit (Codebase-basiert)".
 
 **Überspringen-Regeln:**
 - Keine Frontend-Dateien im Batch? Subagents 5, 6 und 7 überspringen.
@@ -397,7 +430,7 @@ Du interpretierst NICHTS. Du führst das Script aus und folgst der Logik oben.
 Agent(
   subagent_type: general-purpose,
   model: sonnet,
-  prompt: "Lies ~/.claude/skills/audit/agents/screenshot-agent.md und führe den kompletten Ablauf aus.
+  prompt: "Lies {AUDIT_AGENTS}/screenshot-agent.md und führe den kompletten Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     VISUELL_RELEVANTE_DATEIEN={DATEIEN_AUS_BASH_CHECK}
     FRAMEWORK={FRAMEWORK}"
@@ -488,7 +521,7 @@ Nach dem Audit-Log dispatche den Learning-Agent als Subagent:
 
 ```
 Agent(
-  prompt: Lies agents/learning-agent.md und führe den Ablauf aus.
+  prompt: Lies {AUDIT_AGENTS}/learning-agent.md und führe den Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
     AUDIT_TYPE=full-audit

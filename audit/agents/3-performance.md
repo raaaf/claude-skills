@@ -2,6 +2,7 @@
 
 - **subagent_type:** `performance-auditor`
 - **model:** `haiku`
+- **maxTurns:** `10`
 
 ## Fokus
 

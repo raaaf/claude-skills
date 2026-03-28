@@ -2,6 +2,7 @@
 
 - **subagent_type:** `code-reviewer`
 - **model:** `opus`
+- **maxTurns:** `15`
 
 ## Fokus
 

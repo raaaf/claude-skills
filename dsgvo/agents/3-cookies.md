@@ -2,10 +2,13 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
+- **maxTurns:** `5`
 
 ## Aufgabe
 
 Prüfe ob Cookie-Consent korrekt implementiert ist. Basis: DSGVO Art. 6 + ePrivacy-Richtlinie.
+
+Lies `references/cookie-consent.md` für Details.
 
 ## Eingabe
 

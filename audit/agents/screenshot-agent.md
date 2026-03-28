@@ -2,6 +2,7 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
+- **maxTurns:** `20`
 
 ## Zweck
 

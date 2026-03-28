@@ -2,10 +2,13 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
+- **maxTurns:** `5`
 
 ## Aufgabe
 
 Prüfe ob Impressum vorhanden und korrekt ist. Basis: § 5 DDG (Deutschland).
+
+Lies `references/impressum.md` für Details.
 
 ## Eingabe
 

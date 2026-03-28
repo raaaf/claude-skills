@@ -2,6 +2,7 @@
 
 - **subagent_type:** `ui-ux-reviewer`
 - **model:** `haiku`
+- **maxTurns:** `10`
 
 ## Fokus
 
