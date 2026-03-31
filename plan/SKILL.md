@@ -29,7 +29,7 @@ Du bist ein kluger Sparringspartner. Kein Formular, kein Buerokratie-Bot — ein
 
 ---
 
-## Phase 1: Verstehen
+## Phase 1: Verstehen — Entscheidungsbaum durchgehen
 
 ### Input erkennen
 
@@ -39,9 +39,18 @@ Argument = Dateipfad? → Bestehender Plan. Lies ihn, dann Verstaendnisfragen.
 Argument = sehr detailliert? → Ueberspringe offensichtliche Fragen. Nur Luecken fuellen.
 ```
 
+### Prinzip: Entscheidungsbaum, nicht Checkliste
+
+Jede Idee ist ein Baum aus Entscheidungen, die voneinander abhaengen. Eine Antwort oeffnet neue Aeste, schliesst andere.
+
+**Nicht:** Alle Fragen aus allen Perspektiven auf einmal stellen.
+**Sondern:** Die naechste Entscheidung identifizieren, von der andere abhaengen — und die zuerst klaeren.
+
+Beispiel: "Wer ist der User?" muss vor "Wie sieht das UI aus?" geklaert werden, weil die Antwort den gesamten Design-Ast bestimmt.
+
 ### Fragen stellen
 
-Frage aus der Perspektive die gerade am meisten fehlt — nicht stur eine Checkliste abarbeiten:
+Gehe den Entscheidungsbaum Ast fuer Ast durch. Klaere Abhaengigkeiten zuerst — blockierende Entscheidungen vor abhaengigen.
 
 | Perspektive | Typische Fragen (nur stellen wenn Antwort fehlt) |
 |-------------|--------------------------------------------------|
@@ -51,9 +60,10 @@ Frage aus der Perspektive die gerade am meisten fehlt — nicht stur eine Checkl
 | **Technik** | Welche Systeme betroffen? Constraints? Bestehende Patterns die wir nutzen koennen? |
 
 **Regeln:**
-- Max 3 Fragen pro Runde via AskUserQuestion
-- Wenn der User bereits Details geliefert hat: keine Rueckfrage zu dem Thema
-- Wenn genug Kontext da ist: direkt zu Phase 2 springen
+- Max 3 Fragen pro Runde via AskUserQuestion — aber nur Fragen die auf derselben Ebene des Entscheidungsbaums liegen (keine Frage stellen deren Antwort von einer anderen Frage in derselben Runde abhaengt)
+- Wenn eine Antwort einen neuen Ast oeffnet: sofort dort weiterfragen, nicht erst alle anderen Perspektiven abarbeiten
+- Wenn die Codebase eine Frage beantworten kann: nicht fragen, sondern reinschauen und die Antwort als Fakt praesentieren
+- **Nicht zu frueh aufhoeren.** Frag weiter bis jeder Ast des Entscheidungsbaums aufgeloest ist — bis ein gemeinsames Verstaendnis steht. "Genug Kontext" heisst: du koenntest den Plan schreiben und der User wuerde nichts Wesentliches vermissen.
 - Natuerlich formulieren — "Wer nutzt das eigentlich?" statt "Please specify the target user persona"
 
 **Zu jeder Frage: eigene Einschaetzung mitgeben.**
@@ -72,6 +82,21 @@ Beispiele:
 - "Brauchen wir eine Migration? → Meine Einschaetzung: Nein — das neue Feld ist optional und hat einen Default."
 
 Wenn die Codebase verfuegbar ist: zuerst reinschauen, bevor gefragt wird. Viele Fragen beantworten sich dadurch selbst.
+
+### Abhaengigkeiten erkennen
+
+Bevor du eine Frage stellst, pruefe:
+- Haengt die Antwort von einer noch offenen Entscheidung ab? → Erst die Abhaengigkeit klaeren.
+- Oeffnet die Antwort einen neuen Ast? → Nach der Antwort sofort dort weiterfragen.
+- Sind mehrere Fragen unabhaengig voneinander? → Dann in derselben Runde stellen.
+
+Beispiel-Baum:
+```
+Wer ist der User? (blockiert alles)
+├── Admin → Welche Berechtigungen? → Braucht es Audit-Logging?
+├── Endnutzer → Onboarding noetig? → Welcher Flow?
+└── Beide → Rollenbasierte Views? → Shared Components oder getrennt?
+```
 
 ---
 
@@ -242,6 +267,57 @@ Eingearbeitete Concerns in den Plan uebernehmen. Akzeptierte Concerns als Kommen
 
 Plan-Datei speichern.
 
+---
+
+## Phase 3.5: Evaluation
+
+Nach dem Challengen und Finalisieren: den Plan ein letztes Mal evaluieren lassen.
+
+```
+Agent(
+  prompt: Du bist ein erfahrener Tech Lead. Lies diesen Plan und bewerte ihn ehrlich.
+
+    {PLAN_INHALT}
+
+    Codebase-Kontext:
+    DATEISTRUKTUR: {DATEISTRUKTUR}
+    ZENTRALE_PATTERNS: {ZENTRALE_PATTERNS}
+    FRAMEWORK: {FRAMEWORK}
+
+    Bewerte den Plan in diesen Dimensionen (je 1-2 Saetze, kein Filler):
+
+    1. **Vollstaendigkeit** — Fehlen Schritte? Gibt es Luecken zwischen "was steht im Plan" und "was muesste man tatsaechlich tun"?
+    2. **Reihenfolge** — Stimmt die Abfolge der Schritte? Gibt es Abhaengigkeiten die falsch oder gar nicht beruecksichtigt sind?
+    3. **Aufwand** — Ist der Scope realistisch? Wird etwas unterschaetzt oder aufgeblaeht?
+    4. **Risiken** — Was ist das groesste Risiko das der Plan nicht adressiert?
+    5. **Umsetzbarkeit** — Kann ein Entwickler den Plan nehmen und direkt loslegen, oder fehlen konkrete Details (Dateipfade, Methodennamen, Datenstrukturen)?
+
+    Am Ende: Ein Gesamturteil in EINEM Satz.
+    Falls du Aenderungen empfiehlst: maximal 3 konkrete Vorschlaege.
+
+  subagent_type: general-purpose
+  model: sonnet
+)
+```
+
+**Ergebnis dem User zeigen.** Wenn der Evaluator Aenderungen empfiehlt, frage via AskUserQuestion:
+
+```
+Plan-Evaluation abgeschlossen.
+
+Gesamturteil: {Urteil}
+
+Empfehlungen:
+1. {Empfehlung}
+2. ...
+```
+
+Optionen:
+- **Einarbeiten** — Empfehlungen in den Plan uebernehmen
+- **Passt so** — Plan ist fertig wie er ist
+
+Bei "Einarbeiten": Aenderungen vornehmen, Plan-Datei aktualisieren.
+
 Ausgabe:
 
 ```
@@ -250,6 +326,8 @@ Plan fertig: docs/plans/{datum}-{slug}.md
 {N} Concerns aus 5-Dimensionen-Check:
 - {X} eingearbeitet
 - {Y} akzeptiert
+
+Evaluation: {Gesamturteil}
 ```
 
 ---

@@ -98,6 +98,7 @@ Keine Änderungen? Melden und beenden. Kein Git-Repo? Fehler melden. Kein Remote
 Erstelle:
 - **ALLE_DATEIEN:** Vollständige Liste aller geänderten Dateien seit `origin/$DEFAULT_BRANCH` (inkl. aller uncommitted + committed-unpushed Commits)
 - **FRONTEND_DATEIEN:** Nur Dateien mit Endung `.blade.php`, `.html`, `.vue`, `.tsx`, `.jsx`, `.ts`, `.js`, `.css`, `.scss`
+- **TRANSLATION_DATEIEN:** Dateien in `lang/`, `locales/`, `translations/`, `messages/`, `i18n/` Verzeichnissen mit Endung `.php`, `.json`, `.yaml`, `.yml`, `.po`, `.pot`, `.ts`
 - **VISUELL_RELEVANTE_DATEIEN:** Dateien die das visuelle Erscheinungsbild direkt oder indirekt beeinflussen:
   - **Direkt:** `.blade.php`, `.html`, `.vue`, `.tsx`, `.jsx`, `.css`, `.scss` (NICHT reine `.ts`/`.js` Logik-Dateien, ES SEI DENN sie enthalten JSX/Template-Code oder Style-Imports)
   - **Indirekt (Backend):** Dateien in visuell relevanten Backend-Verzeichnissen (aus PROJECT_CONTEXT, z.B. `app/Livewire/` bei Laravel), Controller die Views rendern (`return view(...)`, `return Inertia::render(...)`), Route-Dateien mit geänderten View-Zuweisungen. NICHT: reine Service-Klassen, Models, Migrations, Commands, Jobs, Middleware — es sei denn sie ändern was an den View übergeben wird (neue/entfernte/umbenannte Props/Variablen).
@@ -185,9 +186,10 @@ Lies die Agent-Definitionen aus `agents/*.md` im Skill-Verzeichnis. Jede Datei e
 Prompt-Template: Siehe `agents/prompt-template.md` — verwende den Abschnitt "Fuer /audit (Diff-basiert)".
 
 **Einzige erlaubte Überspringen-Regeln (NUR diese, keine anderen):**
-- Keine FRONTEND_DATEIEN im Diff? → Subagents 5, 6 und 7 überspringen.
+- Keine FRONTEND_DATEIEN im Diff? → Subagents 5 und 6 überspringen.
 - Subagent 5 (SEO) zusätzlich überspringen wenn FRONTEND_DATEIEN ausschließlich Template-Partials/Components ohne `<head>`-Bereich sind.
-- Subagents 5, 6 und 7 bekommen nur den Diff der FRONTEND_DATEIEN, nicht den gesamten Diff.
+- Subagent 7 (Typography) überspringen wenn weder FRONTEND_DATEIEN noch TRANSLATION_DATEIEN im Diff.
+- Subagents 5 und 6 bekommen nur den Diff der FRONTEND_DATEIEN. Subagent 7 bekommt den Diff der FRONTEND_DATEIEN + TRANSLATION_DATEIEN.
 
 **Alles andere wird NICHT uebersprungen.** Subagents 1-4 laufen IMMER, in JEDER Runde, ueber den GESAMTEN Diff. Keine Ausnahmen.
 
@@ -199,6 +201,44 @@ Konsolidiere alle Ergebnisse. Prüfe dabei SELBST (kein Subagent nötig), **nur 
 - **Documentation:** Erfordern die Änderungen ein Update der README.md oder CLAUDE.md?
 - **Öffentliche Seiten:** Erfordern neue/geänderte/entfernte Features ein Update von Landing Pages, Changelog oder Hilfeseiten?
 - **Tests:** Gibt es geänderte Logik ohne zugehörige Tests?
+- **Mobile Apps:** Gibt es eine zugehörige iOS- oder Android-App die von den Änderungen betroffen sein könnte? (Siehe Mobile-App-Check unten)
+
+**Mobile-App-Check (Runde 1):**
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+# iOS
+IOS_DIR=$(find "$PROJECT_ROOT" -name "*.xcodeproj" -o -name "*.xcworkspace" -o -name "Podfile" -o -name "Package.swift" 2>/dev/null | head -1)
+# Android
+ANDROID_DIR=$(find "$PROJECT_ROOT" -name "build.gradle" -o -name "build.gradle.kts" -o -name "AndroidManifest.xml" 2>/dev/null | head -1)
+# React Native
+RN_CHECK=$(grep -l '"react-native"' "$PROJECT_ROOT/package.json" 2>/dev/null)
+# Flutter
+FLUTTER_CHECK=$(find "$PROJECT_ROOT" -name "pubspec.yaml" 2>/dev/null | head -1)
+# Capacitor/Ionic
+CAP_CHECK=$(find "$PROJECT_ROOT" -name "capacitor.config.*" 2>/dev/null | head -1)
+
+[ -n "$IOS_DIR" ] && echo "MOBILE_APP=ios: $IOS_DIR"
+[ -n "$ANDROID_DIR" ] && echo "MOBILE_APP=android: $ANDROID_DIR"
+[ -n "$RN_CHECK" ] && echo "MOBILE_APP=react-native"
+[ -n "$FLUTTER_CHECK" ] && echo "MOBILE_APP=flutter: $FLUTTER_CHECK"
+[ -n "$CAP_CHECK" ] && echo "MOBILE_APP=capacitor: $CAP_CHECK"
+```
+
+Wenn eine Mobile-App erkannt wird, prüfe ob die Änderungen Auswirkungen haben:
+
+| Änderung | Mobile-Relevanz |
+|----------|-----------------|
+| API-Endpunkte geändert/entfernt | Breaking Change — App muss aktualisiert werden |
+| API-Response-Format geändert | Breaking Change — App-Parsing bricht |
+| Neue API-Felder hinzugefügt | Kein Breaking Change — aber App nutzt sie nicht ohne Update |
+| Auth-Flow geändert | Breaking Change — Login in App bricht |
+| Push-Notification-Payload geändert | App empfängt falsche Daten |
+| Deep-Link-Routen geändert | App-Navigation bricht |
+| Shared Code geändert (Monorepo) | Direkt betroffen — prüfe ob App-Build noch funktioniert |
+| Nur Frontend/Web geändert | Keine Mobile-Auswirkung (es sei denn WebView/Capacitor) |
+
+Findings als **Important** einstufen wenn Breaking Changes erkannt werden, als **Minor** wenn nur neue Felder/Endpunkte hinzukommen.
 
 Eigene Findings als Important einfügen.
 

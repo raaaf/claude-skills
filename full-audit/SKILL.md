@@ -253,8 +253,9 @@ Jede Agent-Datei definiert `subagent_type` (bestimmt die verfügbaren Tools des 
 Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Abschnitt "Für /full-audit (Codebase-basiert)".
 
 **Überspringen-Regeln:**
-- Keine Frontend-Dateien im Batch? Subagents 5, 6 und 7 überspringen.
+- Keine Frontend-Dateien im Batch? Subagents 5 und 6 überspringen.
 - Subagent 5 (SEO) überspringen wenn keine Layout-Dateien mit `<head>` im Batch.
+- Subagent 7 (Typography) überspringen wenn weder Frontend-Dateien noch Translation-Dateien im Batch.
 
 **Schritt B — Konsolidieren**
 
@@ -263,6 +264,7 @@ Deduplizierung: Gleiche Stelle von mehreren Subagents → ein Finding, strengste
 Prüfe SELBST (nur in Runde 1, Batch 1):
 - Tests: Wichtige Services/Commands ohne Tests?
 - Dokumentation: CLAUDE.md aktuell?
+- Mobile Apps: Gibt es eine zugehörige iOS-/Android-App im Repo? (Prüfe auf `.xcodeproj`, `build.gradle`, `react-native` in package.json, `pubspec.yaml`, `capacitor.config.*`) Wenn ja: API-Kompatibilität, Shared Code, Deep Links, Push-Payloads prüfen. Breaking Changes als Important melden.
 
 Ausgabe:
 ```
