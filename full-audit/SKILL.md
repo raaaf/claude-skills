@@ -252,10 +252,15 @@ Jede Agent-Datei definiert `subagent_type` (bestimmt die verfügbaren Tools des 
 
 Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Abschnitt "Für /full-audit (Codebase-basiert)".
 
-**Überspringen-Regeln:**
-- Keine Frontend-Dateien im Batch? Subagents 5 und 6 überspringen.
-- Subagent 5 (SEO) überspringen wenn keine Layout-Dateien mit `<head>` im Batch.
-- Subagent 7 (Typography) überspringen wenn weder Frontend-Dateien noch Translation-Dateien im Batch.
+**Überspringen-Regeln — JEDER Agent hat seine EIGENE Regel. Nicht gruppieren.**
+
+| Agent | Überspringen wenn |
+|-------|-------------------|
+| 5 (SEO) | Keine Frontend-Dateien im Batch ODER nur Partials ohne `<head>` |
+| 6 (A11y) | Keine Frontend-Dateien im Batch |
+| 7 (Typography) | Weder Frontend-Dateien noch Translation-Dateien im Batch |
+
+**Typography (Agent 7) hat NICHTS mit `<head>` zu tun. Die `<head>`-Regel gilt NUR für SEO. Typography läuft IMMER wenn Frontend- oder Translation-Dateien im Batch sind.**
 
 **Schritt B — Konsolidieren**
 

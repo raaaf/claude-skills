@@ -185,11 +185,15 @@ Lies die Agent-Definitionen aus `agents/*.md` im Skill-Verzeichnis. Jede Datei e
 
 Prompt-Template: Siehe `agents/prompt-template.md` — verwende den Abschnitt "Fuer /audit (Diff-basiert)".
 
-**Einzige erlaubte Überspringen-Regeln (NUR diese, keine anderen):**
-- Keine FRONTEND_DATEIEN im Diff? → Subagents 5 und 6 überspringen.
-- Subagent 5 (SEO) zusätzlich überspringen wenn FRONTEND_DATEIEN ausschließlich Template-Partials/Components ohne `<head>`-Bereich sind.
-- Subagent 7 (Typography) überspringen wenn weder FRONTEND_DATEIEN noch TRANSLATION_DATEIEN im Diff.
-- Subagents 5 und 6 bekommen nur den Diff der FRONTEND_DATEIEN. Subagent 7 bekommt den Diff der FRONTEND_DATEIEN + TRANSLATION_DATEIEN.
+**Überspringen-Regeln — JEDER Agent hat seine EIGENE Regel. Nicht gruppieren, nicht zusammenfassen.**
+
+| Agent | Überspringen wenn | Bekommt |
+|-------|-------------------|---------|
+| 5 (SEO) | Keine FRONTEND_DATEIEN im Diff ODER nur Template-Partials ohne `<head>` | Diff der FRONTEND_DATEIEN |
+| 6 (A11y) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
+| 7 (Typography) | Weder FRONTEND_DATEIEN noch TRANSLATION_DATEIEN im Diff | Diff der FRONTEND_DATEIEN + TRANSLATION_DATEIEN |
+
+**ACHTUNG: Typography (Agent 7) hat NICHTS mit `<head>` zu tun. Die `<head>`-Regel gilt NUR für SEO (Agent 5). Typography prüft CSS, Templates und Translations — das hat keinen Bezug zu `<head>`. Agent 7 läuft IMMER wenn Frontend- oder Translation-Dateien im Diff sind.**
 
 **Alles andere wird NICHT uebersprungen.** Subagents 1-4 laufen IMMER, in JEDER Runde, ueber den GESAMTEN Diff. Keine Ausnahmen.
 
