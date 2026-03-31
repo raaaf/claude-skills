@@ -513,6 +513,10 @@ Du interpretierst NICHTS. Du führst das Script aus und folgst der Logik oben. K
 
 **DIESER SCHRITT IST EIN EINZIGER TOOL-CALL.** Du übergibst alles an den Screenshot-Agent und wartest auf sein Ergebnis. Du machst NICHTS selbst — kein Server starten, keine URLs ermitteln, kein Screenshot-Verzeichnis anlegen. Das macht alles der Screenshot-Agent.
 
+**WICHTIG: Der Screenshot-Agent läuft im Foreground** (NICHT `run_in_background`), weil er:
+1. Den User um Screenshot-Freigabe fragen muss (AskUserQuestion)
+2. Möglicherweise Computer Use nutzt (braucht interaktive Session)
+
 ```
 Agent(
   subagent_type: general-purpose,
