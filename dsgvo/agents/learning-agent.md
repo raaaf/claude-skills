@@ -144,7 +144,7 @@ VORSCHLAEGE:
 3. [Check-Ablauf] Konkrete Aenderung: {Beschreibung}
 ```
 
-Der Haupt-DSGVO-Skill zeigt diese Vorschlaege dann dem User.
+Da der Learning-Agent mit `run_in_background: true` laeuft, werden diese Vorschlaege nicht an den Haupt-Skill zurueckgegeben. Sie werden ausschliesslich in die `learning-log.md` geschrieben. Der User kann sie dort spaeter einsehen.
 
 ## Regeln
 

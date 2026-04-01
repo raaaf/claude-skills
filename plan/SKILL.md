@@ -171,19 +171,19 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 # Framework und Source-Dirs erkennen
 if [ -f "$PROJECT_ROOT/artisan" ]; then
   FRAMEWORK="laravel"
-  SOURCE_DIRS="app/ resources/ database/ routes/ config/"
+  SOURCE_DIRS="$PROJECT_ROOT/app/ $PROJECT_ROOT/resources/ $PROJECT_ROOT/database/ $PROJECT_ROOT/routes/ $PROJECT_ROOT/config/"
 elif [ -f "$PROJECT_ROOT/package.json" ] && grep -q '"next"' "$PROJECT_ROOT/package.json" 2>/dev/null; then
   FRAMEWORK="nextjs"
-  SOURCE_DIRS="src/ app/ pages/ components/ lib/"
+  SOURCE_DIRS="$PROJECT_ROOT/src/ $PROJECT_ROOT/app/ $PROJECT_ROOT/pages/ $PROJECT_ROOT/components/ $PROJECT_ROOT/lib/"
 elif [ -f "$PROJECT_ROOT/nuxt.config.ts" ] || [ -f "$PROJECT_ROOT/nuxt.config.js" ]; then
   FRAMEWORK="nuxt"
-  SOURCE_DIRS="components/ composables/ pages/ layouts/ server/"
+  SOURCE_DIRS="$PROJECT_ROOT/components/ $PROJECT_ROOT/composables/ $PROJECT_ROOT/pages/ $PROJECT_ROOT/layouts/ $PROJECT_ROOT/server/"
 elif [ -f "$PROJECT_ROOT/manage.py" ]; then
   FRAMEWORK="django"
-  SOURCE_DIRS="$(find . -name 'apps.py' -exec dirname {} \; | head -20 | tr '\n' ' ')"
+  SOURCE_DIRS="$(find "$PROJECT_ROOT" -name 'apps.py' -exec dirname {} \; | head -20 | tr '\n' ' ')"
 else
   FRAMEWORK="generic"
-  SOURCE_DIRS="src/ lib/ app/"
+  SOURCE_DIRS="$PROJECT_ROOT/src/ $PROJECT_ROOT/lib/ $PROJECT_ROOT/app/"
 fi
 
 # Dateistruktur sammeln
@@ -266,6 +266,8 @@ Optionen:
 Eingearbeitete Concerns in den Plan uebernehmen. Akzeptierte Concerns als Kommentar im Plan notieren.
 
 Plan-Datei speichern.
+
+TodoWrite: `Plan challengen — 5 Dimensionen` (completed)
 
 ---
 

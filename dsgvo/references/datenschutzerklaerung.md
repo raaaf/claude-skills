@@ -7,9 +7,8 @@
 4. Kontaktformular (welche Daten, wie lange gespeichert, Rechtsgrundlage)
 5. Cookies (Unterscheidung essentiell/nicht-essentiell)
 6. Für jeden externen Dienst einzeln: was wird erhoben, Rechtsgrundlage, AVV-Hinweis, ggf. Drittlandtransfer
-7. Betroffenenrechte (Auskunft Art. 15, Berichtigung Art. 16, Löschung Art. 17, Einschränkung Art. 18, Datenübertragbarkeit Art. 20, Widerspruch Art. 21)
+7. Betroffenenrechte (Auskunft Art. 15, Berichtigung Art. 16, Löschung Art. 17, Einschränkung Art. 18, Datenübertragbarkeit Art. 20, Widerspruch Art. 21, Widerrufsrecht für Einwilligungen Art. 7 Abs. 3)
 8. Beschwerderecht bei Aufsichtsbehörde
-9. Widerrufsrecht für Einwilligungen
 
 **Rechtsgrundlagen:**
 - Art. 6 Abs. 1 lit. a — Einwilligung (Analytics, Marketing-Cookies)

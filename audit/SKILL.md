@@ -19,13 +19,18 @@ hooks:
   PreToolUse:
     - matcher: "Bash"
       hook: |
-        # Block git push unless audit marker exists
-        if echo "$TOOL_INPUT" | grep -q "git push"; then
-          HASH=$(echo -n "$SESSION_CWD" | md5)
-          if [ ! -f "/tmp/claude-audit-passed-$HASH" ]; then
-            echo "BLOCKED: git push requires audit to pass first. Run /audit."
-            exit 2
+        input=$(cat)
+        cmd=$(echo "$input" | jq -r '.tool_input.command')
+        if echo "$cmd" | grep -qE '(^|&&|;|\|)\s*git\s+((-[A-Za-z]|--[a-z-]+)(\s+\S+)?\s+)*push'; then
+          cwd=$(echo "$input" | jq -r '.cwd')
+          hash=$(echo -n "$cwd" | md5 2>/dev/null || echo -n "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
+          marker="/tmp/claude-audit-passed-$hash"
+          if [ -f "$marker" ] && [ $(( $(date +%s) - $(stat -f%m "$marker" 2>/dev/null || stat -c%Y "$marker" 2>/dev/null) )) -lt 300 ]; then
+            rm -f "$marker"
+            exit 0
           fi
+          echo 'BLOCKED: Run /audit before pushing.' >&2
+          exit 2
         fi
 ---
 
@@ -108,7 +113,7 @@ Erstelle:
   ```bash
   PROJECT_CLAUDE_MD="$(git rev-parse --show-toplevel)/CLAUDE.md"
   if [ -f "$PROJECT_CLAUDE_MD" ]; then
-    PROJECT_CONTEXT=$(sed -n '/^## Audit Context$/,/^## [^A]/p' "$PROJECT_CLAUDE_MD" | head -n -1)
+    PROJECT_CONTEXT=$(awk '/^## Audit Context$/{found=1; next} /^## /{found=0} found' "$PROJECT_CLAUDE_MD")
   fi
   ```
   Falls kein `## Audit Context` vorhanden: `PROJECT_CONTEXT = "Kein projektspezifischer Kontext."`
@@ -282,7 +287,7 @@ Zähle die Critical- und Important-Findings dieser Runde.
 
 Markiere Todo als completed. → Prozedur endet mit Ergebnis: `FIXES_APPLIED`.
 
-**PFLICHT: Gib am Ende jeder Runde exakt diese Zeile aus** (der Stop-Hook liest sie):
+**PFLICHT: Gib am Ende jeder Runde exakt diese Zeile aus:**
 
 ```
 AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/10
@@ -559,18 +564,10 @@ Wenn der Audit im Kontext eines blockierten `git push` läuft — dann:
 **Schritt 1 — Marker schreiben (separater Bash-Aufruf, kein `git push` im Befehl):**
 
 ```bash
-# Der Hook berechnet den Hash aus dem .cwd-Feld des Tool-JSONs (Session-Startverzeichnis).
-# Das Session-CWD ist das Verzeichnis aus dem Claude gestartet wurde — NICHT $PWD nach cd.
-# echo -n ohne Newline verwenden (wichtig: md5 liest exakt den String ohne \n):
-hash=$(echo -n "/absoluter/pfad/zum/session/cwd" | md5)
+# Hash aus dem aktuellen Session-CWD berechnen (ohne vorheriges cd):
+hash=$(echo -n "$PWD" | md5)
 touch "/tmp/claude-audit-passed-$hash"
 echo "Marker: /tmp/claude-audit-passed-$hash"
-```
-
-Den richtigen Pfad erhältst du mit einem Bash-Tool-Aufruf **ohne** vorherigem `cd`:
-```bash
-echo -n "$PWD" | md5
-# Das ergibt den Hash für das aktuelle Session-CWD
 ```
 
 **Schritt 2 — Pushen (separater Bash-Aufruf):**
@@ -605,7 +602,7 @@ Nach dem Audit-Log dispatche den Learning-Agent als Subagent:
 
 ```
 Agent(
-  prompt: Lies agents/learning-agent.md und führe den Ablauf aus.
+  prompt: Lies ~/.claude/skills/audit/agents/learning-agent.md und führe den Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
     AUDIT_TYPE=audit

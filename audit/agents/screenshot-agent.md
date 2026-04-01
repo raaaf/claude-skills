@@ -44,6 +44,8 @@ COMPUTER_USE_AVAILABLE=false
 
 Setze `SCREENSHOT_MODE=playwright` oder `SCREENSHOT_MODE=computer-use` basierend auf dieser Tabelle.
 
+**Hinweis: Die endgueltige Tool-Auswahl kann sich in Schritt 4 (Auth) aendern.** Wenn der Login-Typ erst in Schritt 4 erkannt wird (z.B. OAuth-Redirect, 2FA-Prompt), wechsle dann zu Computer Use — auch wenn initial Playwright gewaehlt wurde. Die Tabelle oben ist die Initial-Entscheidung, nicht die finale.
+
 ---
 
 ## Ablauf
@@ -57,7 +59,8 @@ AUDIT_BROWSE=~/.claude/skills/audit/bin/audit-browse.mjs
 
 Wenn `NOT_FOUND`:
 ```bash
-cd ~/.claude/skills/audit/bin && npm install 2>&1
+SKILL_BIN="$(dirname "$AUDIT_BROWSE")"
+cd "$SKILL_BIN" && npm install 2>&1
 [ -f "audit-browse.mjs" ] && echo "PLAYWRIGHT=READY" || echo "PLAYWRIGHT=STILL_NOT_FOUND"
 ```
 
@@ -156,7 +159,13 @@ fi
 
 ```bash
 LOGIN_URL=$(node -e "const a=JSON.parse(require('fs').readFileSync('$AUTH_FILE')); console.log(a.loginUrl || '/login')")
-node ~/.claude/skills/audit/bin/audit-browse.mjs login "${SERVER_BASE_URL}${LOGIN_URL}" "$COOKIES_FILE" --auth "$AUTH_FILE"
+# Wenn loginUrl bereits eine vollstaendige URL ist (http/https), nicht mit SERVER_BASE_URL konkatenieren
+if echo "$LOGIN_URL" | grep -qE '^https?://'; then
+  FULL_LOGIN_URL="$LOGIN_URL"
+else
+  FULL_LOGIN_URL="${SERVER_BASE_URL}${LOGIN_URL}"
+fi
+node ~/.claude/skills/audit/bin/audit-browse.mjs login "$FULL_LOGIN_URL" "$COOKIES_FILE" --auth "$AUTH_FILE"
 ```
 
 #### Computer-Use-Login (SCREENSHOT_MODE=computer-use)
@@ -171,6 +180,10 @@ Wenn Computer Use aktiv ist, den Login visuell durchfuehren:
 6. Verifizieren dass der Login erfolgreich war (kein Redirect zurueck zur Login-Seite)
 
 **Vorteil Computer Use:** Funktioniert auch bei OAuth-Flows, 2FA-Prompts (User kann eingreifen), und Captchas.
+
+**Computer Use Session-Hinweis:** Nach einem Computer-Use-Login bleibt die Browser-Session aktiv. Alle weiteren Computer-Use-Screenshots MUESSEN im SELBEN Browser-Fenster gemacht werden — nicht fuer jede URL ein neues Fenster oeffnen. Navigiere im bestehenden Fenster zur naechsten URL.
+
+**Wechsel zu Playwright nach Computer-Use-Login:** Nicht moeglich — wenn Computer Use fuer den Login genutzt wurde, muessen auch die Screenshots mit Computer Use gemacht werden. Es gibt keinen Mechanismus um Cookies aus einer Computer-Use-Session nach Playwright zu exportieren. Setze in diesem Fall `SCREENSHOT_MODE=computer-use` fuer den Rest des Ablaufs.
 
 #### Kein Auth-Config vorhanden → zuerst Seeder durchsuchen
 
@@ -258,6 +271,12 @@ node ~/.claude/skills/audit/bin/audit-browse.mjs screenshot "{SERVER_BASE_URL}{U
 Falls `--fullpage` nicht unterstuetzt wird, Screenshots ohne Flag machen (Viewport-only als Fallback).
 
 **Playwright schlaegt fehl?** Wenn Playwright abstuerzt, Timeout hat, oder die Seite nicht laden kann → wechsle zu Computer Use (Modus B), falls verfuegbar. Sonst: Fehler melden.
+
+**Wichtig bei Wechsel von Playwright zu Computer Use:** Wenn Playwright fuer den Login genutzt wurde, die Cookies aber nicht funktionieren (Screenshot zeigt Login-Seite), und Computer Use verfuegbar ist:
+1. Wechsle zu `SCREENSHOT_MODE=computer-use`
+2. Fuehre den Login erneut via Computer Use durch (Schritt 4, Computer-Use-Login)
+3. Mache alle Screenshots mit Computer Use (Modus B)
+Kein Mix: entweder alle Screenshots mit Playwright ODER alle mit Computer Use.
 
 ---
 

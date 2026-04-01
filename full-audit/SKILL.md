@@ -212,7 +212,7 @@ for BATCH in 1..N:
 
 ### Prozedur AUDIT_RUNDE
 
-**Schritt 0 — Ankündigung und Todos**
+**Schritt A — Ankündigung und Todos**
 
 Ausgabe (BATCHED):
 ```
@@ -386,8 +386,6 @@ Test-Runner automatisch erkennen:
 | `pytest.ini` oder `pyproject.toml` mit pytest | `pytest` |
 
 Alle erkannten Runner ausführen. Bei Failures: fixen, erneut laufen lassen. Unfixbare Failures als Offener Punkt.
-
-**CHECKPOINT — PFLICHT-AUSGABE nach Tests (vor Schritt 3d):**
 
 **CHECKPOINT — DETERMINISTISCHER DESIGN-CHECK (kein LLM-Ermessen)**
 
