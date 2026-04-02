@@ -313,6 +313,12 @@ Nutze den `computer-use` MCP-Server um Screenshots zu machen. Das ist langsamer 
 
 Zeige ALLE Screenshots via Read-Tool (PNG-Dateien sind multimodal lesbar). Zeige sie tatsaechlich — nicht nur den Pfad.
 
+**Screenshot-Ordner oeffnen**, damit der User die Bilder auch im Finder sehen kann:
+
+```bash
+open "$SCREENSHOT_DIR"
+```
+
 Dann stelle via AskUserQuestion **zwingend** folgende Frage — kein Ueberspringen, kein "sieht gut aus":
 
 ```
