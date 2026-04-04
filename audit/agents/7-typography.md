@@ -56,6 +56,10 @@ Pruefe auch Translation-Dateien (`lang/`, `locales/`, `translations/`, `messages
 
 **Spracherkennung:** Verzeichnisname oder Dateiname gibt die Sprache an (z.B. `de/`, `en/`, `fr.json`). Typografie-Regeln sind sprachspezifisch — deutsche Anfuehrungszeichen sind `„..."`, englische sind `\u201c...\u201d`, franzoesische sind Guillemets.
 
+## Full-Audit Fokus (zusaetzlich)
+
+Pruefe die gesamte Codebase auf typografische Inkonsistenzen: unterschiedliche font-size Definitionen, inkonsistente line-heights, gemischte font-family Deklarationen, fehlende clamp() fuer responsive Text, fehlende font-variant-numeric in Tabellen, und typografische Fehler in Translation-Dateien.
+
 ## Ueberspringen wenn
 
 - Keine Frontend-Dateien und keine Translation-Dateien im Diff/Batch

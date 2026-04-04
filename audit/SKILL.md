@@ -372,33 +372,6 @@ Falls dort Commits auftauchen, die **nicht** im Diff von `origin/$DEFAULT_BRANCH
 
 Die `.claude/audits/`-Verzeichnis-Struktur erlaubt historisches Nachschlagen — wann welche Klasse zuletzt geprüft wurde.
 
-**Empfehlungen umsetzen (Offene Punkte):**
-
-Wenn `## Offene Punkte` im Audit-Log Einträge enthält — frage den User via AskUserQuestion:
-
-```
-Audit-Empfehlungen: {N} offene Punkte gefunden.
-
-{Liste der Offenen Punkte}
-
-Soll ich diese direkt umsetzen?
-```
-
-Optionen:
-- **Ja, alle** — Alle Offenen Punkte jetzt umsetzen
-- **Einzeln entscheiden** — Jeden Punkt einzeln bestätigen
-- **Nein, später** — Punkte bleiben im Audit-Log für später
-
-| Antwort | Aktion |
-|---------|--------|
-| **Ja, alle** | Jeden Offenen Punkt implementieren, dann weiter mit Abschnitt 3 |
-| **Einzeln entscheiden** | Pro Punkt AskUserQuestion → bestätigt: implementieren, abgelehnt: überspringen |
-| **Nein, später** | Nichts ändern, weiter mit Abschnitt 3 |
-
-Keine Offenen Punkte? Diesen Schritt überspringen, direkt weiter mit Abschnitt 3.
-
----
-
 ## 3. Changelog, Linter, Tests und Design-Verification (einmal, nach dem Loop)
 
 ### 3a. Changelog/Release-Notes prüfen
@@ -544,6 +517,31 @@ Warte auf das Ergebnis. Werte `DESIGN_VERIFICATION_RESULT` aus:
 | `GO` | TodoWrite completed. Weiter mit Abschnitt 4. |
 | `MANUELL` | Warte auf User-Nachricht ("go" / "weiter"). Dann weiter mit Abschnitt 4. |
 | `SKIPPED_NO_TOOL` | Im Audit-Log vermerken. Weiter mit Abschnitt 4. |
+
+**Empfehlungen umsetzen (Offene Punkte):**
+
+Wenn `## Offene Punkte` im Audit-Log Einträge enthält — frage den User via AskUserQuestion:
+
+```
+Audit-Empfehlungen: {N} offene Punkte gefunden.
+
+{Liste der Offenen Punkte}
+
+Soll ich diese direkt umsetzen?
+```
+
+Optionen:
+- **Ja, alle** — Alle Offenen Punkte jetzt umsetzen
+- **Einzeln entscheiden** — Jeden Punkt einzeln bestätigen
+- **Nein, später** — Punkte bleiben im Audit-Log für später
+
+| Antwort | Aktion |
+|---------|--------|
+| **Ja, alle** | Jeden Offenen Punkt implementieren, dann weiter mit Abschnitt 4 |
+| **Einzeln entscheiden** | Pro Punkt AskUserQuestion → bestätigt: implementieren, abgelehnt: überspringen |
+| **Nein, später** | Nichts ändern, weiter mit Abschnitt 4 |
+
+Keine Offenen Punkte? Diesen Schritt überspringen, direkt weiter mit Abschnitt 4.
 
 ---
 
