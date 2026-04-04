@@ -482,16 +482,35 @@ else
 fi
 ```
 
-**Auswertung — binär, EINE Zeile Code:**
+**Auswertung:**
 
 ```
-if output contains "SCREENSHOTS_ERFORDERLICH" → dispatche Screenshot-Agent (Schritt 3d)
-if output contains "KEINE_VISUELLEN_DATEIEN" → weiter mit Abschnitt 4
+if output contains "KEINE_VISUELLEN_DATEIEN" → weiter mit Empfehlungen/Abschnitt 4
+if output contains "SCREENSHOTS_ERFORDERLICH" → User fragen (siehe unten)
 ```
 
-Du interpretierst NICHTS. Du führst das Script aus und folgst der Logik oben. Keine Diskussion, keine Bewertung, keine Einschätzung.
+Wenn `SCREENSHOTS_ERFORDERLICH`, frage den User via AskUserQuestion:
+
+```
+Design-Verification: {N} visuelle Dateien geändert.
+
+{Liste der Dateien}
+
+Screenshots machen?
+```
+
+Optionen:
+- **Ja, Screenshots** — Screenshot-Agent wird gestartet
+- **Nein, überspringen** — Keine Screenshots, direkt weiter
+
+| Antwort | Aktion |
+|---------|--------|
+| **Ja, Screenshots** | Weiter mit Schritt 3d (Screenshot-Agent) |
+| **Nein, überspringen** | `DESIGN_VERIFICATION_RESULT: SKIPPED_BY_USER`. Weiter mit Empfehlungen/Abschnitt 4. |
 
 ### 3d. Design-Verification — Screenshot-Agent dispatchen
+
+**Nur wenn User "Ja, Screenshots" gewählt hat.**
 
 **DIESER SCHRITT IST EIN EINZIGER TOOL-CALL.** Du übergibst alles an den Screenshot-Agent und wartest auf sein Ergebnis. Du machst NICHTS selbst — kein Server starten, keine URLs ermitteln, kein Screenshot-Verzeichnis anlegen. Das macht alles der Screenshot-Agent.
 
