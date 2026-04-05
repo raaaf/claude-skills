@@ -4,7 +4,6 @@ description: "Use when the user says /full-audit, wants a comprehensive one-time
 model: sonnet
 effort: high
 context: fork
-disable-model-invocation: true
 allowed-tools:
   - Agent
   - Bash

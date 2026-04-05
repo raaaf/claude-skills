@@ -4,7 +4,6 @@ description: "Use when the user says /audit, wants to push code, or asks to revi
 model: sonnet
 effort: high
 context: fork
-disable-model-invocation: true
 allowed-tools:
   - Agent
   - Bash
@@ -82,9 +81,6 @@ digraph audit_loop {
 
 ```bash
 DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
-
-# Letzten Audit-Log prüfen um zu bestimmen was noch nicht auditiert wurde
-LAST_AUDIT_COMMIT=$(ls .claude/audits/*.md 2>/dev/null | sort | tail -1 | xargs grep -m1 "Commit\|HEAD" 2>/dev/null || echo "")
 
 # Deduplizierte Liste aller geänderten Dateien (committed + staged + unstaged seit origin)
 sort -u <(git diff --name-only origin/$DEFAULT_BRANCH...HEAD 2>/dev/null) <(git diff --name-only) <(git diff --name-only --staged)
@@ -522,7 +518,7 @@ Optionen:
 Agent(
   subagent_type: general-purpose,
   model: sonnet,
-  prompt: "Lies ~/.claude/skills/audit/agents/screenshot-agent.md und führe den kompletten Ablauf aus.
+  prompt: "Lies agents/screenshot-agent.md im Skill-Verzeichnis und führe den kompletten Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     VISUELL_RELEVANTE_DATEIEN={DATEIEN_AUS_BASH_CHECK}
     FRAMEWORK={FRAMEWORK}"
@@ -533,9 +529,8 @@ Warte auf das Ergebnis. Werte `DESIGN_VERIFICATION_RESULT` aus:
 
 | Ergebnis | Aktion |
 |----------|--------|
-| `GO` | TodoWrite completed. Weiter mit Abschnitt 4. |
-| `MANUELL` | Warte auf User-Nachricht ("go" / "weiter"). Dann weiter mit Abschnitt 4. |
-| `SKIPPED_NO_TOOL` | Im Audit-Log vermerken. Weiter mit Abschnitt 4. |
+| `GO` | TodoWrite completed. Weiter mit Empfehlungen/Abschnitt 4. |
+| `SKIPPED_NO_TOOL` | Im Audit-Log vermerken. Weiter mit Empfehlungen/Abschnitt 4. |
 
 **Empfehlungen umsetzen (Offene Punkte):**
 
@@ -572,7 +567,7 @@ Wenn der Audit im Kontext eines blockierten `git push` läuft — dann:
 - `BLOCKED: Push abgebrochen.` + Auflistung aller offenen Probleme.
 - KEINE Marker-Datei schreiben.
 
-**SPERRE: Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH` war und `DESIGN_VERIFICATION_RESULT` NICHT `GO` ist → NICHT pushen.** Du darfst erst pushen wenn der Screenshot-Agent `GO` zurückgegeben hat. Wenn du den Screenshot-Agent noch nicht dispatcht hast, geh zurück zu Schritt 3d.
+**SPERRE: Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH` war und User "Ja, Screenshots" gewählt hat, aber `DESIGN_VERIFICATION_RESULT` NICHT `GO` ist → NICHT pushen.** Bei `SKIPPED_BY_USER` oder `SKIPPED_NO_TOOL` darf gepusht werden — der User hat bewusst entschieden.
 
 **Alles gefixt, Tests grün UND Design-Verification bestanden (oder keine visuellen Dateien) — Marker schreiben und pushen:**
 
@@ -582,7 +577,7 @@ Wenn der Audit im Kontext eines blockierten `git push` läuft — dann:
 
 ```bash
 # Hash aus dem aktuellen Session-CWD berechnen (ohne vorheriges cd):
-hash=$(echo -n "$PWD" | md5)
+hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-passed-$hash"
 echo "Marker: /tmp/claude-audit-passed-$hash"
 ```
@@ -619,7 +614,7 @@ Nach dem Audit-Log dispatche den Learning-Agent als Subagent:
 
 ```
 Agent(
-  prompt: Lies ~/.claude/skills/audit/agents/learning-agent.md und führe den Ablauf aus.
+  prompt: Lies agents/learning-agent.md im Skill-Verzeichnis und führe den Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
     AUDIT_TYPE=audit
