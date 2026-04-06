@@ -190,11 +190,11 @@ Prompt-Template: Siehe `agents/prompt-template.md` — verwende den Abschnitt "F
 
 | Agent | Überspringen wenn | Bekommt |
 |-------|-------------------|---------|
-| 5 (SEO) | Keine FRONTEND_DATEIEN im Diff ODER nur Template-Partials ohne `<head>` | Diff der FRONTEND_DATEIEN |
+| 5 (SEO) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
 | 6 (A11y) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
 | 7 (Typography) | Weder FRONTEND_DATEIEN noch TRANSLATION_DATEIEN im Diff | Diff der FRONTEND_DATEIEN + TRANSLATION_DATEIEN |
 
-**ACHTUNG: Typography (Agent 7) hat NICHTS mit `<head>` zu tun. Die `<head>`-Regel gilt NUR für SEO (Agent 5). Typography prüft CSS, Templates und Translations — das hat keinen Bezug zu `<head>`. Agent 7 läuft IMMER wenn Frontend- oder Translation-Dateien im Diff sind.**
+**WICHTIG: Agents 5, 6 und 7 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views, Admin-Panels, Dashboards etc. Die Unterscheidung "öffentlich vs. intern" ist IRRELEVANT. Heading-Hierarchie, semantisches HTML, A11y, Typography und UX-Patterns gelten überall.**
 
 **Alles andere wird NICHT uebersprungen.** Subagents 1-4 laufen IMMER, in JEDER Runde, ueber den GESAMTEN Diff. Keine Ausnahmen.
 

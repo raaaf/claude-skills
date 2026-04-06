@@ -6,15 +6,14 @@
 
 ## Fokus
 
-Meta Tags, Semantic HTML, Structured Data, Core Web Vitals.
+Meta Tags, Semantic HTML, Structured Data, Core Web Vitals. Gilt fuer ALLE Views — oeffentliche UND app-interne (Admin, Dashboard, Settings etc.). Heading-Hierarchie, semantisches HTML und Barrierefreiheit sind universell.
 
 **Vollstaendige Guidelines:** Lies `guidelines/seo.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
 
 ## Full-Audit Fokus (zusaetzlich)
 
-Meta-Tags, Heading-Hierarchie (`<h1>`-`<h6>`), Semantic HTML (`<main>`, `<nav>`, `<header>`, `<footer>`), Open Graph Tags (`og:title`, `og:description`, `og:image`), Structured Data (JSON-LD), URL-Struktur (sprechende URLs, keine ID-only-Routen), Core Web Vitals Hints (Lazy Loading, Image Dimensions, Font Display), Sitemap-Referenzen, Canonical Tags (`<link rel="canonical">`), Hreflang (falls multilingual).
+Heading-Hierarchie (`<h1>`-`<h6>`), Semantic HTML (`<main>`, `<nav>`, `<header>`, `<footer>`, `<section>`, `<article>`). Bei oeffentlichen Seiten zusaetzlich: Meta-Tags, Open Graph Tags, Structured Data (JSON-LD), URL-Struktur, Core Web Vitals Hints, Sitemap, Canonical Tags, Hreflang.
 
 ## Ueberspringen wenn
 
 - Keine Frontend-Dateien im Diff/Batch
-- Nur Template-Partials/Components ohne `<head>`-Bereich (keine `<meta>`, keine Layout-Dateien)

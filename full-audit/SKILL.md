@@ -255,11 +255,11 @@ Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Absc
 
 | Agent | Überspringen wenn |
 |-------|-------------------|
-| 5 (SEO) | Keine Frontend-Dateien im Batch ODER nur Partials ohne `<head>` |
+| 5 (SEO) | Keine Frontend-Dateien im Batch |
 | 6 (A11y) | Keine Frontend-Dateien im Batch |
 | 7 (Typography) | Weder Frontend-Dateien noch Translation-Dateien im Batch |
 
-**Typography (Agent 7) hat NICHTS mit `<head>` zu tun. Die `<head>`-Regel gilt NUR für SEO. Typography läuft IMMER wenn Frontend- oder Translation-Dateien im Batch sind.**
+**WICHTIG: Agents 5, 6 und 7 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views, Admin-Panels, Dashboards. "Öffentlich vs. intern" ist irrelevant.**
 
 **Schritt B — Konsolidieren**
 
