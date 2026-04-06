@@ -181,8 +181,11 @@ Lies die Agent-Definitionen aus `agents/*.md` im Skill-Verzeichnis. Jede Datei e
 | 3 | `agents/3-performance.md` | Performance & Efficiency |
 | 4 | `agents/4-code-quality.md` | Code Quality & Simplification |
 | 5 | `agents/5-seo.md` | SEO & Semantic HTML |
-| 6 | `agents/6-a11y.md` | UI, UX & A11y |
+| 6 | `agents/6-a11y.md` | Accessibility (WCAG) |
 | 7 | `agents/7-typography.md` | Typography |
+| 8 | `agents/8-ui-design.md` | UI Visual Design |
+| 9 | `agents/9-ux.md` | UX Patterns & Interaction |
+| 10 | `agents/10-animation.md` | Animation & Motion Design |
 
 Prompt-Template: Siehe `agents/prompt-template.md` — verwende den Abschnitt "Fuer /audit (Diff-basiert)".
 
@@ -193,8 +196,11 @@ Prompt-Template: Siehe `agents/prompt-template.md` — verwende den Abschnitt "F
 | 5 (SEO) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
 | 6 (A11y) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
 | 7 (Typography) | Weder FRONTEND_DATEIEN noch TRANSLATION_DATEIEN im Diff | Diff der FRONTEND_DATEIEN + TRANSLATION_DATEIEN |
+| 8 (UI Design) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
+| 9 (UX) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
+| 10 (Animation) | Keine FRONTEND_DATEIEN im Diff | Diff der FRONTEND_DATEIEN |
 
-**WICHTIG: Agents 5, 6 und 7 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views, Admin-Panels, Dashboards etc. Die Unterscheidung "öffentlich vs. intern" ist IRRELEVANT. Heading-Hierarchie, semantisches HTML, A11y, Typography und UX-Patterns gelten überall.**
+**WICHTIG: Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views, Admin-Panels, Dashboards. "Öffentlich vs. intern" ist IRRELEVANT.**
 
 **Alles andere wird NICHT uebersprungen.** Subagents 1-4 laufen IMMER, in JEDER Runde, ueber den GESAMTEN Diff. Keine Ausnahmen.
 

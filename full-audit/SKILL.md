@@ -246,8 +246,11 @@ Jede Agent-Datei definiert `subagent_type` (bestimmt die verfügbaren Tools des 
 | 3 | `{AUDIT_AGENTS}/3-performance.md` | Performance |
 | 4 | `{AUDIT_AGENTS}/4-code-quality.md` | Code Quality |
 | 5 | `{AUDIT_AGENTS}/5-seo.md` | SEO & Semantic HTML |
-| 6 | `{AUDIT_AGENTS}/6-a11y.md` | UI/UX & A11y |
+| 6 | `{AUDIT_AGENTS}/6-a11y.md` | Accessibility (WCAG) |
 | 7 | `{AUDIT_AGENTS}/7-typography.md` | Typography |
+| 8 | `{AUDIT_AGENTS}/8-ui-design.md` | UI Visual Design |
+| 9 | `{AUDIT_AGENTS}/9-ux.md` | UX Patterns & Interaction |
+| 10 | `{AUDIT_AGENTS}/10-animation.md` | Animation & Motion Design |
 
 Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Abschnitt "Für /full-audit (Codebase-basiert)".
 
@@ -258,8 +261,11 @@ Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Absc
 | 5 (SEO) | Keine Frontend-Dateien im Batch |
 | 6 (A11y) | Keine Frontend-Dateien im Batch |
 | 7 (Typography) | Weder Frontend-Dateien noch Translation-Dateien im Batch |
+| 8 (UI Design) | Keine Frontend-Dateien im Batch |
+| 9 (UX) | Keine Frontend-Dateien im Batch |
+| 10 (Animation) | Keine Frontend-Dateien im Batch |
 
-**WICHTIG: Agents 5, 6 und 7 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views, Admin-Panels, Dashboards. "Öffentlich vs. intern" ist irrelevant.**
+**WICHTIG: Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views. "Öffentlich vs. intern" ist irrelevant.**
 
 **Schritt B — Konsolidieren**
 
