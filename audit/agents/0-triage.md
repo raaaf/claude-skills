@@ -16,6 +16,8 @@ Liest den gesamten Diff EINMAL und erstellt eine strukturierte Verteilung, welch
 - `FRONTEND_DATEIEN` — Liste der Frontend-Files im Diff
 - `TRANSLATION_DATEIEN` — Liste der i18n-Files im Diff
 - `FRAMEWORK` — erkanntes Framework
+- `PROJECT_CONTEXT` — projektspezifischer Kontext aus CLAUDE.md (kann leer sein)
+- `SUPPRESSIONS` — Liste bewusst akzeptierter Patterns (Hotspots darunter nicht routen)
 
 ## Aufgabe
 
