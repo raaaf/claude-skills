@@ -281,6 +281,18 @@ Dimension1, Dimension2
 
 Beim nächsten Audit-Lauf: wenn zwischen `{letzter-audit-HEAD}..HEAD` Commits auftauchen die **nicht** im Diff von `origin/$DEFAULT_BRANCH...HEAD` enthalten sind (weil inzwischen gepusht), `/full-audit` empfehlen — der `audit`-Skill sieht gepushte Commits nicht mehr.
 
+**Audit-Log im Chat anzeigen:** Nach dem Schreiben den kompletten Inhalt des Log-Files via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben, damit der User alles nachlesen kann:
+
+```
+Audit-Log: {LOGFILE}
+
+---
+{Inhalt des Log-Files}
+---
+```
+
+Der Output erfolgt bevor Abschnitt 3 (Changelog/Linter/Tests/Design) startet — damit der User noch während der Verifikation das Ergebnis im Blick hat.
+
 ---
 
 ## 3. Changelog, Linter, Tests und Design-Verification (einmal, nach dem Loop)
