@@ -82,6 +82,21 @@ Fallback: Startseite (`/`). Max. 5 URLs, priorisiert nach Sichtbarkeit.
 
 ### 3. Dev-Server finden oder starten
 
+**Persistierte Config zuerst pruefen:**
+
+```bash
+CONFIG_FILE="$PROJECT_ROOT/.claude/screenshot-config.json"
+if [ -f "$CONFIG_FILE" ]; then
+  SERVER_BASE_URL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$CONFIG_FILE')).serverBaseUrl || '')")
+  # Verifiziere dass der Server noch laeuft
+  curl -sk -o /dev/null -w "%{http_code}" "$SERVER_BASE_URL/" 2>/dev/null | grep -qE "^(200|301|302|303)" \
+    && echo "SERVER_FROM_CONFIG=$SERVER_BASE_URL" \
+    || SERVER_BASE_URL=""
+fi
+```
+
+Wenn `SERVER_BASE_URL` gesetzt und erreichbar → weiter mit Schritt 4. Sonst Auto-Detect:
+
 ```bash
 lsof -i :3000 -i :5173 -i :8000 -i :8080 -i :10000 -sTCP:LISTEN -P 2>/dev/null | grep LISTEN
 ```
@@ -94,7 +109,15 @@ lsof -i :3000 -i :5173 -i :8000 -i :8080 -i :10000 -sTCP:LISTEN -P 2>/dev/null |
 | 4 | CWD unter `~/Local Sites/{name}/` UND `wp-config.php` existiert | URL = `http://{name}.local` |
 | — | Nichts erkannt | User fragen (siehe unten) |
 
-Kein Server erkannt → frage den User via AskUserQuestion:
+**Nach erfolgreichem Auto-Detect:** Base-URL in `$PROJECT_ROOT/.claude/screenshot-config.json` speichern:
+
+```bash
+mkdir -p "$PROJECT_ROOT/.claude"
+echo "{\"serverBaseUrl\": \"$SERVER_BASE_URL\"}" > "$PROJECT_ROOT/.claude/screenshot-config.json"
+grep -q '.claude/screenshot-config.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || echo '.claude/screenshot-config.json' >> "$PROJECT_ROOT/.gitignore"
+```
+
+Kein Server erkannt → frage den User via AskUserQuestion (EINMALIG — wird danach in `screenshot-config.json` persistiert):
 
 ```
 Design-Verification: Kein Dev-Server gefunden.

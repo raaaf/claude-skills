@@ -306,21 +306,9 @@ bash "$HOME/.claude/skills/audit/bin/design-check.sh"
 Das Script-Ergebnis ist verbindlich — kein LLM-Ermessen.
 
 - `KEINE_VISUELLEN_DATEIEN` → weiter mit Abschnitt 4
-- `SCREENSHOTS_ERFORDERLICH` → User via AskUserQuestion fragen:
+- `SCREENSHOTS_ERFORDERLICH` → direkt Schritt 3e (Screenshot-Agent). **Keine Ja/Nein-Frage.** Visuelle Änderungen bedeuten Screenshots — Punkt. Der User kann im finalen GO/Stopp-Schritt immer noch abbrechen.
 
-```
-Design-Verification: {N} visuelle Dateien geändert.
-
-{Liste der Dateien}
-
-Screenshots machen?
-```
-
-Optionen:
-- **Ja, Screenshots** → Weiter mit Schritt 3e
-- **Nein, überspringen** → `DESIGN_VERIFICATION_RESULT: SKIPPED_BY_USER`, weiter mit Abschnitt 4
-
-### 3e. Screenshot-Agent (nur bei „Ja, Screenshots")
+### 3e. Screenshot-Agent
 
 **Ein einziger Tool-Call.** Du übergibst alles an den Agent und wartest. Kein Server starten, keine URLs ermitteln, kein Screenshot-Verzeichnis anlegen — das macht der Agent.
 
