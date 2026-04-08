@@ -297,6 +297,8 @@ Existiert kein passender Eintrag → Eintrag draften, Format orientiert sich am 
 
 Erkennungstabellen und Befehle stehen in `references/linters-and-tests.md`. Reihenfolge: Formatter → Linter → Static Analysis → Tests. Bei Failures: fixen, erneut laufen lassen. Unfixbare Test-Failures als Critical aufnehmen.
 
+**Tests nur diff-scoped:** Nur Tests laufen lassen, die von den geänderten Dateien betroffen sind (Mapping siehe `references/linters-and-tests.md`). NIEMALS `composer test` / `npm test` in `/audit` — die volle Suite läuft in CI. Dieser Skill darf die Laufzeit nicht durch eine 2000+ Test-Suite explodieren lassen.
+
 ### 3d. Deterministischer Design-Check
 
 ```bash

@@ -27,13 +27,36 @@ Bei Static-Analysis-Fehlern: manuell fixen, erneut laufen lassen. Wiederholen bi
 
 ## Test-Runner
 
-| Erkennungsmerkmal | Befehl |
-|---|---|
-| `composer.json` mit `test`-Script | `composer test` |
-| `package.json` mit `test`-Script | `npm test` |
-| `phpunit.xml` (ohne Composer-Script) | `php artisan test` oder `./vendor/bin/phpunit` |
-| `vitest.config.*` | `npx vitest run` |
-| `jest.config.*` | `npx jest` |
-| `pytest.ini` oder `pyproject.toml` mit pytest | `pytest` |
+**Grundprinzip fuer /audit: Nur relevante/betroffene Tests lokal ausfuehren. Die volle Suite laeuft in CI bei jedem Push.** Das ist explizit so vom User gewuenscht und spart massiv Zeit bei grossen Test-Suiten (2000+ Tests).
 
-Alle erkannten Runner ausführen. Bei Failures: fixen, erneut laufen lassen. Wiederholen bis grün oder klar nicht automatisch fixbar. Unfixbare Failures als **Critical** aufnehmen.
+### Betroffene Tests ermitteln
+
+Pro geaenderter Code-Datei wird die zugehoerige Test-Datei gesucht:
+
+| Framework | Mapping |
+|-----------|---------|
+| Laravel/PHPUnit | `app/Foo/Bar.php` → `tests/**/BarTest.php` (grep nach Klassennamen) |
+| Vitest/Jest | `src/foo/bar.ts` → `src/foo/bar.{test,spec}.{ts,tsx,js,jsx}` oder `__tests__/bar.test.*` |
+| Pytest | `src/foo/bar.py` → `tests/**/test_bar.py` oder `tests/**/bar_test.py` |
+
+Zusaetzlich: direkt geaenderte Test-Dateien (`*Test.php`, `*.test.ts`, `test_*.py`) laufen immer mit.
+
+Keine betroffenen Tests gefunden? → Test-Step ueberspringen, Hinweis im Audit-Log: `Tests: uebersprungen (keine betroffenen Tests — CI deckt volle Suite ab)`.
+
+### Runner-Aufrufe (nur betroffene Dateien)
+
+| Erkennungsmerkmal | Befehl (diff-scoped) |
+|---|---|
+| `phpunit.xml` + Laravel | `php artisan test {BETROFFENE_TEST_DATEIEN}` |
+| `phpunit.xml` (pur) | `./vendor/bin/phpunit {BETROFFENE_TEST_DATEIEN}` |
+| `vitest.config.*` | `npx vitest run {BETROFFENE_TEST_DATEIEN}` |
+| `jest.config.*` | `npx jest {BETROFFENE_TEST_DATEIEN}` |
+| `pytest.ini` oder `pyproject.toml` mit pytest | `pytest {BETROFFENE_TEST_DATEIEN}` |
+
+**Nicht nutzen in /audit:** `composer test`, `npm test`, `npm run test` — diese fuehren typischerweise die volle Suite aus. Stattdessen Runner direkt mit Datei-Argumenten aufrufen.
+
+Bei Failures: fixen, erneut laufen lassen (nur die betroffenen Tests, nicht die volle Suite). Wiederholen bis gruen oder klar nicht automatisch fixbar. Unfixbare Failures als **Critical** aufnehmen.
+
+### /full-audit: volle Suite
+
+Fuer `/full-audit` laeuft immer die komplette Test-Suite (`composer test` / `npm test` / `pytest` / etc.). Dort ist Vollstaendigkeit wichtiger als Laufzeit.
