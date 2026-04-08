@@ -1,6 +1,6 @@
 ---
 name: dsgvo
-description: "Use when the user says /dsgvo, wants a GDPR/DSGVO compliance check, asks about privacy compliance for a website, or needs legal texts (Datenschutzerklaerung, Impressum, Cookie banner). Detects external services (Google Fonts, Analytics, Maps, YouTube, CDNs, Facebook Pixel, Hotjar), dispatches 5 parallel subagents (Impressum, Datenschutz, Cookies, External Services, Technical), and generates prioritized fixes plus ready-to-use legal texts."
+description: "GDPR/DSGVO compliance check for German/EU websites. Detects external services (Google Fonts, Analytics, Tag Manager, Maps, YouTube, Facebook Pixel, Hotjar, CDNs) via curl and code scans, dispatches 5 parallel subagents (Impressum, Datenschutzerklärung, Cookies, External Services, Technical), and produces prioritized fixes plus ready-to-use legal texts. Triggers: /dsgvo, DSGVO check, GDPR audit, privacy compliance, Datenschutzerklärung, Impressum, cookie banner, LG München Google Fonts, § 5 DDG."
 argument-hint: "[url or project path]"
 model: sonnet
 effort: medium
@@ -321,7 +321,7 @@ Schreibe `$DSGVO_LOG_DIR/$DATUM-{domain-oder-projekt}.md`:
 
 ```
 Agent(
-  prompt: Lies agents/learning-agent.md und fuehre den Ablauf aus.
+  prompt: Lies agents/learning-agent.md und führe den Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen DSGVO-Logs}
   subagent_type: general-purpose

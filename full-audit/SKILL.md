@@ -1,6 +1,7 @@
 ---
 name: full-audit
-description: "Use when the user says /full-audit, wants a comprehensive one-time audit of the entire codebase, is starting on a new project, or hasn't audited in a while. Processes large codebases in batches with 7 parallel subagents. For pre-push audits of unpushed commits only, use /audit instead."
+description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), splits large codebases into batches, runs up to 10 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), auto-fixes findings including Minor, and runs a cross-reference pass across batches. Triggers: /full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review. For pre-push audits only, use /audit instead."
+argument-hint: "[optional: directory scope]"
 model: sonnet
 effort: high
 context: fork
@@ -20,33 +21,33 @@ allowed-tools:
 
 **SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Schritt 1 beginnen.**
 
-**ROTE FLAGGEN — sofort stoppen wenn du denkst:**
-- "Ich warte auf Bestätigung vom User bevor ich die nächste Runde starte" → FALSCH. Loop läuft autonom.
-- "Eine Runde reicht" → FALSCH. Erst wenn `SAUBER`, ist der Loop beendet.
-- "Ich erkläre jetzt den Plan" → FALSCH. Direkt ausführen.
-- "Das Finding ist Minor, das überspringe ich" → FALSCH. Full-Audit fixt ALLES.
-- "Der Validator ist übertrieben, ich trust den Subagents" → FALSCH. Immer validieren — LLM-Findings halluzinieren Dateipfade, Zeilennummern und API-Signaturen.
-- "Convergence-Check kann ich überspringen" → FALSCH. Ohne Convergence-Check landet man in Fix-Schleifen.
-- "Design-Verification kann ich überspringen weil..." → FALSCH. Das Bash-Script entscheidet deterministisch ob Screenshots gemacht werden. Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH`, wird der Screenshot-Agent dispatcht. Du hast kein Ermessen. Du interpretierst das Script-Ergebnis nicht.
+Anti-Patterns (rote Flaggen) siehe `~/.claude/skills/audit/references/anti-patterns.md` — Full-Audit fixt zusätzlich ALLE Minor-Findings.
 
 ---
 
-## 0. Audit-Agents-Pfad auflösen
+## 0. Pre-Flight: Audit-Pfade + Agent-Verifikation
 
 ```bash
-# Find the audit agents directory (works with symlinks, mono-repo, or standalone install)
 if [ -d "$HOME/.claude/skills/audit/agents" ]; then
   AUDIT_AGENTS="$HOME/.claude/skills/audit/agents"
+  AUDIT_BIN="$HOME/.claude/skills/audit/bin"
+  AUDIT_REFS="$HOME/.claude/skills/audit/references"
 elif [ -d "$HOME/.claude/skills/claude-skills/audit/agents" ]; then
   AUDIT_AGENTS="$HOME/.claude/skills/claude-skills/audit/agents"
+  AUDIT_BIN="$HOME/.claude/skills/claude-skills/audit/bin"
+  AUDIT_REFS="$HOME/.claude/skills/claude-skills/audit/references"
 else
-  echo "ERROR: audit/agents/ not found. Install the audit skill alongside full-audit."
+  echo "ERROR: audit skill not found. Install audit alongside full-audit."
   exit 1
 fi
 echo "AUDIT_AGENTS=$AUDIT_AGENTS"
-```
 
-Setze `{AUDIT_AGENTS}` in allen folgenden Agent-Referenzen auf den gefundenen Pfad.
+# Fail-fast: alle Subagent-Definitionen vorhanden?
+bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || {
+  echo "Full-Audit abgebrochen — fehlende Agent-Dateien."
+  exit 1
+}
+```
 
 ---
 
@@ -56,28 +57,10 @@ Setze `{AUDIT_AGENTS}` in allen folgenden Agent-Referenzen auf den gefundenen Pf
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT"
 
-# Framework-Erkennung
-if [ -f "artisan" ]; then
-  FRAMEWORK="laravel"
-  SOURCE_DIRS="app/ resources/ database/ routes/ config/"
-elif [ -f "package.json" ] && grep -q '"next"' package.json 2>/dev/null; then
-  FRAMEWORK="nextjs"
-  SOURCE_DIRS="src/ app/ pages/ components/ lib/"
-elif [ -f "nuxt.config.ts" ] || [ -f "nuxt.config.js" ]; then
-  FRAMEWORK="nuxt"
-  SOURCE_DIRS="components/ composables/ pages/ layouts/ server/"
-elif [ -f "manage.py" ]; then
-  FRAMEWORK="django"
-  SOURCE_DIRS="$(find . -name 'apps.py' -exec dirname {} \; | head -20 | tr '\n' ' ')"
-else
-  FRAMEWORK="generic"
-  SOURCE_DIRS="src/ lib/ app/"
-fi
+# Framework-Erkennung (shared mit /audit) — Output als eval einlesen
+eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 
-echo "FRAMEWORK=$FRAMEWORK"
-echo "SOURCE_DIRS=$SOURCE_DIRS"
-
-# PROJECT_CONTEXT laden
+# PROJECT_CONTEXT aus CLAUDE.md laden
 PROJECT_CLAUDE_MD="$PROJECT_ROOT/CLAUDE.md"
 if [ -f "$PROJECT_CLAUDE_MD" ]; then
   PROJECT_CONTEXT=$(sed -n '/^## Audit Context$/,/^## [^A]/p' "$PROJECT_CLAUDE_MD" | head -n -1)
@@ -85,66 +68,44 @@ if [ -f "$PROJECT_CLAUDE_MD" ]; then
 else
   PROJECT_CONTEXT="Kein projektspezifischer Kontext."
 fi
-echo "PROJECT_CONTEXT: $PROJECT_CONTEXT"
 
-# Alle auditrelevanten Dateien sammeln
-find $SOURCE_DIRS -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" 2>/dev/null | grep -v node_modules | grep -v vendor | sort > /tmp/full-audit-files.txt
+# Alle auditrelevanten Dateien — Build-Output, Vendor und Cache ausschliessen
+EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/*'
+# shellcheck disable=SC2086
+find $SOURCE_DIRS \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
-find $SOURCE_DIRS -name "*.blade.php" -o -name "*.css" -o -name "*.js" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.scss" -o -name "*.html" 2>/dev/null | grep -v node_modules | grep -v vendor | sort > /tmp/full-audit-frontend.txt
-
-# Verzeichnisstruktur
-for dir in $SOURCE_DIRS; do [ -d "$dir" ] && ls "$dir" 2>/dev/null; done
+# shellcheck disable=SC2086
+find $SOURCE_DIRS \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
 ```
 
-Erstelle:
-- **ALLE_DATEIEN:** Alle auditrelevanten Dateien (aus `/tmp/full-audit-files.txt`)
-- **VISUELL_RELEVANTE_DATEIEN:** Alle Frontend-Dateien (aus `/tmp/full-audit-frontend.txt`)
-- **TOTAL_FILES:** Gesamtanzahl auditrelevanter Dateien
-- **PROJECT_CONTEXT:** Projektspezifischer Audit-Kontext (aus CLAUDE.md)
-- **FRAMEWORK:** Erkanntes Framework
-- **SOURCE_DIRS:** Erkannte Source-Verzeichnisse
+Variablen:
+- **ALLE_DATEIEN:** `/tmp/full-audit-files.txt`
+- **VISUELL_RELEVANTE_DATEIEN:** `/tmp/full-audit-frontend.txt`
+- **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**
 
-**Context-Building (einmalig, vor dem Audit-Loop):**
+**Context-Building (einmalig):** Lies `CLAUDE.md`, Package-Manifest, Top-2-Ebenen der SOURCE_DIRS. Erstelle kompakte **ARCHITEKTUR-NOTIZ** (max 20 Zeilen): wiederverwendbare Module/Traits/Mixins, Services/Utils, Framework-Patterns.
 
-Lies folgende Dateien für Architektur-Kontext:
-- `CLAUDE.md` (Konventionen, Projektspezifisches)
-- Package-Manifest (`composer.json`, `package.json`, `pyproject.toml` — je nach Framework)
-- Projekt-Verzeichnisstruktur (oberste 2 Ebenen von SOURCE_DIRS)
+**Optionale Pre-Checks** (nur sinnvoll wenn ein lokaler Diff existiert — bei Greenfield-Audit überspringen):
 
-Erstelle daraus eine kompakte **ARCHITEKTUR-NOTIZ** (max 20 Zeilen):
-- Welche wiederverwendbaren Module/Traits/Mixins existieren
-- Welche Services/Utils existieren
-- Welche Framework-spezifischen Patterns das Projekt verwendet (aus PROJECT_CONTEXT)
+```bash
+[ -n "$(git status --porcelain)" ] && bash "$AUDIT_BIN/pre-checks.sh"
+```
+
+`SECRET_SCAN_RESULT=FINDINGS` → als **Critical** ins Audit-Log. `LOCKFILE_DRIFT_RESULT=DRIFT` und `BINARY_ARTIFACTS_RESULT=FINDINGS` → als **Important**.
 
 ---
 
 ## 1.5. Batching-Entscheidung
 
-```
-DESIGN_CHECK: TOTAL_FILES = {TOTAL_FILES}
-```
-
-**Entscheidungslogik:**
-
 | TOTAL_FILES | Modus | Begründung |
 |-------------|-------|------------|
-| <= 80 | `SINGLE` | Codebase klein genug — alle Dateien in einem Durchlauf |
-| > 80 | `BATCHED` | Codebase zu groß für einen Durchlauf — automatisch in Batches aufteilen |
+| ≤ 80 | `SINGLE` | Ein Durchlauf |
+| > 80 | `BATCHED` | Automatisch in Batches |
 
-Ausgabe:
-
-```
-BATCH_MODUS: SINGLE | BATCHED
-Codebase-Größe: {TOTAL_FILES} Dateien
-```
-
-### Batch-Erstellung (nur wenn BATCH_MODUS = BATCHED)
-
-Dateien automatisch nach Verzeichnisstruktur gruppieren:
+### Batch-Erstellung (nur BATCHED)
 
 ```bash
-# Verzeichnisse mit Dateianzahl auflisten
 for dir in $(find $SOURCE_DIRS -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
   count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" \) 2>/dev/null | wc -l)
   [ "$count" -gt 0 ] && echo "$count $dir"
@@ -153,24 +114,13 @@ done | sort -rn
 
 **Batch-Regeln:**
 - Max ~30-40 Dateien pro Batch
-- Zusammengehörige Dateien im selben Batch (UI-Komponente + zugehöriges Template)
-- Wenn ein Verzeichnis >40 Dateien hat: Unterverzeichnisse als separate Batches
-- Wenn ein Verzeichnis <10 Dateien hat: mit verwandtem Verzeichnis zusammenlegen
-- Models/Entities + Traits/Mixins zusammen (brauchen gegenseitigen Kontext)
-- Config + Routing zusammen (klein, zusammengehörig)
+- Zusammengehöriges im selben Batch (Komponente + Template)
+- Verzeichnis >40 Dateien: Unterverzeichnisse aufsplitten
+- Verzeichnis <10 Dateien: mit verwandtem zusammenlegen
+- Models/Entities + Traits/Mixins zusammen
+- Config + Routing zusammen
 
-**Batch-Übersicht ausgeben:**
-
-```
-Batches: {N}
-  Batch 1: src/components/events/ (32 Dateien)
-  Batch 2: src/components/groups/ (28 Dateien)
-  Batch 3: src/services/ + src/utils/ (25 Dateien)
-  Batch 4: src/models/ + src/types/ (18 Dateien)
-  Batch 5: templates/pages/ (35 Dateien)
-  Batch 6: templates/layouts/ + templates/components/ (22 Dateien)
-  Batch 7: config/ + routes/ + database/ (15 Dateien)
-```
+Batch-Übersicht ausgeben (`Batch N: verzeichnis (X Dateien)`).
 
 ---
 
@@ -180,35 +130,27 @@ Initialisiere:
 ```
 RUNDE = 1
 BEREITS_GEFIXT = []
-GESAMT_CRITICAL = 0
-GESAMT_IMPORTANT = 0
-GESAMT_MINOR = 0
+GESAMT_CRITICAL = 0; GESAMT_IMPORTANT = 0; GESAMT_MINOR = 0
 AKTUELLER_BATCH = 1
 FINDINGS_VORHERIGE_RUNDE = null   # pro Batch zurücksetzen
 ```
 
-**Convergence-Check:** Nach jeder Runde innerhalb eines Batches wird die Anzahl der Critical+Important-Findings mit der vorherigen Runde des gleichen Batches verglichen. Wenn die Anzahl NICHT sinkt (>= vorherige) UND RUNDE >= 2: Batch wird abgebrochen mit `NO_CONVERGENCE`, verbleibende Findings als Offene Punkte. Grund: Fix-Schleifen vermeiden.
+**Convergence-Check:** Pro Batch, nach jeder Runde: Wenn Critical+Important NICHT sinken UND RUNDE ≥ 2 → `NO_CONVERGENCE`, verbleibende Findings als Offene Punkte.
 
-### Modus SINGLE (TOTAL_FILES <= 80)
+### Modus SINGLE (TOTAL_FILES ≤ 80)
 
-Wie bisher: Alle Dateien in einer Runde auditieren. Max 3 Runden bis SAUBER.
+Alle Dateien in einer Runde, max 3 Runden bis SAUBER. → Springe zu **Prozedur AUDIT_RUNDE**.
 
-→ Springe zu **Prozedur AUDIT_RUNDE** mit DATEILISTE = alle Dateien.
-
-### Modus BATCHED (TOTAL_FILES > 80)
-
-Äußere Schleife über alle Batches. Pro Batch max 3 Runden.
+### Modus BATCHED
 
 ```
 for BATCH in 1..N:
     RUNDE = 1
     BATCH_SAUBER = false
-
     while RUNDE <= 3 AND NOT BATCH_SAUBER:
         Führe AUDIT_RUNDE aus mit DATEILISTE = Batch-Dateien
         if SAUBER: BATCH_SAUBER = true
         else: RUNDE += 1
-
     AKTUELLER_BATCH += 1
 ```
 
@@ -216,61 +158,48 @@ for BATCH in 1..N:
 
 ### Prozedur AUDIT_RUNDE
 
-**Schritt A — Ankündigung und Todos**
+**Schritt A — Ankündigung**
 
-Ausgabe (BATCHED):
-```
-Full-Audit — Batch {AKTUELLER_BATCH}/{N} ({BATCH_VERZEICHNIS}) — {BATCH_DATEIEN_ANZAHL} Dateien — Runde {RUNDE}/3
-```
+BATCHED: `Full-Audit — Batch {AKTUELLER_BATCH}/{N} ({BATCH_VERZEICHNIS}) — {X} Dateien — Runde {RUNDE}/3`
+SINGLE: `Full-Audit Runde {RUNDE}/3 — {TOTAL_FILES} Dateien`
 
-Ausgabe (SINGLE):
-```
-Full-Audit Runde {RUNDE}/3 — {TOTAL_FILES} Dateien
-```
+TodoWrite: `Runde {RUNDE} — Subagents dispatchen` (in_progress), `Runde {RUNDE} — Findings fixen` (pending).
 
-TodoWrite: Erstelle Todos:
-- `Batch {AKTUELLER_BATCH}/{N} Runde {RUNDE} — Subagents dispatchen` (in_progress)
-- `Batch {AKTUELLER_BATCH}/{N} Runde {RUNDE} — Findings fixen` (pending)
+**Schritt A — 10 Subagents parallel dispatchen**
 
-(Im SINGLE-Modus ohne "Batch"-Prefix.)
+**PFLICHT: In JEDER Runde werden ALLE zulässigen Subagents dispatcht.** Fixes können Issues in beliebigen Dimensionen einführen. Einzige Ausnahme: Frontend-Subagents (5-10) bei Batches ohne Frontend-Dateien.
 
-**Schritt A — 7 Subagents parallel dispatchen**
+Dispatche alle in **einem Message-Block**. Übergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + **nur die Batch-Dateien**.
 
-**PFLICHT: In JEDER Runde werden ALLE zulässigen Subagents dispatcht.** Keine Subagents weglassen weil in der vorherigen Runde keine Findings in einer Dimension waren. Fixes können Issues in beliebigen Dimensionen einführen. Einzige Ausnahme: Frontend-Subagents (5-7) werden übersprungen wenn der Batch keine Frontend-Dateien enthält.
+Agent-Definitionen: `{AUDIT_AGENTS}/*.md` — jede Datei definiert `subagent_type` und `model`.
 
-Dispatche alle Subagents **in einem einzigen Message-Block**. Übergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + **nur die Dateien des aktuellen Batches** (nicht alle Dateien!).
+| # | Agent | Kurzname |
+|---|---|---|
+| 1 | `1-architecture.md` | Architektur & Code Reuse |
+| 2 | `2-security.md` | Security |
+| 3 | `3-performance.md` | Performance |
+| 4 | `4-code-quality.md` | Code Quality |
+| 5 | `5-seo.md` | SEO & Semantic HTML |
+| 6 | `6-a11y.md` | Accessibility (WCAG) |
+| 7 | `7-typography.md` | Typography |
+| 8 | `8-ui-design.md` | UI Visual Design |
+| 9 | `9-ux.md` | UX Patterns & Interaction |
+| 10 | `10-animation.md` | Animation & Motion Design |
 
-Lies die Agent-Definitionen aus {AUDIT_AGENTS}/*.md.
+Prompt-Template: `{AUDIT_AGENTS}/prompt-template.md` → Abschnitt "Für /full-audit".
 
-Jede Agent-Datei definiert `subagent_type` (bestimmt die verfügbaren Tools des Subagents) und `model` (opus = Claude Opus, haiku = Claude Haiku — Opus für tiefere Analyse, Haiku für schnellere Pattern-Checks).
-
-| # | Agent-Datei | Kurzname |
-|---|-------------|----------|
-| 1 | `{AUDIT_AGENTS}/1-architecture.md` | Architektur & Code Reuse |
-| 2 | `{AUDIT_AGENTS}/2-security.md` | Security |
-| 3 | `{AUDIT_AGENTS}/3-performance.md` | Performance |
-| 4 | `{AUDIT_AGENTS}/4-code-quality.md` | Code Quality |
-| 5 | `{AUDIT_AGENTS}/5-seo.md` | SEO & Semantic HTML |
-| 6 | `{AUDIT_AGENTS}/6-a11y.md` | Accessibility (WCAG) |
-| 7 | `{AUDIT_AGENTS}/7-typography.md` | Typography |
-| 8 | `{AUDIT_AGENTS}/8-ui-design.md` | UI Visual Design |
-| 9 | `{AUDIT_AGENTS}/9-ux.md` | UX Patterns & Interaction |
-| 10 | `{AUDIT_AGENTS}/10-animation.md` | Animation & Motion Design |
-
-Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Abschnitt "Für /full-audit (Codebase-basiert)".
-
-**Überspringen-Regeln — JEDER Agent hat seine EIGENE Regel. Nicht gruppieren.**
+**Überspringen-Regeln:**
 
 | Agent | Überspringen wenn |
 |-------|-------------------|
-| 5 (SEO) | Keine Frontend-Dateien im Batch |
-| 6 (A11y) | Keine Frontend-Dateien im Batch |
-| 7 (Typography) | Weder Frontend-Dateien noch Translation-Dateien im Batch |
-| 8 (UI Design) | Keine Frontend-Dateien im Batch |
-| 9 (UX) | Keine Frontend-Dateien im Batch |
-| 10 (Animation) | Keine Frontend-Dateien im Batch |
+| 5 (SEO) | Keine Frontend-Dateien |
+| 6 (A11y) | Keine Frontend-Dateien |
+| 7 (Typography) | Weder Frontend- noch Translation-Dateien |
+| 8 (UI Design) | Keine Frontend-Dateien |
+| 9 (UX) | Keine Frontend-Dateien |
+| 10 (Animation) | Keine Frontend-Dateien |
 
-**WICHTIG: Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch bei app-internen Views. "Öffentlich vs. intern" ist irrelevant.**
+Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch app-interne Views. "Öffentlich vs. intern" irrelevant.
 
 **Schritt B — Konsolidieren**
 
@@ -278,18 +207,18 @@ Deduplizierung: Gleiche Stelle von mehreren Subagents → ein Finding, strengste
 
 **Schritt B.5 — Hallucination Validator (PFLICHT)**
 
-Bevor irgendein Finding gefixt wird, validiere deterministisch:
+Vor jedem Fix deterministisch prüfen:
 
-1. **Datei existiert:** `test -f "{datei}"` — wenn nicht: Finding verwerfen.
-2. **Zeile in Range:** `wc -l "{datei}"` — wenn Zeile > Dateilänge: Finding verwerfen.
-3. **Externe APIs/Libs:** Wenn das Finding eine Library-API, Framework-Funktion oder einen Paket-Namen referenziert, den du nicht direkt im Projekt siehst: via context7 oder Grep im `vendor/`/`node_modules/` verifizieren. Nicht verifizierbar → als `low confidence` markieren.
+1. **Datei existiert:** `test -f "{datei}"` — nein → verwerfen
+2. **Zeile in Range:** `wc -l "{datei}"` — Zeile > Dateilänge → verwerfen
+3. **Externe APIs:** Library/Framework/Paket nicht direkt im Projekt sichtbar? → via context7 oder Grep in `vendor/`/`node_modules/` verifizieren. Nicht verifizierbar → `low confidence`.
 
-Verworfene Findings im Log kurz vermerken (`HALLUCINATED: ...`), aber nicht fixen.
+Verworfene als `HALLUCINATED: ...` loggen, nicht fixen.
 
-Prüfe SELBST (nur in Runde 1, Batch 1):
-- Tests: Wichtige Services/Commands ohne Tests?
+Prüfe SELBST (nur Runde 1, Batch 1):
+- Tests: wichtige Services/Commands ohne Tests?
 - Dokumentation: CLAUDE.md aktuell?
-- Mobile Apps: Gibt es eine zugehörige iOS-/Android-App im Repo? (Prüfe auf `.xcodeproj`, `build.gradle`, `react-native` in package.json, `pubspec.yaml`, `capacitor.config.*`) Wenn ja: API-Kompatibilität, Shared Code, Deep Links, Push-Payloads prüfen. Breaking Changes als Important melden.
+- Mobile Apps: `bash "$AUDIT_BIN/detect-mobile.sh"` — bei Treffer Impact-Matrix aus `{AUDIT_REFS}/mobile-impact.md` anwenden.
 
 Ausgabe:
 ```
@@ -297,184 +226,96 @@ Ausgabe:
 
 ### Critical
 - [Dimension] datei:zeile — Beschreibung
-
 ### Important
 - [Dimension] datei:zeile — Beschreibung
-
 ### Minor
 - [Dimension] datei:zeile — Vorschlag
-
 ### Sauber
 Dimension1, Dimension2
 ```
 
 **Schritt C — Auto-Fix (ALLE Findings)**
 
-TodoWrite: `Batch {AKTUELLER_BATCH}/{N} Runde {RUNDE} — Findings fixen` (in_progress)
+TodoWrite: `Runde {RUNDE} — Findings fixen` (in_progress).
 
-**Grundregel: Alles wird gefixt — außer bei `low confidence`.**
+**Grundregel: Alles wird gefixt — außer `low confidence`.**
 
-**Confidence-Gate:**
-- `high` (validiert, Fix offensichtlich) → direkt fixen
-- `medium` (validiert, Fix benötigt Judgment) → fixen, aber Fix im Log dokumentieren
-- `low` (Validator-Zweifel, externe API unverifiziert, oder Subagent unsicher) → NICHT auto-fixen, als Offener Punkt ins Audit-Log
+Confidence-Gate:
+- `high` → direkt fixen
+- `medium` → fixen, im Log dokumentieren
+- `low` → NICHT fixen, als Offener Punkt
 
-- 0 Critical + 0 Important + 0 Minor → Markiere Todo als completed. Ergebnis: `SAUBER`
-- Sonst: **Alle** high/medium-confidence Findings fixen — ohne Ausnahme.
-  - Einfache Fixes direkt selbst durchführen.
-  - Komplexe/größere Fixes: parallele Subagents dispatchen (je ein Agent pro unabhängigem Fix-Bereich).
-  - Subagents bekommen: genaues Problem, Datei:Zeile, erwartetes Ergebnis, Testbefehl.
-  - Warten bis alle Subagents abgeschlossen, dann Ergebnisse prüfen.
-- Jeden Fix zu BEREITS_GEFIXT hinzufügen.
-- GESAMT_CRITICAL += dieser Runde. GESAMT_IMPORTANT += dieser Runde. GESAMT_MINOR += dieser Runde.
-- Markiere Todo als completed. Ergebnis: `FIXES_APPLIED`
+- 0 Findings → `SAUBER`
+- Sonst: alle high/medium fixen. Einfach selbst, komplex parallele Fix-Subagents (Problem, Datei:Zeile, Erwartung, Testbefehl).
+- Jeden Fix zu BEREITS_GEFIXT. GESAMT_* inkrementieren.
+- Ergebnis: `FIXES_APPLIED`.
 
-**Kein "Offener Punkt" ohne explizite User-Zustimmung.** Wenn ein Fix unklar ist: kurz nachfragen, dann umsetzen.
+**Kein "Offener Punkt" ohne explizite User-Zustimmung.** Unklarer Fix → kurz nachfragen.
 
 ### Nach jeder Runde
 
 | Ergebnis | RUNDE | Aktion |
-|----------|-------|--------|
-| `SAUBER` | egal | Batch abgeschlossen → nächster Batch (oder Schritt 2.5 wenn letzter Batch) |
-| `FIXES_APPLIED` | < 3 | Convergence-Check: Wenn Critical+Important >= vorherige Runde UND RUNDE >= 2 → `NO_CONVERGENCE`. Sonst RUNDE + 1 → Prozedur erneut. |
-| `FIXES_APPLIED` | = 3 | Batch abgeschlossen → nächster Batch (oder Schritt 2.5 wenn letzter Batch) |
-| `NO_CONVERGENCE` | egal | Batch abbrechen, verbleibende Findings als Offene Punkte. Nächster Batch (oder Schritt 2.5). |
+|---|---|---|
+| `SAUBER` | — | Nächster Batch (oder 2.5) |
+| `FIXES_APPLIED` | < 3 | Convergence-Check; sonst RUNDE+1 |
+| `FIXES_APPLIED` | = 3 | Nächster Batch (oder 2.5) |
+| `NO_CONVERGENCE` | — | Batch abbrechen, offene Findings als Offene Punkte |
 
 ---
 
-## 2.5. Cross-Reference-Runde (nur BATCHED-Modus)
+## 2.5. Cross-Reference-Runde (nur BATCHED)
 
-Nach allen Batches eine letzte Runde über Batch-Grenzen hinweg:
-
-Dispatche 2 Subagents parallel:
+Nach allen Batches — 2 Subagents parallel:
 
 | # | Fokus | Scope |
-|---|-------|-------|
-| 1 | Cross-Module-Abhängigkeiten | Services die von UI-Komponenten falsch aufgerufen werden, Models/Entities die Mixins/Traits falsch nutzen, Controller/Handler-View-Mismatches |
-| 2 | Konsistenz | Gleiche Patterns überall einheitlich? (z.B. Auth-Checks, Cache-Key-Formate, Error-Handling) |
+|---|---|---|
+| 1 | Cross-Module-Abhängigkeiten | Services ↔ UI falsch aufgerufen, Models ↔ Traits/Mixins falsch genutzt, Controller-View-Mismatches |
+| 2 | Konsistenz | Gleiche Patterns einheitlich? (Auth-Checks, Cache-Keys, Error-Handling) |
 
-Jeder bekommt: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + Zusammenfassung aller Batch-Findings.
-
-Findings fixen wie in Schritt C.
-
-Keine weiteren Runden — Cross-Reference-Findings werden einmalig gefixt. Danach weiter mit Abschnitt 3.
+Input: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + Zusammenfassung aller Batch-Findings.
+Fixes wie Schritt C. Keine weiteren Runden danach.
 
 ---
 
-## 3. Changelog, Linter, Tests und Design-Verification (einmal, nach dem Loop)
+## 3. Changelog, Linter, Tests, Design-Verification
 
-### 3a. Changelog/Release-Notes prüfen
+### 3a. Changelog
 
-Prüfe ob die Fixes user-facing Changes enthalten die einen Changelog-Eintrag brauchen.
-
-Suche nach typischen Changelog-Dateien: `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`. Keine gefunden → Abschnitt überspringen.
-
-Wenn Changelog-Datei existiert und Fixes user-facing sind (UI, API, Routing, Translations): Eintrag draften.
+Suche `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`. Keine gefunden → überspringen. User-facing Fixes (UI, API, Routing, Translations) → Eintrag draften.
 
 ### 3b. Linter & Static Analysis
 
-Reihenfolge: Formatter → Linter → Static Analysis. Automatisch erkennen:
-
-**PHP:**
-
-| Erkennungsmerkmal | Befehl | Scope |
-|---|---|---|
-| `composer.json` mit `pint`-Dependency | `./vendor/bin/pint` | Global (Full-Audit) |
-| `.php-cs-fixer.php` | `./vendor/bin/php-cs-fixer fix` | Global |
-| `composer.json` mit `phpcs`-Script | `composer phpcs:fix` | Global |
-| `phpstan.neon` | `./vendor/bin/phpstan analyse` | Global |
-
-**JavaScript/CSS:**
-
-| Erkennungsmerkmal | Befehl | Scope |
-|---|---|---|
-| `eslint.config.*` oder `.eslintrc*` | `npx eslint --fix .` | Global |
-| `.prettierrc*` oder `prettier.config.*` | `npx prettier --write .` | Global |
-| `.stylelintrc*` | `npx stylelint --fix "**/*.css"` | Global |
-
-Bei Static-Analysis-Fehlern: manuell fixen, erneut laufen lassen. Wiederholen bis sauber.
-
-**PHPCS: pre-existierende Fehler**
-
-IMMER alle PHPCS-Fehler beheben — auch in Dateien die nicht vom Audit gefixt wurden. CI prüft das gesamte Repo. Nur Warnings (nicht Errors) können ignoriert werden.
+Siehe `{AUDIT_REFS}/linters-and-tests.md`. **Im Full-Audit-Modus laufen alle Linter/Formatter global** (nicht datei-scoped). Bei Fehlern: manuell fixen, erneut laufen.
 
 ### 3c. Tests
 
-Test-Runner automatisch erkennen:
+Siehe `{AUDIT_REFS}/linters-and-tests.md` (Test-Runner-Tabelle). Alle erkannten Runner ausführen. Failures fixen, erneut. Unfixbare als Offener Punkt.
 
-| Erkennungsmerkmal | Befehl |
-|---|---|
-| `composer.json` mit `test`-Script | `composer test` |
-| `package.json` mit `test`-Script | `npm test` |
-| `phpunit.xml` (ohne Composer-Script) | `php artisan test` oder `./vendor/bin/phpunit` |
-| `vitest.config.*` | `npx vitest run` |
-| `jest.config.*` | `npx jest` |
-| `pytest.ini` oder `pyproject.toml` mit pytest | `pytest` |
-
-Alle erkannten Runner ausführen. Bei Failures: fixen, erneut laufen lassen. Unfixbare Failures als Offener Punkt.
-
-**CHECKPOINT — DETERMINISTISCHER DESIGN-CHECK (kein LLM-Ermessen)**
-
-Führe dieses Bash-Script aus. Das Ergebnis bestimmt ob Design-Verification stattfindet — nicht deine Einschätzung.
+### 3c-CHECKPOINT — Deterministischer Design-Check
 
 ```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-# Für /full-audit: alle Frontend-Dateien in der Codebase
-VISUAL_FILES=$(find "$PROJECT_ROOT" -type f \( -name "*.blade.php" -o -name "*.html" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.css" -o -name "*.scss" \) -not -path "*/vendor/*" -not -path "*/node_modules/*" 2>/dev/null)
-
-# Framework-spezifische visuell relevante Backend-Dateien
-if [ -f "$PROJECT_ROOT/artisan" ]; then
-  BACKEND_VISUAL_FILES=$(find "$PROJECT_ROOT/app/Livewire" -name "*.php" 2>/dev/null)
-elif [ -f "$PROJECT_ROOT/package.json" ] && grep -q '"next"' "$PROJECT_ROOT/package.json" 2>/dev/null; then
-  BACKEND_VISUAL_FILES=$(find "$PROJECT_ROOT/src" "$PROJECT_ROOT/app" -name "*.tsx" -o -name "*.jsx" 2>/dev/null)
-elif [ -f "$PROJECT_ROOT/nuxt.config.ts" ] || [ -f "$PROJECT_ROOT/nuxt.config.js" ]; then
-  BACKEND_VISUAL_FILES=$(find "$PROJECT_ROOT/components" "$PROJECT_ROOT/pages" "$PROJECT_ROOT/layouts" -name "*.vue" 2>/dev/null)
-else
-  BACKEND_VISUAL_FILES=""
-fi
-
-ALL_VISUAL="$VISUAL_FILES"$'\n'"$BACKEND_VISUAL_FILES"
-ALL_VISUAL=$(echo "$ALL_VISUAL" | grep -v '^$' | sort -u)
-if [ -n "$ALL_VISUAL" ]; then
-  COUNT=$(echo "$ALL_VISUAL" | wc -l | tr -d ' ')
-  echo "DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH"
-  echo "DATEIEN: $COUNT visuelle Dateien in Codebase"
-else
-  echo "DESIGN_CHECK_RESULT=KEINE_VISUELLEN_DATEIEN"
-fi
+bash "$AUDIT_BIN/design-check.sh" --full
 ```
 
-**Auswertung:**
-
-```
-if output contains "KEINE_VISUELLEN_DATEIEN" → weiter mit Abschnitt 4
-if output contains "SCREENSHOTS_ERFORDERLICH" → User fragen (siehe unten)
-```
-
-Wenn `SCREENSHOTS_ERFORDERLICH`, frage den User via AskUserQuestion:
+Script-Output (nicht deine Einschätzung) entscheidet:
+- `DESIGN_CHECK_RESULT=KEINE_VISUELLEN_DATEIEN` → weiter mit Abschnitt 4
+- `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH` → User via AskUserQuestion fragen
 
 ```
 Design-Verification: {N} visuelle Dateien in der Codebase.
-
 Screenshots machen?
 ```
 
-Optionen:
-- **Ja, Screenshots** — Screenshot-Agent wird gestartet
-- **Nein, überspringen** — Keine Screenshots, direkt weiter
+Optionen: **Ja, Screenshots** / **Nein, überspringen**.
 
 | Antwort | Aktion |
-|---------|--------|
-| **Ja, Screenshots** | Weiter mit Schritt 3d (Screenshot-Agent) |
-| **Nein, überspringen** | `DESIGN_VERIFICATION_RESULT: SKIPPED_BY_USER`. Weiter mit Abschnitt 4. |
+|---|---|
+| Ja | Schritt 3d (Screenshot-Agent) |
+| Nein | `DESIGN_VERIFICATION_RESULT: SKIPPED_BY_USER` → Abschnitt 4 |
 
-### 3d. Design-Verification — Screenshot-Agent dispatchen
+### 3d. Screenshot-Agent (nur wenn "Ja")
 
-**Nur wenn User "Ja, Screenshots" gewählt hat.**
-
-**DIESER SCHRITT IST EIN EINZIGER TOOL-CALL.** Du übergibst alles an den Screenshot-Agent und wartest auf sein Ergebnis. Du machst NICHTS selbst — kein Server starten, keine URLs ermitteln, kein Screenshot-Verzeichnis anlegen. Das macht alles der Screenshot-Agent.
-
-**WICHTIG: Der Screenshot-Agent läuft im Foreground** (NICHT `run_in_background`), weil er den User um Screenshot-Freigabe fragen muss und möglicherweise Computer Use nutzt.
+**Ein einziger Tool-Call. Du machst NICHTS selbst.** Screenshot-Agent läuft im **Foreground** (nicht background).
 
 ```
 Agent(
@@ -482,28 +323,27 @@ Agent(
   model: sonnet,
   prompt: "Lies {AUDIT_AGENTS}/screenshot-agent.md und führe den kompletten Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
-    VISUELL_RELEVANTE_DATEIEN={DATEIEN_AUS_BASH_CHECK}
+    VISUELL_RELEVANTE_DATEIEN={aus design-check.sh}
     FRAMEWORK={FRAMEWORK}"
 )
 ```
 
-Warte auf das Ergebnis. Werte `DESIGN_VERIFICATION_RESULT` aus:
+Ergebnis auswerten:
 
-| Ergebnis | Aktion |
-|----------|--------|
-| `GO` | TodoWrite completed. Weiter mit Abschnitt 4. |
-| `MANUELL` | Warte auf User-Nachricht ("go" / "weiter"). Dann weiter mit Abschnitt 4. |
-| `SKIPPED_NO_TOOL` | Im Audit-Log vermerken. Weiter mit Abschnitt 4. |
+| `DESIGN_VERIFICATION_RESULT` | Aktion |
+|---|---|
+| `GO` | Weiter mit Abschnitt 4 |
+| `MANUELL` | Warte auf User ("go"/"weiter") → Abschnitt 4 |
+| `SKIPPED_NO_TOOL` | Im Log vermerken → Abschnitt 4 |
 
 ---
 
 ## 4. Audit-Log schreiben
 
 ```bash
-AUDIT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)/.claude/audits"
+AUDIT_DIR="$(git rev-parse --show-toplevel)/.claude/audits"
 mkdir -p "$AUDIT_DIR"
-DATUM=$(date +%Y-%m-%d)
-LOGFILE="$AUDIT_DIR/$DATUM-full-audit.md"
+LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-full-audit.md"
 ```
 
 Format:
@@ -513,7 +353,7 @@ Format:
 
 ## Scope
 - Modus: SINGLE | BATCHED ({N} Batches)
-- PHP-Dateien: X
+- Backend-Dateien: X
 - Frontend-Dateien: Y
 - Runden gesamt: Z
 
@@ -524,66 +364,42 @@ Format:
 
 ## Gefixte Issues
 - [Security] app/Foo.php:42 — XSS via {!! !!} → durch {{ }} ersetzt
-- [Architektur] app/Bar.php — SanitizesInput Trait fehlte → hinzugefügt
 
 ## Design-Verification
-- Screenshots: .claude/screenshots/{branch}-{hash}/ (oder "übersprungen — keine Frontend-Dateien")
-- Gescreenshottete URLs: Liste
-- User-Entscheidung: Go / Manuell anpassen
+- Screenshots: .claude/screenshots/{branch}-{hash}/ (oder "übersprungen")
+- User-Entscheidung: Go / Manuell / Skipped
 
 ## Offene Punkte
-- [Code Quality] app/Baz.php — Architektur-Refactoring nötig (nicht auto-fixbar)
+- [Code Quality] app/Baz.php — Refactoring nötig (nicht auto-fixbar)
 
 ## Sauber
 Performance, SEO
 ```
 
-**Empfehlungen umsetzen (Offene Punkte):**
-
-Wenn `## Offene Punkte` im Audit-Log Einträge enthält — frage den User via AskUserQuestion:
-
-```
-Audit-Empfehlungen: {N} offene Punkte gefunden.
-
-{Liste der Offenen Punkte}
-
-Soll ich diese direkt umsetzen?
-```
+**Offene Punkte umsetzen:** Wenn `## Offene Punkte` Einträge enthält, User via AskUserQuestion fragen.
 
 Optionen:
-- **Ja, alle** — Alle Offenen Punkte jetzt umsetzen
-- **Einzeln entscheiden** — Jeden Punkt einzeln bestätigen
-- **Nein, später** — Punkte bleiben im Audit-Log für später
-
-| Antwort | Aktion |
-|---------|--------|
-| **Ja, alle** | Jeden Offenen Punkt implementieren, dann weiter mit Abschnitt 5 |
-| **Einzeln entscheiden** | Pro Punkt AskUserQuestion → bestätigt: implementieren, abgelehnt: überspringen |
-| **Nein, später** | Nichts ändern, weiter mit Abschnitt 5 |
-
-Keine Offenen Punkte? Diesen Schritt überspringen, direkt weiter mit Abschnitt 5.
+- **Ja, alle** — alle jetzt umsetzen
+- **Einzeln entscheiden** — pro Punkt bestätigen
+- **Nein, später** — im Log belassen
 
 ---
 
 ## 5. Learning
 
-Nach dem Audit-Log dispatche den Learning-Agent als Subagent:
-
 ```
 Agent(
-  prompt: Lies {AUDIT_AGENTS}/learning-agent.md und führe den Ablauf aus.
+  prompt: "Lies {AUDIT_AGENTS}/learning-agent.md und führe den Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
-    AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
-    AUDIT_TYPE=full-audit
-  subagent_type: general-purpose
-  mode: bypassPermissions
+    AKTUELLES_LOG={Inhalt des Audit-Logs}
+    AUDIT_TYPE=full-audit",
+  subagent_type: general-purpose,
+  mode: bypassPermissions,
   run_in_background: true
 )
 ```
 
-Der Learning-Agent läuft im Hintergrund und blockiert nicht.
-
-Wenn Guideline-Vorschläge zurückkommen (`GUIDELINE_SUGGESTIONS > 0`), zeige sie dem User per AskUserQuestion (gleiche Logik wie im /audit Skill).
+Läuft im Hintergrund. Wenn `GUIDELINE_SUGGESTIONS > 0` zurückkommt: User via AskUserQuestion zeigen (gleiche Logik wie /audit).
 
 ---
 
@@ -594,9 +410,5 @@ Full Audit abgeschlossen.
 - Modus: {BATCH_MODUS} ({N} Batches, {RUNDEN_GESAMT} Runden)
 - {GESAMT_CRITICAL} Critical, {GESAMT_IMPORTANT} Important, {GESAMT_MINOR} Minor gefunden und gefixt
 - Log: .claude/audits/{DATUM}-full-audit.md
-- Learning: läuft im Hintergrund → Ergebnisse in .claude/audits/learning-log.md
-
-Offene Punkte: (falls vorhanden)
-- ...
+- Learning: läuft im Hintergrund → .claude/audits/learning-log.md
 ```
-

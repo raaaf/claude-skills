@@ -13,14 +13,16 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 Audits all uncommitted and unpushed changes across 7 dimensions before every push. Runs in a loop until clean, then verifies visual changes with screenshots before allowing a push.
 
 **What it does:**
-- Dispatches 7 specialized subagents in parallel (Architecture, Security, Performance, Code Quality, SEO, A11y, Typography)
-- Auto-fixes every Critical and Important finding
-- Loops until the codebase is clean (max 10 rounds)
+- Runs fast deterministic pre-checks first (secret scan, lockfile drift) before spending tokens on LLMs
+- Dispatches up to 10 specialized subagents in parallel (Architecture, Security, Performance, Code Quality, SEO, A11y, Typography, UI Design, UX, Animation)
+- Validates every finding against the filesystem to filter halluzinations before fixing
+- Auto-fixes every Critical and Important finding with a confidence gate (high/medium/low)
+- Loops until the codebase is clean (max 5 rounds) with a convergence check that breaks fix-loops early
 - Runs a deterministic Bash check for visual changes — if found, a screenshot agent captures responsive screenshots headless via Playwright, shows them to you, and waits for your approval before pushing
-- Logs every audit to `.claude/audits/` for historical reference
+- Logs every audit to `.claude/audits/` (timestamped — multiple runs per day preserved)
 - Self-learning: dispatches a background learning agent after each run that detects patterns, updates suppressions, and suggests guideline improvements
 
-**Subagents:** Architecture & Code Reuse · Security · Performance · Code Quality · SEO · UI/UX & A11y · Typography
+**Subagents:** Architecture & Code Reuse · Security · Performance · Code Quality · SEO · A11y (WCAG) · Typography · UI Visual Design · UX Patterns · Animation & Motion
 
 **Guidelines:** Detailed best-practice references in `audit/guidelines/` — loaded by the respective subagents.
 
@@ -37,7 +39,7 @@ A comprehensive one-time audit of the entire codebase — not just recent change
 **What it does:**
 - Auto-detects framework and sets source directories
 - Splits the codebase into batches (e.g. 12 batches for 827 files)
-- Runs all 7 subagents per batch
+- Runs up to 10 subagents per batch (same set as `/audit`)
 - Auto-fixes all findings (Critical, Important, and Minor) per batch
 - Cross-reference round after all batches to catch cross-module inconsistencies
 - Same screenshot verification and learning loop as `/audit`
@@ -156,6 +158,26 @@ SKILL.md (orchestrator)
 - **Deterministic control flow** — Bash scripts decide branching (e.g., whether screenshots are needed), not LLM judgment
 - **Self-learning** — every skill logs its runs and dispatches a background learning agent that detects patterns and suggests improvements
 - **On-demand hooks** — `/audit` registers a `PreToolUse` hook that blocks `git push` unless the audit passed
+
+---
+
+## How self-learning works
+
+Every skill (`/audit`, `/full-audit`, `/plan`, `/dsgvo`) dispatches a learning agent in the background after each run. It runs asynchronously and never blocks the main flow.
+
+**What the learning agent does:**
+1. **Reads recent logs** — the last N runs from `.claude/audits/` (or `.claude/plans/`, `.claude/dsgvo/logs/`)
+2. **Detects patterns** — findings that recur across runs, false positives that keep getting re-flagged, user overrides that keep getting applied
+3. **Proposes three types of improvements:**
+   - **Suppressions** — if the same false positive appears in ≥3 runs, propose adding it to the skill's ignore-list
+   - **Guideline updates** — if a genuine issue keeps being found in the same shape, propose a new rule in `guidelines/` or `references/`
+   - **Prompt tweaks** — if a subagent consistently misses or hallucinates something, propose a prompt adjustment
+4. **Writes to `learning-log.md`** — every suggestion is logged, never silently applied
+5. **Returns `GUIDELINE_SUGGESTIONS` count** — if > 0, the main skill shows them to the user via AskUserQuestion at the end of the next run
+
+**Why background, not inline:** Learning is slow (reads many files, reasons about patterns) and non-critical. Running it in the foreground would block every audit for minutes. By running it via `run_in_background: true`, the user gets their result immediately and the learning compounds silently over time.
+
+**Why suggestions, not auto-apply:** Skill rules affect every future run. Silent auto-updates would drift the skill away from the user's intent without review. Every change lands via an explicit one-click confirmation.
 
 ---
 
