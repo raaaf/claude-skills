@@ -28,8 +28,8 @@ hooks:
             rm -f "$marker"
             exit 0
           fi
-          echo 'BLOCKED: Run /audit before pushing.' >&2
-          exit 2
+          echo 'HINWEIS: Vor diesem Push wurde kein /audit ausgefuehrt. Frage den User: "Moechtest du vorher noch /audit laufen lassen? (ja/nein)" — bei "ja" fuehre /audit aus, bei "nein" pushe direkt ohne weiteres Nachfragen.' >&2
+          exit 1
         fi
 ---
 
@@ -45,7 +45,7 @@ digraph audit_loop {
     "Schritt 1: Scope ermitteln" [shape=box];
     "Runde AUDIT_RUNDE ausführen\n(Schritte A-E)" [shape=box];
     "Ergebnis = SAUBER?" [shape=diamond];
-    "RUNDE >= 10?" [shape=diamond];
+    "RUNDE >= 5?" [shape=diamond];
     "RUNDE = RUNDE + 1\nRunde AUDIT_RUNDE erneut ausführen" [shape=box];
     "Loop beendet\nWeiter mit Abschnitt 3" [shape=box];
     "3a-c: Changelog,\nLinter, Tests" [shape=box];
@@ -56,9 +56,9 @@ digraph audit_loop {
     "Schritt 1: Scope ermitteln" -> "Runde AUDIT_RUNDE ausführen\n(Schritte A-E)";
     "Runde AUDIT_RUNDE ausführen\n(Schritte A-E)" -> "Ergebnis = SAUBER?";
     "Ergebnis = SAUBER?" -> "Loop beendet\nWeiter mit Abschnitt 3" [label="ja"];
-    "Ergebnis = SAUBER?" -> "RUNDE >= 10?" [label="nein (FIXES_APPLIED)"];
-    "RUNDE >= 10?" -> "Loop beendet\nWeiter mit Abschnitt 3" [label="ja"];
-    "RUNDE >= 10?" -> "RUNDE = RUNDE + 1\nRunde AUDIT_RUNDE erneut ausführen" [label="nein"];
+    "Ergebnis = SAUBER?" -> "RUNDE >= 5?" [label="nein (FIXES_APPLIED)"];
+    "RUNDE >= 5?" -> "Loop beendet\nWeiter mit Abschnitt 3" [label="ja"];
+    "RUNDE >= 5?" -> "RUNDE = RUNDE + 1\nRunde AUDIT_RUNDE erneut ausführen" [label="nein"];
     "RUNDE = RUNDE + 1\nRunde AUDIT_RUNDE erneut ausführen" -> "Ergebnis = SAUBER?";
     "Loop beendet\nWeiter mit Abschnitt 3" -> "3a-c: Changelog,\nLinter, Tests";
     "3a-c: Changelog,\nLinter, Tests" -> "3d: Design-Verification\n(Screenshots + User-Freigabe)" [label="wenn VISUELL_RELEVANTE_DATEIEN\nim Diff"];
@@ -74,6 +74,8 @@ digraph audit_loop {
 - "Design-Verification kann ich überspringen weil..." → FALSCH. Das Bash-Script entscheidet. Wenn `SCREENSHOTS_ERFORDERLICH`, MUSS der Screenshot-Agent dispatcht werden. Kein Ermessen, keine Interpretation. **Push ist BLOCKIERT bis der Screenshot-Agent `GO` zurückgibt.**
 - "Ich pushe jetzt und mache Screenshots später" → FALSCH. Ohne `DESIGN_VERIFICATION_RESULT: GO` kein Push. Niemals.
 - "In Runde 2 reichen nur Architecture und Code Quality" → FALSCH. In JEDER Runde werden ALLE zulässigen Subagents (1-7) dispatcht. IMMER. Fixes in einer Dimension können Issues in jeder anderen einführen.
+- "Das Finding sieht komisch aus, ich fixe es einfach mal" → FALSCH. Erst Halluzinations-Validator (Schritt D.5). Wenn Datei/Zeile nicht existiert: Finding verwerfen.
+- "Findings sind gleich geblieben, ich probiere noch eine Runde" → FALSCH. Bei `NO_CONVERGENCE` (Runde >= 2 und Findings sinken nicht): Loop sofort beenden.
 
 ## Ablauf
 
@@ -146,7 +148,10 @@ Initialisiere vor der ersten Runde:
 ```
 RUNDE = 1
 BEREITS_GEFIXT = []
+FINDINGS_VORHERIGE_RUNDE = null
 ```
+
+**Convergence-Check:** Nach jeder Runde wird die Anzahl der Critical+Important Findings der aktuellen Runde mit der vorherigen verglichen. Wenn die Anzahl NICHT sinkt (>= vorherige Runde) UND RUNDE >= 2, wird der Loop abgebrochen mit `NO_CONVERGENCE`. Grund: Fixer baut neue Issues ein die der Reviewer findet — weiteres Looping verbrennt nur Tokens.
 
 ---
 
@@ -156,7 +161,7 @@ Diese Prozedur wird als Ganzes ausgeführt. Am Ende steht IMMER eine Entscheidun
 
 **Schritt A — Ankündigung und Todos**
 
-Ausgabe: `Audit-Runde {RUNDE}/10`
+Ausgabe: `Audit-Runde {RUNDE}/5`
 
 TodoWrite: Erstelle zwei Todos für diese Runde:
 - `Audit Runde {RUNDE} — Subagents dispatchen` (in_progress)
@@ -256,7 +261,7 @@ Eigene Findings als Important einfügen.
 **Ausgabe:**
 
 ```
-## Audit Runde {RUNDE}/10 — X Dateien, Y Commits seit origin/{branch}
+## Audit Runde {RUNDE}/5 — X Dateien, Y Commits seit origin/{branch}
 
 ### Critical
 - [Security] datei.ts:42 — Beschreibung
@@ -273,32 +278,67 @@ Performance, UI/UX/A11y
 
 Markiere Todo `Audit Runde {RUNDE} — Subagents dispatchen` als completed.
 
-**Schritt E — Auto-Fix (nur wenn Critical/Important vorhanden)**
+**Schritt D.5 — Halluzinations-Validator (PFLICHT vor jedem Fix)**
 
-Zähle die Critical- und Important-Findings dieser Runde.
+Bevor irgendetwas gefixt wird, jede Critical/Important-Finding deterministisch verifizieren. LLMs halluzinieren Dateien, Zeilennummern und API-Namen — ungeprüfte Fixes zerstören Code.
+
+Pro Finding mit `Datei:Zeile`:
+
+```bash
+# Existiert die Datei?
+test -f "{datei}" || echo "HALLUCINATION: file missing"
+
+# Existiert die Zeile (Datei hat mindestens so viele Zeilen)?
+lines=$(wc -l < "{datei}")
+[ "$lines" -ge "{zeile}" ] || echo "HALLUCINATION: line out of range"
+```
+
+Pro Finding das eine externe API/Library/Funktion erwähnt:
+- `grep -r` im Projekt prüfen ob die Library überhaupt importiert wird
+- Wenn die Empfehlung lautet "nutze Funktion X aus Y": existiert Y in dependencies?
+
+**Halluzinierte Findings rausfiltern — sie werden NICHT gefixt, nicht gemeldet, nicht gezählt.**
+
+Ausgabe:
+```
+Validator: X/Y Findings verifiziert, Z halluziniert (verworfen)
+```
+
+**Schritt E — Auto-Fix (nur wenn verifizierte Critical/Important vorhanden)**
+
+Zähle die **verifizierten** Critical- und Important-Findings dieser Runde.
+
+**Convergence-Check:** Speichere `FINDINGS_AKTUELLE_RUNDE = Critical + Important (verifiziert)`. Wenn `RUNDE >= 2` UND `FINDINGS_AKTUELLE_RUNDE >= FINDINGS_VORHERIGE_RUNDE`: Prozedur endet mit Ergebnis `NO_CONVERGENCE` — es werden keine weiteren Fixes mehr gemacht. Dann `FINDINGS_VORHERIGE_RUNDE = FINDINGS_AKTUELLE_RUNDE` setzen.
 
 **0 Critical und 0 Important?** → Markiere Todo `Audit Runde {RUNDE} — Findings fixen` als completed. → Prozedur endet mit Ergebnis: `SAUBER`.
 
 **> 0 Critical oder Important?** → Markiere Todo als in_progress, dann:
 
-1. Fixe **jedes Critical und Important Issue** direkt in den betroffenen Dateien.
-2. Minor-Findings: fixen wenn einfach, sonst überspringen — sie blockieren den Push nicht.
-3. Kurze Bestätigung pro Fix (`[Datei:Zeile] was gefixt wurde`).
-4. NUR falls technisch nicht fixbar (z.B. architektonische Entscheidung nötig): als **Offener Punkt** mit Begründung auflisten.
-5. Füge jedes gefixt Issue zur Liste BEREITS_GEFIXT hinzu (Datei:Zeile + Stichwort).
+**Confidence-Gate:** Jedes Finding hat eine Confidence (Subagent soll sie mitgeben: `high`, `medium`, `low`). Wenn keine explizite Confidence geliefert wird: `high` annehmen nur wenn Finding konkret ist (eindeutige Zeile, klarer Fehler). Bei vage formulierten Findings ("könnte", "möglicherweise", "eventuell") = `low`.
+
+- **High Confidence** → direkt fixen
+- **Medium Confidence** → fixen, aber mit Hinweis `(medium confidence)` in der Bestätigung
+- **Low Confidence** → NICHT automatisch fixen, stattdessen als **Offener Punkt** mit Begründung auflisten. Der User entscheidet.
+
+1. Fixe **jedes high/medium Confidence Critical und Important Issue** direkt in den betroffenen Dateien.
+2. Low Confidence Findings: als Offener Punkt auflisten.
+3. Minor-Findings: fixen wenn einfach und high confidence, sonst überspringen — sie blockieren den Push nicht.
+4. Kurze Bestätigung pro Fix (`[Datei:Zeile] was gefixt wurde`).
+5. NUR falls technisch nicht fixbar (z.B. architektonische Entscheidung nötig): als **Offener Punkt** mit Begründung auflisten.
+6. Füge jedes gefixt Issue zur Liste BEREITS_GEFIXT hinzu (Datei:Zeile + Stichwort).
 
 Markiere Todo als completed. → Prozedur endet mit Ergebnis: `FIXES_APPLIED`.
 
 **PFLICHT: Gib am Ende jeder Runde exakt diese Zeile aus:**
 
 ```
-AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/10
+AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/5
 ```
 
 Für eine saubere Runde:
 
 ```
-AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/10
+AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/5
 ```
 
 ---
@@ -310,10 +350,11 @@ Nachdem Prozedur AUDIT_RUNDE abgeschlossen ist, triff SOFORT diese Entscheidung:
 | Ergebnis | RUNDE | Aktion |
 |----------|-------|--------|
 | `SAUBER` | egal | **Loop beendet.** Weiter mit Abschnitt 3. |
-| `FIXES_APPLIED` | < 10 | **Setze `RUNDE = RUNDE + 1` und führe Prozedur AUDIT_RUNDE erneut aus.** Fixes können neue Issues einführen — die nächste Runde verifiziert die Korrektheit. |
-| `FIXES_APPLIED` | = 10 | **Loop beendet.** Verbleibende Issues auflisten, weiter mit Abschnitt 3. |
+| `FIXES_APPLIED` | < 5 | **Setze `RUNDE = RUNDE + 1` und führe Prozedur AUDIT_RUNDE erneut aus.** Fixes können neue Issues einführen — die nächste Runde verifiziert die Korrektheit. |
+| `FIXES_APPLIED` | = 5 | **Loop beendet.** Verbleibende Issues auflisten, weiter mit Abschnitt 3. |
+| `NO_CONVERGENCE` | egal | **Loop beendet.** Warnung ausgeben: "Findings konvergieren nicht — mögliche Fix-Schleife. Verbleibende Issues als Offene Punkte." Weiter mit Abschnitt 3. |
 
-**DU BIST NICHT FERTIG wenn das Ergebnis `FIXES_APPLIED` ist und RUNDE < 10.** Kein User-Input nötig, kein Warten — sofort `RUNDE = RUNDE + 1` setzen und Prozedur AUDIT_RUNDE erneut starten. Das ist keine optionale Empfehlung — es ist eine zwingende Anforderung. Siehe Loop-Diagramm am Anfang des Skills.
+**DU BIST NICHT FERTIG wenn das Ergebnis `FIXES_APPLIED` ist und RUNDE < 5.** Kein User-Input nötig, kein Warten — sofort `RUNDE = RUNDE + 1` setzen und Prozedur AUDIT_RUNDE erneut starten. Das ist keine optionale Empfehlung — es ist eine zwingende Anforderung. Siehe Loop-Diagramm am Anfang des Skills.
 
 ### Loop-Ende
 
@@ -347,7 +388,7 @@ Schreibe `$AUDIT_DIR/$(date +%Y-%m-%d)-{branch-name}.md`:
 - HEAD beim Audit: {git rev-parse HEAD}
 
 ## Ergebnis
-- Runden: N/10
+- Runden: N/5
 - Critical gefunden/gefixt: A/B
 - Important gefunden/gefixt: C/D
 

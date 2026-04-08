@@ -25,6 +25,8 @@ allowed-tools:
 - "Eine Runde reicht" → FALSCH. Erst wenn `SAUBER`, ist der Loop beendet.
 - "Ich erkläre jetzt den Plan" → FALSCH. Direkt ausführen.
 - "Das Finding ist Minor, das überspringe ich" → FALSCH. Full-Audit fixt ALLES.
+- "Der Validator ist übertrieben, ich trust den Subagents" → FALSCH. Immer validieren — LLM-Findings halluzinieren Dateipfade, Zeilennummern und API-Signaturen.
+- "Convergence-Check kann ich überspringen" → FALSCH. Ohne Convergence-Check landet man in Fix-Schleifen.
 - "Design-Verification kann ich überspringen weil..." → FALSCH. Das Bash-Script entscheidet deterministisch ob Screenshots gemacht werden. Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH`, wird der Screenshot-Agent dispatcht. Du hast kein Ermessen. Du interpretierst das Script-Ergebnis nicht.
 
 ---
@@ -182,7 +184,10 @@ GESAMT_CRITICAL = 0
 GESAMT_IMPORTANT = 0
 GESAMT_MINOR = 0
 AKTUELLER_BATCH = 1
+FINDINGS_VORHERIGE_RUNDE = null   # pro Batch zurücksetzen
 ```
+
+**Convergence-Check:** Nach jeder Runde innerhalb eines Batches wird die Anzahl der Critical+Important-Findings mit der vorherigen Runde des gleichen Batches verglichen. Wenn die Anzahl NICHT sinkt (>= vorherige) UND RUNDE >= 2: Batch wird abgebrochen mit `NO_CONVERGENCE`, verbleibende Findings als Offene Punkte. Grund: Fix-Schleifen vermeiden.
 
 ### Modus SINGLE (TOTAL_FILES <= 80)
 
@@ -271,6 +276,16 @@ Prompt-Template: Siehe `{AUDIT_AGENTS}/prompt-template.md` — verwende den Absc
 
 Deduplizierung: Gleiche Stelle von mehreren Subagents → ein Finding, strengste Einstufung.
 
+**Schritt B.5 — Hallucination Validator (PFLICHT)**
+
+Bevor irgendein Finding gefixt wird, validiere deterministisch:
+
+1. **Datei existiert:** `test -f "{datei}"` — wenn nicht: Finding verwerfen.
+2. **Zeile in Range:** `wc -l "{datei}"` — wenn Zeile > Dateilänge: Finding verwerfen.
+3. **Externe APIs/Libs:** Wenn das Finding eine Library-API, Framework-Funktion oder einen Paket-Namen referenziert, den du nicht direkt im Projekt siehst: via context7 oder Grep im `vendor/`/`node_modules/` verifizieren. Nicht verifizierbar → als `low confidence` markieren.
+
+Verworfene Findings im Log kurz vermerken (`HALLUCINATED: ...`), aber nicht fixen.
+
 Prüfe SELBST (nur in Runde 1, Batch 1):
 - Tests: Wichtige Services/Commands ohne Tests?
 - Dokumentation: CLAUDE.md aktuell?
@@ -297,10 +312,15 @@ Dimension1, Dimension2
 
 TodoWrite: `Batch {AKTUELLER_BATCH}/{N} Runde {RUNDE} — Findings fixen` (in_progress)
 
-**Grundregel: Alles wird gefixt. Kein Finding bleibt offen.**
+**Grundregel: Alles wird gefixt — außer bei `low confidence`.**
+
+**Confidence-Gate:**
+- `high` (validiert, Fix offensichtlich) → direkt fixen
+- `medium` (validiert, Fix benötigt Judgment) → fixen, aber Fix im Log dokumentieren
+- `low` (Validator-Zweifel, externe API unverifiziert, oder Subagent unsicher) → NICHT auto-fixen, als Offener Punkt ins Audit-Log
 
 - 0 Critical + 0 Important + 0 Minor → Markiere Todo als completed. Ergebnis: `SAUBER`
-- Sonst: **Alle** Critical, Important und Minor fixen — ohne Ausnahme.
+- Sonst: **Alle** high/medium-confidence Findings fixen — ohne Ausnahme.
   - Einfache Fixes direkt selbst durchführen.
   - Komplexe/größere Fixes: parallele Subagents dispatchen (je ein Agent pro unabhängigem Fix-Bereich).
   - Subagents bekommen: genaues Problem, Datei:Zeile, erwartetes Ergebnis, Testbefehl.
@@ -316,8 +336,9 @@ TodoWrite: `Batch {AKTUELLER_BATCH}/{N} Runde {RUNDE} — Findings fixen` (in_pr
 | Ergebnis | RUNDE | Aktion |
 |----------|-------|--------|
 | `SAUBER` | egal | Batch abgeschlossen → nächster Batch (oder Schritt 2.5 wenn letzter Batch) |
-| `FIXES_APPLIED` | < 3 | RUNDE + 1 → Prozedur erneut |
+| `FIXES_APPLIED` | < 3 | Convergence-Check: Wenn Critical+Important >= vorherige Runde UND RUNDE >= 2 → `NO_CONVERGENCE`. Sonst RUNDE + 1 → Prozedur erneut. |
 | `FIXES_APPLIED` | = 3 | Batch abgeschlossen → nächster Batch (oder Schritt 2.5 wenn letzter Batch) |
+| `NO_CONVERGENCE` | egal | Batch abbrechen, verbleibende Findings als Offene Punkte. Nächster Batch (oder Schritt 2.5). |
 
 ---
 

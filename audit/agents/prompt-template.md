@@ -24,10 +24,15 @@ Regeln:
 - Melde NICHT Issues die bereits in einer vorherigen Runde gefixt wurden: {BEREITS_GEFIXT}
 - Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert
 
-Format:
-**Critical:** [Datei:Zeile] Problem + warum kritisch
-**Important:** [Datei:Zeile] Problem + Empfehlung
-**Minor:** [Datei:Zeile] Vorschlag
+Format (jedes Finding MUSS ein Confidence-Label haben):
+**Critical:** [Datei:Zeile] (confidence: high|medium|low) Problem + warum kritisch
+**Important:** [Datei:Zeile] (confidence: high|medium|low) Problem + Empfehlung
+**Minor:** [Datei:Zeile] (confidence: high|medium|low) Vorschlag
+
+Confidence-Regeln:
+- `high` — Problem direkt im gelesenen Code verifiziert, Fix offensichtlich
+- `medium` — Problem klar, aber Fix benoetigt projektspezifisches Judgment
+- `low` — externe API/Lib nicht verifiziert, oder du bist unsicher ob es wirklich ein Problem ist
 
 Keine echten Findings? Antworte exakt: "Keine Findings."
 
@@ -50,9 +55,14 @@ WICHTIG: Lies JEDE Datei in der Liste. Ueberspringe keine. Beginne mit den wahrs
 Melde nur echte, konkrete Probleme. Keine theoretischen Findings.
 Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert.
 
-Format:
-**Critical:** [Datei:Zeile] Problem + warum kritisch
-**Important:** [Datei:Zeile] Problem + Empfehlung
-**Minor:** [Datei:Zeile] Vorschlag
+Format (jedes Finding MUSS ein Confidence-Label haben):
+**Critical:** [Datei:Zeile] (confidence: high|medium|low) Problem + warum kritisch
+**Important:** [Datei:Zeile] (confidence: high|medium|low) Problem + Empfehlung
+**Minor:** [Datei:Zeile] (confidence: high|medium|low) Vorschlag
+
+Confidence-Regeln:
+- `high` — Problem direkt im gelesenen Code verifiziert, Fix offensichtlich
+- `medium` — Problem klar, aber Fix benoetigt projektspezifisches Judgment
+- `low` — externe API/Lib nicht verifiziert, oder du bist unsicher ob es wirklich ein Problem ist
 
 Keine Findings? Antworte exakt: "Keine Findings."
