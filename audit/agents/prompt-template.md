@@ -21,6 +21,7 @@ Regeln:
 - Keine stilistischen Vorschlaege (dafuer gibt es den Linter)
 - Keine theoretischen "koennte ein Problem sein"-Findings -- nur wenn es ein Problem IST
 - Wenn du eine Datei fuer mehr Kontext lesen musst: tu es. Aber nur wenn der Diff allein nicht reicht.
+- **Scope-Limit:** Du darfst zusaetzlich max. 5 Referenz-Dateien aus dem Projekt lesen (z.B. bestehende Komponenten zur Konsistenzpruefung). KEIN Full-Scan der Codebase. Fuer Full-Scans gibt es /full-audit.
 - Melde NICHT Issues die bereits in einer vorherigen Runde gefixt wurden: {BEREITS_GEFIXT}
 - Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert
 

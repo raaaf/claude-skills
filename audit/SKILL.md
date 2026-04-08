@@ -137,7 +137,11 @@ Prompt-Template: `agents/prompt-template.md`, Abschnitt „Für /audit (Diff-bas
 | 9 (UX) | Keine FRONTEND_DATEIEN im Diff |
 | 10 (Animation) | Keine FRONTEND_DATEIEN im Diff |
 
-Subagents 1-4 laufen IMMER, über den GESAMTEN Diff. Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch bei internen Views, Admin-Panels, Dashboards. „Öffentlich vs. intern" ist irrelevant.
+**Scope-Regel (Diff-First):** Alle Subagents 1-10 fokussieren primär auf den **Diff** (committed-unpushed + working-tree). Interne Views, Admin-Panels, Dashboards sind nicht ausgenommen — aber nur wenn sie im Diff sind.
+
+**Kontext-Erweiterung (on-demand):** Subagents 5-10 dürfen zusätzlich bis zu **5 Referenz-Dateien** aus `FRONTEND_DATEIEN` lesen, wenn der Diff allein keine Konsistenz-Bewertung erlaubt (z.B. neuer Button → bestehende Button-Komponente zum Vergleich). Das Lesen passiert on-demand via Read-Tool, nicht als Vorab-Scan. Obergrenze strikt: max 5 Files pro Agent pro Runde.
+
+**Full-Scan?** Dafür gibt es `/full-audit`. `/audit` ist pre-push, schnell, diff-fokussiert.
 
 **Schritt D — Konsolidieren und Deduplizieren**
 
