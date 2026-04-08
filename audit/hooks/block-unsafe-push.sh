@@ -27,10 +27,10 @@ cwd=$(echo "$input" | jq -r '.cwd')
 hash=$(echo -n "$cwd" | md5 2>/dev/null || echo -n "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
 marker="/tmp/claude-audit-passed-$hash"
 
-# Marker valid for 5 minutes (300 s). If fresh, consume it and allow the push.
+# Marker valid for 30 minutes (1800 s). If fresh, consume it and allow the push.
 if [ -f "$marker" ]; then
   marker_mtime=$(stat -f%m "$marker" 2>/dev/null || stat -c%Y "$marker" 2>/dev/null)
-  if [ $(( $(date +%s) - marker_mtime )) -lt 300 ]; then
+  if [ $(( $(date +%s) - marker_mtime )) -lt 1800 ]; then
     rm -f "$marker"
     exit 0
   fi
