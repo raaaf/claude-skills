@@ -6,3 +6,4 @@ node_modules/
 # Project-specific one-off scripts (may contain credentials or hardcoded paths)
 audit/bin/audit-browse-auth.mjs
 audit/bin/modal-screenshot*.mjs
+.claude/audits/cache.json

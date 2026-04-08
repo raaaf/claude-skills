@@ -45,7 +45,18 @@ bash "$AUDIT_BIN/detect-framework.sh"
 
 # 2. Deterministische Pre-Checks (Secrets, Lockfile-Drift, Build-Artefakte)
 bash "$AUDIT_BIN/pre-checks.sh"
+
+# 3. Diff-Size-Gate
+bash "$AUDIT_BIN/diff-size-gate.sh"
 ```
+
+**Diff-Size-Gate auswerten:**
+
+| `DIFF_SIZE_RESULT` | Aktion |
+|---|---|
+| `OK` | Weiter |
+| `LARGE` (>2000 Zeilen ODER >20 Dateien) | User via `AskUserQuestion` warnen: „Diff ist gross — Audit wird lang und Findings verlieren an Signal. Weitermachen oder Commit splitten?" Optionen: Weitermachen / Abbrechen zum Splitten |
+| `HUGE` (>5000 Zeilen ODER >50 Dateien) | Hard-Block: Abbrechen mit klarer Meldung „Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
 
 `collect-scope.sh` liefert `DEFAULT_BRANCH`, `BASE_REF`, klassifizierte Dateilisten (`---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`) und den deduplizierten Unified-Diff (`---DIFF---`). `detect-framework.sh` liefert `FRAMEWORK` und `SOURCE_DIRS`. `pre-checks.sh` liefert drei Sektionen: `SECRET_SCAN_RESULT`, `LOCKFILE_DRIFT_RESULT`, `BINARY_ARTIFACTS_RESULT`.
 
@@ -129,6 +140,20 @@ TodoWrite: Zwei Todos erstellen:
 **Schritt B — Scope aktualisieren (ab Runde 2)**
 
 `collect-scope.sh` erneut aufrufen — Fixes haben den Diff verändert. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch, aber der komplette aktualisierte Diff wird allen Subagents erneut übergeben.
+
+**Schritt B.5 — Incremental-Cache pruefen**
+
+```bash
+bash "$AUDIT_BIN/cache-check.sh" $ALLE_DATEIEN
+```
+
+Ergebnis: `CACHED_FILES` (unveraenderte Dateien seit letztem Audit) und `CACHED_FINDINGS` (deren historische Findings).
+
+- Cached Files werden **aus dem Triage-Input entfernt** — sie werden dem Triage-Agent nicht mehr gezeigt.
+- `CACHED_FINDINGS` werden direkt in die aktuelle Runde uebernommen (gelten weiter).
+- Nur veraenderte Dateien gehen durch Triage + Subagents.
+
+Bei wiederholten Audits auf demselben Branch: oft 80-100% Cache-Hit → fast keine LLM-Calls.
 
 **Schritt C.0 — Triage-Agent (PFLICHT, vor allem anderen)**
 
@@ -254,7 +279,7 @@ Ausgabe: `Validator: X/Y verifiziert, Z halluziniert (verworfen)`
 
 Zähle die **verifizierten** Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Wenn `RUNDE >= 2` UND `FINDINGS_AKTUELLE_RUNDE >= FINDINGS_VORHERIGE_RUNDE`: Ergebnis `NO_CONVERGENCE`, keine weiteren Fixes. Dann `FINDINGS_VORHERIGE_RUNDE = FINDINGS_AKTUELLE_RUNDE`.
 
-**0 Critical und 0 Important?** → Todo completed → Ergebnis: `SAUBER`.
+**0 Critical und 0 Important?** → Todo completed → Ergebnis: `SAUBER`. **Early-Exit:** Auch wenn noch Minor-Findings vorhanden sind, wird der Loop sofort beendet. Minor ist nie Push-blockierend, keine zweite Runde noetig.
 
 **Sonst — Confidence-Gate:** Jedes Finding hat eine Confidence (`high`, `medium`, `low`). Bei vagen Formulierungen („könnte", „möglicherweise") = `low`.
 
@@ -262,12 +287,15 @@ Zähle die **verifizierten** Critical+Important. Speichere `FINDINGS_AKTUELLE_RU
 - **Medium** → fixen, mit Hinweis `(medium confidence)`
 - **Low** → NICHT auto-fixen, als Offener Punkt auflisten
 
-Fixes:
-1. Jedes high/medium Critical+Important direkt fixen
-2. Minor: fixen wenn einfach und high confidence, sonst überspringen — blockieren Push nicht
-3. Kurze Bestätigung pro Fix (`[Datei:Zeile] was gefixt wurde`)
-4. Nicht fixbar (z. B. architektonische Entscheidung): als Offener Punkt mit Begründung
-5. Gefixte Issues zu `BEREITS_GEFIXT` hinzufügen
+**Fix-Strategie — parallele Fix-Agents:**
+
+1. Gruppiere verifizierte high/medium Critical+Important Findings nach Datei.
+2. **Unabhaengige Dateien parallel fixen:** Dispatche pro betroffener Datei einen `fix-agent.md`-Subagent (Haiku) in einem einzigen Message-Block. Jeder Agent bekommt nur sein Finding + Kontext. Das ist billiger und schneller als wenn der Main-Skill alle Fixes sequenziell selbst macht.
+3. Bei mehreren Findings in derselben Datei: die Findings in einem einzigen Fix-Agent-Call bundeln (verhindert Merge-Konflikte).
+4. Fix-Agent-Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt, alles andere wird als Offener Punkt gelistet.
+5. Minor: fixen wenn einfach und high confidence, sonst ueberspringen — blockieren Push nicht.
+6. Nicht fixbar (z. B. architektonische Entscheidung): als Offener Punkt mit Begruendung → `patterns-store.sh dismissed {pattern}` aufrufen. Wenn `should-suggest {pattern}` true: User fragen ob Eintrag in `suppressions.json` soll.
+7. Gefixte Issues zu `BEREITS_GEFIXT` hinzufuegen und via `patterns-store.sh add` ins Learning-Store schreiben.
 
 Todo completed → Ergebnis: `FIXES_APPLIED`.
 
@@ -339,6 +367,15 @@ Dimension1, Dimension2
 ```
 
 Beim nächsten Audit-Lauf: wenn zwischen `{letzter-audit-HEAD}..HEAD` Commits auftauchen die **nicht** im Diff von `origin/$DEFAULT_BRANCH...HEAD` enthalten sind (weil inzwischen gepusht), `/full-audit` empfehlen — der `audit`-Skill sieht gepushte Commits nicht mehr.
+
+**Cache aktualisieren** (nach erfolgreichem Loop-Ende):
+
+```bash
+# JSON mit allen geauditeten Dateien und finalen Findings pipen:
+echo '{"files": [...], "findings": [...]}' | bash "$AUDIT_BIN/cache-write.sh"
+```
+
+Nur auditierte Dateien, die nach allen Fixes sauber sind, kommen in den Cache. Dateien mit verbleibenden Offenen Punkten werden NICHT gecached (damit sie beim naechsten Audit erneut geprueft werden).
 
 **Audit-Log im Chat anzeigen:** Nach dem Schreiben den kompletten Inhalt des Log-Files via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben, damit der User alles nachlesen kann:
 

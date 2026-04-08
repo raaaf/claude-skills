@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# Learning-Loop: stores fix patterns across audit runs. Reads JSON from stdin
+# and merges it into .claude/audits/patterns.json.
+#
+# Also tracks repeatedly-dismissed findings for suppression suggestions.
+#
+# Usage:
+#   echo '{"type":"fix","dimension":"security","pattern":"raw query","fix":"use prepared statement"}' \
+#     | bash patterns-store.sh add
+#   bash patterns-store.sh list                    # show all learned patterns
+#   bash patterns-store.sh dismissed {pattern}     # increment dismiss counter
+#   bash patterns-store.sh should-suggest {pattern} # exit 0 if >=3 dismissals
+set -euo pipefail
+
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
+STORE_DIR="$PROJECT_ROOT/.claude/audits"
+STORE="$STORE_DIR/patterns.json"
+mkdir -p "$STORE_DIR"
+[ -f "$STORE" ] || echo '{"version":1,"fix_patterns":[],"dismissals":{}}' > "$STORE"
+
+command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
+
+CMD="${1:-list}"
+
+case "$CMD" in
+  add)
+    INPUT=$(cat)
+    [ -z "$INPUT" ] && exit 0
+    jq --argjson new "$INPUT" '.fix_patterns += [$new] | .fix_patterns |= unique_by(.pattern)' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
+    ;;
+  list)
+    jq -c '.fix_patterns[]' "$STORE" 2>/dev/null || true
+    ;;
+  dismissed)
+    PATTERN="${2:-}"
+    [ -z "$PATTERN" ] && { echo "pattern required"; exit 1; }
+    jq --arg p "$PATTERN" '.dismissals[$p] = ((.dismissals[$p] // 0) + 1)' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
+    ;;
+  should-suggest)
+    PATTERN="${2:-}"
+    COUNT=$(jq -r --arg p "$PATTERN" '.dismissals[$p] // 0' "$STORE")
+    [ "$COUNT" -ge 3 ] && exit 0 || exit 1
+    ;;
+  *)
+    echo "unknown command: $CMD"
+    exit 1
+    ;;
+esac
+
+grep -q '.claude/audits/patterns.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || echo '.claude/audits/patterns.json' >> "$PROJECT_ROOT/.gitignore"
