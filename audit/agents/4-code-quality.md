@@ -1,7 +1,7 @@
 # Subagent 4: Code Quality & Simplification
 
 - **subagent_type:** `code-reviewer`
-- **model:** `opus`
+- **model:** `haiku`
 - **maxTurns:** `15`
 
 ## Fokus

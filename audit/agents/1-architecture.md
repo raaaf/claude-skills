@@ -1,7 +1,7 @@
 # Subagent 1: Architektur & Code Reuse
 
 - **subagent_type:** `code-reviewer`
-- **model:** `opus`
+- **model:** `sonnet`
 - **maxTurns:** `15`
 
 ## Fokus

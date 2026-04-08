@@ -103,11 +103,41 @@ TodoWrite: Zwei Todos erstellen:
 
 `collect-scope.sh` erneut aufrufen — Fixes haben den Diff verändert. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch, aber der komplette aktualisierte Diff wird allen Subagents erneut übergeben.
 
-**Schritt C — Subagents parallel dispatchen**
+**Schritt C.0 — Triage-Agent (PFLICHT, vor allem anderen)**
 
-**PFLICHT: In JEDER Runde ALLE zulässigen Subagents dispatchen.** Keine Ausnahmen — ein Security-Fix kann ein Performance-Problem einführen, ein Architecture-Refactor kann A11y brechen.
+Bevor die Spezial-Subagents laufen, dispatche EINEN Triage-Agent (Haiku, schnell, billig). Er liest den Diff einmal und erstellt ein JSON mit: welcher Dimension-Agent muss laufen, welche Hotspots pro Agent, was ist irrelevant.
 
-Dispatche in **einem einzigen Message-Block** via Agent-Tool. Übergib `UNIFIED_DIFF` + Dateiliste. Subagents lesen einzelne Dateien nur wenn der Diff nicht ausreicht.
+```
+Agent(
+  subagent_type: general-purpose,
+  model: haiku,
+  prompt: "Lies agents/0-triage.md und fuehre die Triage fuer diesen Diff durch.
+
+    UNIFIED_DIFF:
+    {UNIFIED_DIFF}
+
+    FRONTEND_DATEIEN: {FRONTEND_DATEIEN}
+    TRANSLATION_DATEIEN: {TRANSLATION_DATEIEN}
+    FRAMEWORK: {FRAMEWORK}
+
+    Gib NUR das JSON zurueck, nichts anderes."
+)
+```
+
+Parse das JSON. Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension.
+
+**Schritt C — Spezial-Subagents parallel dispatchen**
+
+**Regel:** Nur Agents mit `relevance.{dimension}.run == true` aus dem Triage-Ergebnis dispatchen. Security sollte fast immer laufen — Triage ist angewiesen nur bei reinen Doc/Translation-Changes zu skippen.
+
+**PFLICHT: Alle nicht-geskippten Agents in JEDER Runde dispatchen.** Ein Security-Fix kann ein Performance-Problem einfuehren — aber nur wenn Performance vom Triage als relevant markiert wurde.
+
+Dispatche in **einem einzigen Message-Block** via Agent-Tool. Uebergib:
+- `TRIAGE_SUMMARY` (die 1-2 Zeilen aus dem Triage-JSON)
+- `HOTSPOTS` (die fuer diesen Agent markierten Stellen)
+- `UNIFIED_DIFF` (als Fallback, wenn der Agent breiteren Kontext braucht)
+
+Dadurch parst jeder Agent nicht mehr den ganzen Diff von 0 — er fokussiert direkt auf seine Hotspots.
 
 Agent-Definitionen liegen in `agents/*.md`. Jede Datei enthält `subagent_type`, `model` und Fokus.
 

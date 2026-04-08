@@ -6,9 +6,14 @@ Dieses Template wird an jeden Subagent uebergeben. Platzhalter werden vom Audit-
 
 Audit der folgenden Aenderungen auf {DIMENSIONEN}.
 
+Triage-Zusammenfassung: {TRIAGE_SUMMARY}
+
+Deine spezifischen Hotspots (vom Triage-Agent markiert — FOKUSSIERE DICH HIER):
+{HOTSPOTS}
+
 Geaenderte Dateien: {DATEILISTE}
 
-Diff:
+Kompletter Diff (nur als Fallback-Kontext, wenn die Hotspots nicht reichen):
 {UNIFIED_DIFF}
 
 Pruefe NUR auf echte, konkrete {DIMENSIONEN}-Probleme in den geaenderten Zeilen.
