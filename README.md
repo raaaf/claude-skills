@@ -10,17 +10,19 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 
 ### `/audit` — Pre-Push Code Audit
 
-Audits all uncommitted and unpushed changes across 7 dimensions before every push. Runs in a loop until clean, then verifies visual changes with screenshots before allowing a push.
+Audits all uncommitted and unpushed changes before every push. A triage agent routes the diff to only the relevant subagents, parallel fix-agents handle repairs, and you get a manual test plan for visual verification.
 
 **What it does:**
-- Runs fast deterministic pre-checks first (secret scan, lockfile drift) before spending tokens on LLMs
+- Runs fast deterministic pre-checks first (secret scan, lockfile drift, diff-size gate) before spending tokens on LLMs
+- Triage agent (Haiku) reads the diff once and routes hotspots to relevant subagents only
 - Dispatches up to 10 specialized subagents in parallel (Architecture, Security, Performance, Code Quality, SEO, A11y, Typography, UI Design, UX, Animation)
-- Validates every finding against the filesystem to filter halluzinations before fixing
-- Auto-fixes every Critical and Important finding with a confidence gate (high/medium/low)
-- Loops until the codebase is clean (max 5 rounds) with a convergence check that breaks fix-loops early
-- Runs a deterministic Bash check for visual changes — if found, a screenshot agent captures responsive screenshots headless via Playwright, shows them to you, and waits for your approval before pushing
+- Incremental cache: unchanged files since last audit are skipped entirely
+- Validates every finding against the filesystem to filter hallucinations before fixing
+- Parallel fix-agents (Haiku) repair findings grouped by file
+- Loops until clean (max 5 rounds) with convergence check and minor-only early-exit
+- Generates a manual test plan for visual changes (specific pages, routes, what to check)
 - Logs every audit to `.claude/audits/` (timestamped — multiple runs per day preserved)
-- Self-learning: dispatches a background learning agent after each run that detects patterns, updates suppressions, and suggests guideline improvements
+- Self-learning: records fix patterns, tracks dismissed findings, suggests suppressions after 3 dismissals
 
 **Subagents:** Architecture & Code Reuse · Security · Performance · Code Quality · SEO · A11y (WCAG) · Typography · UI Visual Design · UX Patterns · Animation & Motion
 
@@ -42,7 +44,8 @@ A comprehensive one-time audit of the entire codebase — not just recent change
 - Runs up to 10 subagents per batch (same set as `/audit`)
 - Auto-fixes all findings (Critical, Important, and Minor) per batch
 - Cross-reference round after all batches to catch cross-module inconsistencies
-- Same screenshot verification and learning loop as `/audit`
+- Generates a manual test plan for visual verification
+- Same learning loop as `/audit`
 
 ---
 
@@ -95,16 +98,6 @@ ln -s ~/.claude/skills/claude-skills/dsgvo ~/.claude/skills/dsgvo
 
 **Note:** `audit` and `full-audit` must be installed together — `full-audit` references agent definitions from `audit/agents/`. The skill resolves the path automatically (sibling directory, `~/.claude/skills/audit/`, or mono-repo layout).
 
-For the `/audit` screenshot feature, install Playwright:
-
-```bash
-cd ~/.claude/skills/audit/bin && npm install
-```
-
-Screenshots run fully headless — no browser window opens.
-
----
-
 ## Project-specific configuration
 
 The audit skills are stack-agnostic. Add a `## Audit Context` section to your project's `CLAUDE.md` for framework-specific rules:
@@ -120,20 +113,6 @@ Framework: Laravel 11, Livewire 3, Blade
 ```
 
 The skill auto-detects your framework (Laravel, Next.js, Nuxt, Django, generic) and injects this context into every subagent.
-
----
-
-## Screenshot auth
-
-The screenshot agent logs into your app before capturing screenshots. Credentials are stored per project in `.claude/auth.json` (gitignored, never committed). If a seeder file exists with test credentials, the agent extracts them automatically.
-
-```json
-{
-  "loginUrl": "/login",
-  "username": "admin@example.com",
-  "password": "secret"
-}
-```
 
 ---
 
@@ -155,7 +134,7 @@ SKILL.md (orchestrator)
 - **Frontmatter controls behavior** — `model`, `allowed-tools`, `maxTurns`, `context: fork`, `effort`, `hooks` are all set per-skill
 - **Descriptions are model triggers** — written in English, telling Claude *when* to invoke the skill, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need
-- **Deterministic control flow** — Bash scripts decide branching (e.g., whether screenshots are needed), not LLM judgment
+- **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Self-learning** — every skill logs its runs and dispatches a background learning agent that detects patterns and suggests improvements
 - **On-demand hooks** — `/audit` registers a `PreToolUse` hook that blocks `git push` unless the audit passed
 

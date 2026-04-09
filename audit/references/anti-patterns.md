@@ -15,10 +15,10 @@ Lies diese Datei wenn dir die Regeln im Haupt-Skill nicht präsent sind. Jede Ze
 - **"Der Validator ist übertrieben, ich trust den Subagents"** → FALSCH. LLM-Findings halluzinieren Dateipfade, Zeilennummern und API-Signaturen. Schritt D.5 ist Pflicht.
 - **"Das Finding sieht komisch aus, ich fixe es einfach mal"** → FALSCH. Erst Halluzinations-Validator. Wenn Datei/Zeile nicht existiert: Finding verwerfen.
 
-## Design-Verification
+## Testplan
 
-- **"Design-Verification kann ich überspringen weil …"** → FALSCH. Das Bash-Script (`bin/design-check.sh`) entscheidet deterministisch. Wenn `SCREENSHOTS_ERFORDERLICH` und User „Ja" gewählt hat, MUSS der Screenshot-Agent dispatcht werden. Kein Ermessen, keine Interpretation.
-- **"Ich pushe jetzt und mache Screenshots später"** → FALSCH. Ohne `DESIGN_VERIFICATION_RESULT: GO` (oder explizites `SKIPPED_BY_USER`) kein Push. Niemals.
+- **"Testplan kann ich ueberspringen weil keine visuellen Aenderungen da sind"** → Pruefe `FRONTEND_DATEIEN` / `VISUELL_RELEVANTE_DATEIEN`. Wenn leer: korrekt, kein Testplan noetig. Wenn nicht leer: Testplan ist Pflicht.
+- **"Ich generiere einen generischen Testplan"** → FALSCH. Der Testplan muss konkrete Seiten, Routes und Aenderungen aus dem Diff referenzieren. Max 10 Schritte, priorisiert nach Risiko.
 
 ## Full-Audit-spezifisch
 

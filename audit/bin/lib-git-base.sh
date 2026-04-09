@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Shared library: resolve the diff base for audit scripts.
-# Sourced by collect-scope.sh, design-check.sh, and pre-check scripts.
+# Sourced by collect-scope.sh, diff-size-gate.sh, and pre-check scripts.
 #
 # Exports:
 #   DEFAULT_BRANCH — default branch name (main, master, develop, trunk, …)

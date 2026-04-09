@@ -293,13 +293,9 @@ Siehe `{AUDIT_REFS}/linters-and-tests.md` (Test-Runner-Tabelle). Alle erkannten 
 
 ### 3d. Manueller Testplan erstellen
 
-```bash
-bash "$AUDIT_BIN/design-check.sh" --full
-```
+Wenn `FRONTEND_DATEIEN` nicht leer: Erstelle einen manuellen Testplan mit den wichtigsten Seiten/Komponenten, die visuell geprueft werden sollten. Gleiches Format wie in `/audit` — konkrete Schritte, URLs/Routes, max. 15 Schritte (mehr als /audit, weil Full-Audit die gesamte Codebase umfasst).
 
-Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH`: Erstelle einen manuellen Testplan mit den wichtigsten Seiten/Komponenten, die visuell geprueft werden sollten. Gleiches Format wie in `/audit` — konkrete Schritte, URLs/Routes, max. 15 Schritte (mehr als /audit, weil Full-Audit die gesamte Codebase umfasst).
-
-Wenn `KEINE_VISUELLEN_DATEIEN` → weiter mit Abschnitt 4.
+Keine visuellen Dateien → weiter mit Abschnitt 4.
 
 ---
 

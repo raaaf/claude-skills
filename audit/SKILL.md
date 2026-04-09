@@ -439,7 +439,7 @@ Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATE
 - Nur Schritte fuer tatsaechlich geaenderte Stellen — kein generischer "pruefe alles"-Plan.
 - URLs/Routes aus dem Framework ableiten (Next.js: Dateipfad = URL, Laravel: `routes/web.php`, Nuxt: `pages/` = URL).
 - Max. 10 Schritte — priorisiert nach Sichtbarkeit und Risiko.
-- Keine Screenshots, kein Server starten, kein Playwright — rein textuell.
+- Rein textuell — keine externen Tools oder Server noetig.
 
 Den Testplan ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
 
