@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), splits large codebases into batches, runs up to 10 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), auto-fixes findings including Minor, and runs a cross-reference pass across batches. Triggers: /full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review. For pre-push audits only, use /audit instead."
+description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), splits large codebases into batches, runs up to 10 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), auto-fixes findings including Minor, runs a cross-reference pass across batches, and generates a manual test plan for visual verification. Triggers: /full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review. For pre-push audits only, use /audit instead."
 argument-hint: "[optional: directory scope]"
 model: sonnet
 effort: high
@@ -291,50 +291,15 @@ Siehe `{AUDIT_REFS}/linters-and-tests.md`. **Im Full-Audit-Modus laufen alle Lin
 
 Siehe `{AUDIT_REFS}/linters-and-tests.md` (Test-Runner-Tabelle). Alle erkannten Runner ausführen. Failures fixen, erneut. Unfixbare als Offener Punkt.
 
-### 3c-CHECKPOINT — Deterministischer Design-Check
+### 3d. Manueller Testplan erstellen
 
 ```bash
 bash "$AUDIT_BIN/design-check.sh" --full
 ```
 
-Script-Output (nicht deine Einschätzung) entscheidet:
-- `DESIGN_CHECK_RESULT=KEINE_VISUELLEN_DATEIEN` → weiter mit Abschnitt 4
-- `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH` → User via AskUserQuestion fragen
+Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH`: Erstelle einen manuellen Testplan mit den wichtigsten Seiten/Komponenten, die visuell geprueft werden sollten. Gleiches Format wie in `/audit` — konkrete Schritte, URLs/Routes, max. 15 Schritte (mehr als /audit, weil Full-Audit die gesamte Codebase umfasst).
 
-```
-Design-Verification: {N} visuelle Dateien in der Codebase.
-Screenshots machen?
-```
-
-Optionen: **Ja, Screenshots** / **Nein, überspringen**.
-
-| Antwort | Aktion |
-|---|---|
-| Ja | Schritt 3d (Screenshot-Agent) |
-| Nein | `DESIGN_VERIFICATION_RESULT: SKIPPED_BY_USER` → Abschnitt 4 |
-
-### 3d. Screenshot-Agent (nur wenn "Ja")
-
-**Ein einziger Tool-Call. Du machst NICHTS selbst.** Screenshot-Agent läuft im **Foreground** (nicht background).
-
-```
-Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
-  prompt: "Lies {AUDIT_AGENTS}/screenshot-agent.md und führe den kompletten Ablauf aus.
-    PROJECT_ROOT={PROJECT_ROOT}
-    VISUELL_RELEVANTE_DATEIEN={aus design-check.sh}
-    FRAMEWORK={FRAMEWORK}"
-)
-```
-
-Ergebnis auswerten:
-
-| `DESIGN_VERIFICATION_RESULT` | Aktion |
-|---|---|
-| `GO` | Weiter mit Abschnitt 4 |
-| `MANUELL` | Warte auf User ("go"/"weiter") → Abschnitt 4 |
-| `SKIPPED_NO_TOOL` | Im Log vermerken → Abschnitt 4 |
+Wenn `KEINE_VISUELLEN_DATEIEN` → weiter mit Abschnitt 4.
 
 ---
 
@@ -365,9 +330,8 @@ Format:
 ## Gefixte Issues
 - [Security] app/Foo.php:42 — XSS via {!! !!} → durch {{ }} ersetzt
 
-## Design-Verification
-- Screenshots: .claude/screenshots/{branch}-{hash}/ (oder "übersprungen")
-- User-Entscheidung: Go / Manuell / Skipped
+## Manueller Testplan
+- (Testplan-Schritte, falls visuelle Dateien vorhanden)
 
 ## Offene Punkte
 - [Code Quality] app/Baz.php — Refactoring nötig (nicht auto-fixbar)

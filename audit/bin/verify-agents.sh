@@ -24,8 +24,9 @@ REQUIRED=(
   8-ui-design.md
   9-ux.md
   10-animation.md
+  0-triage.md
+  fix-agent.md
   prompt-template.md
-  screenshot-agent.md
   learning-agent.md
 )
 

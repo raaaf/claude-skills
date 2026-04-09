@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Dispatches up to 10 parallel subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation) against uncommitted and unpushed changes, runs secret/lockfile pre-checks, auto-fixes findings with a halluzination-validator, loops until clean, then verifies visual changes with Playwright screenshots before allowing git push. Triggers: /audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing."
+description: "Pre-push code audit. Triage-Agent routes diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), runs secret/lockfile pre-checks, auto-fixes findings via parallel fix-agents, loops until clean, generates a manual test plan for visual changes, then allows git push. Triggers: /audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing."
 argument-hint: "[optional: scope hint]"
 model: sonnet
 effort: high
@@ -355,9 +355,8 @@ Mehrere Audits am selben Tag/Branch werden so nicht überschrieben. Format des L
 ## Gefixte Issues
 - [Typ] datei:zeile — was gefixt wurde
 
-## Design-Verification
-- Screenshots: .claude/screenshots/{branch}-{hash}/ (oder "übersprungen")
-- User-Entscheidung: Go / Manuell anpassen
+## Manueller Testplan
+- (Testplan-Schritte, falls visuelle Dateien geaendert wurden)
 
 ## Offene Punkte
 - (falls vorhanden)
@@ -407,44 +406,46 @@ Erkennungstabellen und Befehle stehen in `references/linters-and-tests.md`. Reih
 
 **Tests nur diff-scoped:** Nur Tests laufen lassen, die von den geänderten Dateien betroffen sind (Mapping siehe `references/linters-and-tests.md`). NIEMALS `composer test` / `npm test` in `/audit` — die volle Suite läuft in CI. Dieser Skill darf die Laufzeit nicht durch eine 2000+ Test-Suite explodieren lassen.
 
-### 3d. Deterministischer Design-Check
+### 3d. Manueller Testplan erstellen
 
-```bash
-bash "$HOME/.claude/skills/audit/bin/design-check.sh"
+Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATEIEN nicht leer), erstelle einen konkreten Testplan, den der User lokal durchgehen kann.
+
+**Testplan generieren** — basierend auf dem Diff, Framework und geaenderten Dateien:
+
+```markdown
+## Manueller Testplan
+
+**Branch:** {BRANCH}
+**Geaenderte visuelle Dateien:** {Liste}
+
+### Schritte
+
+1. [ ] **{Seitenname}** — {URL oder Route}
+   - Pruefe: {was sich geaendert hat, z.B. "neuer Button-Variant 'danger'"}
+   - Desktop + Mobile testen
+   - {Spezifischer Hinweis, z.B. "Dark Mode pruefen falls aktiv"}
+
+2. [ ] **{Seitenname}** — {URL oder Route}
+   - Pruefe: {konkrete Aenderung}
+   ...
+
+### Worauf besonders achten
+- {Edge Cases aus dem Diff, z.B. "Leerer Zustand wenn keine Items vorhanden"}
+- {Responsive-Verhalten, z.B. "Tabelle bricht unter 768px auf Cards um"}
+- {A11y-relevant, z.B. "Neue Buttons muessen per Tastatur erreichbar sein"}
 ```
 
-Das Script-Ergebnis ist verbindlich — kein LLM-Ermessen.
+**Regeln fuer den Testplan:**
+- Nur Schritte fuer tatsaechlich geaenderte Stellen — kein generischer "pruefe alles"-Plan.
+- URLs/Routes aus dem Framework ableiten (Next.js: Dateipfad = URL, Laravel: `routes/web.php`, Nuxt: `pages/` = URL).
+- Max. 10 Schritte — priorisiert nach Sichtbarkeit und Risiko.
+- Keine Screenshots, kein Server starten, kein Playwright — rein textuell.
 
-- `KEINE_VISUELLEN_DATEIEN` → weiter mit Abschnitt 4
-- `SCREENSHOTS_ERFORDERLICH` → direkt Schritt 3e (Screenshot-Agent). **Keine Ja/Nein-Frage.** Visuelle Änderungen bedeuten Screenshots — Punkt. Der User kann im finalen GO/Stopp-Schritt immer noch abbrechen.
-
-### 3e. Screenshot-Agent
-
-**Ein einziger Tool-Call.** Du übergibst alles an den Agent und wartest. Kein Server starten, keine URLs ermitteln, kein Screenshot-Verzeichnis anlegen — das macht der Agent.
-
-**Foreground** (NICHT `run_in_background`): er braucht `AskUserQuestion` und ggf. Computer Use.
-
-```
-Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
-  prompt: "Lies agents/screenshot-agent.md und führe den kompletten Ablauf aus.
-    PROJECT_ROOT={PROJECT_ROOT}
-    VISUELL_RELEVANTE_DATEIEN={DATEIEN_AUS_BASH_CHECK}
-    FRAMEWORK={FRAMEWORK}"
-)
-```
-
-`DESIGN_VERIFICATION_RESULT` auswerten:
-
-| Ergebnis | Aktion |
-|----------|--------|
-| `GO` | Todo completed, weiter mit Abschnitt 4 |
-| `SKIPPED_NO_TOOL` | Im Log vermerken, weiter mit Abschnitt 4 |
+Den Testplan ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
 
 ### Offene Punkte (optional)
 
-Enthält das Audit-Log `## Offene Punkte`, User via AskUserQuestion fragen: „Alle umsetzen / einzeln entscheiden / später". Bei „alle umsetzen": implementieren, dann weiter mit Abschnitt 4.
+Enthaelt das Audit-Log `## Offene Punkte`, User via AskUserQuestion fragen: „Alle umsetzen / einzeln entscheiden / spaeter". Bei „alle umsetzen": implementieren, dann weiter mit Abschnitt 4.
 
 ---
 
@@ -457,9 +458,7 @@ Wenn der Audit im Kontext eines blockierten `git push` läuft:
 - Noch unfixbare Critical/Important, Linter-Fehler oder Tests rot → `BLOCKED: Push abgebrochen.` + Liste der offenen Probleme.
 - KEINE Marker-Datei schreiben.
 
-**SPERRE:** Wenn `DESIGN_CHECK_RESULT=SCREENSHOTS_ERFORDERLICH` war und User „Ja, Screenshots" wählte, aber `DESIGN_VERIFICATION_RESULT` NICHT `GO` ist → NICHT pushen. Bei `SKIPPED_BY_USER` oder `SKIPPED_NO_TOOL` darf gepusht werden — der User hat bewusst entschieden.
-
-**Alles gefixt, Tests grün, Design-Verification bestanden (oder keine visuellen Dateien):**
+**Alles gefixt, Tests gruen:**
 
 **KRITISCH — Marker und Push NIEMALS im selben Bash-Befehl.** Der Pre-Push-Hook prüft den Command-String auf `git push` und blockiert BEVOR der Marker geschrieben wird. Immer zwei separate Bash-Aufrufe.
 
@@ -478,7 +477,7 @@ git -C /pfad/zum/repo push
 
 Danach: `Audit passed.` ausgeben, weiter mit Abschnitt 5 (Learning) und 6 (PR).
 
-**Marker-Details:** Gilt nur für den nächsten Push, wird nach Verwendung gelöscht, < 5 Min gültig. Hash kommt aus `.cwd` des Tool-JSON (Session-Startverzeichnis, unabhängig von `cd`). Für Multi-Repo-Pushes: `git -C /pfad push` statt `cd /pfad && git push`. Nie `cd` im selben Bash-Aufruf wie `git push`.
+**Marker-Details:** Gilt nur fuer den naechsten Push, wird nach Verwendung geloescht, < 30 Min gueltig. Hash kommt aus `.cwd` des Tool-JSON (Session-Startverzeichnis, unabhängig von `cd`). Für Multi-Repo-Pushes: `git -C /pfad push` statt `cd /pfad && git push`. Nie `cd` im selben Bash-Aufruf wie `git push`.
 
 ---
 
