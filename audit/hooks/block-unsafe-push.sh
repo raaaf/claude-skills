@@ -36,5 +36,5 @@ if [ -f "$marker" ]; then
   fi
 fi
 
-echo 'HINWEIS: Vor diesem Push wurde kein /audit ausgeführt. Frage den User: "Möchtest du vorher noch /audit laufen lassen? (ja/nein)" — bei "ja" führe /audit aus, bei "nein" pushe direkt ohne weiteres Nachfragen.' >&2
+echo 'BLOCKED: Kein /audit-Marker vorhanden. Du MUSST den User ZUERST per AskUserQuestion fragen ob er /audit laufen lassen moechte. Starte NIEMALS automatisch den Audit. Frage: "Vor dem Push wurde kein /audit ausgefuehrt. Soll ich den Audit jetzt starten?" Optionen: "Ja, Audit starten" / "Nein, direkt pushen". Erst NACH der Antwort handeln.' >&2
 exit 1
