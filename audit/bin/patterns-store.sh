@@ -48,4 +48,7 @@ case "$CMD" in
     ;;
 esac
 
-grep -q '.claude/audits/patterns.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || echo '.claude/audits/patterns.json' >> "$PROJECT_ROOT/.gitignore"
+# Ensure .gitignore entry exists (only on add, not every call)
+if [ "$CMD" = "add" ]; then
+  grep -q '.claude/audits/patterns.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || echo '.claude/audits/patterns.json' >> "$PROJECT_ROOT/.gitignore"
+fi

@@ -15,13 +15,12 @@ source "$(dirname "$0")/lib-git-base.sh"
 DEFAULT_BRANCH=$(resolve_default_branch)
 BASE_REF=$(resolve_base_ref "$DEFAULT_BRANCH")
 
-LINES=$(git diff --shortstat "$BASE_REF"...HEAD 2>/dev/null | { grep -oE '[0-9]+ insertion|[0-9]+ deletion' || true; } | awk '{s+=$1} END {print s+0}')
-WORKING=$(git diff --shortstat HEAD 2>/dev/null | { grep -oE '[0-9]+ insertion|[0-9]+ deletion' || true; } | awk '{s+=$1} END {print s+0}')
-TOTAL=$((LINES + WORKING))
-
-FILES=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null | wc -l | tr -d ' ')
-WORKING_FILES=$(git diff --name-only HEAD 2>/dev/null | wc -l | tr -d ' ')
-TOTAL_FILES=$((FILES + WORKING_FILES))
+# Combined diff: committed-unpushed + working-tree changes, deduplicated.
+# Using BASE_REF..HEAD (two-dot) + unstaged would double-count files that have
+# both committed and working-tree changes. Instead, diff from BASE_REF to the
+# working tree directly (which includes staged + unstaged on top of HEAD).
+TOTAL=$(git diff --shortstat "$BASE_REF" 2>/dev/null | { grep -oE '[0-9]+ insertion|[0-9]+ deletion' || true; } | awk '{s+=$1} END {print s+0}')
+TOTAL_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null | wc -l | tr -d ' ')
 
 echo "DIFF_LINES=$TOTAL"
 echo "DIFF_FILES=$TOTAL_FILES"

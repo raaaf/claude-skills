@@ -19,7 +19,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 - Incremental cache: unchanged files since last audit are skipped entirely
 - Validates every finding against the filesystem to filter hallucinations before fixing
 - Parallel fix-agents (Haiku) repair findings grouped by file
-- Loops until clean (max 5 rounds) with convergence check and minor-only early-exit
+- Loops until clean (max 3 rounds) with convergence check and minor-only early-exit
 - Generates a manual test plan for visual changes (specific pages, routes, what to check)
 - Logs every audit to `.claude/audits/` (timestamped — multiple runs per day preserved)
 - Self-learning: records fix patterns, tracks dismissed findings, suggests suppressions after 3 dismissals
@@ -151,12 +151,11 @@ Every skill (`/audit`, `/full-audit`, `/plan`, `/dsgvo`) dispatches a learning a
    - **Suppressions** — if the same false positive appears in ≥3 runs, propose adding it to the skill's ignore-list
    - **Guideline updates** — if a genuine issue keeps being found in the same shape, propose a new rule in `guidelines/` or `references/`
    - **Prompt tweaks** — if a subagent consistently misses or hallucinates something, propose a prompt adjustment
-4. **Writes to `learning-log.md`** — every suggestion is logged, never silently applied
-5. **Returns `GUIDELINE_SUGGESTIONS` count** — if > 0, the main skill shows them to the user via AskUserQuestion at the end of the next run
+4. **Writes to `learning-log.md`** — every suggestion is logged, never silently applied. The user can review suggestions there at their own pace.
 
 **Why background, not inline:** Learning is slow (reads many files, reasons about patterns) and non-critical. Running it in the foreground would block every audit for minutes. By running it via `run_in_background: true`, the user gets their result immediately and the learning compounds silently over time.
 
-**Why suggestions, not auto-apply:** Skill rules affect every future run. Silent auto-updates would drift the skill away from the user's intent without review. Every change lands via an explicit one-click confirmation.
+**Why suggestions, not auto-apply:** Skill rules affect every future run. Silent auto-updates would drift the skill away from the user's intent without review.
 
 ---
 

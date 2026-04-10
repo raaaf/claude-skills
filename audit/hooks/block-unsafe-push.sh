@@ -4,7 +4,7 @@
 #
 # Blocks `git push` invocations unless a recent audit-passed marker exists for
 # the current working directory. The marker is written by the /audit skill
-# itself when an audit run completes cleanly and is valid for 5 minutes.
+# itself when an audit run completes cleanly and is valid for 30 minutes.
 #
 # Input: Claude Code PreToolUse hook payload on stdin (JSON with
 # `tool_input.command` and `cwd`).

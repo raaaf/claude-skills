@@ -336,6 +336,16 @@ Format:
 Performance, SEO
 ```
 
+**Audit-Log im Chat anzeigen (PFLICHT):** Den kompletten Inhalt des Log-Files (inkl. Testplan) via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben:
+
+```
+Audit-Log: {LOGFILE}
+
+---
+{Inhalt des Log-Files}
+---
+```
+
 **Offene Punkte umsetzen:** Wenn `## Offene Punkte` Einträge enthält, User via AskUserQuestion fragen.
 
 Optionen:
@@ -359,7 +369,7 @@ Agent(
 )
 ```
 
-Läuft im Hintergrund. Wenn `GUIDELINE_SUGGESTIONS > 0` zurückkommt: User via AskUserQuestion zeigen (gleiche Logik wie /audit).
+Läuft im Hintergrund. Vorschläge werden ausschließlich in die `learning-log.md` geschrieben — der User kann sie dort später einsehen.
 
 ---
 

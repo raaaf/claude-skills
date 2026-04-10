@@ -51,10 +51,10 @@ FINDINGS="[]"
 for file in "$@"; do
   [ -f "$PROJECT_ROOT/$file" ] || continue
   current_hash=$(hash_of "$PROJECT_ROOT/$file")
-  cached_hash=$(jq -r ".entries[\"$file\"].sha256 // empty" "$CACHE_FILE")
+  cached_hash=$(jq -r --arg f "$file" '.entries[$f].sha256 // empty' "$CACHE_FILE")
   if [ -n "$cached_hash" ] && [ "$cached_hash" = "$current_hash" ]; then
     HITS="$HITS$file"$'\n'
-    file_findings=$(jq -c ".entries[\"$file\"].findings // []" "$CACHE_FILE")
+    file_findings=$(jq -c --arg f "$file" '.entries[$f].findings // []' "$CACHE_FILE")
     FINDINGS=$(jq -c --argjson add "$file_findings" '. + $add' <<<"$FINDINGS")
   fi
 done

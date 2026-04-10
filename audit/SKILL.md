@@ -113,7 +113,7 @@ Marker-Check vor der Frage:
 
 ## 2. Audit-Loop
 
-Führe die Prozedur `AUDIT_RUNDE` aus. Danach entscheide: nächste Runde oder Loop beenden. Maximal **5 Runden** — der Convergence-Check bricht typischerweise früher ab.
+Führe die Prozedur `AUDIT_RUNDE` aus. Danach entscheide: nächste Runde oder Loop beenden. Maximal **3 Runden** — der Convergence-Check bricht typischerweise früher ab.
 
 Initialisiere vor der ersten Runde:
 
@@ -131,7 +131,7 @@ Am Ende steht IMMER eine Entscheidung: nächste Runde oder Loop beenden.
 
 **Schritt A — Ankündigung und Todos**
 
-Ausgabe: `Audit-Runde {RUNDE}/5`
+Ausgabe: `Audit-Runde {RUNDE}/3`
 
 TodoWrite: Zwei Todos erstellen:
 - `Audit Runde {RUNDE} — Subagents dispatchen` (in_progress)
@@ -144,7 +144,8 @@ TodoWrite: Zwei Todos erstellen:
 **Schritt B.5 — Incremental-Cache pruefen**
 
 ```bash
-bash "$AUDIT_BIN/cache-check.sh" $ALLE_DATEIEN
+# ALLE_DATEIEN als Zeilen an cache-check uebergeben (safe bei Leerzeichen):
+echo "$ALLE_DATEIEN" | tr '\n' '\0' | xargs -0 bash "$AUDIT_BIN/cache-check.sh"
 ```
 
 Ergebnis: `CACHED_FILES` (unveraenderte Dateien seit letztem Audit) und `CACHED_FINDINGS` (deren historische Findings).
@@ -153,11 +154,13 @@ Ergebnis: `CACHED_FILES` (unveraenderte Dateien seit letztem Audit) und `CACHED_
 - `CACHED_FINDINGS` werden direkt in die aktuelle Runde uebernommen (gelten weiter).
 - Nur veraenderte Dateien gehen durch Triage + Subagents.
 
-Bei wiederholten Audits auf demselben Branch: oft 80-100% Cache-Hit → fast keine LLM-Calls.
+**Hinweis:** Der Cache hilft primaer zwischen separaten Audit-Laeufen. Innerhalb desselben Audit-Laufs aendern Fixes die Datei-Hashes, sodass in Runde 2+ fast nie ein Cache-Hit auftritt.
 
-**Schritt C.0 — Triage-Agent (PFLICHT, vor allem anderen)**
+**Schritt C.0 — Triage-Agent (nur Runde 1)**
 
-Bevor die Spezial-Subagents laufen, dispatche EINEN Triage-Agent (Haiku, schnell, billig). Er liest den Diff einmal und erstellt ein JSON mit: welcher Dimension-Agent muss laufen, welche Hotspots pro Agent, was ist irrelevant.
+**Nur in Runde 1** dispatchen. Ab Runde 2 das `TRIAGE_RESULT` aus Runde 1 wiederverwenden — Fixes aendern die Routing-Entscheidung praktisch nie, ein erneuter Triage-Call waere verschwendet.
+
+Dispatche EINEN Triage-Agent (Haiku, schnell, billig). Er liest den Diff einmal und erstellt ein JSON mit: welcher Dimension-Agent muss laufen, welche Hotspots pro Agent, was ist irrelevant.
 
 ```
 Agent(
@@ -178,7 +181,7 @@ Agent(
 )
 ```
 
-Parse das JSON. Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension.
+Parse das JSON. Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension. Speichere es fuer Folgerunden.
 
 **Schritt C — Spezial-Subagents parallel dispatchen**
 
@@ -206,20 +209,9 @@ Agent-Definitionen liegen in `agents/*.md`. Jede Datei enthält `subagent_type`,
 | 7 | `agents/7-typography.md` | Typography |
 | 8 | `agents/8-ui-design.md` | UI Visual Design |
 | 9 | `agents/9-ux.md` | UX Patterns & Interaction |
-| 10 | `agents/5-animation.md` | Animation & Motion Design |
+| 10 | `agents/10-animation.md` | Animation & Motion Design |
 
 Prompt-Template: `agents/prompt-template.md`, Abschnitt „Für /audit (Diff-basiert)".
-
-**Überspringen-Regeln** — jeder Agent hat seine eigene, nicht gruppieren:
-
-| Agent | Überspringen wenn |
-|-------|-------------------|
-| 5 (SEO) | Keine FRONTEND_DATEIEN im Diff |
-| 6 (A11y) | Keine FRONTEND_DATEIEN im Diff |
-| 7 (Typography) | Weder FRONTEND_DATEIEN noch TRANSLATION_DATEIEN im Diff |
-| 8 (UI Design) | Keine FRONTEND_DATEIEN im Diff |
-| 9 (UX) | Keine FRONTEND_DATEIEN im Diff |
-| 10 (Animation) | Keine FRONTEND_DATEIEN im Diff |
 
 **Scope-Regel (Diff-First):** Alle Subagents 1-10 fokussieren primär auf den **Diff** (committed-unpushed + working-tree). Interne Views, Admin-Panels, Dashboards sind nicht ausgenommen — aber nur wenn sie im Diff sind.
 
@@ -242,7 +234,7 @@ Eigene Findings als Important einfügen.
 **Ausgabe:**
 
 ```
-## Audit Runde {RUNDE}/5 — X Dateien, Y Commits seit origin/{branch}
+## Audit Runde {RUNDE}/3 — X Dateien, Y Commits seit origin/{branch}
 
 ### Critical
 - [Security] datei.ts:42 — Beschreibung
@@ -302,9 +294,9 @@ Todo completed → Ergebnis: `FIXES_APPLIED`.
 **PFLICHT — gib am Ende jeder Runde exakt diese Zeile aus:**
 
 ```
-AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/5
-AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/5
-AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/5
+AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/3
+AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/3
+AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/3
 ```
 
 ### Nach jeder Runde: Entscheidung
@@ -312,8 +304,8 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/5
 | Ergebnis | RUNDE | Aktion |
 |----------|-------|--------|
 | `SAUBER` | egal | Loop beendet. Weiter mit Abschnitt 3. |
-| `FIXES_APPLIED` | < 5 | `RUNDE = RUNDE + 1`, Prozedur erneut. **Kein Warten auf User.** |
-| `FIXES_APPLIED` | = 5 | Loop beendet. Verbleibende Issues auflisten. |
+| `FIXES_APPLIED` | < 3 | `RUNDE = RUNDE + 1`, Prozedur erneut. **Kein Warten auf User.** |
+| `FIXES_APPLIED` | = 3 | Loop beendet. Verbleibende Issues auflisten. |
 | `NO_CONVERGENCE` | egal | Loop beendet. Warnung: „Findings konvergieren nicht". |
 
 ### Loop-Ende
@@ -348,7 +340,7 @@ Mehrere Audits am selben Tag/Branch werden so nicht überschrieben. Format des L
 - HEAD beim Audit: {git rev-parse HEAD}
 
 ## Ergebnis
-- Runden: N/5
+- Runden: N/3
 - Critical gefunden/gefixt: A/B
 - Important gefunden/gefixt: C/D
 
@@ -376,17 +368,7 @@ echo '{"files": [...], "findings": [...]}' | bash "$AUDIT_BIN/cache-write.sh"
 
 Nur auditierte Dateien, die nach allen Fixes sauber sind, kommen in den Cache. Dateien mit verbleibenden Offenen Punkten werden NICHT gecached (damit sie beim naechsten Audit erneut geprueft werden).
 
-**Audit-Log im Chat anzeigen:** Nach dem Schreiben den kompletten Inhalt des Log-Files via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben, damit der User alles nachlesen kann:
-
-```
-Audit-Log: {LOGFILE}
-
----
-{Inhalt des Log-Files}
----
-```
-
-Der Output erfolgt bevor Abschnitt 3 (Changelog/Linter/Tests/Design) startet — damit der User noch während der Verifikation das Ergebnis im Blick hat.
+**Hinweis:** Das Audit-Log wird erst nach Abschnitt 3 (inkl. Testplan) im Chat angezeigt, damit der Testplan bereits enthalten ist.
 
 ---
 
@@ -443,6 +425,20 @@ Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATE
 
 Den Testplan ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
 
+### 3e. Audit-Log im Chat anzeigen (PFLICHT — nach Testplan)
+
+Nach Abschluss von 3a-3d den kompletten Inhalt des Log-Files (inkl. Testplan) via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben:
+
+```
+Audit-Log: {LOGFILE}
+
+---
+{Inhalt des Log-Files}
+---
+```
+
+So hat der User das vollstaendige Ergebnis inkl. Testplan auf einen Blick.
+
 ### Offene Punkte (optional)
 
 Enthaelt das Audit-Log `## Offene Punkte`, User via AskUserQuestion fragen: „Alle umsetzen / einzeln entscheiden / spaeter". Bei „alle umsetzen": implementieren, dann weiter mit Abschnitt 4.
@@ -495,7 +491,7 @@ Agent(
 )
 ```
 
-Läuft im Hintergrund, blockiert weder Push noch PR. Wenn er Guideline-Vorschläge zurückgibt (`GUIDELINE_SUGGESTIONS > 0`), User via AskUserQuestion fragen: „Alle übernehmen / einzeln prüfen / später".
+Läuft im Hintergrund, blockiert weder Push noch PR. Vorschläge werden ausschließlich in die `learning-log.md` geschrieben — der User kann sie dort später einsehen.
 
 ---
 
