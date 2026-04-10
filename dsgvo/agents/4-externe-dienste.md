@@ -1,7 +1,7 @@
 # Agent: Externe Dienste
 
 - **subagent_type:** `general-purpose`
-- **model:** `sonnet`
+- **model:** `haiku`
 - **maxTurns:** `5`
 
 ## Aufgabe

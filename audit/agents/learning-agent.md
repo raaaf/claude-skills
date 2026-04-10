@@ -1,5 +1,6 @@
 # Learning Agent
 
+- **model:** `haiku`
 - **maxTurns:** `10`
 
 Du analysierst vergangene Audit-Logs, erkennst Patterns und schreibst eine Retro.

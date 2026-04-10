@@ -1,7 +1,7 @@
 # Learning Agent
 
 - **subagent_type:** `general-purpose`
-- **model:** `sonnet`
+- **model:** `haiku`
 - **maxTurns:** `10`
 
 Du analysierst vergangene DSGVO-Check-Logs, erkennst Patterns und schreibst eine Retro.

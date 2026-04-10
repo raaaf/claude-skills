@@ -209,7 +209,7 @@ Agent(
   prompt: Lies agents/challenge-{dimension}.md und prüfe diesen Plan:
     {PLAN_INHALT}
   subagent_type: general-purpose
-  model: sonnet
+  model: haiku
 )
 ```
 
