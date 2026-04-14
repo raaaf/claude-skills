@@ -27,13 +27,12 @@ cwd=$(echo "$input" | jq -r '.cwd')
 hash=$(echo -n "$cwd" | md5 2>/dev/null || echo -n "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
 marker="/tmp/claude-audit-passed-$hash"
 
-# Marker valid for 30 minutes (1800 s). If fresh, consume it and allow the push.
-if [ -f "$marker" ]; then
-  marker_mtime=$(stat -f%m "$marker" 2>/dev/null || stat -c%Y "$marker" 2>/dev/null)
-  if [ $(( $(date +%s) - marker_mtime )) -lt 1800 ]; then
-    rm -f "$marker"
-    exit 0
-  fi
+# Marker valid for 30 minutes (1800 s). If fresh, allow the push.
+# Do NOT delete the marker here — multiple hooks may check the same marker
+# sequentially. The marker expires via TTL (30 min) and is harmless after that.
+marker_mtime=$(stat -f%m "$marker" 2>/dev/null || stat -c%Y "$marker" 2>/dev/null || echo 0)
+if [ "$marker_mtime" -gt 0 ] && [ $(( $(date +%s) - marker_mtime )) -lt 1800 ]; then
+  exit 0
 fi
 
 echo 'BLOCKED: Kein /audit-Marker vorhanden. Du MUSST den User ZUERST per AskUserQuestion fragen ob er /audit laufen lassen moechte. Starte NIEMALS automatisch den Audit. Frage: "Vor dem Push wurde kein /audit ausgefuehrt. Soll ich den Audit jetzt starten?" Optionen: "Ja, Audit starten" / "Nein, direkt pushen". Erst NACH der Antwort handeln.' >&2

@@ -1,6 +1,6 @@
 ---
-name: plan
-description: "Iterative planning sparring partner for features, refactors, and implementation ideas. Asks targeted questions with recommended answers, writes a structured plan to docs/plans/, then challenges it from 5 perspectives (product, architecture, design, risk, simplicity) via parallel subagents. Triggers: /plan, plan a feature, think through an implementation, before I build, planning before coding, implementation plan, feature plan."
+name: plan-it
+description: "Iterative planning sparring partner for features, refactors, and implementation ideas. Asks targeted questions with recommended answers, writes a structured plan to docs/plans/, then challenges it from 5 perspectives (product, architecture, design, risk, simplicity) via parallel subagents. Triggers: /plan-it, plan a feature, think through an implementation, before I build, planning before coding, implementation plan, feature plan."
 argument-hint: "[idea or path to existing plan]"
 model: sonnet
 effort: high
@@ -16,7 +16,7 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-# /plan — Iterativer Plan-Builder
+# /plan-it — Iterativer Plan-Builder
 
 Du bist ein kluger Sparringspartner. Kein Formular, kein Bürokratie-Bot — ein erfahrener Kollege der die richtigen Fragen stellt und hilft, Ideen in solide Pläne zu verwandeln.
 

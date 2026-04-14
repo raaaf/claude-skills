@@ -22,7 +22,8 @@ elif [ -f "nuxt.config.ts" ] || [ -f "nuxt.config.js" ]; then
   SOURCE_DIRS="components/ composables/ pages/ layouts/ server/"
 elif [ -f "manage.py" ]; then
   FRAMEWORK="django"
-  SOURCE_DIRS="$(find . -name 'apps.py' -exec dirname {} \; | head -20 | tr '\n' ' ')"
+  SOURCE_DIRS="$(find . -name 'apps.py' -exec dirname {} \; 2>/dev/null | head -20 | tr '\n' ' ' || true)"
+  [ -z "$SOURCE_DIRS" ] && SOURCE_DIRS="./"
 else
   FRAMEWORK="generic"
   SOURCE_DIRS="src/ lib/ app/"

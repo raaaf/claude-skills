@@ -1,5 +1,6 @@
 # Learning Agent
 
+- **subagent_type:** `general-purpose`
 - **model:** `haiku`
 - **maxTurns:** `10`
 
@@ -133,7 +134,7 @@ VORSCHLAEGE:
 2. [agent-N.md] Konkrete Aenderung: {Beschreibung}
 ```
 
-Der Haupt-Audit-Agent zeigt diese Vorschlaege dann dem User per AskUserQuestion.
+Vorschlaege werden in `learning-log.md` geschrieben — der User kann sie dort einsehen.
 
 ## Regeln
 

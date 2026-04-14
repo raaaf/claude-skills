@@ -10,7 +10,8 @@
 set -euo pipefail
 
 # shellcheck source=lib-git-base.sh
-source "$(dirname "$0")/lib-git-base.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib-git-base.sh"
 
 DEFAULT_BRANCH=$(resolve_default_branch)
 BASE_REF=$(resolve_base_ref "$DEFAULT_BRANCH")

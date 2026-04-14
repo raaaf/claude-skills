@@ -473,7 +473,7 @@ git -C /pfad/zum/repo push
 
 Danach: `Audit passed.` ausgeben, weiter mit Abschnitt 5 (Learning) und 6 (PR).
 
-**Marker-Details:** Gilt nur fuer den naechsten Push, wird nach Verwendung geloescht, < 30 Min gueltig. Hash kommt aus `.cwd` des Tool-JSON (Session-Startverzeichnis, unabhängig von `cd`). Für Multi-Repo-Pushes: `git -C /pfad push` statt `cd /pfad && git push`. Nie `cd` im selben Bash-Aufruf wie `git push`.
+**Marker-Details:** Gueltig fuer 30 Minuten (TTL), wird NICHT nach Verwendung geloescht (mehrere Hooks pruefen denselben Marker sequenziell). Hash kommt aus `.cwd` des Tool-JSON (Session-Startverzeichnis, unabhängig von `cd`). Für Multi-Repo-Pushes: `git -C /pfad push` statt `cd /pfad && git push`. Nie `cd` im selben Bash-Aufruf wie `git push`.
 
 ---
 

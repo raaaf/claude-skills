@@ -24,12 +24,17 @@
 set -euo pipefail
 
 # shellcheck disable=SC1091
-source "$(dirname "$0")/lib-git-base.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib-git-base.sh"
 DEFAULT_BRANCH=$(resolve_default_branch)
 BASE_REF=$(resolve_base_ref "$DEFAULT_BRANCH")
 
 echo "DEFAULT_BRANCH=$DEFAULT_BRANCH"
 echo "BASE_REF=$BASE_REF"
+
+if [ -z "$BASE_REF" ]; then
+  echo "WARNING: Could not resolve BASE_REF — diff will be empty" >&2
+fi
 
 # --- 3. Collect changed files (deduped) -----------------------------------
 FILES=$(
@@ -42,18 +47,20 @@ FILES=$(
 )
 
 echo "---FILES---"
-printf '%s\n' "$FILES"
+[ -n "$FILES" ] && printf '%s\n' "$FILES"
 
 # --- 4. Classify: frontend + translation ----------------------------------
-FRONTEND=$(printf '%s\n' "$FILES" | grep -E '\.(blade\.php|html|vue|tsx?|jsx?|css|scss|svelte|astro)$' || true)
+FRONTEND=""
+[ -n "$FILES" ] && FRONTEND=$(printf '%s\n' "$FILES" | grep -E '\.(blade\.php|html|vue|tsx?|jsx?|css|scss|svelte|astro)$' || true)
 echo "---FRONTEND---"
-printf '%s\n' "$FRONTEND"
+[ -n "$FRONTEND" ] && printf '%s\n' "$FRONTEND"
 
-TRANSLATIONS=$(printf '%s\n' "$FILES" \
+TRANSLATIONS=""
+[ -n "$FILES" ] && TRANSLATIONS=$(printf '%s\n' "$FILES" \
   | grep -E '(^|/)(lang|locales?|translations?|messages|i18n)/' \
   | grep -E '\.(php|json|ya?ml|pot?|ts|js)$' || true)
 echo "---TRANSLATIONS---"
-printf '%s\n' "$TRANSLATIONS"
+[ -n "$TRANSLATIONS" ] && printf '%s\n' "$TRANSLATIONS"
 
 # --- 5. Unified diff (deduped) --------------------------------------------
 # Single committed-unpushed diff + single working-tree diff (covers both

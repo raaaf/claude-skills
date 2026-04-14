@@ -21,25 +21,32 @@ allowed-tools:
 
 **SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Schritt 1 beginnen.**
 
-Anti-Patterns (rote Flaggen) siehe `~/.claude/skills/audit/references/anti-patterns.md` — Full-Audit fixt zusätzlich ALLE Minor-Findings.
+Anti-Patterns (rote Flaggen) siehe `{AUDIT_REFS}/anti-patterns.md` (Pfad aus Schritt 0) — Full-Audit fixt zusätzlich ALLE Minor-Findings.
 
 ---
 
 ## 0. Pre-Flight: Audit-Pfade + Agent-Verifikation
 
 ```bash
-if [ -d "$HOME/.claude/skills/audit/agents" ]; then
-  AUDIT_AGENTS="$HOME/.claude/skills/audit/agents"
-  AUDIT_BIN="$HOME/.claude/skills/audit/bin"
-  AUDIT_REFS="$HOME/.claude/skills/audit/references"
-elif [ -d "$HOME/.claude/skills/claude-skills/audit/agents" ]; then
-  AUDIT_AGENTS="$HOME/.claude/skills/claude-skills/audit/agents"
-  AUDIT_BIN="$HOME/.claude/skills/claude-skills/audit/bin"
-  AUDIT_REFS="$HOME/.claude/skills/claude-skills/audit/references"
-else
+# Resolve audit skill root — try multiple known locations.
+# CLAUDE_PROJECT_DIR is set by Claude Code when running a skill from its directory.
+AUDIT_ROOT=""
+for candidate in \
+  "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit}" \
+  "$(dirname "${CLAUDE_PROJECT_DIR:-/nonexistent}")/audit" \
+  "$HOME/.claude/skills/audit" \
+  "$HOME/.claude/skills/claude-skills/audit"; do
+  [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
+done
+
+if [ -z "$AUDIT_ROOT" ]; then
   echo "ERROR: audit skill not found. Install audit alongside full-audit."
   exit 1
 fi
+
+AUDIT_AGENTS="$AUDIT_ROOT/agents"
+AUDIT_BIN="$AUDIT_ROOT/bin"
+AUDIT_REFS="$AUDIT_ROOT/references"
 echo "AUDIT_AGENTS=$AUDIT_AGENTS"
 
 # Fail-fast: alle Subagent-Definitionen vorhanden?
@@ -60,13 +67,21 @@ cd "$PROJECT_ROOT"
 # Framework-Erkennung (shared mit /audit) — Output als eval einlesen
 eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 
-# PROJECT_CONTEXT aus CLAUDE.md laden
+# PROJECT_CONTEXT aus CLAUDE.md laden (awk statt sed — portabler)
 PROJECT_CLAUDE_MD="$PROJECT_ROOT/CLAUDE.md"
 if [ -f "$PROJECT_CLAUDE_MD" ]; then
-  PROJECT_CONTEXT=$(sed -n '/^## Audit Context$/,/^## [^A]/p' "$PROJECT_CLAUDE_MD" | head -n -1)
+  PROJECT_CONTEXT=$(awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f' "$PROJECT_CLAUDE_MD")
   [ -z "$PROJECT_CONTEXT" ] && PROJECT_CONTEXT="Kein projektspezifischer Kontext."
 else
   PROJECT_CONTEXT="Kein projektspezifischer Kontext."
+fi
+
+# SUPPRESSIONS laden (shared pattern mit /audit)
+SUPPRESSIONS_FILE="$PROJECT_ROOT/.claude/audits/suppressions.json"
+if [ -f "$SUPPRESSIONS_FILE" ]; then
+  SUPPRESSIONS=$(jq -r '[.suppressions[].pattern] | join(", ")' "$SUPPRESSIONS_FILE" 2>/dev/null || echo "Keine Suppressions")
+else
+  SUPPRESSIONS="Keine Suppressions"
 fi
 
 # Alle auditrelevanten Dateien — Build-Output, Vendor und Cache ausschliessen
@@ -77,12 +92,17 @@ TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
 # shellcheck disable=SC2086
 find $SOURCE_DIRS \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
+
+# Translation-Dateien erkennen
+# shellcheck disable=SC2086
+find $SOURCE_DIRS \( -path "*/lang/*" -o -path "*/locales/*" -o -path "*/locale/*" -o -path "*/translations/*" -o -path "*/messages/*" -o -path "*/i18n/*" \) \( -name "*.php" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.po" -o -name "*.pot" -o -name "*.ts" -o -name "*.js" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-translations.txt
 ```
 
 Variablen:
 - **ALLE_DATEIEN:** `/tmp/full-audit-files.txt`
 - **VISUELL_RELEVANTE_DATEIEN:** `/tmp/full-audit-frontend.txt`
-- **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**
+- **TRANSLATION_DATEIEN:** `/tmp/full-audit-translations.txt`
+- **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**
 
 **Context-Building (einmalig):** Lies `CLAUDE.md`, Package-Manifest, Top-2-Ebenen der SOURCE_DIRS. Erstelle kompakte **ARCHITEKTUR-NOTIZ** (max 20 Zeilen): wiederverwendbare Module/Traits/Mixins, Services/Utils, Framework-Patterns.
 
@@ -106,6 +126,7 @@ Variablen:
 ### Batch-Erstellung (nur BATCHED)
 
 ```bash
+# shellcheck disable=SC2086
 for dir in $(find $SOURCE_DIRS -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
   count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" \) 2>/dev/null | wc -l)
   [ "$count" -gt 0 ] && echo "$count $dir"
@@ -169,7 +190,7 @@ TodoWrite: `Runde {RUNDE} — Subagents dispatchen` (in_progress), `Runde {RUNDE
 
 **PFLICHT: In JEDER Runde werden ALLE zulässigen Subagents dispatcht.** Fixes können Issues in beliebigen Dimensionen einführen. Einzige Ausnahme: Frontend-Subagents (5-10) bei Batches ohne Frontend-Dateien.
 
-Dispatche alle in **einem Message-Block**. Übergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + **nur die Batch-Dateien**.
+Dispatche alle in **einem Message-Block**. Übergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **nur die Batch-Dateien**.
 
 Agent-Definitionen: `{AUDIT_AGENTS}/*.md` — jede Datei definiert `subagent_type` und `model`.
 
@@ -250,6 +271,8 @@ Confidence-Gate:
 - Jeden Fix zu BEREITS_GEFIXT. GESAMT_* inkrementieren.
 - Ergebnis: `FIXES_APPLIED`.
 
+**Hinweis:** Full-Audit loopt intern (while-Schleife), NICHT über den `audit-loop.sh` Stop-Hook. Der Stop-Hook ist nur für `/audit` relevant. Deshalb wird hier kein `AUDIT_STATUS:` ausgegeben.
+
 **Kein "Offener Punkt" ohne explizite User-Zustimmung.** Unklarer Fix → kurz nachfragen.
 
 ### Nach jeder Runde
@@ -293,7 +316,7 @@ Siehe `{AUDIT_REFS}/linters-and-tests.md` (Test-Runner-Tabelle). Alle erkannten 
 
 ### 3d. Manueller Testplan erstellen
 
-Wenn `FRONTEND_DATEIEN` nicht leer: Erstelle einen manuellen Testplan mit den wichtigsten Seiten/Komponenten, die visuell geprueft werden sollten. Gleiches Format wie in `/audit` — konkrete Schritte, URLs/Routes, max. 15 Schritte (mehr als /audit, weil Full-Audit die gesamte Codebase umfasst).
+Wenn `VISUELL_RELEVANTE_DATEIEN` nicht leer: Erstelle einen manuellen Testplan mit den wichtigsten Seiten/Komponenten, die visuell geprueft werden sollten. Gleiches Format wie in `/audit` — konkrete Schritte, URLs/Routes, max. 15 Schritte (mehr als /audit, weil Full-Audit die gesamte Codebase umfasst).
 
 Keine visuellen Dateien → weiter mit Abschnitt 4.
 
@@ -374,6 +397,16 @@ Läuft im Hintergrund. Vorschläge werden ausschließlich in die `learning-log.m
 ---
 
 ## Abschluss
+
+**Push-Marker schreiben (PFLICHT):**
+
+```bash
+# Marker schreiben — KEIN git push im selben Bash-Aufruf!
+hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
+touch "/tmp/claude-audit-passed-$hash"
+```
+
+**Marker-Details:** Gültig für 30 Minuten (TTL), wird NICHT nach Verwendung gelöscht (mehrere Hooks prüfen denselben Marker sequenziell).
 
 ```
 Full Audit abgeschlossen.

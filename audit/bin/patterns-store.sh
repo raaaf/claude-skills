@@ -23,6 +23,8 @@ command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 
 CMD="${1:-list}"
 
+trap 'rm -f "$STORE.new"' EXIT
+
 case "$CMD" in
   add)
     INPUT=$(cat)
@@ -50,5 +52,5 @@ esac
 
 # Ensure .gitignore entry exists (only on add, not every call)
 if [ "$CMD" = "add" ]; then
-  grep -q '.claude/audits/patterns.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || echo '.claude/audits/patterns.json' >> "$PROJECT_ROOT/.gitignore"
+  grep -qF '.claude/audits/patterns.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || printf '\n.claude/audits/patterns.json\n' >> "$PROJECT_ROOT/.gitignore"
 fi

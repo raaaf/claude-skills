@@ -38,7 +38,9 @@ NOW=$(date +%s)
 [ -f "$CACHE_FILE" ] || echo '{"version":1,"entries":{}}' > "$CACHE_FILE"
 
 FILES=$(jq -r '.files[]' <<<"$INPUT")
-TMP=$(mktemp)
+TMP=$(mktemp "${TMPDIR:-/tmp}/cache-write.XXXXXX")
+trap 'rm -f "$TMP" "${TMP}.new"' EXIT
+
 cp "$CACHE_FILE" "$TMP"
 
 while IFS= read -r file; do
@@ -48,14 +50,13 @@ while IFS= read -r file; do
   file_findings=$(jq --arg f "$file" '[.findings[] | select(.file == $f)]' <<<"$INPUT")
   jq --arg f "$file" --arg sha "$sha" --arg head "$HEAD" --argjson ts "$NOW" --argjson fnd "$file_findings" \
     '.entries[$f] = {sha256: $sha, head: $head, timestamp: $ts, findings: $fnd}' \
-    "$TMP" > "$TMP.new" && mv "$TMP.new" "$TMP"
+    "$TMP" > "${TMP}.new" && mv "${TMP}.new" "$TMP"
 done <<<"$FILES"
 
 # Prune entries older than 30 days
 CUTOFF=$((NOW - 2592000))
 jq --argjson cutoff "$CUTOFF" '.entries |= with_entries(select(.value.timestamp >= $cutoff))' "$TMP" > "$CACHE_FILE"
-rm -f "$TMP"
 
-grep -q '.claude/audits/cache.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || echo '.claude/audits/cache.json' >> "$PROJECT_ROOT/.gitignore"
+grep -qF '.claude/audits/cache.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || printf '\n.claude/audits/cache.json\n' >> "$PROJECT_ROOT/.gitignore"
 
 echo "CACHE_WRITTEN=$CACHE_FILE"
