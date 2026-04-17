@@ -7,7 +7,7 @@ Moin,
 
 danke für die Anfrage. Kurze ehrliche Antwort: Das passt gerade nicht. Nicht weil das Projekt uninteressant wäre, sondern weil ich bis Ende Juli komplett ausgebucht bin.
 
-Wenn's zeitlich flexibel ist, meld dich im August nochmal. Ansonsten kann ich dir [Name] empfehlen — arbeitet ähnlich wie ich, faire Preise.
+Wenn's zeitlich flexibel ist, meld dich im August nochmal. Ansonsten kann ich dir [Name] empfehlen, der arbeitet ähnlich wie ich und zu fairen Preisen.
 
 Cheers,
 Rafael
@@ -18,7 +18,7 @@ Rafael
 ```
 Ich hab letzte Woche ein Projekt abgelehnt. 4.000 € Budget, spannende Branche.
 
-Warum? Der Kunde wollte "erstmal schnell was hinstellen" und später optimieren. Das klingt pragmatisch. Ist es nicht. Es bedeutet: Zweimal bezahlen. Einmal für Murks, einmal für den Umbau.
+Warum? Der Kunde wollte "erstmal schnell was hinstellen" und später optimieren. Das klingt pragmatisch, ist es aber nicht. Am Ende bezahlst du zweimal: einmal für den Murks, einmal für den Umbau.
 
 Manchmal ist Nein das Beste, was ich tun kann.
 ```
@@ -28,9 +28,9 @@ Manchmal ist Nein das Beste, was ich tun kann.
 ```
 Du brauchst eine Website. Keine Raketenwissenschaft, aber auch kein Wochenendprojekt.
 
-Ich baue mit WordPress. Nicht weil's hip ist — ist es nicht — sondern weil du danach selbst Texte ändern kannst. Ohne mich anrufen zu müssen. Das spart dir auf Dauer Geld und Nerven.
+Ich baue mit WordPress. Nicht weil's hip ist (ist es nicht), sondern weil du danach selbst Texte ändern kannst, ohne mich anrufen zu müssen. Das spart dir auf Dauer Geld und Nerven.
 
-Was du bekommst: Eine Seite, die funktioniert. Schnell lädt. Auf dem Handy gut aussieht. Und die du verstehst.
+Was du bekommst: eine Seite, die funktioniert, schnell lädt, auf dem Handy gut aussieht, und die du verstehst.
 ```
 
 ## Blog-Post: Einstieg
@@ -59,7 +59,7 @@ Rafael
 ```
 Moin,
 
-kurze Nachfrage zum Angebot von letzter Woche. Nicht als Drängeln gemeint — ich weiß, dass sowas Zeit braucht.
+kurze Nachfrage zum Angebot von letzter Woche. Nicht als Drängeln gemeint, ich weiß, dass sowas Zeit braucht.
 
 Falls noch Fragen offen sind oder du nochmal telefonieren willst, sag Bescheid. Falls das Projekt erstmal auf Eis liegt, auch kein Problem. Dann weiß ich Bescheid und hake nicht weiter nach.
 
@@ -74,7 +74,7 @@ Moin [Name],
 
 das Projekt ist jetzt seit ein paar Wochen live, und ich hoffe, es läuft gut.
 
-Kurze Frage: Wärst du bereit, ein paar Sätze zu schreiben, wie die Zusammenarbeit war? Nichts Aufwendiges — zwei, drei Sätze reichen völlig. Das hilft mir enorm bei neuen Anfragen.
+Kurze Frage: Wärst du bereit, ein paar Sätze zu schreiben, wie die Zusammenarbeit war? Nichts Aufwendiges, zwei, drei Sätze reichen völlig. Das hilft mir enorm bei neuen Anfragen.
 
 Falls nicht, kein Stress. Ich frag nur, weil's passt.
 
