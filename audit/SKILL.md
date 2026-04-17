@@ -55,10 +55,10 @@ bash "$AUDIT_BIN/diff-size-gate.sh"
 | `DIFF_SIZE_RESULT` | Aktion |
 |---|---|
 | `OK` | Weiter. `MODEL_OVERRIDE=null` (Subagents nutzen ihre Default-Modelle). |
-| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Auto-Escalation auf Opus 4.7. Ausgabe: „Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — eskaliere Dimension-Subagents auf Opus 4.7 für präziseren Review mit 1M Kontext." Setze `MODEL_OVERRIDE=claude-opus-4-7`. Weiter mit Audit. |
+| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Gezielte Escalation: Nur die zwei reasoning-schweren Dimensionen (Architektur, Security) laufen auf Opus 4.7. Ausgabe: „Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — Architektur + Security laufen auf Opus 4.7 für tieferes Reasoning." Setze `HEAVY_REASONING_OVERRIDE=claude-opus-4-7`. Weiter mit Audit. |
 | `HUGE` (>5000 Zeilen ODER >50 Dateien) | Hard-Block: Abbrechen mit klarer Meldung „Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
 
-**Hinweis:** `MODEL_OVERRIDE` gilt nur für die zehn Dimension-Subagents (Architektur, Security, …). Triage-Agent (Haiku) und Fix-Agents (Haiku) bleiben unverändert — die machen einfache Klassifizierung bzw. lokale Edits und profitieren nicht von Opus.
+**Warum nur zwei Dimensionen:** Architektur (Code-Reasoning über mehrere Module) und Security (subtile Angriffsvektoren) profitieren messbar von Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation sind überwiegend regel- oder musterbasiert — Sonnet reicht. Triage- und Fix-Agents bleiben auf Haiku.
 
 `collect-scope.sh` liefert `DEFAULT_BRANCH`, `BASE_REF`, klassifizierte Dateilisten (`---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`) und den deduplizierten Unified-Diff (`---DIFF---`). `detect-framework.sh` liefert `FRAMEWORK` und `SOURCE_DIRS`. `pre-checks.sh` liefert drei Sektionen: `SECRET_SCAN_RESULT`, `LOCKFILE_DRIFT_RESULT`, `BINARY_ARTIFACTS_RESULT`.
 
@@ -198,7 +198,7 @@ Dispatche in **einem einzigen Message-Block** via Agent-Tool. Uebergib:
 
 Dadurch parst jeder Agent nicht mehr den ganzen Diff von 0 — er fokussiert direkt auf seine Hotspots.
 
-**Model-Override bei Escalation:** Wenn `MODEL_OVERRIDE` in Phase 1 gesetzt wurde (LARGE-Diff), übergib beim Agent-Dispatch explizit `model: claude-opus-4-7` und ignoriere das `model:`-Feld aus `agents/*.md`. Sonst nutze das Default-Modell aus der jeweiligen Agent-Datei.
+**Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE` in Phase 1 gesetzt wurde (LARGE-Diff), übergib beim Dispatch von **Agent 1 (Architektur) und Agent 2 (Security)** explizit `model: claude-opus-4-7` und ignoriere das `model:`-Feld aus deren `agents/*.md`. Alle anderen Agents (3-10) nutzen unverändert ihr Default-Modell aus `agents/*.md`.
 
 Agent-Definitionen liegen in `agents/*.md`. Jede Datei enthält `subagent_type`, `model` und Fokus.
 
