@@ -54,9 +54,11 @@ bash "$AUDIT_BIN/diff-size-gate.sh"
 
 | `DIFF_SIZE_RESULT` | Aktion |
 |---|---|
-| `OK` | Weiter |
-| `LARGE` (>2000 Zeilen ODER >20 Dateien) | User via `AskUserQuestion` warnen: „Diff ist gross — Audit wird lang und Findings verlieren an Signal. Weitermachen oder Commit splitten?" Optionen: Weitermachen / Abbrechen zum Splitten |
+| `OK` | Weiter. `MODEL_OVERRIDE=null` (Subagents nutzen ihre Default-Modelle). |
+| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Auto-Escalation auf Opus 4.7. Ausgabe: „Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — eskaliere Dimension-Subagents auf Opus 4.7 für präziseren Review mit 1M Kontext." Setze `MODEL_OVERRIDE=claude-opus-4-7`. Weiter mit Audit. |
 | `HUGE` (>5000 Zeilen ODER >50 Dateien) | Hard-Block: Abbrechen mit klarer Meldung „Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
+
+**Hinweis:** `MODEL_OVERRIDE` gilt nur für die zehn Dimension-Subagents (Architektur, Security, …). Triage-Agent (Haiku) und Fix-Agents (Haiku) bleiben unverändert — die machen einfache Klassifizierung bzw. lokale Edits und profitieren nicht von Opus.
 
 `collect-scope.sh` liefert `DEFAULT_BRANCH`, `BASE_REF`, klassifizierte Dateilisten (`---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`) und den deduplizierten Unified-Diff (`---DIFF---`). `detect-framework.sh` liefert `FRAMEWORK` und `SOURCE_DIRS`. `pre-checks.sh` liefert drei Sektionen: `SECRET_SCAN_RESULT`, `LOCKFILE_DRIFT_RESULT`, `BINARY_ARTIFACTS_RESULT`.
 
@@ -195,6 +197,8 @@ Dispatche in **einem einzigen Message-Block** via Agent-Tool. Uebergib:
 - `UNIFIED_DIFF` (als Fallback, wenn der Agent breiteren Kontext braucht)
 
 Dadurch parst jeder Agent nicht mehr den ganzen Diff von 0 — er fokussiert direkt auf seine Hotspots.
+
+**Model-Override bei Escalation:** Wenn `MODEL_OVERRIDE` in Phase 1 gesetzt wurde (LARGE-Diff), übergib beim Agent-Dispatch explizit `model: claude-opus-4-7` und ignoriere das `model:`-Feld aus `agents/*.md`. Sonst nutze das Default-Modell aus der jeweiligen Agent-Datei.
 
 Agent-Definitionen liegen in `agents/*.md`. Jede Datei enthält `subagent_type`, `model` und Fokus.
 
