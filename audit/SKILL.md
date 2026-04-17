@@ -2,7 +2,7 @@
 name: audit
 description: "Pre-push code audit. Triage-Agent routes diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), runs secret/lockfile pre-checks, auto-fixes findings via parallel fix-agents, loops until clean, generates a manual test plan for visual changes, then allows git push. Triggers: /audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing."
 argument-hint: "[optional: scope hint]"
-model: sonnet
+model: claude-sonnet-4-6
 effort: high
 context: fork
 allowed-tools:

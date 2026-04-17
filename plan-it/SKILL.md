@@ -2,8 +2,8 @@
 name: plan-it
 description: "Iterative planning sparring partner for features, refactors, and implementation ideas. Asks targeted questions with recommended answers, writes a structured plan to docs/plans/, then challenges it from 5 perspectives (product, architecture, design, risk, simplicity) via parallel subagents. Triggers: /plan-it, plan a feature, think through an implementation, before I build, planning before coding, implementation plan, feature plan."
 argument-hint: "[idea or path to existing plan]"
-model: sonnet
-effort: high
+model: claude-opus-4-7
+effort: xhigh
 allowed-tools:
   - Agent
   - Bash
