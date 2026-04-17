@@ -2,7 +2,7 @@
 name: full-audit
 description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), splits large codebases into batches, runs up to 10 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), auto-fixes findings including Minor, runs a cross-reference pass across batches, and generates a manual test plan for visual verification. Triggers: /full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review. For pre-push audits only, use /audit instead."
 argument-hint: "[optional: directory scope]"
-model: claude-sonnet-4-6
+model: claude-opus-4-7
 effort: high
 context: fork
 allowed-tools:
