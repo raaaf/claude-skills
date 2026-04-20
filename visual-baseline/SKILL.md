@@ -4,7 +4,6 @@ description: "Visual baseline capture and design review. Takes screenshots of al
 argument-hint: "[optional: update | approve | full]"
 model: claude-sonnet-4-6
 effort: medium
-context: fork
 allowed-tools:
   - Agent
   - Bash

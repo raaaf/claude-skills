@@ -4,7 +4,6 @@ description: "Comprehensive one-time audit of an entire codebase (not just recen
 argument-hint: "[optional: directory scope]"
 model: claude-opus-4-7
 effort: xhigh
-context: fork
 allowed-tools:
   - Agent
   - Bash

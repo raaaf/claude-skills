@@ -4,7 +4,6 @@ description: "Pre-push code audit. Triage-Agent routes diff to relevant subagent
 argument-hint: "[optional: scope hint]"
 model: claude-opus-4-7
 effort: medium
-context: fork
 allowed-tools:
   - Agent
   - Bash
