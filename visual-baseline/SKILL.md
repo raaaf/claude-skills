@@ -1,6 +1,7 @@
 ---
 name: visual-baseline
-description: "Visual baseline capture and design review. Takes screenshots of all project pages (desktop + mobile, light + dark mode), compares against baseline via pixelmatch, and runs multimodal design review (spacing, typography, colors, components, layout). Triggers: /visual-baseline, visual audit, screenshot baseline, design review."
+description: "Visual baseline capture and design review. Takes screenshots of all project pages (desktop + mobile, light + dark mode), compares against baseline via pixelmatch, and runs multimodal design review (spacing, typography, colors, components, layout)."
+when_to_use: "/visual-baseline, visual audit, screenshot baseline, design review"
 argument-hint: "[optional: update | approve | full]"
 model: claude-sonnet-4-6
 effort: medium

@@ -1,11 +1,10 @@
 ---
 name: rafael-writing-style
 description: >
-  Schreibstil für Rafael Alex, Designer und Webentwickler aus Fürth. 
-  Verwenden bei Blog-Posts, Website-Texten, E-Mails, LinkedIn-Posts und 
-  allen anderen Texten, die im persönlichen Rafael-Stil geschrieben werden sollen. 
-  Trigger-Phrasen: im Rafael-Stil, wie ich schreibe, mein Schreibstil, 
-  authentisch formulieren, Blog-Post schreiben, Website-Text schreiben.
+  Schreibstil für Rafael Alex, Designer und Webentwickler aus Fürth.
+  Verwenden bei Blog-Posts, Website-Texten, E-Mails, LinkedIn-Posts und
+  allen anderen Texten, die im persönlichen Rafael-Stil geschrieben werden sollen.
+when_to_use: "im Rafael-Stil, wie ich schreibe, mein Schreibstil, authentisch formulieren, Blog-Post schreiben, Website-Text schreiben"
 model: claude-sonnet-4-6
 ---
 

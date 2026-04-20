@@ -1,6 +1,7 @@
 ---
 name: dsgvo
-description: "GDPR/DSGVO compliance check for German/EU websites. Detects external services (Google Fonts, Analytics, Tag Manager, Maps, YouTube, Facebook Pixel, Hotjar, CDNs) via curl and code scans, dispatches 5 parallel subagents (Impressum, Datenschutzerklärung, Cookies, External Services, Technical), and produces prioritized fixes plus ready-to-use legal texts. Triggers: /dsgvo, DSGVO check, GDPR audit, privacy compliance, Datenschutzerklärung, Impressum, cookie banner, LG München Google Fonts, § 5 DDG."
+description: "GDPR/DSGVO compliance check for German/EU websites. Detects external services (Google Fonts, Analytics, Tag Manager, Maps, YouTube, Facebook Pixel, Hotjar, CDNs) via curl and code scans, dispatches 5 parallel subagents (Impressum, Datenschutzerklärung, Cookies, External Services, Technical), and produces prioritized fixes plus ready-to-use legal texts."
+when_to_use: "/dsgvo, DSGVO check, GDPR audit, privacy compliance, Datenschutzerklärung, Impressum, cookie banner, LG München Google Fonts, § 5 DDG"
 argument-hint: "[url or project path]"
 model: claude-sonnet-4-6
 effort: medium

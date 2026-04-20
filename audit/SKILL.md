@@ -1,6 +1,7 @@
 ---
 name: audit
-description: "Pre-push code audit. Triage-Agent routes diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), runs secret/lockfile pre-checks, auto-fixes findings via parallel fix-agents, loops until clean, generates a manual test plan for visual changes, then allows git push. Triggers: /audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing."
+description: "Pre-push code audit. Triage-Agent routes diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), runs secret/lockfile pre-checks, auto-fixes findings via parallel fix-agents, loops until clean, generates a manual test plan for visual changes, then allows git push."
+when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: scope hint]"
 model: claude-opus-4-7
 effort: medium
@@ -81,27 +82,10 @@ Erstelle aus den Script-Outputs:
 - **SUPPRESSIONS:** `$(git rev-parse --show-toplevel)/.claude/audits/suppressions.json` laden falls vorhanden, `pattern`-Felder extrahieren. Sonst `"Keine Suppressions"`.
 - **PROJECT_CONTEXT:** `## Audit Context` aus `CLAUDE.md` (falls vorhanden), via `awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f'`. Sonst `"Kein projektspezifischer Kontext."`
 
-**Audit-Context-Check (PFLICHT bei fehlendem Context):**
-
-Wenn `PROJECT_CONTEXT` leer ist oder die `CLAUDE.md` keinen `## Audit Context`-Abschnitt hat, **vor dem ersten Subagent-Dispatch** den User via `AskUserQuestion` fragen:
-
-```
-Dieses Projekt hat keinen "## Audit Context"-Abschnitt in der CLAUDE.md.
-
-Mit Project-Context werden Audit-Findings drastisch praeziser:
-- Stack/Framework-spezifische Regeln
-- Bewusst akzeptierte Architektur-Entscheidungen
-- Skalierungsziele, Zielgruppe, Deployment
-- Kritische Schnittstellen (z.B. Mobile-API, Public-Routes)
-
-Soll ich jetzt einen Vorschlag fuer "## Audit Context" entwerfen und in
-CLAUDE.md ergaenzen?
-```
-
-Optionen:
-- **Ja, jetzt anlegen** → Repo-Struktur kurz analysieren (Stack aus `composer.json`/`package.json`, Routes, README), Vorschlag entwerfen, in `CLAUDE.md` einfuegen, dann Audit fortsetzen.
-- **Nein, einmal ueberspringen** → Audit fortsetzen ohne Context.
-- **Nie wieder fragen** → Marker `.claude/audit-no-context.flag` anlegen, Audit fortsetzen. Beim naechsten Audit prueft der Skill diesen Marker und ueberspringt die Frage.
+**Audit-Context-Check (PFLICHT bei fehlendem Context):** Wenn `PROJECT_CONTEXT` leer ist oder die `CLAUDE.md` keinen `## Audit Context`-Abschnitt hat, **vor dem ersten Subagent-Dispatch** User via `AskUserQuestion` fragen, ob ein Context-Abschnitt (Stack/Framework-Regeln, bewusste Architektur-Entscheidungen, Skalierungsziele, kritische Schnittstellen) entworfen und in `CLAUDE.md` ergänzt werden soll. Optionen:
+- **Ja, jetzt anlegen** → Repo-Struktur analysieren (`composer.json`/`package.json`, Routes, README), Vorschlag entwerfen, in `CLAUDE.md` einfügen, dann Audit fortsetzen.
+- **Nein, einmal überspringen** → Audit ohne Context fortsetzen.
+- **Nie wieder fragen** → Marker `.claude/audit-no-context.flag` anlegen, Audit fortsetzen. Folge-Audits prüfen den Marker und überspringen die Frage.
 
 Marker-Check vor der Frage:
 ```bash
