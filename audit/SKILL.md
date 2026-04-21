@@ -4,7 +4,7 @@ description: "Pre-push code audit. Triage-Agent routes diff to relevant subagent
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: scope hint]"
 model: claude-opus-4-7
-effort: xhigh
+effort: high
 allowed-tools:
   - Agent
   - Bash
