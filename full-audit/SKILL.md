@@ -267,7 +267,7 @@ Confidence-Gate:
 - `low` → NICHT fixen, als Offener Punkt
 
 - 0 Findings → `SAUBER`
-- Sonst: alle high/medium fixen. Einfach selbst, komplex parallele Fix-Subagents (Problem, Datei:Zeile, Erwartung, Testbefehl).
+- Sonst: alle high/medium fixen. **HARTE REGEL: Der Orchestrator editiert NIEMALS Code-Dateien selbst** — jeder Fix, egal wie trivial (ein Import, ein Single-Line-Change), geht zwingend über einen parallelen Fix-Subagent (Haiku). Orchestrator-Edits auf Opus kosten ~5× so viel wie Haiku-Fix-Agents. Erlaubte Orchestrator-Edits: nur `.claude/audits/*.md` (Log), `CLAUDE.md`-Context-Entwurf, `suppressions.json`, Changelog-Dateien. Für Code: Fix-Subagent mit Problem, Datei:Zeile, Erwartung, Testbefehl.
 - Jeden Fix zu BEREITS_GEFIXT. GESAMT_* inkrementieren.
 - Ergebnis: `FIXES_APPLIED`.
 

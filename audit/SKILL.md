@@ -98,7 +98,7 @@ Marker-Check vor der Frage:
 
 ## 2. Audit-Loop
 
-Führe die Prozedur `AUDIT_RUNDE` aus. Danach entscheide: nächste Runde oder Loop beenden. Maximal **3 Runden** — der Convergence-Check bricht typischerweise früher ab.
+Führe die Prozedur `AUDIT_RUNDE` aus. Danach entscheide: nächste Runde oder Loop beenden. Maximal **2 Runden** — der Convergence-Check bricht typischerweise nach Runde 1 schon ab. Eine harte Grenze bei 2 Runden verhindert Worst-Case-Kostenexplosionen bei zirkulären Findings; unfixable Issues wandern eh als Offene Punkte raus.
 
 Initialisiere vor der ersten Runde:
 
@@ -116,7 +116,7 @@ Am Ende steht IMMER eine Entscheidung: nächste Runde oder Loop beenden.
 
 **Schritt A — Ankündigung und Todos**
 
-Ausgabe: `Audit-Runde {RUNDE}/3`
+Ausgabe: `Audit-Runde {RUNDE}/2`
 
 TodoWrite: Zwei Todos erstellen:
 - `Audit Runde {RUNDE} — Subagents dispatchen` (in_progress)
@@ -221,7 +221,7 @@ Eigene Findings als Important einfügen.
 **Ausgabe:**
 
 ```
-## Audit Runde {RUNDE}/3 — X Dateien, Y Commits seit origin/{branch}
+## Audit Runde {RUNDE}/2 — X Dateien, Y Commits seit origin/{branch}
 
 ### Critical
 - [Security] datei.ts:42 — Beschreibung
@@ -266,24 +266,34 @@ Zähle die **verifizierten** Critical+Important. Speichere `FINDINGS_AKTUELLE_RU
 - **Medium** → fixen, mit Hinweis `(medium confidence)`
 - **Low** → NICHT auto-fixen, als Offener Punkt auflisten
 
-**Fix-Strategie — parallele Fix-Agents:**
+**Fix-Strategie — parallele Fix-Agents (HARTE REGEL):**
+
+**Der Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix, egal wie trivial (ein Import, ein Tippfehler, ein Single-Line-Change), geht zwingend über einen Fix-Agent (Haiku). Edits vom Orchestrator kosten ~5× so viel (Opus vs Haiku Output-Tokens) und sind der häufigste Kostenfresser bei Audits.
+
+**Erlaubte Orchestrator-Edits (Ausnahmen):**
+- `.claude/audits/*.md` (Audit-Log schreiben)
+- `CLAUDE.md` `## Audit Context`-Entwurf (nur bei User-Zustimmung)
+- `suppressions.json` nach User-Zustimmung
+- Changelog-Dateien (Phase 3a)
+
+Für alles andere: **Fix-Agent dispatchen, Punkt.** Wenn der Orchestrator nach einem Finding zum Edit-Tool greifen will — anhalten und einen Fix-Agent schicken.
 
 1. Gruppiere verifizierte high/medium Critical+Important Findings nach Datei.
-2. **Unabhaengige Dateien parallel fixen:** Dispatche pro betroffener Datei einen `fix-agent.md`-Subagent (Haiku) in einem einzigen Message-Block. Jeder Agent bekommt nur sein Finding + Kontext. Das ist billiger und schneller als wenn der Main-Skill alle Fixes sequenziell selbst macht.
+2. **Unabhängige Dateien parallel fixen:** Dispatche pro betroffener Datei einen `fix-agent.md`-Subagent (Haiku) in einem einzigen Message-Block. Jeder Agent bekommt nur sein Finding + Kontext.
 3. Bei mehreren Findings in derselben Datei: die Findings in einem einzigen Fix-Agent-Call bundeln (verhindert Merge-Konflikte).
-4. Fix-Agent-Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt, alles andere wird als Offener Punkt gelistet.
-5. Minor: fixen wenn einfach und high confidence, sonst ueberspringen — blockieren Push nicht.
-6. Nicht fixbar (z. B. architektonische Entscheidung): als Offener Punkt mit Begruendung → `patterns-store.sh dismissed {pattern}` aufrufen. Wenn `should-suggest {pattern}` true: User fragen ob Eintrag in `suppressions.json` soll.
-7. Gefixte Issues zu `BEREITS_GEFIXT` hinzufuegen und via `patterns-store.sh add` ins Learning-Store schreiben.
+4. Fix-Agent-Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zählt als gefixt, alles andere wird als Offener Punkt gelistet.
+5. Minor: fixen wenn einfach und high confidence, sonst überspringen — blockieren Push nicht.
+6. Nicht fixbar (z. B. architektonische Entscheidung): als Offener Punkt mit Begründung → `patterns-store.sh dismissed {pattern}` aufrufen. Wenn `should-suggest {pattern}` true: User fragen ob Eintrag in `suppressions.json` soll.
+7. Gefixte Issues zu `BEREITS_GEFIXT` hinzufügen und via `patterns-store.sh add` ins Learning-Store schreiben.
 
 Todo completed → Ergebnis: `FIXES_APPLIED`.
 
 **PFLICHT — gib am Ende jeder Runde exakt diese Zeile aus:**
 
 ```
-AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/3
-AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/3
-AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/3
+AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/2
+AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/2
+AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/2
 ```
 
 ### Nach jeder Runde: Entscheidung
@@ -327,7 +337,7 @@ Mehrere Audits am selben Tag/Branch werden so nicht überschrieben. Format des L
 - HEAD beim Audit: {git rev-parse HEAD}
 
 ## Ergebnis
-- Runden: N/3
+- Runden: N/2
 - Critical gefunden/gefixt: A/B
 - Important gefunden/gefixt: C/D
 
@@ -377,40 +387,7 @@ Erkennungstabellen und Befehle stehen in `references/linters-and-tests.md`. Reih
 
 ### 3d. Manueller Testplan erstellen
 
-Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATEIEN nicht leer), erstelle einen konkreten Testplan, den der User lokal durchgehen kann.
-
-**Testplan generieren** — basierend auf dem Diff, Framework und geaenderten Dateien:
-
-```markdown
-## Manueller Testplan
-
-**Branch:** {BRANCH}
-**Geaenderte visuelle Dateien:** {Liste}
-
-### Schritte
-
-1. [ ] **{Seitenname}** — {URL oder Route}
-   - Pruefe: {was sich geaendert hat, z.B. "neuer Button-Variant 'danger'"}
-   - Desktop + Mobile testen
-   - {Spezifischer Hinweis, z.B. "Dark Mode pruefen falls aktiv"}
-
-2. [ ] **{Seitenname}** — {URL oder Route}
-   - Pruefe: {konkrete Aenderung}
-   ...
-
-### Worauf besonders achten
-- {Edge Cases aus dem Diff, z.B. "Leerer Zustand wenn keine Items vorhanden"}
-- {Responsive-Verhalten, z.B. "Tabelle bricht unter 768px auf Cards um"}
-- {A11y-relevant, z.B. "Neue Buttons muessen per Tastatur erreichbar sein"}
-```
-
-**Regeln fuer den Testplan:**
-- Nur Schritte fuer tatsaechlich geaenderte Stellen — kein generischer "pruefe alles"-Plan.
-- URLs/Routes aus dem Framework ableiten (Next.js: Dateipfad = URL, Laravel: `routes/web.php`, Nuxt: `pages/` = URL).
-- Max. 10 Schritte — priorisiert nach Sichtbarkeit und Risiko.
-- Rein textuell — keine externen Tools oder Server noetig.
-
-Den Testplan ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
+Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATEIEN nicht leer), Testplan nach `references/testplan.md` generieren: Template, URL-Ableitung pro Framework, Regeln. Max 10 Schritte, nur für tatsächlich geänderte Stellen. Ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
 
 ### 3e. Audit-Log im Chat anzeigen (PFLICHT — nach Testplan)
 
