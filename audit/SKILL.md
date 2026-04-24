@@ -403,9 +403,37 @@ Audit-Log: {LOGFILE}
 
 So hat der User das vollstaendige Ergebnis inkl. Testplan auf einen Blick.
 
-### Offene Punkte (optional)
+### 3f. Offene Punkte + Minor als GitHub-Issues tracken
 
-Enthaelt das Audit-Log `## Offene Punkte`, User via AskUserQuestion fragen: „Alle umsetzen / einzeln entscheiden / spaeter". Bei „alle umsetzen": implementieren, dann weiter mit Abschnitt 4.
+**Ziel:** Keine Finding geht verloren. Alles was nicht im Loop gefixt wurde, landet als Issue — dokumentiert, durchsuchbar, nicht im Audit-Log vergraben.
+
+**Precheck:**
+```bash
+gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — Issue-Erstellung überspringen"
+```
+
+**Scope:** Für jeden Eintrag unter `## Offene Punkte` UND jeden verifizierten Minor-Finding der nicht gefixt wurde (Log aus Schritt E/Fix-Phase):
+
+1. **Dedup:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — wenn schon ein Issue mit diesem `[Dimension] datei:zeile` existiert, **skip** (keine Dublette erzeugen).
+2. **Issue erstellen:**
+   ```bash
+   gh issue create \
+     --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" \
+     --body "{Finding-Beschreibung}
+
+   **Warum nicht im Audit gefixt:** {Begründung: Minor / größerer Refactor / architektonische Entscheidung}
+
+   **Quelle:** \`{LOGFILE}\` (Audit vom {DATUM}, Branch \`{BRANCH}\`, HEAD \`{SHORT_SHA}\`)" \
+     --label "audit-finding"
+   ```
+3. Wenn `--label audit-finding` fehlschlägt (Label existiert noch nicht im Repo): Label via `gh label create audit-finding --color FBCA04` anlegen, dann Issue nochmal.
+4. Issue-URLs sammeln und am Ende ausgeben: `X Issues erstellt: {urls}`.
+
+**Wichtig:** Fehler blockieren den Push NICHT. Bei `gh`-Fehler (offline, auth expired, etc.) einfach kurz melden `WARN: Issue-Erstellung übersprungen, siehe Offene Punkte im Log` und weiter mit Abschnitt 4.
+
+### Offene Punkte — sofort umsetzen? (optional)
+
+Nach Issue-Erstellung User via AskUserQuestion fragen: „Issues erstellt. Jetzt einzelne umsetzen / alle später angehen?". Bei „einzeln umsetzen": User entscheidet welches Issue pro PR.
 
 ---
 

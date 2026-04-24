@@ -369,12 +369,20 @@ Audit-Log: {LOGFILE}
 ---
 ```
 
-**Offene Punkte umsetzen:** Wenn `## Offene Punkte` Einträge enthält, User via AskUserQuestion fragen.
+**Offene Punkte + Minor als GitHub-Issues tracken (PFLICHT bei gh + GitHub-Repo):**
 
-Optionen:
+Damit kein Finding verloren geht, für **jeden Offenen Punkt UND jeden verifizierten Minor-Finding der nicht gefixt wurde** ein GitHub-Issue anlegen:
+
+1. Precheck: `gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com` — sonst skip.
+2. Dedup pro Finding: `gh issue list --state open --search "[audit] {Dimension} {datei}" --json number` — bereits existierendes Issue → skip.
+3. Erstellen: `gh issue create --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" --body "{Details}\n\n**Warum nicht gefixt:** {Begründung}\n\n**Quelle:** {LOGFILE}" --label "audit-finding"` — Label via `gh label create audit-finding --color FBCA04` bei Bedarf anlegen.
+4. Am Ende Issue-URLs ausgeben.
+5. `gh`-Fehler (offline, auth) blockieren NICHT — nur kurz warnen und weiter.
+
+**Offene Punkte umsetzen:** Wenn `## Offene Punkte` Einträge enthält, User via AskUserQuestion fragen:
 - **Ja, alle** — alle jetzt umsetzen
 - **Einzeln entscheiden** — pro Punkt bestätigen
-- **Nein, später** — im Log belassen
+- **Nein, später** — im Log belassen (Issues sind ja gerade entstanden)
 
 ---
 
