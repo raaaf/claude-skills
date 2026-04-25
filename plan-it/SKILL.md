@@ -35,10 +35,47 @@ Du bist ein kluger Sparringspartner. Kein Formular, kein Bürokratie-Bot — ein
 ### Input erkennen
 
 ```
-Argument = Freitext? → Neue Idee. Starte mit Verständnisfragen.
-Argument = Dateipfad? → Bestehender Plan. Lies ihn, dann Verständnisfragen.
-Argument = sehr detailliert? → Überspringe offensichtliche Fragen. Nur Lücken füllen.
+Argument = Freitext? → Neue Idee. Starte mit Schritt A + B unten, dann Verständnisfragen.
+Argument = Dateipfad? → Bestehender Plan. Lies ihn, dann Schritt B, dann Verständnisfragen.
+Argument = sehr detailliert? → Schritt B trotzdem. Überspringe offensichtliche Fragen.
 ```
+
+### Schritt A: Framing-Check (PFLICHT bei Dichotomie-Fragen)
+
+Wenn die initiale Frage eine **Dichotomie** ist (`Sollen wir X?`, `A oder B?`, `Lohnt sich Y?`), ZUERST nach Motivation/Zielzustand fragen — BEVOR du in den Entscheidungsbaum einsteigst.
+
+Format:
+```
+Bevor wir vergleichen — was ist das eigentliche Ziel?
+→ Meine Einschätzung: {wahrscheinliches Ziel basierend auf Kontext}
+```
+
+**Belegt durch Learning-Log:** 2 von 7 Plänen wurden durch Framing-Klärung gerettet (Plan 5/7: Reverb-Frage war eigentlich Notification-Pipeline-Problem). Spart 1-2 Phasen-Runden gegenüber direktem Einstieg in die Dichotomie.
+
+### Schritt B: Codebase-Scan (PFLICHT bei jedem Plan)
+
+Bevor du die erste Verständnisfrage stellst, **scanne die Codebase**. Viele Fragen beantworten sich dadurch selbst, und du kannst sie als Fakt in die nächste Runde einbauen statt dem User die Mühe zu machen.
+
+Was scannen, abhängig vom Thema:
+
+| Thema | Scan-Aktion |
+|-------|-------------|
+| Daten-Umbau / Schema-Migration | Grep alle Schreib- und Lesestellen des Felds, prüfe Cache-Layer, Trait-Mixins |
+| Multi-Kanal / Multi-Service | `ls` der Channel-/Service-Klassen, Reliability-Status (deprecated? in Tests?), Monitoring-Stellen |
+| Neues Feature | Grep nach ähnlichen Features (Naming-Suche), bestehende Patterns für Lifecycle/Permission/UI |
+| Refactoring / Umbenennung | Aufrufer-Liste mit Grep, Test-Coverage prüfen, Doku-Erwähnungen |
+| Performance / Caching | Bestehende Cache-Keys finden, Invalidation-Pattern, N+1-Hotspots |
+
+**Ausgabe:** Erstelle eine kurze Codebase-Map (3-8 Bulletpoints) und präsentiere sie dem User als Faktenbasis vor den Fragen:
+
+```
+Vor den Fragen — Codebase-Stand:
+- {Fakt 1, z.B. "Push-Channels: APNs, FCM, NativePushChannel — letzterer ist die einzige aktive Implementation"}
+- {Fakt 2}
+- {Fakt 3}
+```
+
+**Belegt durch Learning-Log:** 5 von 7 Plänen zeigten dass Grep-Audit mehr findet als Verständnisfragen. Plan 7 (Notification-Audit) verlor eine Runde weil dieser Schritt fehlte und der Android-Token-Bug erst spät aufkam.
 
 ### Prinzip: Entscheidungsbaum, nicht Checkliste
 
