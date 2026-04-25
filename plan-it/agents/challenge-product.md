@@ -22,4 +22,13 @@ Liefere 0-3 konkrete Concerns. Jedes Concern:
 
 Keine generischen Aussagen ("could be improved"). Nur konkrete, actionable Concerns.
 
+**HARTE REGEL fuer Scope-Cut-Concerns** (Vorschlaege "Mach Scope kleiner" / "Phase 1: nur X"):
+
+MUSS einen von drei Hooks haben:
+1. **Kosten-Hook:** Konkreter Aufwand der wegfaellt (z.B. "spart eine Migration", "spart Multi-Tenancy-Setup")
+2. **Risiko-Hook:** Konkretes Risiko (z.B. "vermeidet Edge-Case bei {konkrete Situation}")
+3. **Deadline-Hook:** Zeitersparnis (z.B. "1 Woche schneller live")
+
+OHNE Hook: Concern weglassen. Belegt durch Learning-Log: User lehnt 70%+ der Scope-Cut-Vorschlaege ohne Hook ab.
+
 Kein Concern? Antworte: "Product: Keine Concerns. Der Plan loest das richtige Problem auf die richtige Art."

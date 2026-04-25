@@ -195,7 +195,17 @@ Dateiname: `{YYYY-MM-DD}-{slug}.md`
 3. Einarbeiten → v2
 4. Wiederholen bis User zufrieden ist
 
-Kein festes Rundenlimit. Wenn der User "go" sagt oder der Plan steht: weiter zu Phase 2.5 (Codebase-Kontext sammeln).
+**Runden-Heuristik (Empfehlung, kein Hard-Limit):**
+
+| Komplexität | Runden | Wann |
+|-------------|--------|------|
+| Einfach | **2** | Klare Anforderung, isoliertes Feature, kein Datenmodell-Umbau |
+| Mittel | **3** | Datenmodell-Umbau, Multi-Channel-Feature, komplexe Policy-Frage |
+| Hoch | **4+** | Framing-Klärung notwendig, initialer Pivot (z.B. "Sollen wir X?" → eigentlich Y) |
+
+**Belegt durch Learning-Log (8 Pläne, Ø 2,86 Runden):** Plan 1 (2 Runden, einfach), Plan 7 (4 Runden, Pivot von Reverb zu Notification-Pipeline). Bei Datenmodell-Umbauten lohnt der dritte Durchgang fast immer.
+
+Wenn der User "go" sagt oder der Plan steht: weiter zu Phase 2.5 (Codebase-Kontext sammeln).
 
 ---
 
@@ -280,19 +290,26 @@ Die 5 Dimensionen:
 | Risk | `agents/challenge-risk.md` | Skeptiker — was kann schiefgehen? |
 | Simplicity | `agents/challenge-simplicity.md` | Minimalist — was kann weg? |
 
-### Konsolidierung
+### Konsolidierung — Dedupe als sichtbarer Schritt (PFLICHT)
 
-1. Alle Concerns sammeln
-2. Deduplizieren — gleiches Concern aus 2+ Dimensionen = besonders wichtig
-3. Dem User präsentieren via AskUserQuestion:
+1. **Alle Concerns sammeln** — Roh-Liste aus allen 5 Agents.
+2. **Explizit deduplizieren und gemeldet** — gleiches oder eng verwandtes Concern aus 2+ Dimensionen wird zu einem zusammengefasst, mit Hinweis auf die Konvergenz. Konvergente Concerns sind starkes Qualitätssignal (nicht Redundanz).
+3. **Output-Format der Dedup-Phase** (sichtbar machen, nicht nur intern):
+   ```
+   Konsolidierung: {N_raw} Concerns → {N_dedup} nach Dedupe.
+   Konvergent: {Concern X} (Architecture + Risk + Simplicity) — wahrscheinlich Kern-Issue
+   ```
+4. Dann dem User präsentieren via AskUserQuestion:
 
 ```
-5-Dimensionen-Check abgeschlossen. {N} Concerns:
+5-Dimensionen-Check abgeschlossen. {N_dedup} Concerns:
 
 1. [Product] {Concern}
-2. [Architecture] {Concern}
+2. [Architecture + Risk + Simplicity] {konvergentes Concern}  ← Kern-Issue
 3. ...
 ```
+
+**Belegt durch Learning-Log:** Plan 7 hatte 11 raw → 9 dedup. Konvergente Concerns sind in 6 von 7 Plänen das beste Qualitätssignal. Sichtbar machen, damit der User die Convergenz erkennen kann.
 
 Optionen:
 - **Alle einarbeiten** — Alles fixen
@@ -331,6 +348,11 @@ Agent(
     3. **Aufwand** — Ist der Scope realistisch? Wird etwas unterschätzt oder aufgebläht?
     4. **Risiken** — Was ist das größte Risiko das der Plan nicht adressiert?
     5. **Umsetzbarkeit** — Kann ein Entwickler den Plan nehmen und direkt loslegen, oder fehlen konkrete Details (Dateipfade, Methodennamen, Datenstrukturen)?
+
+    PFLICHT-Checkliste (zusätzlich zu den 5 Dimensionen, knapp prüfen):
+    - **Monitoring/Alerting-Blindspots:** Gibt es Failure-Modi die der Plan nicht observable macht? (z.B. Plan 7: Android-Token-Bug war unsichtbar weil Evidenz selbstzerstörisch)
+    - **Bestehende Feature-Überlappungen:** Gibt es schon ähnliche Features in der Codebase die wiederverwendet werden sollten statt neu zu bauen?
+    - **Optimierungs-Hebel:** Parallelisierung, Caching, Batch-Processing — wo lässt sich Aufwand reduzieren ohne Scope zu cutten?
 
     Am Ende: Ein Gesamturteil in EINEM Satz.
     Falls du Änderungen empfiehlst: maximal 3 konkrete Vorschläge.
