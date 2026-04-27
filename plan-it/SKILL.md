@@ -454,8 +454,9 @@ Agent(
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Plan-Logs}
   subagent_type: general-purpose
   mode: bypassPermissions
-  run_in_background: true
 )
 ```
+
+**Foreground-Mode wichtig:** Background-Subagents können `.claude/plans/learning-log.md` nicht schreiben (Claude Code hat hardcoded `.claude/`-Schutz, der auch bei `bypassPermissions` greift, und Background-Subagents können den User nicht prompten). Foreground-Mode umgeht das mit ~5-10 Sekunden Mehrkosten am Ende.
 
 TodoWrite: `Plan-Log schreiben und Learning` (completed)

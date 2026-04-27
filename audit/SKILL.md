@@ -479,11 +479,10 @@ Agent(
     AUDIT_TYPE=audit"
   subagent_type: general-purpose
   mode: bypassPermissions
-  run_in_background: true
 )
 ```
 
-Läuft im Hintergrund, blockiert weder Push noch PR. Vorschläge werden ausschließlich in die `learning-log.md` geschrieben — der User kann sie dort später einsehen.
+Läuft Foreground (5-10 Sekunden, nicht push-blockierend). **Wichtig:** Background-Subagents können `.claude/audits/learning-log.md` nicht schreiben (Claude Code hat hardcoded Schutz für `.claude/`-Verzeichnisse, der greift sogar bei `bypassPermissions` und Background-Subagents können niemanden um Erlaubnis fragen). Foreground-Mode umgeht das. Vorschläge gehen in die `learning-log.md` — User kann sie später einsehen.
 
 ---
 
