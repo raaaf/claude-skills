@@ -14,8 +14,10 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 
 **What it does:**
 - Runs fast deterministic pre-checks first (secret scan, lockfile drift, diff-size gate) before spending tokens on LLMs
-- Triage agent (Haiku) reads the diff once and routes hotspots to relevant subagents only
-- Dispatches up to 10 specialized subagents in parallel (Architecture, Security, Performance, Code Quality, SEO, A11y, Typography, UI Design, UX, Animation)
+- Triage agent (Haiku) reads the diff once and routes hotspots to relevant subagents only — workers receive only their assigned hotspots plus a short summary, never the full diff (saves 40-60% input tokens per worker dispatch)
+- Dispatches up to 10 specialized subagents in parallel (Architecture, Security, Performance, Code Quality, SEO, A11y, Typography, UI Design, UX, Animation) — model per worker tuned for the task: Haiku for pattern-matching dimensions (Code Quality, SEO, Typography, UI Design, Animation), Sonnet for reasoning-heavy dimensions (Architecture, Performance, A11y, UX), Opus for Security
+- Workers read files on-demand via the Read tool (max 5 files per run) when hotspots alone don't suffice
+- Findings are capped at 50 words each with no code snippets (only file:line references) — keeps consolidation cheap
 - Incremental cache: unchanged files since last audit are skipped entirely
 - Validates every finding against the filesystem to filter hallucinations before fixing
 - Parallel fix-agents (Haiku) repair findings grouped by file
@@ -134,6 +136,9 @@ SKILL.md (orchestrator)
 - **Frontmatter controls behavior** — `model`, `allowed-tools`, `maxTurns`, `context: fork`, `effort`, `hooks` are all set per-skill
 - **Descriptions are model triggers** — written in English, telling Claude *when* to invoke the skill, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need
+- **Worker isolation** — subagents receive only triage-routed hotspots, not the full diff. Read files on-demand via the Read tool (max 5 files per run). Cuts input tokens 40-60% per worker dispatch
+- **Strict output format** — every finding is capped at 50 words, no code snippets (only file:line references), enforced via the shared `agents/prompt-template.md`. Keeps consolidation cheap
+- **Per-worker model tuning** — Haiku for pattern-matching, Sonnet for reasoning, Opus only where genuinely needed (Security)
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Self-learning** — every skill logs its runs and dispatches a background learning agent that detects patterns and suggests improvements
 - **On-demand hooks** — `/audit` registers a `PreToolUse` hook that blocks `git push` unless the audit passed
