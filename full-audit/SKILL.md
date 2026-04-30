@@ -21,6 +21,8 @@ allowed-tools:
 
 **SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Schritt 1 beginnen.**
 
+> **Architektur-Hinweis:** Dieser Skill hat KEINE eigenen Worker-Agents. Er nutzt die Definitionen aus `../audit/agents/*.md` (im Skill ueber `{AUDIT_AGENTS}` referenziert). Wenn du Worker-Konfiguration aendern willst, editiere dort. Das prompt-template.md hat zwei Sektionen ("Fuer /audit" und "Fuer /full-audit") — Workers dispatchen die passende Sektion je nach Skill.
+
 Anti-Patterns (rote Flaggen) siehe `{AUDIT_REFS}/anti-patterns.md` (Pfad aus Schritt 0) — Full-Audit fixt zusätzlich ALLE Minor-Findings.
 
 ---

@@ -1,7 +1,7 @@
 # Subagent 3: Performance & Efficiency
 
 - **subagent_type:** `performance-auditor`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `10`
 
 ## Fokus

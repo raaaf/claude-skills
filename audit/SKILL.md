@@ -92,7 +92,7 @@ Marker-Check vor der Frage:
 [ -f "$(git rev-parse --show-toplevel)/.claude/audit-no-context.flag" ] && SKIP_CONTEXT_PROMPT=true
 ```
 
-Übergib `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS` und `UNIFIED_DIFF` an alle Subagents.
+Übergib `PROJECT_CONTEXT`, `FRAMEWORK` und `SOURCE_DIRS` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Schritt C).
 
 ---
 
@@ -124,7 +124,7 @@ TodoWrite: Zwei Todos erstellen:
 
 **Schritt B — Scope aktualisieren (ab Runde 2)**
 
-`collect-scope.sh` erneut aufrufen — Fixes haben den Diff verändert. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch, aber der komplette aktualisierte Diff wird allen Subagents erneut übergeben.
+`collect-scope.sh` erneut aufrufen — Fixes haben den Diff verändert. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch. Der aktualisierte Diff geht erneut nur an den Triage-Agent (falls dieser ueberhaupt nochmal laeuft — siehe Schritt C.0: ab Runde 2 wird das `TRIAGE_RESULT` aus Runde 1 wiederverwendet). Workers bekommen weiterhin nur ihre zugeordneten Hotspots.
 
 **Schritt B.5 — Incremental-Cache pruefen**
 
@@ -174,12 +174,14 @@ Parse das JSON. Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension. Speiche
 
 **PFLICHT: Alle nicht-geskippten Agents in JEDER Runde dispatchen.** Ein Security-Fix kann ein Performance-Problem einfuehren — aber nur wenn Performance vom Triage als relevant markiert wurde.
 
-Dispatche in **einem einzigen Message-Block** via Agent-Tool. Uebergib:
+Dispatche in **einem einzigen Message-Block** via Agent-Tool. Uebergib NUR:
 - `TRIAGE_SUMMARY` (die 1-2 Zeilen aus dem Triage-JSON)
-- `HOTSPOTS` (die fuer diesen Agent markierten Stellen)
-- `UNIFIED_DIFF` (als Fallback, wenn der Agent breiteren Kontext braucht)
+- `HOTSPOTS` (die fuer diesen Agent markierten Stellen, exakte Datei:Zeile-Referenzen)
+- `DATEILISTE` (Liste der geaenderten Dateien zur Orientierung)
 
-Dadurch parst jeder Agent nicht mehr den ganzen Diff von 0 — er fokussiert direkt auf seine Hotspots.
+**KEIN UNIFIED_DIFF mehr im Dispatch.** Worker lesen Code via Read-Tool wenn sie mehr Kontext brauchen (max 5 Files pro Audit-Lauf, siehe prompt-template).
+
+Dadurch fokussiert jeder Agent direkt auf seine Hotspots, statt 11x denselben Diff (Triage + 10 Worker) im Tokenstrom zu haben. Bei 50k-Token-Diff spart das ~40-60% Input-Tokens pro Worker-Dispatch.
 
 **Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE` in Phase 1 gesetzt wurde (LARGE-Diff), übergib beim Dispatch von **Agent 1 (Architektur) und Agent 2 (Security)** explizit `model: claude-opus-4-7` und ignoriere das `model:`-Feld aus deren `agents/*.md`. Alle anderen Agents (3-10) nutzen unverändert ihr Default-Modell aus `agents/*.md`.
 

@@ -8,15 +8,12 @@ Audit der folgenden Aenderungen auf {DIMENSIONEN}.
 
 Triage-Zusammenfassung: {TRIAGE_SUMMARY}
 
-Deine spezifischen Hotspots (vom Triage-Agent markiert — FOKUSSIERE DICH HIER):
+Deine spezifischen Hotspots (vom Triage-Agent markiert — FOKUSSIERE DICH AUSSCHLIESSLICH HIER):
 {HOTSPOTS}
 
-Geaenderte Dateien: {DATEILISTE}
+Geaenderte Dateien (zur Orientierung): {DATEILISTE}
 
-Kompletter Diff (nur als Fallback-Kontext, wenn die Hotspots nicht reichen):
-{UNIFIED_DIFF}
-
-Pruefe NUR auf echte, konkrete {DIMENSIONEN}-Probleme in den geaenderten Zeilen.
+Pruefe NUR auf echte, konkrete {DIMENSIONEN}-Probleme an den oben genannten Hotspots.
 
 Suppressions (bekannte akzeptierte Issues -- NICHT melden):
 {SUPPRESSIONS}
@@ -25,12 +22,14 @@ Regeln:
 - Nur Issues melden die tatsaechlich Schaden anrichten oder gegen Best Practices verstossen
 - Keine stilistischen Vorschlaege (dafuer gibt es den Linter)
 - Keine theoretischen "koennte ein Problem sein"-Findings -- nur wenn es ein Problem IST
-- Wenn du eine Datei fuer mehr Kontext lesen musst: tu es. Aber nur wenn der Diff allein nicht reicht.
-- **Scope-Limit:** Du darfst zusaetzlich max. 5 Referenz-Dateien aus dem Projekt lesen (z.B. bestehende Komponenten zur Konsistenzpruefung). KEIN Full-Scan der Codebase. Fuer Full-Scans gibt es /full-audit.
+- **Code-Lesen on-demand:** Wenn ein Hotspot allein nicht ausreicht (z.B. Konsistenzpruefung gegen bestehende Komponente), lies die betreffende Datei mit dem Read-Tool. Max 5 Files pro Audit-Lauf.
+- **KEIN ungezielter Diff-Scan.** Du bekommst keinen kompletten Diff mehr — der Triage-Agent hat bereits die fuer dich relevanten Stellen markiert. Nutze die Hotspots als Startpunkt, lies via Read-Tool gezielt nach wenn noetig.
+- Fuer Full-Scans gibt es /full-audit
 - Melde NICHT Issues die bereits in einer vorherigen Runde gefixt wurden: {BEREITS_GEFIXT}
 - Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert
 
 Format (jedes Finding MUSS ein Confidence-Label haben):
+**Maximal 50 Worte pro Finding-Beschreibung. Keine Code-Snippets im Finding -- nur Datei:Zeile referenzieren.**
 **Critical:** [Datei:Zeile] (confidence: high|medium|low) Problem + warum kritisch
 **Important:** [Datei:Zeile] (confidence: high|medium|low) Problem + Empfehlung
 **Minor:** [Datei:Zeile] (confidence: high|medium|low) Vorschlag
@@ -62,6 +61,7 @@ Melde nur echte, konkrete Probleme. Keine theoretischen Findings.
 Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert.
 
 Format (jedes Finding MUSS ein Confidence-Label haben):
+**Maximal 50 Worte pro Finding-Beschreibung. Keine Code-Snippets im Finding -- nur Datei:Zeile referenzieren.**
 **Critical:** [Datei:Zeile] (confidence: high|medium|low) Problem + warum kritisch
 **Important:** [Datei:Zeile] (confidence: high|medium|low) Problem + Empfehlung
 **Minor:** [Datei:Zeile] (confidence: high|medium|low) Vorschlag

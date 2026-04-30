@@ -1,7 +1,7 @@
 # Subagent 9: UX Patterns & Interaction
 
 - **subagent_type:** `ui-ux-reviewer`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `10`
 
 ## Fokus
