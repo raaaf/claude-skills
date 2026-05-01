@@ -23,274 +23,162 @@ hooks:
 
 # Audit: Review aller offenen Änderungen
 
-**SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Schritt 1 beginnen.**
+**SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Phase 1 beginnen.**
 
-Wenn du unsicher bist welche Regeln gelten, lies `references/anti-patterns.md` — dort stehen die häufigsten Fehler im Loop.
+Anti-Patterns / häufige Fehler im Loop: `references/anti-patterns.md`.
 
-## 1. Pre-Flight & Scope ermitteln
+## Phase 1: Pre-Flight & Scope
 
 ```bash
 AUDIT_BIN="${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/bin"
 AUDIT_AGENTS_DIR="${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/agents"
 
-# 0. Fail-fast: alle Subagent-Definitionen vorhanden?
-bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || {
-  echo "Audit abgebrochen — fehlende Agent-Dateien (siehe oben)."
-  exit 1
-}
-
-# 1. Scope + Framework
+bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
-
-# 2. Deterministische Pre-Checks (Secrets, Lockfile-Drift, Build-Artefakte)
 bash "$AUDIT_BIN/pre-checks.sh"
-
-# 3. Diff-Size-Gate
 bash "$AUDIT_BIN/diff-size-gate.sh"
 ```
 
-**Diff-Size-Gate auswerten:**
+Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
+- Diff-Size-Gate-Tabelle (OK/LARGE/HUGE)
+- Pre-Check-Auswertung (Secrets, Lockfile, Binary-Artefakte)
+- Variable-Ableitung (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
+- Audit-Context-Check (PFLICHT bei fehlendem Context)
 
-| `DIFF_SIZE_RESULT` | Aktion |
-|---|---|
-| `OK` | Weiter. `MODEL_OVERRIDE=null` (Subagents nutzen ihre Default-Modelle). |
-| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Gezielte Escalation: Nur die zwei reasoning-schweren Dimensionen (Architektur, Security) laufen auf Opus 4.7. Ausgabe: „Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — Architektur + Security laufen auf Opus 4.7 für tieferes Reasoning." Setze `HEAVY_REASONING_OVERRIDE=claude-opus-4-7`. Weiter mit Audit. |
-| `HUGE` (>5000 Zeilen ODER >50 Dateien) | Hard-Block: Abbrechen mit klarer Meldung „Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
-
-**Warum nur zwei Dimensionen:** Architektur (Code-Reasoning über mehrere Module) und Security (subtile Angriffsvektoren) profitieren messbar von Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation sind überwiegend regel- oder musterbasiert — Sonnet reicht. Triage- und Fix-Agents bleiben auf Haiku.
-
-`collect-scope.sh` liefert `DEFAULT_BRANCH`, `BASE_REF`, klassifizierte Dateilisten (`---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`) und den deduplizierten Unified-Diff (`---DIFF---`). `detect-framework.sh` liefert `FRAMEWORK` und `SOURCE_DIRS`. `pre-checks.sh` liefert drei Sektionen: `SECRET_SCAN_RESULT`, `LOCKFILE_DRIFT_RESULT`, `BINARY_ARTIFACTS_RESULT`.
-
-**Pre-Check-Auswertung — sofort, vor jedem Subagent-Dispatch:**
-
-| Pre-Check | Ergebnis | Aktion |
-|---|---|---|
-| `SECRET_SCAN_RESULT=FINDINGS` | — | Als **Critical** ins Audit-Log. User sofort warnen. Push wird blockiert bis Secrets entfernt + History bereinigt sind. |
-| `LOCKFILE_DRIFT_RESULT=DRIFT` | — | Als **Important** ins Audit-Log. Manifest-Konsistenz prüfen, ggf. Lockfile regenerieren. |
-| `BINARY_ARTIFACTS_RESULT=FINDINGS` | — | Als **Important**. Vorschlag: aus Index entfernen, `.gitignore` ergänzen. |
-
-Wenn der Diff leer ist und alle Pre-Checks `CLEAN`: melden und beenden. Kein Git-Repo? Fehler melden.
-
-Erstelle aus den Script-Outputs:
-
-- **ALLE_DATEIEN:** Sektion `---FILES---` aus `collect-scope.sh`
-- **FRONTEND_DATEIEN:** Sektion `---FRONTEND---`
-- **TRANSLATION_DATEIEN:** Sektion `---TRANSLATIONS---`
-- **VISUELL_RELEVANTE_DATEIEN:** `FRONTEND_DATEIEN` + Framework-spezifische Backend-Dateien (z. B. `app/Livewire/`, Controller mit `return view(...)`/`return Inertia::render(...)`). NICHT: reine Services, Models, Migrations, Commands, Jobs, Middleware — außer sie ändern was an den View übergeben wird.
-- **UNIFIED_DIFF:** Sektion `---DIFF---`
-- **SUPPRESSIONS:** `$(git rev-parse --show-toplevel)/.claude/audits/suppressions.json` laden falls vorhanden, `pattern`-Felder extrahieren. Sonst `"Keine Suppressions"`.
-- **PROJECT_CONTEXT:** `## Audit Context` aus `CLAUDE.md` (falls vorhanden), via `awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f'`. Sonst `"Kein projektspezifischer Kontext."`
-
-**Audit-Context-Check (PFLICHT bei fehlendem Context):** Wenn `PROJECT_CONTEXT` leer ist oder die `CLAUDE.md` keinen `## Audit Context`-Abschnitt hat, **vor dem ersten Subagent-Dispatch** User via `AskUserQuestion` fragen, ob ein Context-Abschnitt (Stack/Framework-Regeln, bewusste Architektur-Entscheidungen, Skalierungsziele, kritische Schnittstellen) entworfen und in `CLAUDE.md` ergänzt werden soll. Optionen:
-- **Ja, jetzt anlegen** → Repo-Struktur analysieren (`composer.json`/`package.json`, Routes, README), Vorschlag entwerfen, in `CLAUDE.md` einfügen, dann Audit fortsetzen.
-- **Nein, einmal überspringen** → Audit ohne Context fortsetzen.
-- **Nie wieder fragen** → Marker `.claude/audit-no-context.flag` anlegen, Audit fortsetzen. Folge-Audits prüfen den Marker und überspringen die Frage.
-
-Marker-Check vor der Frage:
-```bash
-[ -f "$(git rev-parse --show-toplevel)/.claude/audit-no-context.flag" ] && SKIP_CONTEXT_PROMPT=true
-```
-
-Übergib `PROJECT_CONTEXT`, `FRAMEWORK` und `SOURCE_DIRS` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Schritt C).
+Übergib `PROJECT_CONTEXT`, `FRAMEWORK` und `SOURCE_DIRS` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
 
 ---
 
-## 2. Audit-Loop
+## Phase 2: Audit-Loop
 
-Führe die Prozedur `AUDIT_RUNDE` aus. Danach entscheide: nächste Runde oder Loop beenden. Maximal **2 Runden** — der Convergence-Check bricht typischerweise nach Runde 1 schon ab. Eine harte Grenze bei 2 Runden verhindert Worst-Case-Kostenexplosionen bei zirkulären Findings; unfixable Issues wandern eh als Offene Punkte raus.
+Maximal **2 Runden**. Convergence-Check: Wenn `Critical + Important` der aktuellen Runde NICHT sinkt UND `RUNDE >= 2`, Loop abbrechen mit `NO_CONVERGENCE`.
 
-Initialisiere vor der ersten Runde:
-
-```
-RUNDE = 1
-BEREITS_GEFIXT = []
-FINDINGS_VORHERIGE_RUNDE = null
-```
-
-**Convergence-Check:** Nach jeder Runde wird `Critical + Important` der aktuellen Runde mit der vorherigen verglichen. Wenn die Anzahl NICHT sinkt UND `RUNDE >= 2`, Loop abbrechen mit `NO_CONVERGENCE`. Grund: Fixer baut neue Issues ein — weiteres Looping verbrennt nur Tokens.
+Initialisiere: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `FINDINGS_VORHERIGE_RUNDE = null`.
 
 ### Prozedur AUDIT_RUNDE
 
-Am Ende steht IMMER eine Entscheidung: nächste Runde oder Loop beenden.
+**Schritt A — Ankündigung + Todos**
 
-**Schritt A — Ankündigung und Todos**
-
-Ausgabe: `Audit-Runde {RUNDE}/2`
-
-TodoWrite: Zwei Todos erstellen:
-- `Audit Runde {RUNDE} — Subagents dispatchen` (in_progress)
-- `Audit Runde {RUNDE} — Findings fixen` (pending)
+Ausgabe: `Audit-Runde {RUNDE}/2`. TodoWrite: `Subagents dispatchen` (in_progress), `Findings fixen` (pending).
 
 **Schritt B — Scope aktualisieren (ab Runde 2)**
 
-`collect-scope.sh` erneut aufrufen — Fixes haben den Diff verändert. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch. Der aktualisierte Diff geht erneut nur an den Triage-Agent (falls dieser ueberhaupt nochmal laeuft — siehe Schritt C.0: ab Runde 2 wird das `TRIAGE_RESULT` aus Runde 1 wiederverwendet). Workers bekommen weiterhin nur ihre zugeordneten Hotspots.
+`collect-scope.sh` erneut. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch. Diff geht erneut nur an Triage falls dieser nochmal laeuft (siehe C.0). Workers bekommen weiterhin nur Hotspots.
 
-**Schritt B.5 — Incremental-Cache pruefen**
+**Schritt B.5 — Incremental-Cache**
 
 ```bash
-# ALLE_DATEIEN als Zeilen an cache-check uebergeben (safe bei Leerzeichen):
 echo "$ALLE_DATEIEN" | tr '\n' '\0' | xargs -0 bash "$AUDIT_BIN/cache-check.sh"
 ```
 
-Ergebnis: `CACHED_FILES` (unveraenderte Dateien seit letztem Audit) und `CACHED_FINDINGS` (deren historische Findings).
-
-- Cached Files werden **aus dem Triage-Input entfernt** — sie werden dem Triage-Agent nicht mehr gezeigt.
-- `CACHED_FINDINGS` werden direkt in die aktuelle Runde uebernommen (gelten weiter).
-- Nur veraenderte Dateien gehen durch Triage + Subagents.
-
-**Hinweis:** Der Cache hilft primaer zwischen separaten Audit-Laeufen. Innerhalb desselben Audit-Laufs aendern Fixes die Datei-Hashes, sodass in Runde 2+ fast nie ein Cache-Hit auftritt.
+`CACHED_FILES` werden aus dem Triage-Input entfernt. `CACHED_FINDINGS` werden uebernommen. Hilft primaer zwischen Audit-Laeufen.
 
 **Schritt C.0 — Triage-Agent (nur Runde 1)**
 
-**Nur in Runde 1** dispatchen. Ab Runde 2 das `TRIAGE_RESULT` aus Runde 1 wiederverwenden — Fixes aendern die Routing-Entscheidung praktisch nie, ein erneuter Triage-Call waere verschwendet.
-
-Dispatche EINEN Triage-Agent (Haiku, schnell, billig). Er liest den Diff einmal und erstellt ein JSON mit: welcher Dimension-Agent muss laufen, welche Hotspots pro Agent, was ist irrelevant.
+Ab Runde 2 das `TRIAGE_RESULT` aus Runde 1 wiederverwenden — Fixes aendern die Routing-Entscheidung praktisch nie.
 
 ```
 Agent(
   subagent_type: general-purpose,
   model: haiku,
-  prompt: "Lies agents/0-triage.md und fuehre die Triage fuer diesen Diff durch.
-
-    UNIFIED_DIFF:
-    {UNIFIED_DIFF}
-
+  prompt: "Lies agents/0-triage.md und fuehre die Triage durch.
+    UNIFIED_DIFF: {UNIFIED_DIFF}
     FRONTEND_DATEIEN: {FRONTEND_DATEIEN}
     TRANSLATION_DATEIEN: {TRANSLATION_DATEIEN}
     FRAMEWORK: {FRAMEWORK}
     PROJECT_CONTEXT: {PROJECT_CONTEXT}
     SUPPRESSIONS: {SUPPRESSIONS}
-
-    Gib NUR das JSON zurueck, nichts anderes."
+    Gib NUR das JSON zurueck."
 )
 ```
 
-Parse das JSON. Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension. Speichere es fuer Folgerunden.
+Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension. Speichern fuer Folgerunden.
 
 **Schritt C — Spezial-Subagents parallel dispatchen**
 
-**Regel:** Nur Agents mit `relevance.{dimension}.run == true` aus dem Triage-Ergebnis dispatchen. Security sollte fast immer laufen — Triage ist angewiesen nur bei reinen Doc/Translation-Changes zu skippen.
+Nur Agents mit `relevance.{dimension}.run == true` aus dem Triage. Security fast immer. Alle nicht-geskippten Agents in JEDER Runde.
 
-**PFLICHT: Alle nicht-geskippten Agents in JEDER Runde dispatchen.** Ein Security-Fix kann ein Performance-Problem einfuehren — aber nur wenn Performance vom Triage als relevant markiert wurde.
+Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
+- `TRIAGE_SUMMARY` (1-2 Zeilen)
+- `HOTSPOTS` (markierte Stellen, exakte Datei:Zeile)
+- `DATEILISTE` (zur Orientierung)
 
-Dispatche in **einem einzigen Message-Block** via Agent-Tool. Uebergib NUR:
-- `TRIAGE_SUMMARY` (die 1-2 Zeilen aus dem Triage-JSON)
-- `HOTSPOTS` (die fuer diesen Agent markierten Stellen, exakte Datei:Zeile-Referenzen)
-- `DATEILISTE` (Liste der geaenderten Dateien zur Orientierung)
+**KEIN UNIFIED_DIFF.** Workers lesen Code via Read-Tool wenn noetig (max 5 Files pro Agent pro Runde).
 
-**KEIN UNIFIED_DIFF mehr im Dispatch.** Worker lesen Code via Read-Tool wenn sie mehr Kontext brauchen (max 5 Files pro Audit-Lauf, siehe prompt-template).
+**Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE=claude-opus-4-7` aus Phase 1 gesetzt ist (LARGE-Diff), Agent 1 (Architektur) und Agent 2 (Security) explizit auf Opus dispatchen. Andere Agents nutzen ihr `agents/*.md` Default.
 
-Dadurch fokussiert jeder Agent direkt auf seine Hotspots, statt 11x denselben Diff (Triage + 10 Worker) im Tokenstrom zu haben. Bei 50k-Token-Diff spart das ~40-60% Input-Tokens pro Worker-Dispatch.
-
-**Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE` in Phase 1 gesetzt wurde (LARGE-Diff), übergib beim Dispatch von **Agent 1 (Architektur) und Agent 2 (Security)** explizit `model: claude-opus-4-7` und ignoriere das `model:`-Feld aus deren `agents/*.md`. Alle anderen Agents (3-10) nutzen unverändert ihr Default-Modell aus `agents/*.md`.
-
-Agent-Definitionen liegen in `agents/*.md`. Jede Datei enthält `subagent_type`, `model` und Fokus.
-
-| # | Agent-Datei | Kurzname |
-|---|-------------|----------|
+| # | Agent | Kurzname |
+|---|---|---|
 | 1 | `agents/1-architecture.md` | Architektur & Code Reuse |
 | 2 | `agents/2-security.md` | Security |
-| 3 | `agents/3-performance.md` | Performance & Efficiency |
-| 4 | `agents/4-code-quality.md` | Code Quality & Simplification |
-| 5 | `agents/5-seo.md` | SEO & Semantic HTML |
-| 6 | `agents/6-a11y.md` | Accessibility (WCAG) |
+| 3 | `agents/3-performance.md` | Performance |
+| 4 | `agents/4-code-quality.md` | Code Quality |
+| 5 | `agents/5-seo.md` | SEO |
+| 6 | `agents/6-a11y.md` | A11y (WCAG) |
 | 7 | `agents/7-typography.md` | Typography |
-| 8 | `agents/8-ui-design.md` | UI Visual Design |
-| 9 | `agents/9-ux.md` | UX Patterns & Interaction |
-| 10 | `agents/10-animation.md` | Animation & Motion Design |
+| 8 | `agents/8-ui-design.md` | UI Design |
+| 9 | `agents/9-ux.md` | UX Patterns |
+| 10 | `agents/10-animation.md` | Animation |
 
-Prompt-Template: `agents/prompt-template.md`, Abschnitt „Für /audit (Diff-basiert)".
+Prompt-Template: `agents/prompt-template.md`, Abschnitt "Fuer /audit (Diff-basiert)".
 
-**Scope-Regel (Diff-First):** Alle Subagents 1-10 fokussieren primär auf den **Diff** (committed-unpushed + working-tree). Interne Views, Admin-Panels, Dashboards sind nicht ausgenommen — aber nur wenn sie im Diff sind.
-
-**Kontext-Erweiterung (on-demand):** Subagents 5-10 dürfen zusätzlich bis zu **5 Referenz-Dateien** aus `FRONTEND_DATEIEN` lesen, wenn der Diff allein keine Konsistenz-Bewertung erlaubt (z.B. neuer Button → bestehende Button-Komponente zum Vergleich). Das Lesen passiert on-demand via Read-Tool, nicht als Vorab-Scan. Obergrenze strikt: max 5 Files pro Agent pro Runde.
-
-**Full-Scan?** Dafür gibt es `/full-audit`. `/audit` ist pre-push, schnell, diff-fokussiert.
-
-**Schritt D — Konsolidieren und Deduplizieren**
+**Schritt D — Konsolidieren + Deduplizieren**
 
 Gleiche Stelle von mehreren Subagents → ein Finding, strengste Einstufung gewinnt.
 
-Prüfe SELBST (nur in Runde 1):
-- **Documentation:** Erfordern die Änderungen ein Update der README.md oder CLAUDE.md?
-- **Öffentliche Seiten:** Landing Pages, Changelog, Hilfeseiten aktualisieren?
-- **Tests:** Geänderte Logik ohne zugehörige Tests?
-- **Mobile Apps:** `bash bin/detect-mobile.sh` ausführen. Wenn eine App erkannt wird, Impact anhand `references/mobile-impact.md` bewerten. Breaking Changes = Important, neue Felder = Minor.
+Pruefe SELBST (nur Runde 1):
+- Documentation: README.md / CLAUDE.md Update noetig?
+- Oeffentliche Seiten / Changelog
+- Tests: geaenderte Logik ohne Tests?
+- Mobile Apps: `bash bin/detect-mobile.sh` → bei Treffer Impact aus `references/mobile-impact.md`
 
-Eigene Findings als Important einfügen.
+Eigene Findings als Important einfuegen.
 
-**Ausgabe:**
-
+Ausgabe-Format:
 ```
 ## Audit Runde {RUNDE}/2 — X Dateien, Y Commits seit origin/{branch}
 
 ### Critical
-- [Security] datei.ts:42 — Beschreibung
+- [Dimension] datei:zeile — Beschreibung
 
-### Important
-- [Code Quality] datei.ts:15 — Beschreibung
-
-### Minor
-- [SEO] page.tsx:8 — Beschreibung (optional, nicht Push-blockierend)
-
-### Sauber
-Performance, UI/UX/A11y
+### Important / Minor / Sauber
+[gleiche Struktur]
 ```
-
-Markiere Todo `Subagents dispatchen` als completed.
 
 **Schritt D.5 — Halluzinations-Validator (PFLICHT vor jedem Fix)**
 
-LLMs halluzinieren Dateien, Zeilen, API-Namen. Pro Finding mit `Datei:Zeile`:
-
 ```bash
 test -f "{datei}" || echo "HALLUCINATION: file missing"
-lines=$(wc -l < "{datei}")
-[ "$lines" -ge "{zeile}" ] || echo "HALLUCINATION: line out of range"
+[ "$(wc -l < "{datei}")" -ge "{zeile}" ] || echo "HALLUCINATION: line out of range"
 ```
 
-Pro Finding das eine externe API/Library erwähnt: `grep -r` im Projekt prüfen ob die Library überhaupt importiert wird. Existiert die referenzierte Dependency?
-
-**Halluzinierte Findings rausfiltern — werden NICHT gefixt, nicht gemeldet, nicht gezählt.**
-
-Ausgabe: `Validator: X/Y verifiziert, Z halluziniert (verworfen)`
+Externe APIs/Libraries: `grep -r` im Projekt pruefen ob importiert. Halluzinierte Findings rausfiltern. Ausgabe: `Validator: X/Y verifiziert, Z halluziniert (verworfen)`.
 
 **Schritt E — Auto-Fix**
 
-Zähle die **verifizierten** Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Wenn `RUNDE >= 2` UND `FINDINGS_AKTUELLE_RUNDE >= FINDINGS_VORHERIGE_RUNDE`: Ergebnis `NO_CONVERGENCE`, keine weiteren Fixes. Dann `FINDINGS_VORHERIGE_RUNDE = FINDINGS_AKTUELLE_RUNDE`.
+Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Convergence-Check siehe oben.
 
-**0 Critical und 0 Important?** → Todo completed → Ergebnis: `SAUBER`. **Early-Exit:** Auch wenn noch Minor-Findings vorhanden sind, wird der Loop sofort beendet. Minor ist nie Push-blockierend, keine zweite Runde noetig.
+**0 Critical und 0 Important?** → `SAUBER`. Early-Exit (Minor blockiert nie Push).
 
-**Sonst — Confidence-Gate:** Jedes Finding hat eine Confidence (`high`, `medium`, `low`). Bei vagen Formulierungen („könnte", „möglicherweise") = `low`.
+**Sonst — Confidence-Gate:**
+- High → direkt fixen
+- Medium → fixen mit Hinweis `(medium confidence)`
+- Low → NICHT auto-fixen, als Offener Punkt
 
-- **High** → direkt fixen
-- **Medium** → fixen, mit Hinweis `(medium confidence)`
-- **Low** → NICHT auto-fixen, als Offener Punkt auflisten
+**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Haiku). Edits vom Orchestrator kosten ~5x so viel.
 
-**Fix-Strategie — parallele Fix-Agents (HARTE REGEL):**
+**Erlaubte Orchestrator-Edits:** `.claude/audits/*.md`, `CLAUDE.md` Audit-Context-Entwurf, `suppressions.json` (mit User-Zustimmung), Changelog-Dateien.
 
-**Der Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix, egal wie trivial (ein Import, ein Tippfehler, ein Single-Line-Change), geht zwingend über einen Fix-Agent (Haiku). Edits vom Orchestrator kosten ~5× so viel (Opus vs Haiku Output-Tokens) und sind der häufigste Kostenfresser bei Audits.
+1. Findings nach Datei gruppieren
+2. Pro Datei einen `fix-agent.md`-Subagent (Haiku) parallel dispatchen
+3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
+4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt
+5. Minor: nur fixen wenn high confidence, sonst skippen
+6. Nicht fixbar: als Offener Punkt mit Begruendung; `patterns-store.sh dismissed {pattern}` aufrufen
+7. Gefixte Issues zu `BEREITS_GEFIXT` adden, via `patterns-store.sh add` ins Learning-Store
 
-**Erlaubte Orchestrator-Edits (Ausnahmen):**
-- `.claude/audits/*.md` (Audit-Log schreiben)
-- `CLAUDE.md` `## Audit Context`-Entwurf (nur bei User-Zustimmung)
-- `suppressions.json` nach User-Zustimmung
-- Changelog-Dateien (Phase 3a)
-
-Für alles andere: **Fix-Agent dispatchen, Punkt.** Wenn der Orchestrator nach einem Finding zum Edit-Tool greifen will — anhalten und einen Fix-Agent schicken.
-
-1. Gruppiere verifizierte high/medium Critical+Important Findings nach Datei.
-2. **Unabhängige Dateien parallel fixen:** Dispatche pro betroffener Datei einen `fix-agent.md`-Subagent (Haiku) in einem einzigen Message-Block. Jeder Agent bekommt nur sein Finding + Kontext.
-3. Bei mehreren Findings in derselben Datei: die Findings in einem einzigen Fix-Agent-Call bundeln (verhindert Merge-Konflikte).
-4. Fix-Agent-Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zählt als gefixt, alles andere wird als Offener Punkt gelistet.
-5. Minor: fixen wenn einfach und high confidence, sonst überspringen — blockieren Push nicht.
-6. Nicht fixbar (z. B. architektonische Entscheidung): als Offener Punkt mit Begründung → `patterns-store.sh dismissed {pattern}` aufrufen. Wenn `should-suggest {pattern}` true: User fragen ob Eintrag in `suppressions.json` soll.
-7. Gefixte Issues zu `BEREITS_GEFIXT` hinzufügen und via `patterns-store.sh add` ins Learning-Store schreiben.
-
-Todo completed → Ergebnis: `FIXES_APPLIED`.
-
-**PFLICHT — gib am Ende jeder Runde exakt diese Zeile aus:**
+**PFLICHT — Status-Zeile am Ende jeder Runde:**
 
 ```
 AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/2
@@ -298,162 +186,57 @@ AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/2
 AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/2
 ```
 
-### Nach jeder Runde: Entscheidung
+### Nach jeder Runde
 
-| Ergebnis | RUNDE | Aktion |
-|----------|-------|--------|
-| `SAUBER` | egal | Loop beendet. Weiter mit Abschnitt 3. |
-| `FIXES_APPLIED` | < 3 | `RUNDE = RUNDE + 1`, Prozedur erneut. **Kein Warten auf User.** |
-| `FIXES_APPLIED` | = 3 | Loop beendet. Verbleibende Issues auflisten. |
-| `NO_CONVERGENCE` | egal | Loop beendet. Warnung: „Findings konvergieren nicht". |
+| Ergebnis | Aktion |
+|---|---|
+| `SAUBER` | Loop beendet → Phase 3 |
+| `FIXES_APPLIED` + RUNDE < 2 | `RUNDE += 1`, Prozedur erneut. Kein User-Wait. |
+| `FIXES_APPLIED` + RUNDE = 2 | Loop beendet. Verbleibende Issues auflisten. |
+| `NO_CONVERGENCE` | Loop beendet. Warnung. |
 
-### Loop-Ende
-
-Ausgabe:
-
-```
-Audit abgeschlossen nach {RUNDE} Runde(n).
-- Runde 1: X Findings, Y gefixt
-...
-Verbleibende offene Issues: (falls vorhanden)
-- [Typ] Datei:Zeile — Beschreibung — Grund warum nicht fixbar
-```
-
-**Audit-Log schreiben:**
+### Audit-Log schreiben (nach Loop-Ende)
 
 ```bash
 AUDIT_DIR="$(git rev-parse --show-toplevel)/.claude/audits"
 mkdir -p "$AUDIT_DIR"
-BRANCH=$(git branch --show-current | tr '/' '-')
-LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-${BRANCH}.md"
+LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
 ```
 
-Mehrere Audits am selben Tag/Branch werden so nicht überschrieben. Format des Logs:
+Format-Template: `references/audit-log-template.md`. Mehrere Audits am selben Tag/Branch werden so nicht ueberschrieben.
 
-```markdown
-# Audit — {DATUM} — Branch: {BRANCH}
-
-## Scope
-- Commits seit origin/{base}: N
-- Geänderte Dateien: Liste
-- HEAD beim Audit: {git rev-parse HEAD}
-
-## Ergebnis
-- Runden: N/2
-- Critical gefunden/gefixt: A/B
-- Important gefunden/gefixt: C/D
-
-## Gefixte Issues
-- [Typ] datei:zeile — was gefixt wurde
-
-## Manueller Testplan
-- (Testplan-Schritte, falls visuelle Dateien geaendert wurden)
-
-## Offene Punkte
-- (falls vorhanden)
-
-## Sauber
-Dimension1, Dimension2
-```
-
-Beim nächsten Audit-Lauf: wenn zwischen `{letzter-audit-HEAD}..HEAD` Commits auftauchen die **nicht** im Diff von `origin/$DEFAULT_BRANCH...HEAD` enthalten sind (weil inzwischen gepusht), `/full-audit` empfehlen — der `audit`-Skill sieht gepushte Commits nicht mehr.
-
-**Cache aktualisieren** (nach erfolgreichem Loop-Ende):
-
+**Cache aktualisieren** (nach Loop-Ende):
 ```bash
-# JSON mit allen geauditeten Dateien und finalen Findings pipen:
 echo '{"files": [...], "findings": [...]}' | bash "$AUDIT_BIN/cache-write.sh"
 ```
-
-Nur auditierte Dateien, die nach allen Fixes sauber sind, kommen in den Cache. Dateien mit verbleibenden Offenen Punkten werden NICHT gecached (damit sie beim naechsten Audit erneut geprueft werden).
-
-**Hinweis:** Das Audit-Log wird erst nach Abschnitt 3 (inkl. Testplan) im Chat angezeigt, damit der Testplan bereits enthalten ist.
+Nur Dateien, die nach allen Fixes sauber sind. Dateien mit Offenen Punkten NICHT cachen.
 
 ---
 
-## 3. Changelog, Linter, Tests und Design-Verification (einmal, nach dem Loop)
+## Phase 3: Post-Loop (Changelog, Tests, Testplan, Issues, Display)
 
-### 3a. Changelog/Release-Notes
+Detail in `references/post-loop.md`. Reihenfolge:
 
-Prüfe selbst ob user-facing Changes einen Changelog-Eintrag brauchen. Kandidaten-Dateien: `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`.
-
-Ignorieren: reine Test-Änderungen, interne Services ohne UI, Refactorings ohne Verhaltensänderung, Config, Migrations ohne neue Features.
-
-Existiert kein passender Eintrag → Eintrag draften, Format orientiert sich am bestehenden Stil der Datei, chronologisch oben einfügen.
-
-### 3b. Linter & Static Analysis · 3c. Test-Suite
-
-Erkennungstabellen und Befehle stehen in `references/linters-and-tests.md`. Reihenfolge: Formatter → Linter → Static Analysis → Tests. Bei Failures: fixen, erneut laufen lassen. Unfixbare Test-Failures als Critical aufnehmen.
-
-**Tests nur diff-scoped:** Nur Tests laufen lassen, die von den geänderten Dateien betroffen sind (Mapping siehe `references/linters-and-tests.md`). NIEMALS `composer test` / `npm test` in `/audit` — die volle Suite läuft in CI. Dieser Skill darf die Laufzeit nicht durch eine 2000+ Test-Suite explodieren lassen.
-
-### 3d. Manueller Testplan erstellen
-
-Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATEIEN nicht leer), Testplan nach `references/testplan.md` generieren: Template, URL-Ableitung pro Framework, Regeln. Max 10 Schritte, nur für tatsächlich geänderte Stellen. Ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
-
-### 3e. Audit-Log im Chat anzeigen (PFLICHT — nach Testplan)
-
-Nach Abschluss von 3a-3d den kompletten Inhalt des Log-Files (inkl. Testplan) via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben:
-
-```
-Audit-Log: {LOGFILE}
-
----
-{Inhalt des Log-Files}
----
-```
-
-So hat der User das vollstaendige Ergebnis inkl. Testplan auf einen Blick.
-
-### 3f. Offene Punkte + Minor als GitHub-Issues tracken
-
-**Ziel:** Keine Finding geht verloren. Alles was nicht im Loop gefixt wurde, landet als Issue — dokumentiert, durchsuchbar, nicht im Audit-Log vergraben.
-
-**Precheck:**
-```bash
-gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — Issue-Erstellung überspringen"
-```
-
-**Scope:** Für jeden Eintrag unter `## Offene Punkte` UND jeden verifizierten Minor-Finding der nicht gefixt wurde (Log aus Schritt E/Fix-Phase):
-
-1. **Dedup:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — wenn schon ein Issue mit diesem `[Dimension] datei:zeile` existiert, **skip** (keine Dublette erzeugen).
-2. **Issue erstellen:**
-   ```bash
-   gh issue create \
-     --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" \
-     --body "{Finding-Beschreibung}
-
-   **Warum nicht im Audit gefixt:** {Begründung: Minor / größerer Refactor / architektonische Entscheidung}
-
-   **Quelle:** \`{LOGFILE}\` (Audit vom {DATUM}, Branch \`{BRANCH}\`, HEAD \`{SHORT_SHA}\`)" \
-     --label "audit-finding"
-   ```
-3. Wenn `--label audit-finding` fehlschlägt (Label existiert noch nicht im Repo): Label via `gh label create audit-finding --color FBCA04` anlegen, dann Issue nochmal.
-4. Issue-URLs sammeln und am Ende ausgeben: `X Issues erstellt: {urls}`.
-
-**Wichtig:** Fehler blockieren den Push NICHT. Bei `gh`-Fehler (offline, auth expired, etc.) einfach kurz melden `WARN: Issue-Erstellung übersprungen, siehe Offene Punkte im Log` und weiter mit Abschnitt 4.
-
-### Offene Punkte — sofort umsetzen? (optional)
-
-Nach Issue-Erstellung User via AskUserQuestion fragen: „Issues erstellt. Jetzt einzelne umsetzen / alle später angehen?". Bei „einzeln umsetzen": User entscheidet welches Issue pro PR.
+- 3a Changelog/Release-Notes
+- 3b/3c Linter + diff-scoped Tests (Detail: `references/linters-and-tests.md`)
+- 3d Manueller Testplan (wenn visuelle Files im Diff, Detail: `references/testplan.md`)
+- 3e Audit-Log im Chat anzeigen
+- 3f Offene Punkte + Minor als GitHub-Issues
 
 ---
 
-## 4. Pre-Push-Verhalten
-
-Wenn der Audit im Kontext eines blockierten `git push` läuft:
+## Phase 4: Pre-Push-Verhalten
 
 **Hard-Block (nie pushen):**
-- `SECRET_SCAN_RESULT=FINDINGS` aus den Pre-Checks → Push abbrechen, User informieren dass Secrets entfernt UND History bereinigt werden müssen (BFG/`git filter-repo`).
-- Noch unfixbare Critical/Important, Linter-Fehler oder Tests rot → `BLOCKED: Push abgebrochen.` + Liste der offenen Probleme.
-- KEINE Marker-Datei schreiben.
+- `SECRET_SCAN_RESULT=FINDINGS` → Push abbrechen, Secrets entfernen + History bereinigen (BFG / `git filter-repo`).
+- Unfixbare Critical/Important, Linter-Fehler, Tests rot → `BLOCKED: Push abgebrochen.` + Liste. KEINE Marker-Datei.
 
 **Alles gefixt, Tests gruen:**
 
-**KRITISCH — Marker und Push NIEMALS im selben Bash-Befehl.** Der Pre-Push-Hook prüft den Command-String auf `git push` und blockiert BEVOR der Marker geschrieben wird. Immer zwei separate Bash-Aufrufe.
+**KRITISCH — Marker und Push NIEMALS im selben Bash-Befehl.** Pre-Push-Hook prueft Command-String auf `git push` und blockiert BEVOR der Marker geschrieben wird.
 
 ```bash
-# Schritt 1 — Marker schreiben (kein `git push` im Befehl):
+# Schritt 1 — Marker (kein `git push` im Befehl):
 hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-passed-$hash"
 ```
@@ -461,33 +244,32 @@ touch "/tmp/claude-audit-passed-$hash"
 ```bash
 # Schritt 2 — Push (separater Bash-Aufruf):
 git push
-# Multi-Repo ohne cd:
-git -C /pfad/zum/repo push
+# Multi-Repo: git -C /pfad push
 ```
 
-Danach: `Audit passed.` ausgeben, weiter mit Abschnitt 5 (Learning) und 6 (PR).
+Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell). Hash kommt aus `cwd` des Tool-JSON. Multi-Repo: `git -C /pfad push`, niemals `cd /pfad && git push`.
 
-**Marker-Details:** Gueltig fuer 30 Minuten (TTL), wird NICHT nach Verwendung geloescht (mehrere Hooks pruefen denselben Marker sequenziell). Hash kommt aus `.cwd` des Tool-JSON (Session-Startverzeichnis, unabhängig von `cd`). Für Multi-Repo-Pushes: `git -C /pfad push` statt `cd /pfad && git push`. Nie `cd` im selben Bash-Aufruf wie `git push`.
+Danach: `Audit passed.` ausgeben, weiter mit Phase 5 + 6.
 
 ---
 
-## 5. Learning (nach Audit-Log)
+## Phase 5: Learning
 
 ```
 Agent(
-  prompt: "Lies agents/learning-agent.md und führe den Ablauf aus.
+  subagent_type: general-purpose,
+  prompt: "Lies agents/learning-agent.md und fuehre den Ablauf aus.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
-    AUDIT_TYPE=audit"
-  subagent_type: general-purpose
+    AUDIT_TYPE=audit",
   mode: bypassPermissions
 )
 ```
 
-Läuft Foreground (5-10 Sekunden, nicht push-blockierend). **Wichtig:** Background-Subagents können `.claude/audits/learning-log.md` nicht schreiben (Claude Code hat hardcoded Schutz für `.claude/`-Verzeichnisse, der greift sogar bei `bypassPermissions` und Background-Subagents können niemanden um Erlaubnis fragen). Foreground-Mode umgeht das. Vorschläge gehen in die `learning-log.md` — User kann sie später einsehen.
+Foreground (5-10s, nicht push-blockierend). Background-Subagents koennen `.claude/`-Dateien nicht schreiben (Hardcoded Schutz). Vorschlaege gehen in `learning-log.md`.
 
 ---
 
-## 6. PR erstellen (nach Push)
+## Phase 6: PR erstellen (nach Push)
 
-Ablauf steht in `references/pr-creation.md`. Kurzfassung: Branch prüfen, Commits sammeln, optional Plan-Doc für Description nutzen, PR via `gh pr create` erstellen, URL ausgeben. Fehler blockieren nicht — einfach melden und weitermachen.
+Detail: `references/pr-creation.md`. Kurzfassung: Branch pruefen, Commits sammeln, optional Plan-Doc fuer Description, PR via `gh pr create`, URL ausgeben. Fehler blockieren nicht.
