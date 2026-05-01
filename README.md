@@ -51,38 +51,34 @@ A comprehensive one-time audit of the entire codebase — not just recent change
 
 ---
 
-### `/plan` — Iterative Plan Builder
+### `/plan-it` — Iterative Plan Builder
 
 A sparring partner for turning ideas into solid implementation plans. Asks the right questions, builds a structured plan, then challenges it from 5 perspectives.
 
 **Inspired by:** [Grill Me Skill](https://www.aihero.dev/my-grill-me-skill-has-gone-viral) — the technique of providing a recommended answer alongside every question so you only need to confirm or correct, not answer from scratch.
 
 **What it does:**
-- Phase 1: Understands the idea — max 3 questions per round, each with a recommended answer based on codebase context
-- Phase 2: Writes a structured plan to `docs/plans/{date}-{slug}.md`
+- Phase 1: Framing-Check + Codebase-Scan + decision-tree interview (max 3 questions per round, each with a recommended answer)
+- Phase 2: Writes a structured plan to `docs/plans/{date}-{slug}.md` with rounds heuristic (2/3/4+ depending on complexity)
 - Phase 2.5: Gathers codebase context (directory structure, patterns, framework) for Architecture and Risk agents
-- Phase 3: Dispatches 5 challenge agents in parallel, consolidates concerns, lets you decide what to incorporate
+- Phase 3: Dispatches 5 challenge agents in parallel, consolidates concerns with explicit dedupe step, lets you decide what to incorporate
+- Phase 3.5: Final evaluation pass (completeness, sequence, effort, risks, implementability) by Tech Lead agent
 - Phase 4: Logs the plan session and dispatches a learning agent that detects patterns in user preferences across plans
 
-**Challenge agents:** CEO/Founder · Senior Engineer (with codebase context) · Designer · Skeptic (with codebase context) · Minimalist
+**Challenge agents:** Product · Architecture (with codebase context) · Design · Risk (with codebase context) · Simplicity
 
 ---
 
-### `/dsgvo` — DSGVO Compliance Check
+### `/write-a-skill` — Skill Scaffolding
 
-Audits websites for GDPR/DSGVO compliance (German law). Works with live URLs and local project code. Produces a prioritized report, concrete code fixes, and optionally generates ready-to-use legal texts.
+Creates new skills following the canonical structure: orchestrator (max 120 lines) + agents/ for parallel workers + references/ for progressive disclosure. Inspired by [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md), adapted for our subagent + hooks + self-learning patterns.
 
-**What it does:**
-- Detects external services via Bash/curl: Google Fonts, Analytics, Maps, YouTube, CDNs, Facebook Pixel, Hotjar, and more
-- Dispatches 5 subagents in parallel: Impressum · Datenschutzerklärung · Cookie Consent · External Services · Technical
-- Outputs findings as Kritisch / Wichtig / Nice-to-have with one-line fixes
-- Offers to generate Datenschutzerklärung, Impressum, and Cookie banner copy based on detected services
-
-**Covers:** § 5 DDG, DSGVO Art. 6/13/14, ePrivacy, LG München I Google Fonts ruling (2022), Dark Pattern rules, WordPress-specific pitfalls (Gravatar, WP Emojis, XML-RPC)
-
-Legal reference material is stored as progressive disclosure in `dsgvo/references/` — subagents load only what they need, keeping context lean.
-
-Logs each check to `.claude/dsgvo/logs/` and dispatches a learning agent that detects recurring patterns across checks.
+**Includes references for:**
+- Description discipline (the only thing the model sees when picking a skill)
+- Subagent pattern (when to add, model routing, output format discipline)
+- Hooks pitfalls (recursion guards, never spawn `claude` from a hook)
+- Self-learning pattern (foreground dispatch, suggestions not auto-apply)
+- Review checklist (frontmatter, body, references, smoke test)
 
 ---
 
@@ -94,8 +90,8 @@ git clone https://github.com/raaaf/claude-skills ~/.claude/skills/claude-skills
 # Then symlink individual skills
 ln -s ~/.claude/skills/claude-skills/audit ~/.claude/skills/audit
 ln -s ~/.claude/skills/claude-skills/full-audit ~/.claude/skills/full-audit
-ln -s ~/.claude/skills/claude-skills/plan ~/.claude/skills/plan
-ln -s ~/.claude/skills/claude-skills/dsgvo ~/.claude/skills/dsgvo
+ln -s ~/.claude/skills/claude-skills/plan-it ~/.claude/skills/plan-it
+ln -s ~/.claude/skills/claude-skills/write-a-skill ~/.claude/skills/write-a-skill
 ```
 
 **Note:** `audit` and `full-audit` must be installed together — `full-audit` references agent definitions from `audit/agents/`. The skill resolves the path automatically (sibling directory, `~/.claude/skills/audit/`, or mono-repo layout).
@@ -147,10 +143,10 @@ SKILL.md (orchestrator)
 
 ## How self-learning works
 
-Every skill (`/audit`, `/full-audit`, `/plan`, `/dsgvo`) dispatches a learning agent in the background after each run. It runs asynchronously and never blocks the main flow.
+Every skill (`/audit`, `/full-audit`, `/plan-it`) dispatches a learning agent after each run.
 
 **What the learning agent does:**
-1. **Reads recent logs** — the last N runs from `.claude/audits/` (or `.claude/plans/`, `.claude/dsgvo/logs/`)
+1. **Reads recent logs** — the last N runs from `.claude/audits/` (or `.claude/plans/`)
 2. **Detects patterns** — findings that recur across runs, false positives that keep getting re-flagged, user overrides that keep getting applied
 3. **Proposes three types of improvements:**
    - **Suppressions** — if the same false positive appears in ≥3 runs, propose adding it to the skill's ignore-list
@@ -158,7 +154,7 @@ Every skill (`/audit`, `/full-audit`, `/plan`, `/dsgvo`) dispatches a learning a
    - **Prompt tweaks** — if a subagent consistently misses or hallucinates something, propose a prompt adjustment
 4. **Writes to `learning-log.md`** — every suggestion is logged, never silently applied. The user can review suggestions there at their own pace.
 
-**Why background, not inline:** Learning is slow (reads many files, reasons about patterns) and non-critical. Running it in the foreground would block every audit for minutes. By running it via `run_in_background: true`, the user gets their result immediately and the learning compounds silently over time.
+**Why foreground, not background:** Background subagents cannot write to `.claude/` (hardcoded permission protection that even `bypassPermissions` does not override, and background subagents cannot prompt). Foreground costs ~5-10s at the end of each run but reliably persists the learning.
 
 **Why suggestions, not auto-apply:** Skill rules affect every future run. Silent auto-updates would drift the skill away from the user's intent without review.
 
@@ -175,10 +171,8 @@ Skills are Markdown files that Claude Code reads and executes as slash commands.
 
 ## Inspiration
 
-- [aihero.dev — Grill Me Skill](https://www.aihero.dev/my-grill-me-skill-has-gone-viral) — recommended-answer-per-question technique used in `/plan`
-- [LG München I — Google Fonts Urteil (2022)](https://rewis.io/urteile/urteil/lhm-20-01-2022-3-o-1749420/) — legal basis for the Google Fonts finding in `/dsgvo`
-- [§ 5 DDG](https://www.gesetze-im-internet.de/ddg/__5.html) — Impressumspflicht
-- [DSGVO Art. 13](https://dsgvo-gesetz.de/art-13-dsgvo/) — Informationspflichten bei Datenerhebung
+- [aihero.dev — Grill Me Skill](https://www.aihero.dev/my-grill-me-skill-has-gone-viral) — recommended-answer-per-question technique used in `/plan-it`
+- [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md) — basis for our `/write-a-skill` (description discipline, 100-line limit, review checklist)
 
 ---
 
