@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Triage-Agent routes diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI design, UX, animation), runs secret/lockfile pre-checks, auto-fixes findings via parallel fix-agents, loops until clean, generates a manual test plan for visual changes, then allows git push."
+description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation), runs secret/lockfile pre-checks, auto-fixes via parallel fix-agents, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: scope hint]"
 model: claude-opus-4-7
