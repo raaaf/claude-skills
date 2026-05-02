@@ -215,13 +215,20 @@ Nur Dateien, die nach allen Fixes sauber sind. Dateien mit Offenen Punkten NICHT
 
 ## Phase 3: Post-Loop (Changelog, Tests, Testplan, Issues, Display)
 
-Detail in `references/post-loop.md`. Reihenfolge:
+**PFLICHT:** Lies jetzt `references/post-loop.md` und fuehre 3a-3f sequenziell aus. Keine dieser Subphasen ist optional. Wenn ein Schritt nicht anwendbar ist (z.B. keine visuellen Files fuer 3d), explizit "n/a" loggen statt skippen.
 
-- 3a Changelog/Release-Notes
-- 3b/3c Linter + diff-scoped Tests (Detail: `references/linters-and-tests.md`)
-- 3d Manueller Testplan (wenn visuelle Files im Diff, Detail: `references/testplan.md`)
-- 3e Audit-Log im Chat anzeigen
-- 3f Offene Punkte + Minor als GitHub-Issues
+| Subphase | Was | Skip-Bedingung |
+|---|---|---|
+| 3a | Changelog-Eintrag draften (wenn user-facing) | nur Doku/Test/Refactor ohne Verhaltensaenderung |
+| 3b | Linter + Static Analysis | nie |
+| 3c | Diff-scoped Tests | nie |
+| 3d | Manueller Testplan | wenn `VISUELL_RELEVANTE_DATEIEN` leer |
+| 3e | Audit-Log im Chat anzeigen (Markdown-Block) | nie |
+| 3f | **Offene Punkte + Minor als GitHub-Issues anlegen** | nur wenn `gh repo view` failt oder kein github-Remote |
+
+**3f ist HARTE PFLICHT bei GitHub-Repos.** Jeder Eintrag unter `## Offene Punkte` UND jedes verifizierte Minor-Finding bekommt ein Issue (mit Dedup). Format und Bash siehe `references/post-loop.md` Section 3f.
+
+Wenn 3f geskippt wird (kein gh / kein github), das explizit ausgeben: `WARN: 3f uebersprungen, weil <grund>`.
 
 ---
 
