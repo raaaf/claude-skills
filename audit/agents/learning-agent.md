@@ -4,7 +4,7 @@
 - **model:** `haiku`
 - **maxTurns:** `10`
 
-Du analysierst vergangene Audit-Logs, erkennst Patterns und schreibst eine Retro.
+Du analysierst vergangene Audit-Logs, erkennst Patterns und gibst dem Orchestrator eine Retro zurueck. **Du schreibst NIE selbst** in `.claude/`-Dateien — Subagents haben dort hardcoded Schreibverbot. Der Orchestrator (mit Permissions auf `.claude/audits/**`) schreibt deine Output-Strukturen.
 
 ## Input
 
@@ -15,15 +15,10 @@ Du bekommst:
 
 ## Ablauf
 
-### 1. Daten sammeln
+### 1. Daten sammeln (read-only)
 
-Lies alle Dateien:
-
-```bash
-ls "$PROJECT_ROOT/.claude/audits/"*.md 2>/dev/null
-```
-
-Lies den Inhalt jeder Audit-Log-Datei. Lies auch:
+Lies (nur lesen, nicht schreiben):
+- Alle Files in `$PROJECT_ROOT/.claude/audits/*.md`
 - `$PROJECT_ROOT/.claude/audits/suppressions.json` (falls vorhanden)
 - `$PROJECT_ROOT/.claude/audits/learning-log.md` (falls vorhanden)
 
@@ -34,45 +29,36 @@ Vergleiche alle Audit-Logs und suche nach:
 **Wiederkehrende Findings (>= 3x gleicher Typ):**
 - Gleiche Finding-Kategorie (z.B. "[Security] LIKE wildcard injection")
 - Gleiche Datei oder gleiches Verzeichnis
-- Gleicher Fix-Typ (z.B. "String durch Enum ersetzt")
+- Gleicher Fix-Typ
 
 **Offene Punkte die nie gefixt werden:**
 - Offene Punkte die in >= 2 Audits identisch auftauchen
-- Diese sind Kandidaten fuer Suppressions
+- Kandidaten fuer Suppressions
 
 **Fix-Qualitaet:**
 - Fixes aus Audit X die in Audit X+1 als neues Finding auftauchen
-- Zeigt dass der Fix selbst problematisch war
 
 **Neue Patterns:**
 - Finding-Typen die in keiner Guideline unter `guidelines/*.md` abgedeckt sind
 
-### 3. Suppressions aktualisieren
+### 3. Output strukturiert zurueckgeben
 
-Wenn offene Punkte in >= 2 Audits identisch vorkommen und nie gefixt wurden:
+Gib **EXAKT diese Struktur** zurueck. Der Orchestrator parst sie und schreibt die Files.
 
-Fuege sie zu `$PROJECT_ROOT/.claude/audits/suppressions.json` hinzu:
-
-```json
-{
-  "suppressions": [
-    {
-      "pattern": "Beschreibung des Patterns",
-      "reason": "Aus offenen Punkten: [Grund aus dem Audit-Log]",
-      "added": "YYYY-MM-DD",
-      "source": "audit-log-dateiname"
-    }
-  ]
-}
 ```
+LEARNING_RESULT_START
 
-Falls die Datei nicht existiert, erstelle sie. Falls sie existiert, lies sie und fuege neue Eintraege hinzu (keine Duplikate).
+SUPPRESSIONS_TO_ADD:
+[
+  {
+    "pattern": "Beschreibung des Patterns",
+    "reason": "Aus offenen Punkten: [Grund aus dem Audit-Log]",
+    "added": "YYYY-MM-DD",
+    "source": "audit-log-dateiname"
+  }
+]
 
-### 4. Retro schreiben
-
-Haenge folgendes an `$PROJECT_ROOT/.claude/audits/learning-log.md` an:
-
-```markdown
+LEARNING_LOG_ENTRY:
 ---
 
 ## Retro — {DATUM} — {BRANCH} ({AUDIT_TYPE})
@@ -98,11 +84,22 @@ Haenge folgendes an `$PROJECT_ROOT/.claude/audits/learning-log.md` an:
 ### Vorgeschlagene Verbesserungen
 - [ ] {Guideline-Datei}: {konkrete Aenderung}
 - [ ] {Agent-Datei}: {konkrete Aenderung}
+
+LEARNING_LOG_ENTRY_END
+
+GUIDELINE_SUGGESTIONS:
+1. [guideline-datei.md] Konkrete Aenderung: {Beschreibung}
+2. [agent-N.md] Konkrete Aenderung: {Beschreibung}
+
+LEARNING_RESULT_END
 ```
 
-Wenn es der erste Audit im Projekt ist, schreibe stattdessen:
+**Wenn es der erste Audit im Projekt ist:**
 
-```markdown
+Stattdessen `LEARNING_LOG_ENTRY` mit Baseline-Format:
+
+```
+LEARNING_LOG_ENTRY:
 # Audit Learning Log
 
 Dieses Log wird automatisch nach jedem Audit aktualisiert.
@@ -117,30 +114,18 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 ### Baseline
 - Critical: {N}, Important: {N}, Minor: {N}
 - Saubere Dimensionen: {Liste}
+
+LEARNING_LOG_ENTRY_END
 ```
 
-### 5. Guideline-Vorschlaege
-
-Wenn du konkrete Guideline-Verbesserungen identifiziert hast, gib sie als strukturierten Output zurueck:
-
-```
-LEARNING_RESULT:
-PATTERNS_FOUND: {N}
-SUPPRESSIONS_ADDED: {N}
-GUIDELINE_SUGGESTIONS: {N}
-
-VORSCHLAEGE:
-1. [guideline-datei.md] Konkrete Aenderung: {Beschreibung}
-2. [agent-N.md] Konkrete Aenderung: {Beschreibung}
-```
-
-Vorschlaege werden in `learning-log.md` geschrieben — der User kann sie dort einsehen.
+**Wenn keine Suppressions zu adden:** `SUPPRESSIONS_TO_ADD: []`
 
 ## Regeln
 
+- **NIE selbst schreiben** in `.claude/`-Pfade. Output zurueckgeben, fertig.
 - Lies ALLE Audit-Logs im Projekt, nicht nur die letzten paar
 - Sei spezifisch: "LIKE injection in Livewire-Traits" statt "Security-Issues"
 - Suppressions nur fuer offene Punkte die bewusst akzeptiert wurden (>= 2x gleicher offener Punkt)
-- Aendere KEINE Guidelines eigenstaendig -- nur vorschlagen
-- Retro muss ehrlich sein -- wenn der Audit nichts Nuetzliches gefunden hat, sag das
+- Aendere KEINE Guidelines eigenstaendig — nur vorschlagen
+- Retro muss ehrlich sein — wenn der Audit nichts Nuetzliches gefunden hat, sag das
 - Halte die Retro kurz (max 20 Zeilen pro Abschnitt)

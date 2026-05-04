@@ -23,9 +23,27 @@ hooks:
 
 # Audit: Review aller offenen Änderungen
 
-**SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Phase 1 beginnen.**
+**SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Phase 0 beginnen.**
 
 Anti-Patterns / häufige Fehler im Loop: `references/anti-patterns.md`.
+
+## Phase 0: Learning-Backlog-Check
+
+Pruefe ob unverarbeitete Lerning-Vorschlaege aus frueheren Audits offen sind:
+
+```bash
+LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
+[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
+```
+
+Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
+- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md`. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Audit weiter mit Phase 1.
+- **Spaeter, Audit jetzt** → Phase 1 starten, Vorschlaege bleiben offen.
+- **Nie wieder fragen fuer diese Audits** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
+
+Wenn `0`: Phase 1 starten ohne Frage.
+
+**Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
 
 ## Phase 1: Pre-Flight & Scope
 
@@ -262,6 +280,10 @@ Danach: `Audit passed.` ausgeben, weiter mit Phase 5 + 6.
 
 ## Phase 5: Learning
 
+Der Learning-Agent gibt einen **strukturierten Output** zurueck. **Subagents koennen nicht in `.claude/`-Pfade schreiben** (hardcoded Schutz, auch im Foreground und mit bypassPermissions). Der Orchestrator parst den Output und schreibt selbst — `.claude/audits/*.md` und `.claude/audits/suppressions.json` sind in den erlaubten Orchestrator-Edits.
+
+**Schritt 1: Learning-Agent dispatchen**
+
 ```
 Agent(
   subagent_type: general-purpose,
@@ -273,7 +295,17 @@ Agent(
 )
 ```
 
-Foreground (5-10s, nicht push-blockierend). Background-Subagents koennen `.claude/`-Dateien nicht schreiben (Hardcoded Schutz). Vorschlaege gehen in `learning-log.md`.
+Foreground (5-10s, nicht push-blockierend).
+
+**Schritt 2: Output parsen**
+
+Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` drei Bloecke: `SUPPRESSIONS_TO_ADD` (JSON-Array), `LEARNING_LOG_ENTRY` (Markdown bis `LEARNING_LOG_ENTRY_END`), `GUIDELINE_SUGGESTIONS` (Liste).
+
+**Schritt 3: Orchestrator schreibt**
+
+- `LEARNING_LOG_ENTRY` an `.claude/audits/learning-log.md` anhaengen (oder neu anlegen falls erster Audit)
+- `SUPPRESSIONS_TO_ADD` in `.claude/audits/suppressions.json` mergen (Dedup auf `pattern`-Feld)
+- `GUIDELINE_SUGGESTIONS` als Hinweis im Chat ausgeben (User reviewt manuell)
 
 ---
 
