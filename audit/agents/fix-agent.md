@@ -1,7 +1,7 @@
 # Fix-Agent
 
 - **subagent_type:** `general-purpose`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `10`
 
 ## Zweck
