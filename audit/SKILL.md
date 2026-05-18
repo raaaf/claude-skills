@@ -138,6 +138,7 @@ Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
 | 8 | `agents/8-ui-design.md` | UI Design |
 | 9 | `agents/9-ux.md` | UX Patterns |
 | 10 | `agents/10-animation.md` | Animation |
+| 11 | `agents/11-docs-sync.md` | Docs Sync & Style |
 
 Prompt-Template: `agents/prompt-template.md`, Abschnitt "Fuer /audit (Diff-basiert)".
 
@@ -146,10 +147,11 @@ Prompt-Template: `agents/prompt-template.md`, Abschnitt "Fuer /audit (Diff-basie
 Gleiche Stelle von mehreren Subagents → ein Finding, strengste Einstufung gewinnt.
 
 Pruefe SELBST (nur Runde 1):
-- Documentation: README.md / CLAUDE.md Update noetig?
-- Oeffentliche Seiten / Changelog
+- Oeffentliche Seiten / Changelog (siehe Phase 3a)
 - Tests: geaenderte Logik ohne Tests?
 - Mobile Apps: `bash bin/detect-mobile.sh` → bei Treffer Impact aus `references/mobile-impact.md`
+
+(Hinweis: Docs-Sync laeuft als Agent 11 — kein separater Orchestrator-Check noetig.)
 
 Eigene Findings als Important einfuegen.
 

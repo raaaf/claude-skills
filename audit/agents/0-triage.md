@@ -39,7 +39,8 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
     "typography": {"run": true, "hotspots": ["lang/de.json"], "reason": "neue Strings"},
     "ui_design": {"run": true, "hotspots": ["components/Button.tsx"], "reason": "neue Variant"},
     "ux": {"run": false, "reason": "kein Interaction-Pattern betroffen"},
-    "animation": {"run": false, "reason": "keine Transitions/Animations im Diff"}
+    "animation": {"run": false, "reason": "keine Transitions/Animations im Diff"},
+    "docs_sync": {"run": true, "hotspots": ["config/services.php:12", "src/routes.ts:88"], "reason": "neue env('STRIPE_KEY') und neue Route -- README/CLAUDE.md/.env.example pruefen"}
   }
 }
 ```
@@ -58,6 +59,7 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
 | ui_design | Frontend-Aenderungen mit visuellen Komponenten, neue Variants, Farben, Spacings |
 | ux | Neue User-Flows, Forms, Error-States, Loading-States, Navigation-Aenderungen |
 | animation | Transitions, Animations, Motion-Libraries, CSS `@keyframes`, Framer Motion |
+| docs_sync | Neue `env(...)` Refs, neue Routes/Commands/Scripts, neue Top-Level-Deps in `package.json`/`composer.json`/`pyproject.toml`, geloeschte Features, Verhaltensaenderungen user-facing |
 
 ## Verbote
 

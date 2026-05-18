@@ -24,6 +24,7 @@ REQUIRED=(
   8-ui-design.md
   9-ux.md
   10-animation.md
+  11-docs-sync.md
   0-triage.md
   fix-agent.md
   prompt-template.md

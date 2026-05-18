@@ -132,12 +132,14 @@ Agent-Definitionen: `{AUDIT_AGENTS}/*.md`.
 | 8 | `8-ui-design.md` | UI Visual Design |
 | 9 | `9-ux.md` | UX Patterns |
 | 10 | `10-animation.md` | Animation |
+| 11 | `11-docs-sync.md` | Docs Sync & Style |
 
 Prompt-Template: `{AUDIT_AGENTS}/prompt-template.md` → Abschnitt "Fuer /full-audit".
 
 **Ueberspringen-Regeln** (wenn Batch nicht den Datei-Typ enthaelt):
 - 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): keine Frontend-Dateien
 - 7 (Typography): weder Frontend- noch Translation-Dateien
+- 11 (Docs Sync): laeuft genau einmal pro Full-Audit (im ersten Batch oder als eigener finaler Pass nach Phase 2.5) — nicht pro Batch.
 
 Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch app-interne Views.
 
@@ -156,8 +158,9 @@ Verworfene als `HALLUCINATED: ...` loggen, nicht fixen.
 
 Pruefe SELBST (nur Runde 1, Batch 1):
 - Tests: wichtige Services/Commands ohne Tests?
-- Dokumentation: CLAUDE.md aktuell?
 - Mobile Apps: `bash "$AUDIT_BIN/detect-mobile.sh"` — bei Treffer Impact-Matrix aus `{AUDIT_REFS}/mobile-impact.md`.
+
+(Hinweis: Dokumentation laeuft als Agent 11 — eigener Pass, kein Orchestrator-Check.)
 
 Ausgabe:
 ```
