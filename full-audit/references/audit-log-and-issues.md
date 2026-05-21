@@ -16,6 +16,7 @@ Format:
 # Full Audit — {DATUM}
 
 ## Scope
+- Dimensionen: {N}/11 — {SELECTED_DIMENSIONS}
 - Modus: SINGLE | BATCHED ({N} Batches)
 - Backend-Dateien: X
 - Frontend-Dateien: Y

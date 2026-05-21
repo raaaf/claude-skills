@@ -54,6 +54,41 @@ bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebro
 
 ---
 
+## Phase 0.5: Dimension Selection
+
+Bevor Scope gesammelt wird, klaeren welche Dimensionen geprueft werden sollen. Spart Tokens und Zeit wenn der User z.B. nur Security pruefen will.
+
+**Skip via ENV (fuer CI/Batch):**
+
+```bash
+if [ -n "${FULL_AUDIT_DIMENSIONS:-}" ]; then
+  case "$FULL_AUDIT_DIMENSIONS" in
+    all|"") SELECTED_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync" ;;
+    *)      SELECTED_DIMENSIONS="$FULL_AUDIT_DIMENSIONS" ;;
+  esac
+  echo "Dimensions via ENV: $SELECTED_DIMENSIONS"
+fi
+```
+
+**Sonst via AskUserQuestion (1 oder 2 Fragen):**
+
+Frage 1 — Preset:
+
+| Option | Dimensionen |
+|---|---|
+| Alles (Standard) | architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync |
+| Nur Backend | architecture, security, performance, code_quality, docs_sync |
+| Nur Frontend | seo, a11y, typography, ui_design, ux, animation |
+| Custom | (loest Frage 2 aus) |
+
+Frage 2 (nur bei Custom) — Multi-Select aller 11 Dimensionen. User waehlt beliebige Kombination.
+
+**Validierung:** `SELECTED_DIMENSIONS` muss min. 1 gueltige Dimension enthalten. Ungueltige Werte verwerfen.
+
+**Anzeige:** `Full-Audit Scope: {N}/11 Dimensionen — {Liste}`.
+
+---
+
 ## Phase 1: Scope & Context
 
 Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste, PROJECT_CONTEXT, SUPPRESSIONS) und ARCHITEKTUR-NOTIZ-Erstellung in `references/scope-context-batching.md`. Resultierende Variablen: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `ARCHITEKTUR-NOTIZ`.
@@ -112,9 +147,9 @@ SINGLE: `Full-Audit Runde {RUNDE}/3 — {TOTAL_FILES} Dateien`
 
 TodoWrite: `Runde {RUNDE} — Subagents dispatchen` (in_progress), `Runde {RUNDE} — Findings fixen` (pending).
 
-**Schritt A — 10 Subagents parallel dispatchen**
+**Schritt A — Subagents parallel dispatchen**
 
-PFLICHT: ALLE zulaessigen Subagents in JEDER Runde. Fixes koennen Issues in beliebigen Dimensionen einfuehren.
+PFLICHT: ALLE in `SELECTED_DIMENSIONS` (aus Phase 0.5) enthaltenen Subagents in JEDER Runde dispatchen. Nicht-selektierte Dimensionen werden komplett uebersprungen — auch nicht in spaeteren Runden nachholen. Fixes koennen Issues in den ausgewaehlten Dimensionen einfuehren.
 
 Dispatche alle in einem Message-Block. Uebergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **nur die Batch-Dateien**.
 
@@ -136,9 +171,10 @@ Agent-Definitionen: `{AUDIT_AGENTS}/*.md`.
 
 Prompt-Template: `{AUDIT_AGENTS}/prompt-template.md` → Abschnitt "Fuer /full-audit".
 
-**Ueberspringen-Regeln** (wenn Batch nicht den Datei-Typ enthaelt):
-- 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): keine Frontend-Dateien
-- 7 (Typography): weder Frontend- noch Translation-Dateien
+**Ueberspringen-Regeln:**
+- Dimension NICHT in `SELECTED_DIMENSIONS` → Agent gar nicht dispatchen
+- 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): keine Frontend-Dateien im Batch
+- 7 (Typography): weder Frontend- noch Translation-Dateien im Batch
 - 11 (Docs Sync): laeuft genau einmal pro Full-Audit (im ersten Batch oder als eigener finaler Pass nach Phase 2.5) — nicht pro Batch.
 
 Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch app-interne Views.
@@ -206,7 +242,7 @@ Confidence-Gate:
 
 ## Phase 2.5: Cross-Reference-Runde (nur BATCHED)
 
-Nach allen Batches. 2 Subagents parallel:
+Nach allen Batches. 2 Subagents parallel — laufen nur wenn `architecture` ODER `code_quality` in `SELECTED_DIMENSIONS` (sonst skippen):
 
 | # | Fokus | Scope |
 |---|---|---|
@@ -242,7 +278,7 @@ Wenn `VISUELL_RELEVANTE_DATEIEN` nicht leer: max. 15 Schritte (mehr als /audit, 
 
 Detail in `references/audit-log-and-issues.md`. Kurz:
 
-- Audit-Log nach `.claude/audits/{datum}-full-audit.md` schreiben (Format-Template in der reference)
+- Audit-Log nach `.claude/audits/{datum}-full-audit.md` schreiben (Format-Template in der reference). Im Header `SELECTED_DIMENSIONS` festhalten, damit spaetere Audits wissen welche Dimensionen nicht geprueft wurden.
 - Log via Read-Tool laden und im Chat als Markdown-Codeblock anzeigen (PFLICHT)
 - Offene Punkte + Minor als GitHub-Issues anlegen (PFLICHT bei gh + GitHub-Repo, Dedup pro Finding)
 - User fragen ob Offene Punkte jetzt umgesetzt werden sollen
@@ -280,6 +316,7 @@ Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell).
 
 ```
 Full Audit abgeschlossen.
+- Scope: {N}/11 Dimensionen — {SELECTED_DIMENSIONS}
 - Modus: {BATCH_MODUS} ({N} Batches, {RUNDEN_GESAMT} Runden)
 - {GESAMT_CRITICAL} Critical, {GESAMT_IMPORTANT} Important, {GESAMT_MINOR} Minor gefunden und gefixt
 - Log: .claude/audits/{DATUM}-full-audit.md
