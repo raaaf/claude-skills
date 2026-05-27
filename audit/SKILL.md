@@ -45,6 +45,28 @@ Wenn `0`: Phase 1 starten ohne Frage.
 
 **Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
 
+## Phase 0.5: Effort Configuration
+
+Skill skaliert Tiefe nach `${CLAUDE_EFFORT}`. Default `medium`.
+
+```bash
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"
+case "$CLAUDE_EFFORT" in
+  low)    MAX_RUNDEN=1; FIX_MINOR=0; SKIP_LEARNING=1; CONFIDENCE_FLOOR=high ;;
+  high)   MAX_RUNDEN=3; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=low ;;
+  medium|*) MAX_RUNDEN=2; FIX_MINOR=0; SKIP_LEARNING=0; CONFIDENCE_FLOOR=medium ;;
+esac
+echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLearning=$SKIP_LEARNING | ConfidenceFloor=$CONFIDENCE_FLOOR"
+```
+
+| Level | Runden | Fix Minor | Learning | Confidence-Floor |
+|---|---|---|---|---|
+| low | 1 | nein | skip | high (nur sichere Fixes) |
+| medium (Default) | 2 | nein | ja | medium |
+| high | 3 | ja | ja | low (auch unsichere fixen, mit Warnung) |
+
+Im Folgenden bedeutet `{MAX_RUNDEN}` der hier gesetzte Wert.
+
 ## Phase 1: Pre-Flight & Scope
 
 ```bash
@@ -70,7 +92,7 @@ Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
 
 ## Phase 2: Audit-Loop
 
-Maximal **2 Runden**. Convergence-Check: Wenn `Critical + Important` der aktuellen Runde NICHT sinkt UND `RUNDE >= 2`, Loop abbrechen mit `NO_CONVERGENCE`.
+Maximal **{MAX_RUNDEN} Runden** (aus Phase 0.5). Convergence-Check: Wenn `Critical + Important` der aktuellen Runde NICHT sinkt UND `RUNDE >= 2`, Loop abbrechen mit `NO_CONVERGENCE`.
 
 Initialisiere: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `FINDINGS_VORHERIGE_RUNDE = null`.
 
@@ -78,7 +100,7 @@ Initialisiere: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `FINDINGS_VORHERIGE_RUNDE = n
 
 **Schritt A — Ankündigung + Todos**
 
-Ausgabe: `Audit-Runde {RUNDE}/2`. TodoWrite: `Subagents dispatchen` (in_progress), `Findings fixen` (pending).
+Ausgabe: `Audit-Runde {RUNDE}/{MAX_RUNDEN}`. TodoWrite: `Subagents dispatchen` (in_progress), `Findings fixen` (pending).
 
 **Schritt B — Scope aktualisieren (ab Runde 2)**
 
@@ -181,10 +203,10 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 
 **0 Critical und 0 Important?** → `SAUBER`. Early-Exit (Minor blockiert nie Push).
 
-**Sonst — Confidence-Gate:**
-- High → direkt fixen
-- Medium → fixen mit Hinweis `(medium confidence)`
-- Low → NICHT auto-fixen, als Offener Punkt
+**Sonst — Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.5):**
+- `floor=high` (low effort): nur `high` fixen, alles andere als Offener Punkt
+- `floor=medium` (medium effort): `high`+`medium` fixen, `low` als Offener Punkt
+- `floor=low` (high effort): alle fixen, `low`-Fixes mit Warn-Marker `(LOW CONFIDENCE FIX)`
 
 **HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Haiku). Edits vom Orchestrator kosten ~5x so viel.
 
@@ -194,16 +216,16 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 2. Pro Datei einen `fix-agent.md`-Subagent (Haiku) parallel dispatchen
 3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
 4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt
-5. Minor: nur fixen wenn high confidence, sonst skippen
+5. Minor: bei `FIX_MINOR=1` (high effort) alle high-confidence Minor fixen, sonst skippen
 6. Nicht fixbar: als Offener Punkt mit Begruendung; `patterns-store.sh dismissed {pattern}` aufrufen
 7. Gefixte Issues zu `BEREITS_GEFIXT` adden, via `patterns-store.sh add` ins Learning-Store
 
 **PFLICHT — Status-Zeile am Ende jeder Runde:**
 
 ```
-AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/2
-AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/2
-AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/2
+AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/{MAX_RUNDEN}
+AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/{MAX_RUNDEN}
+AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 ```
 
 ### Nach jeder Runde
@@ -211,8 +233,8 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/2
 | Ergebnis | Aktion |
 |---|---|
 | `SAUBER` | Loop beendet → Phase 3 |
-| `FIXES_APPLIED` + RUNDE < 2 | `RUNDE += 1`, Prozedur erneut. Kein User-Wait. |
-| `FIXES_APPLIED` + RUNDE = 2 | Loop beendet. Verbleibende Issues auflisten. |
+| `FIXES_APPLIED` + RUNDE < {MAX_RUNDEN} | `RUNDE += 1`, Prozedur erneut. Kein User-Wait. |
+| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop beendet. Verbleibende Issues auflisten. |
 | `NO_CONVERGENCE` | Loop beendet. Warnung. |
 
 ### Audit-Log schreiben (nach Loop-Ende)
@@ -281,6 +303,8 @@ Danach: `Audit passed.` ausgeben, weiter mit Phase 5 + 6.
 ---
 
 ## Phase 5: Learning
+
+**Skip wenn `SKIP_LEARNING=1`** (low effort). Direkt zu Phase 6.
 
 Der Learning-Agent gibt einen **strukturierten Output** zurueck. **Subagents koennen nicht in `.claude/`-Pfade schreiben** (hardcoded Schutz, auch im Foreground und mit bypassPermissions). Der Orchestrator parst den Output und schreibt selbst — `.claude/audits/*.md` und `.claude/audits/suppressions.json` sind in den erlaubten Orchestrator-Edits.
 

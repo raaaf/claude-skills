@@ -2,6 +2,11 @@
 
 Bash-Logik und Prompt-Templates fuer Phase 2.5 (Codebase-Kontext), Phase 3 (Challengen), Phase 3.5 (Evaluation).
 
+## Contents
+- Phase 2.5 — Codebase-Kontext sammeln (Framework-Detection, Source-Dirs)
+- Phase 3 — Plan-Challenger dispatchen (5 parallele Reviewer)
+- Phase 3.5 — Evaluation parsen (Konsens-Score, Aenderungs-Vorschlaege)
+
 ## Phase 2.5: Codebase-Kontext sammeln
 
 ```bash

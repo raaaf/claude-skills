@@ -89,6 +89,40 @@ Frage 2 (nur bei Custom) — Multi-Select aller 11 Dimensionen. User waehlt beli
 
 ---
 
+## Phase 0.7: Effort Configuration
+
+Skaliert Tiefe nach `${CLAUDE_EFFORT}`. Default `xhigh` (Full-Audit ist per Definition gruendlich, kein `medium`).
+
+```bash
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-xhigh}"
+case "$CLAUDE_EFFORT" in
+  low)
+    MAX_RUNDEN_PRO_BATCH=1; FIX_MINOR=0; SKIP_LEARNING=1
+    SKIP_CROSS_REF=1; CONFIDENCE_FLOOR=high
+    ;;
+  medium)
+    MAX_RUNDEN_PRO_BATCH=2; FIX_MINOR=0; SKIP_LEARNING=0
+    SKIP_CROSS_REF=0; CONFIDENCE_FLOOR=medium
+    ;;
+  high|xhigh|*)
+    MAX_RUNDEN_PRO_BATCH=3; FIX_MINOR=1; SKIP_LEARNING=0
+    SKIP_CROSS_REF=0; CONFIDENCE_FLOOR=low
+    FORCE_CROSS_REF_SINGLE=1   # auch im SINGLE-Modus Cross-Ref durchfuehren
+    ;;
+esac
+echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN_PRO_BATCH | FixMinor=$FIX_MINOR | Cross-Ref=$([ $SKIP_CROSS_REF -eq 1 ] && echo skip || echo run)"
+```
+
+| Level | Runden/Batch | Fix Minor | Cross-Ref | Learning | Confidence-Floor |
+|---|---|---|---|---|---|
+| low | 1 | nein | skip | skip | high |
+| medium | 2 | nein | nur BATCHED | ja | medium |
+| high / xhigh (Default) | 3 | ja | immer (auch SINGLE) | ja | low |
+
+Im Folgenden bedeutet `{MAX_RUNDEN_PRO_BATCH}` der hier gesetzte Wert.
+
+---
+
 ## Phase 1: Scope & Context
 
 Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste, PROJECT_CONTEXT, SUPPRESSIONS) und ARCHITEKTUR-NOTIZ-Erstellung in `references/scope-context-batching.md`. Resultierende Variablen: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `ARCHITEKTUR-NOTIZ`.
@@ -123,7 +157,7 @@ FINDINGS_VORHERIGE_RUNDE = null   # pro Batch zuruecksetzen
 
 ### Modus SINGLE (TOTAL_FILES <= 80)
 
-Alle Dateien in einer Runde, max 3 Runden bis SAUBER. Springe zu **Prozedur AUDIT_RUNDE**.
+Alle Dateien in einer Runde, max {MAX_RUNDEN_PRO_BATCH} Runden bis SAUBER. Springe zu **Prozedur AUDIT_RUNDE**.
 
 ### Modus BATCHED
 
@@ -131,7 +165,7 @@ Alle Dateien in einer Runde, max 3 Runden bis SAUBER. Springe zu **Prozedur AUDI
 for BATCH in 1..N:
     RUNDE = 1
     BATCH_SAUBER = false
-    while RUNDE <= 3 AND NOT BATCH_SAUBER:
+    while RUNDE <= {MAX_RUNDEN_PRO_BATCH} AND NOT BATCH_SAUBER:
         AUDIT_RUNDE mit DATEILISTE = Batch-Dateien
         if SAUBER: BATCH_SAUBER = true
         else: RUNDE += 1
@@ -142,8 +176,8 @@ for BATCH in 1..N:
 
 **Schritt A — Ankuendigung**
 
-BATCHED: `Full-Audit — Batch {AKTUELLER_BATCH}/{N} ({BATCH_VERZEICHNIS}) — {X} Dateien — Runde {RUNDE}/3`
-SINGLE: `Full-Audit Runde {RUNDE}/3 — {TOTAL_FILES} Dateien`
+BATCHED: `Full-Audit — Batch {AKTUELLER_BATCH}/{N} ({BATCH_VERZEICHNIS}) — {X} Dateien — Runde {RUNDE}/{MAX_RUNDEN_PRO_BATCH}`
+SINGLE: `Full-Audit Runde {RUNDE}/{MAX_RUNDEN_PRO_BATCH} — {TOTAL_FILES} Dateien`
 
 TodoWrite: `Runde {RUNDE} — Subagents dispatchen` (in_progress), `Runde {RUNDE} — Findings fixen` (pending).
 
@@ -212,10 +246,12 @@ TodoWrite: `Runde {RUNDE} — Findings fixen` (in_progress).
 
 **Grundregel:** Alles wird gefixt — ausser `low confidence`.
 
-Confidence-Gate:
-- `high` → direkt fixen
-- `medium` → fixen, im Log dokumentieren
-- `low` → NICHT fixen, als Offener Punkt
+Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.7):
+- `floor=high` (low effort): nur `high` fixen, alles andere als Offener Punkt
+- `floor=medium` (medium effort): `high`+`medium` fixen, `low` als Offener Punkt
+- `floor=low` (high/xhigh effort, Default): alle fixen, `low` mit Warn-Marker
+
+Minor-Findings nur fixen wenn `FIX_MINOR=1` (high/xhigh).
 
 **HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Fix, egal wie trivial, geht via paralleler Fix-Subagent (Haiku). Orchestrator-Edits auf Opus kosten ~5x so viel.
 
@@ -234,15 +270,20 @@ Confidence-Gate:
 | Ergebnis | RUNDE | Aktion |
 |---|---|---|
 | `SAUBER` | — | Naechster Batch (oder Phase 2.5) |
-| `FIXES_APPLIED` | < 3 | Convergence-Check; sonst RUNDE+1 |
-| `FIXES_APPLIED` | = 3 | Naechster Batch (oder Phase 2.5) |
+| `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | Convergence-Check; sonst RUNDE+1 |
+| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | Naechster Batch (oder Phase 2.5) |
 | `NO_CONVERGENCE` | — | Batch abbrechen, offene Findings als Offene Punkte |
 
 ---
 
-## Phase 2.5: Cross-Reference-Runde (nur BATCHED)
+## Phase 2.5: Cross-Reference-Runde
 
-Nach allen Batches. 2 Subagents parallel — laufen nur wenn `architecture` ODER `code_quality` in `SELECTED_DIMENSIONS` (sonst skippen):
+**Skip-Bedingungen** (in dieser Reihenfolge pruefen):
+- `SKIP_CROSS_REF=1` aus Phase 0.7 (low effort) → komplett skippen
+- Weder `architecture` noch `code_quality` in `SELECTED_DIMENSIONS` → skippen
+- SINGLE-Modus UND `FORCE_CROSS_REF_SINGLE` nicht gesetzt (medium effort) → skippen
+
+Sonst nach allen Batches: 2 Subagents parallel:
 
 | # | Fokus | Scope |
 |---|---|---|
@@ -286,6 +327,8 @@ Detail in `references/audit-log-and-issues.md`. Kurz:
 ---
 
 ## Phase 5: Learning
+
+**Skip wenn `SKIP_LEARNING=1`** (low effort). Direkt zu Abschluss.
 
 ```
 Agent(
