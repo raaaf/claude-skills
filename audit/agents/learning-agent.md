@@ -87,12 +87,10 @@ LEARNING_LOG_ENTRY:
 
 LEARNING_LOG_ENTRY_END
 
-GUIDELINE_SUGGESTIONS:
-1. [guideline-datei.md] Konkrete Aenderung: {Beschreibung}
-2. [agent-N.md] Konkrete Aenderung: {Beschreibung}
-
 LEARNING_RESULT_END
 ```
+
+**Hinweis:** Frueher gab es noch einen separaten `GUIDELINE_SUGGESTIONS`-Block. Entfernt — die `Vorgeschlagene Verbesserungen`-Checkbox-Liste im `LEARNING_LOG_ENTRY` ist der einzige Backlog-Kanal (persistiert + wird in Phase 0 wieder aufgegriffen).
 
 **Wenn es der erste Audit im Projekt ist:**
 

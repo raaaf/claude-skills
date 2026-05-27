@@ -54,6 +54,26 @@ bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebro
 
 ---
 
+## Phase 0.3: Learning-Backlog-Check
+
+Identisch zu `/audit` Phase 0. Pruefe ob unverarbeitete Lerning-Vorschlaege aus frueheren Audits offen sind:
+
+```bash
+LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
+[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
+```
+
+Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
+- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md` (das sind die GLOBALEN Skill-Files, die alle Projekte betreffen). Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Full-Audit weiter mit Phase 0.5.
+- **Spaeter, Full-Audit jetzt** → Phase 0.5 starten, Vorschlaege bleiben offen.
+- **Nie wieder fragen fuer diese Punkte** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
+
+Wenn `0`: Phase 0.5 starten ohne Frage.
+
+**Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` ODER `FULL_AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
+
+---
+
 ## Phase 0.5: Dimension Selection
 
 Bevor Scope gesammelt wird, klaeren welche Dimensionen geprueft werden sollen. Spart Tokens und Zeit wenn der User z.B. nur Security pruefen will.

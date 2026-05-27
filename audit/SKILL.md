@@ -325,13 +325,13 @@ Foreground (5-10s, nicht push-blockierend).
 
 **Schritt 2: Output parsen**
 
-Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` drei Bloecke: `SUPPRESSIONS_TO_ADD` (JSON-Array), `LEARNING_LOG_ENTRY` (Markdown bis `LEARNING_LOG_ENTRY_END`), `GUIDELINE_SUGGESTIONS` (Liste).
+Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` zwei Bloecke: `SUPPRESSIONS_TO_ADD` (JSON-Array) und `LEARNING_LOG_ENTRY` (Markdown bis `LEARNING_LOG_ENTRY_END`). Die Vorschlaege fuer Guideline-/Agent-Aenderungen sind als `- [ ]`-Checkboxes im `Vorgeschlagene Verbesserungen`-Abschnitt des `LEARNING_LOG_ENTRY` enthalten — daher kein eigener Block mehr.
 
 **Schritt 3: Orchestrator schreibt**
 
 - `LEARNING_LOG_ENTRY` an `.claude/audits/learning-log.md` anhaengen (oder neu anlegen falls erster Audit)
 - `SUPPRESSIONS_TO_ADD` in `.claude/audits/suppressions.json` mergen (Dedup auf `pattern`-Feld)
-- `GUIDELINE_SUGGESTIONS` als Hinweis im Chat ausgeben (User reviewt manuell)
+- Im Chat anzeigen: Anzahl neuer Suppressions und Anzahl neuer offener Backlog-Punkte. User weiss, dass beim naechsten `/audit` (oder `/full-audit`) gefragt wird.
 
 ---
 
