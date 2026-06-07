@@ -77,6 +77,14 @@ bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebroc
 bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
 bash "$AUDIT_BIN/pre-checks.sh"
+
+# Project-Specific Guidelines (Override global)
+PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
+PROJECT_GUIDELINES=""
+if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
+  PROJECT_GUIDELINES=$(cat "$PROJECT_GUIDELINES_FILE")
+  echo "Project guidelines: $PROJECT_GUIDELINES_FILE ($(wc -l < "$PROJECT_GUIDELINES_FILE") lines)"
+fi
 bash "$AUDIT_BIN/diff-size-gate.sh"
 ```
 
@@ -86,7 +94,7 @@ Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
 - Variable-Ableitung (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
 - Audit-Context-Check (PFLICHT bei fehlendem Context)
 
-Übergib `PROJECT_CONTEXT`, `FRAMEWORK` und `SOURCE_DIRS` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
+Übergib `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK` und `SOURCE_DIRS` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
 
 ---
 
@@ -232,10 +240,52 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 
 | Ergebnis | Aktion |
 |---|---|
-| `SAUBER` | Loop beendet → Phase 3 |
+| `SAUBER` | Loop beendet → Phase 2.5 (falls Multi-File) → Phase 3 |
 | `FIXES_APPLIED` + RUNDE < {MAX_RUNDEN} | `RUNDE += 1`, Prozedur erneut. Kein User-Wait. |
-| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop beendet. Verbleibende Issues auflisten. |
-| `NO_CONVERGENCE` | Loop beendet. Warnung. |
+| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop beendet → Phase 2.5 (falls Multi-File) → Phase 3 |
+| `NO_CONVERGENCE` | Loop beendet → Phase 3. Warnung. |
+
+---
+
+## Phase 2.5: Cross-Reference (Multi-File-Features)
+
+**Trigger:** Anzahl geaenderter Dateien >= 3 UND `CONFIDENCE_FLOOR != high` (skip auf low effort).
+
+```bash
+FILES_CHANGED_COUNT=$(echo "$ALLE_DATEIEN" | wc -l)
+if [ "$FILES_CHANGED_COUNT" -ge 3 ] && [ "$CONFIDENCE_FLOOR" != "high" ]; then
+  RUN_CROSS_REF=1
+else
+  RUN_CROSS_REF=0
+  echo "Cross-Ref skipped (files=$FILES_CHANGED_COUNT, floor=$CONFIDENCE_FLOOR)"
+fi
+```
+
+Wenn `RUN_CROSS_REF=1`: einen Cross-Ref-Subagent (sonnet) dispatchen:
+
+```
+Agent(
+  subagent_type: code-reviewer,
+  model: sonnet,
+  prompt: "Cross-Reference-Pruefung der geaenderten Dateien.
+    DATEILISTE: {ALLE_DATEIEN}
+    BEREITS_GEFIXT: {BEREITS_GEFIXT}
+    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}
+
+    Pruefe NUR Cross-File-Probleme:
+    - Services <-> UI: falsch aufgerufen, Signaturen passen nicht
+    - Models <-> Traits/Mixins: falsch genutzt
+    - Controller <-> View: Mismatches (z.B. Variable im View nicht uebergeben)
+    - Konsistenz: gleiches Pattern projektweit (Auth-Checks, Cache-Keys, Error-Handling)
+    - Ein Fix in Datei A koennte Datei B brechen (z.B. Method-Rename)
+
+    Output-Format wie Worker-Findings. Max 50 Worte pro Finding."
+)
+```
+
+Findings werden behandelt wie Critical/Important (gleiches Confidence-Gate). Auto-Fix nach gleichen Regeln (Fix-Agent).
+
+---
 
 ### Audit-Log schreiben (nach Loop-Ende)
 

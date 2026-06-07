@@ -149,6 +149,19 @@ Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste
 
 Optionale Pre-Checks (nur bei lokalem Diff): `pre-checks.sh` ausfuehren.
 
+**Project-Specific Guidelines:**
+
+```bash
+PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
+PROJECT_GUIDELINES=""
+if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
+  PROJECT_GUIDELINES=$(cat "$PROJECT_GUIDELINES_FILE")
+  echo "Project guidelines: $PROJECT_GUIDELINES_FILE ($(wc -l < "$PROJECT_GUIDELINES_FILE") lines)"
+fi
+```
+
+`PROJECT_GUIDELINES` an alle Workers durchreichen (siehe prompt-template).
+
 ---
 
 ## Phase 1.5: Batching-Entscheidung

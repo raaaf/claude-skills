@@ -18,8 +18,12 @@ Pruefe NUR auf echte, konkrete {DIMENSIONEN}-Probleme an den oben genannten Hots
 Suppressions (bekannte akzeptierte Issues -- NICHT melden):
 {SUPPRESSIONS}
 
+PROJEKT-SPEZIFISCHE GUIDELINES (ueberschreiben globale wenn Konflikt):
+{PROJECT_GUIDELINES}
+
 Regeln:
 - Nur Issues melden die tatsaechlich Schaden anrichten oder gegen Best Practices verstossen
+- Projekt-spezifische Guidelines (oben) HABEN VORRANG vor globalen Guidelines
 - Keine stilistischen Vorschlaege (dafuer gibt es den Linter)
 - Keine theoretischen "koennte ein Problem sein"-Findings -- nur wenn es ein Problem IST
 - **Code-Lesen on-demand:** Wenn ein Hotspot allein nicht ausreicht (z.B. Konsistenzpruefung gegen bestehende Komponente), lies die betreffende Datei mit dem Read-Tool. Max 5 Files pro Audit-Lauf.
@@ -52,6 +56,9 @@ Bereits gefixt (nicht nochmal melden): {BEREITS_GEFIXT}
 
 Suppressions (bekannte akzeptierte Issues -- NICHT melden):
 {SUPPRESSIONS}
+
+PROJEKT-SPEZIFISCHE GUIDELINES (ueberschreiben globale wenn Konflikt):
+{PROJECT_GUIDELINES}
 
 Dateien die du pruefen MUSST (lies JEDE einzelne Datei):
 {BATCH_DATEILISTE}
