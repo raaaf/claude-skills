@@ -360,3 +360,73 @@ Data tables need structural markup so screen readers can navigate cells and unde
 - Never use tables for layout — only for tabular data
 - For complex tables with multi-level headers, use `id` and `headers` attributes to explicitly associate data cells with their headers
 - Responsive tables should remain accessible — do not replace the table with a visual card layout without providing an equivalent accessible structure
+
+## XI. WCAG 2.2 — New Success Criteria (2023, canonical since 2024)
+
+WCAG 2.2 added 9 new criteria over 2.1. All projects targeting AA should now meet 2.2 AA, not just 2.1.
+
+### 2.4.11 Focus Not Obscured (Minimum) — AA
+
+When an element receives keyboard focus, it must not be fully hidden by sticky headers, footers, or other overlays. Test by tabbing through a page with a fixed header — every focused control must remain at least partly visible.
+
+Fix patterns:
+```css
+:target, :focus-visible {
+  scroll-margin-top: 80px; /* match sticky header height */
+}
+```
+
+### 2.4.12 Focus Not Obscured (Enhanced) — AAA
+
+Like 2.4.11 but the focused element must be FULLY visible, not just partly. Hard to meet with sticky UI — usually AA is the practical target.
+
+### 2.4.13 Focus Appearance — AA
+
+The focus indicator must:
+- Have a contrast ratio of at least 3:1 against the unfocused element
+- Be at least as large as a 2px solid outline around the element
+- Not be obscured by other content
+
+`outline: none` without a replacement violates this. Custom focus styles MUST be visible against both light and dark backgrounds the element appears on.
+
+### 2.5.7 Dragging Movements — AA
+
+Any function that uses dragging must offer a single-pointer alternative (click, button, keyboard). Examples: drag-to-reorder lists need up/down arrow buttons; map drag needs zoom buttons; slider needs arrow-key support.
+
+### 2.5.8 Target Size (Minimum) — AA
+
+Interactive targets must be at least **24x24 CSS pixels**, unless one of:
+- The target is in a sentence (inline link)
+- The target's size is determined by the user agent (native form controls)
+- The target is at least 24px AWAY from any other 24x24 target (spacing exception)
+
+This is stricter than the previous 44x44 AAA criterion which still applies for AAA. Audit dense UI (icon-button toolbars, calendar cells, table action menus) carefully.
+
+### 3.2.6 Consistent Help — A
+
+If the page provides help (contact info, chat widget, FAQ link), it must appear in the same relative order across all pages where it exists. Help in footer on one page, top-right on another → fail.
+
+### 3.3.7 Redundant Entry — A
+
+Information the user already entered (in the same session) must not be asked for again, unless:
+- Re-entry is essential (password confirmation)
+- Information has expired
+- Re-entry is required for security
+
+For multi-step forms: pre-fill from prior steps. "Same as billing address" checkbox is the canonical pattern.
+
+### 3.3.8 Accessible Authentication (Minimum) — AA
+
+Auth must not require cognitive function tests (puzzles, CAPTCHA images, memorize-and-transcribe codes) UNLESS:
+- An alternative method exists (passkeys, magic link, OAuth)
+- A mechanism helps the user (paste enabled, password manager autofill works)
+
+Concrete: password fields must allow paste (no `onpaste="return false"`). 2FA codes must be selectable/autofillable. CAPTCHAs require an audio or alternative track.
+
+### 3.3.9 Accessible Authentication (Enhanced) — AAA
+
+No cognitive-function test EVER, including object recognition or personal-content tests. Practical only when passkey + OAuth cover all users.
+
+### Audit Implications
+
+When auditing a new project, default expectation is WCAG 2.2 AA. If only 2.1 is met, flag as Important findings for each missing 2.2 criterion.

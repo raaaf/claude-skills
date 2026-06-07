@@ -357,3 +357,53 @@ If your site serves content in multiple languages or targets multiple regions, `
 - Each hreflang page must have its own canonical pointing to itself, not to another language version
 
 Incorrect hreflang implementation is worse than none — validate with Google Search Console's International Targeting report and third-party hreflang validators.
+
+## XIII. Answer Engine Optimization (AEO) — 2026
+
+Search increasingly happens inside AI answer engines (ChatGPT, Perplexity, Google AI Overviews, Claude). They cite sources differently than classic search. Optimize for both.
+
+### Content patterns that AI engines cite
+
+- **Direct answer in first paragraph.** AI engines pull "lead paragraphs" as quote candidates. Bury the answer 5 paragraphs deep and it does not get cited.
+- **Lists and tables** are over-represented in AI citations vs flowing prose. Convert prose to bullets where possible.
+- **Question-as-heading + clear answer below** matches how AI engines retrieve. `## What is X?` followed by 1-2 sentence definition.
+- **Statistics with sources** get cited. "User retention dropped 23% (source: Mixpanel cohort, 2025-Q3)" beats "user retention dropped a lot".
+- **Recency signal.** Last-updated dates in HTML (`<time>` element) and structured data. AI engines de-prioritize undated content.
+
+### Structured data for AEO
+
+Beyond standard JSON-LD, prioritize:
+- **`FAQPage`** schema for question-answer sections
+- **`HowTo`** schema for instructional content
+- **`Article` with `dateModified`** explicitly set
+- **`Author` with `sameAs`** pointing to social/scholar profiles — establishes author E-E-A-T
+- **`Speakable`** for audio-podcast/voice-search content
+
+### llms.txt
+
+Emerging standard (proposed late 2024, adopted 2025-2026) for telling LLM crawlers what content is safe to cite vs proprietary:
+
+```
+/llms.txt
+```
+
+Format: markdown listing canonical URLs + summaries. Anthropic, OpenAI, Perplexity respect it for citation context. Cloudflare offers automatic generation.
+
+### IndexNow
+
+Push protocol (Microsoft, Yandex, with Google testing) — notify search engines instantly on content update instead of waiting for crawl. Free, simple POST endpoint. CMS plugins exist for WordPress, Drupal.
+
+### Anti-Patterns 2026
+
+- **AI-generated content without editorial pass.** Detection is reliable; ranking penalty exists. AI-assisted writing is fine, AI-only is risk.
+- **Keyword stuffing reborn as "prompt stuffing"** — repeating likely-AI-query phrases. Search engines pattern-match this.
+- **Cloaking AI crawlers** (different content to GPTBot vs Googlebot). Both Google and Anthropic explicitly flag this as policy violation.
+- **Schema for content that does not exist** — claiming `FAQPage` when the page is not Q&A format. AI engines verify before citing.
+
+### Audit Implications
+
+For content-heavy sites (blog, docs, marketing), check:
+- Does each page answer one clear question in the first 50 words?
+- Are FAQs marked up with `FAQPage` JSON-LD?
+- Is `dateModified` accurate?
+- Does `llms.txt` exist if the site has content worth being cited?

@@ -283,3 +283,62 @@ For applications subject to GoBD compliance (or any domain where records become 
 **$fillable Hygiene for immutable fields.** Fields that control immutability state (`finalized_at`, `cancelled_at`, `number`, `sender_snapshot`, `pdf_path`) must NOT be in `$fillable`. Set them via direct assignment in dedicated Service methods. This prevents accidental mass-assignment via `fill()`, `update()`, or `create()`.
 
 **JS Interpolation safety.** When interpolating PHP values into JavaScript (Heredoc strings, inline `<script>` blocks), always use `json_encode()` with `JSON_HEX_TAG | JSON_UNESCAPED_UNICODE`, never `addslashes()`. The latter does not protect against template literal injection or `</script>` breakout.
+
+## XII. AI / LLM Security (2026)
+
+If the application calls an LLM API or processes LLM output, treat the LLM as another untrusted input channel.
+
+**Prompt Injection — direct.** User-supplied text concatenated into a system prompt becomes a vector: "Ignore previous instructions and..." Use structured message roles (system/user/assistant separation in the SDK), never string-concatenate user input into the system prompt. Treat user input as data, not instructions.
+
+**Indirect Prompt Injection.** When the LLM reads documents/URLs/emails (RAG, tool-use), malicious content in those sources can override instructions. Defenses:
+- Allowlist URLs the LLM can fetch
+- Strip suspicious markers in fetched content (`<|im_end|>`, JSON config snippets, role tags)
+- Re-prompt with stronger guardrails after each fetched-content turn
+- Treat tool-call arguments derived from fetched content as low-trust
+
+**Output handling.** LLM output is user-controlled. If you render it as HTML, escape it. If you pass it to a shell/SQL/eval, treat it as user input — same parameterization rules as Section V apply.
+
+**Secret exposure.** Never include API keys, internal URLs, or PII in the system prompt — the model may echo them back on craft prompts. Use server-side fetch + post-processed results instead of giving the LLM direct credentials.
+
+**Cost DoS.** A malicious user can craft prompts that maximize output tokens (long context, recursive tool-call loops). Rate-limit per user and cap `max_tokens` per call.
+
+## XIII. Modern Browser Hardening (2026)
+
+**Trusted Types** for DOM XSS prevention. Set `Content-Security-Policy: require-trusted-types-for 'script'` and create a policy that sanitizes all assignments to `innerHTML`, `outerHTML`, `eval`, `Function`. Browser blocks raw string sinks at the platform level. Works alongside CSP, not as a replacement.
+
+**Permissions Policy** (replaces Feature-Policy header). Lock down APIs you do not use:
+```
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+```
+
+**CSP nonce, not 'unsafe-inline'.** Generate a per-request nonce, put it on every `<script>` tag, reference it in CSP. `'unsafe-inline'` defeats XSS protection entirely; nonce-based is the minimum acceptable today.
+
+**SameSite=Strict cookies** unless cross-site flows require otherwise. `Lax` is the default since 2020 but `Strict` is safer for session cookies.
+
+**Subresource Integrity (SRI)** on all CDN-loaded scripts and stylesheets:
+```html
+<script src="https://cdn.example.com/lib.js" integrity="sha384-..." crossorigin="anonymous"></script>
+```
+Without SRI, a CDN compromise compromises every site using it.
+
+## XIV. Authentication 2026
+
+**Argon2id over bcrypt.** Argon2id is the OWASP-recommended password hash. Parameters: `memory >= 19 MiB, iterations >= 2, parallelism = 1` (or framework defaults if they meet OWASP 2024+ guidance). Migrate bcrypt-hashed passwords on next login.
+
+**Passkeys (WebAuthn)** as primary auth, not optional. Phishing-resistant, no shared secret, supported in Safari/Chrome/Firefox/Edge. Frameworks: Spatie WebAuthn (Laravel), simplewebauthn (Node). Fallback to TOTP/email-code, never SMS.
+
+**No SMS 2FA** for new flows. SIM-swap is a documented attack chain. TOTP, push notifications, or passkeys instead.
+
+**Session rotation on auth events.** Issue a new session ID on login, password change, MFA enrollment. Old session cookie is invalidated.
+
+## XV. Supply Chain (2026)
+
+**Lockfile drift.** PR that changes `package.json` or `composer.json` but not `package-lock.json` / `composer.lock` is a red flag — either incomplete or someone is bypassing the lock. Block in CI.
+
+**Dependency audit in CI.** `npm audit --omit=dev --audit-level=high`, `composer audit`, `pip-audit` on every PR. Fail on high/critical.
+
+**Sigstore / npm provenance** verification for critical dependencies. `npm install --provenance` checks build provenance metadata.
+
+**Postinstall scripts.** Block by default in CI (`npm config set ignore-scripts true` in builds), allow per-package after review. Postinstall is the most common npm-supply-chain vector.
+
+**Typosquat detection.** Before adding a dependency, search the registry for similar names; established packages have stars/downloads, typosquats often do not.
