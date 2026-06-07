@@ -228,6 +228,31 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 6. Nicht fixbar: als Offener Punkt mit Begruendung; `patterns-store.sh dismissed {pattern}` aufrufen
 7. Gefixte Issues zu `BEREITS_GEFIXT` adden, via `patterns-store.sh add` ins Learning-Store
 
+**Schritt E.5 — Fix-Verification (PFLICHT bei medium/high effort, SKIP bei low)**
+
+Fuer jeden `FIX_RESULT=APPLIED` einen Fix-Verifier-Subagent (sonnet) dispatchen:
+
+```
+Agent(
+  subagent_type: code-reviewer,
+  model: sonnet,
+  prompt: "Lies agents/fix-verifier.md und bewerte den folgenden Fix.
+    ORIGINAL_FINDING: {finding}
+    FIX_DIFF: {diff_des_fix_agents}
+    FIX_DATEI: {datei}
+    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}"
+)
+```
+
+Auswertung des `FIX_VERIFIER_RESULT`:
+- `RECOMMEND=keep` → Fix bleibt, weiter
+- `RECOMMEND=patch` → Fix bleibt, aber Finding bleibt in `FINDINGS_NAECHSTE_RUNDE` als "Fix needs improvement"
+- `RECOMMEND=revert` → `git checkout {FIX_DATEI}` (Fix rueckgaengig), Original-Finding zurueck in offene Liste
+
+Parallelisierung: Alle Verifier in einem Message-Block, max 10 parallel. Latenz-Add: ~3-5s pro Runde.
+
+**Token-Cost:** Verifier ist Sonnet, kostet ca. ein Drittel eines Workers. Bei N Fixes also +N*0.3 Worker-Kosten. Lohnt sich weil falsche Fixes spaeter teuer sind.
+
 **PFLICHT — Status-Zeile am Ende jeder Runde:**
 
 ```

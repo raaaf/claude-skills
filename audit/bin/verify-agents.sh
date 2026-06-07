@@ -27,6 +27,7 @@ REQUIRED=(
   11-docs-sync.md
   0-triage.md
   fix-agent.md
+  fix-verifier.md
   prompt-template.md
   learning-agent.md
 )
