@@ -1,0 +1,21 @@
+{
+  "fixture": "security/sqli-laravel.php",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 13,
+      "matches": ["sql injection", "sqli", "raw query", "concatenation", "user input"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP controller, no markup"
+    },
+    {
+      "dimension": "typography",
+      "reason": "no user-facing text"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "fixture": "a11y/missing-aria.blade.php",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 1,
+      "matches": ["role=\"dialog\"", "aria-modal", "modal", "dialog"],
+      "severity": "important"
+    },
+    {
+      "dimension": "a11y",
+      "line": 8,
+      "matches": ["aria-label", "icon-only", "close"],
+      "severity": "important"
+    },
+    {
+      "dimension": "a11y",
+      "line": 12,
+      "matches": ["aria-label", "icon-only", "confirm"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

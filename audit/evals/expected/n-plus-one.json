@@ -1,0 +1,17 @@
+{
+  "fixture": "performance/n-plus-one.php",
+  "must_find": [
+    {
+      "dimension": "performance",
+      "line": 16,
+      "matches": ["n+1", "n plus one", "eager load", "with(", "lazy loading"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input, no SQL, no auth"
+    }
+  ]
+}
