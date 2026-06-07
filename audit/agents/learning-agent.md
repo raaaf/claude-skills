@@ -22,7 +22,35 @@ Lies (nur lesen, nicht schreiben):
 - `$PROJECT_ROOT/.claude/audits/suppressions.json` (falls vorhanden)
 - `$PROJECT_ROOT/.claude/audits/learning-log.md` (falls vorhanden)
 
-### 2. Pattern-Erkennung
+### 2. Metriken berechnen
+
+Aus den vergangenen Audit-Log-Files (`.claude/audits/*-*.md`) extrahieren und ein Trend-Block ans Ende der `learning-log.md` haengen lassen vom Orchestrator:
+
+- Anzahl Audits gesamt
+- Letzte 3 Audits: Critical-Zahlen → Trend (sinkend/steigend/stabil)
+- Letzte 3 Audits: Important-Zahlen → Trend
+- Haeufigste Finding-Kategorie ueber letzte 5 Audits
+- Durchschnittliche Findings/Audit (letzte 5)
+- "Wiederkehrer": Findings die in >= 3 Audits auftauchen (kandidat fuer Guideline-Update)
+
+Format des Metriken-Blocks:
+
+```markdown
+## Trends (Stand {DATUM})
+
+| Metrik | Wert |
+|---|---|
+| Audits total | {N} |
+| Critical-Trend (letzte 3) | {a} → {b} → {c} ({sinkend/stabil/steigend}) |
+| Important-Trend (letzte 3) | {a} → {b} → {c} |
+| Top-Kategorie (letzte 5) | {Kategorie} ({M}x) |
+| Avg Findings/Audit | {X} |
+
+**Wiederkehrer (>=3 Audits):**
+- {Pattern} -- Kandidat fuer Guideline-Update
+```
+
+### 3. Pattern-Erkennung
 
 Vergleiche alle Audit-Logs und suche nach:
 
@@ -41,7 +69,7 @@ Vergleiche alle Audit-Logs und suche nach:
 **Neue Patterns:**
 - Finding-Typen die in keiner Guideline unter `guidelines/*.md` abgedeckt sind
 
-### 3. Output strukturiert zurueckgeben
+### 4. Output strukturiert zurueckgeben
 
 Gib **EXAKT diese Struktur** zurueck. Der Orchestrator parst sie und schreibt die Files.
 
@@ -87,8 +115,25 @@ LEARNING_LOG_ENTRY:
 
 LEARNING_LOG_ENTRY_END
 
+TRENDS_BLOCK_START
+## Trends (Stand {DATUM})
+
+| Metrik | Wert |
+|---|---|
+| Audits total | {N} |
+| Critical-Trend (letzte 3) | {a} -> {b} -> {c} ({sinkend/stabil/steigend}) |
+| Important-Trend (letzte 3) | {a} -> {b} -> {c} |
+| Top-Kategorie (letzte 5) | {Kategorie} ({M}x) |
+| Avg Findings/Audit | {X} |
+
+**Wiederkehrer (>=3 Audits):**
+- {Pattern} -- Kandidat fuer Guideline-Update
+TRENDS_BLOCK_END
+
 LEARNING_RESULT_END
 ```
+
+**Orchestrator-Verhalten fuer TRENDS_BLOCK:** Den TRENDS_BLOCK ersetzt am Anfang der `learning-log.md` (nach dem H1) den bestehenden Block, oder fuegt ihn neu ein wenn noch keiner da ist. Wird nicht angehaengt — soll als Top-Snapshot dienen.
 
 **Hinweis:** Frueher gab es noch einen separaten `GUIDELINE_SUGGESTIONS`-Block. Entfernt — die `Vorgeschlagene Verbesserungen`-Checkbox-Liste im `LEARNING_LOG_ENTRY` ist der einzige Backlog-Kanal (persistiert + wird in Phase 0 wieder aufgegriffen).
 
