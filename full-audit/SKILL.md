@@ -3,7 +3,7 @@ name: full-audit
 description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 10 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
-model: claude-opus-4-7
+model: opus
 effort: xhigh
 allowed-tools:
   - Agent
