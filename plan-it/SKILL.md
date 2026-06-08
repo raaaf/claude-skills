@@ -32,6 +32,76 @@ Tonfall + Beispiele in `references/interview-guide.md`.
 
 ---
 
+## Phase 0: Learning-Backlog-Check
+
+Pruefe ob unverarbeitete Lerning-Vorschlaege aus frueheren Plaenen offen sind:
+
+```bash
+LOG="$(git rev-parse --show-toplevel)/.claude/plans/learning-log.md"
+[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
+```
+
+Wenn `>= 1`: User via `AskUserQuestion` fragen:
+- **Vorschlaege jetzt umsetzen** → Aenderungen an `plan-it/agents/*.md` oder `plan-it/references/*.md` durchfuehren, `[ ]` → `[x]`.
+- **Spaeter, Plan jetzt** → Phase 0.5.
+- **Nie wieder fragen** → `[skip]`-Marker.
+
+Wenn `0`: direkt Phase 0.5.
+
+Skip via ENV `PLAN_SKIP_LEARNING_CHECK=1`.
+
+---
+
+## Phase 0.5: Effort Configuration
+
+```bash
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-xhigh}"
+case "$CLAUDE_EFFORT" in
+  low)
+    CHALLENGE_DIMS="product,architecture,risk"  # 3 statt 5
+    SKIP_EVALUATION=1
+    SKIP_LEARNING=1
+    SKIP_CODEBASE_SCAN=1   # Phase 1 Schritt B uebersprungen
+    ;;
+  medium)
+    CHALLENGE_DIMS="product,architecture,risk,simplicity"  # 4 statt 5
+    SKIP_EVALUATION=1
+    SKIP_LEARNING=0
+    SKIP_CODEBASE_SCAN=0
+    ;;
+  high|xhigh|*)
+    CHALLENGE_DIMS="product,architecture,risk,simplicity,design"  # voll
+    SKIP_EVALUATION=0
+    SKIP_LEARNING=0
+    SKIP_CODEBASE_SCAN=0
+    ;;
+esac
+echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run) | Learning=$([ $SKIP_LEARNING -eq 1 ] && echo skip || echo run)"
+```
+
+| Level | Challenges | Codebase-Scan | Evaluation | Learning |
+|---|---|---|---|---|
+| low | 3 (product, arch, risk) | skip | skip | skip |
+| medium | 4 (+ simplicity) | run | skip | run |
+| high / xhigh (Default) | 5 (alle) | run | run | run |
+
+---
+
+## Phase 0.7: Projektspezifische Guidelines
+
+```bash
+PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/plan-guidelines.md"
+PROJECT_GUIDELINES=""
+if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
+  PROJECT_GUIDELINES=$(cat "$PROJECT_GUIDELINES_FILE")
+  echo "Project guidelines: $PROJECT_GUIDELINES_FILE ($(wc -l < "$PROJECT_GUIDELINES_FILE") lines)"
+fi
+```
+
+`PROJECT_GUIDELINES` an alle Challenge-Agents durchreichen (siehe Phase 3). Beispielinhalt: "Phase 1 immer mit Migration-Plan", "Risk-Concerns mit Konzern-Datenschutz immer einarbeiten", "Tech-Stack ist Laravel 11 + Livewire 3 — Architecture-Concerns auf das Stack beschraenken".
+
+---
+
 ## Phase 1: Verstehen — Entscheidungsbaum durchgehen
 
 ### Input erkennen
@@ -53,7 +123,7 @@ Bevor wir vergleichen — was ist das eigentliche Ziel?
 
 Belegt durch Learning-Log: 2 von 7 Plaenen wurden durch Framing-Klaerung gerettet (Plan 5/7: Reverb-Frage war eigentlich Notification-Pipeline-Problem).
 
-### Schritt B: Codebase-Scan (PFLICHT bei jedem Plan)
+### Schritt B: Codebase-Scan (PFLICHT bei jedem Plan, skip wenn `SKIP_CODEBASE_SCAN=1`)
 
 Bevor du die erste Verstaendnisfrage stellst, **scanne die Codebase**. Viele Fragen beantworten sich dadurch selbst.
 
@@ -123,9 +193,9 @@ Ergebnis: `FRAMEWORK`, `SOURCE_DIRS`, `DATEISTRUKTUR`, `ZENTRALE_PATTERNS`.
 
 ## Phase 3: Challengen
 
-TodoWrite: `Plan challengen — 5 Dimensionen` (in_progress)
+TodoWrite: `Plan challengen — {N} Dimensionen` (in_progress), wobei `{N}` = Anzahl Dimensionen in `CHALLENGE_DIMS` aus Phase 0.5.
 
-5 Subagents parallel dispatchen. Jeder liest den Plan und challenged aus seiner Perspektive. Dispatch-Templates in `references/dispatch-templates.md` Phase 3.
+Subagents parallel dispatchen — nur die in `CHALLENGE_DIMS` enthaltenen. Jeder liest den Plan und challenged aus seiner Perspektive. Uebergib auch `PROJECT_GUIDELINES` (aus Phase 0.7) — Agents weisen projektspezifische Hinweise hoeher als generische Best Practices. Dispatch-Templates in `references/dispatch-templates.md` Phase 3.
 
 | Agent | Datei | Perspektive | Modell |
 |---|---|---|---|
@@ -161,6 +231,8 @@ TodoWrite: `Plan challengen — 5 Dimensionen` (completed)
 
 ## Phase 3.5: Evaluation
 
+**Skip wenn `SKIP_EVALUATION=1`** (low/medium effort). Direkt zu Phase 4.
+
 Nach Finalisieren: Plan ein letztes Mal evaluieren lassen. Evaluator-Prompt in `references/dispatch-templates.md` Phase 3.5. Modell: sonnet.
 
 Bewertet 5 Dimensionen (Vollstaendigkeit, Reihenfolge, Aufwand, Risiken, Umsetzbarkeit) plus Pflicht-Checkliste (Monitoring-Blindspots, Feature-Ueberlappungen, Optimierungs-Hebel).
@@ -184,6 +256,8 @@ Evaluation: {Gesamturteil}
 
 ## Phase 4: Learning
 
+**Skip wenn `SKIP_LEARNING=1`** (low effort). Audit-Ende.
+
 TodoWrite: `Plan-Log schreiben und Learning` (in_progress)
 
 ### Plan-Log schreiben
@@ -195,7 +269,7 @@ mkdir -p "$PLAN_LOG_DIR"
 
 Datei: `$PLAN_LOG_DIR/{YYYY-MM-DD}-{slug}.md`. Format-Template in `references/plan-templates.md`.
 
-### Learning-Agent dispatchen
+### Learning-Agent dispatchen (strukturierter Output, kein Self-Write)
 
 ```
 Agent(
@@ -207,6 +281,17 @@ Agent(
 )
 ```
 
-**Foreground-Mode wichtig:** Background-Subagents koennen `.claude/plans/learning-log.md` nicht schreiben (hardcoded `.claude/`-Schutz). Foreground umgeht das mit ~5-10s Mehrkosten.
+Der Agent gibt **strukturierten Output** zurueck. **Subagents koennen nicht in `.claude/`-Pfade schreiben** (hardcoded Schutz). Der Orchestrator parst und schreibt selbst.
+
+### Output parsen
+
+Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` zwei Bloecke:
+- `LEARNING_LOG_ENTRY` (Markdown bis `LEARNING_LOG_ENTRY_END`) — Retro mit `- [ ]` Backlog-Liste
+- `TRENDS_BLOCK` (Markdown zwischen `TRENDS_BLOCK_START` und `TRENDS_BLOCK_END`) — Top-Snapshot
+
+### Orchestrator schreibt
+
+- `LEARNING_LOG_ENTRY` an `.claude/plans/learning-log.md` anhaengen (oder neu anlegen falls erster Plan).
+- `TRENDS_BLOCK` am Anfang der `learning-log.md` einfuegen oder vorhandenen Block ersetzen (Top-Snapshot, kein Append).
 
 TodoWrite: `Plan-Log schreiben und Learning` (completed)
