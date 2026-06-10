@@ -213,3 +213,21 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 - **Frame-by-frame**: Chrome DevTools Animations panel
 - **Real devices**: test touch/gesture interactions on physical hardware via USB + Safari remote devtools
 - **Fresh eyes**: review animations the next day
+
+## 15. Common Implementation Bugs (2026)
+
+These are the failure modes that ship most often and break silently. All three are easy to grep for.
+
+| Bug | Symptom | Fix |
+|---|---|---|
+| **Close-state class not cleaned up** | First open animates correctly. Subsequent opens skip or stutter because `.is-closing` / `[data-state="closing"]` was never removed after the close completed. | Listen for `animationend`/`transitionend` and remove the close-state class explicitly. Or use `@starting-style` so no state attribute is needed. |
+| **No reflow between class toggles** | Re-triggering the same animation does nothing — browser collapses the back-to-back state changes. | Insert `void el.offsetHeight;` between `el.classList.remove('on')` and `el.classList.add('on')`. Or use `requestAnimationFrame` between toggles. Or restart via `el.getAnimations().forEach(a => { a.cancel(); a.play(); })`. |
+| **`transition: all` with dynamic properties** | Transitioning unintended properties (background, padding, border-radius) when only `transform` was supposed to animate, causing jank and visual bugs. | Specify exact properties: `transition: transform 200ms ease-out, opacity 200ms ease-out`. Already in §13 — but this is the single most common animation bug, worth re-stating. |
+
+**Additional gotchas:**
+- **Stripping `transform-origin` on reopen** — origin-aware popovers lose their origin when the close-state class is wiped along with origin variables. Keep origin separate from state classes.
+- **Animating containers instead of inner pieces** — outer container resizes are jarring. Animate inner content with the two-div pattern (§7).
+- **Hardcoded `stroke-dasharray` on SVG path-draw** — breaks if the path changes. Calculate length via `path.getTotalLength()` at mount, set via custom property.
+- **Inline `transition-timing-function`** when CSS controls the timing — overrides theme curves silently. Set in CSS, not inline style.
+
+**Pattern reference for building (not auditing):** Concrete production-ready snippets for 18 named patterns (card resize, modal, tooltip, tabs sliding, success check, error shake, skeleton reveal, etc.) live at [transitions.dev](https://transitions.dev/) with a semantic CSS variable system. Useful as a vocabulary when an audit finding says "the modal pattern is wrong" — refer to the transitions.dev recipe to clarify what the correct pattern looks like.
