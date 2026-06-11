@@ -69,6 +69,11 @@ Vergleiche alle Audit-Logs und suche nach:
 **Neue Patterns:**
 - Finding-Typen die in keiner Guideline unter `guidelines/*.md` abgedeckt sind
 
+**Verpasste Bugs (Eval-Fixture-Kandidaten):**
+- Critical/Important in Audit N auf Code, der in Audit N-1 bereits geprueft und sauber war → der Audit hat es damals uebersehen
+- Findings, deren Beschreibung auf nachtraegliche User-Meldung hindeutet ("nachtraeglich gemeldet", "in Production aufgefallen")
+- Fuer jeden Treffer: Backlog-Punkt vorschlagen im Format `- [ ] eval-fixture: {kategorie}/{kurzname} — {1-Satz-Beschreibung des Bugs der uebersehen wurde}`. Der User legt die Fixture dann unter `audit/evals/fixtures/{kategorie}/` an (oder laesst sie in Phase 0 anlegen). So waechst die Eval-Suite aus echten Misses statt aus erfundenen Beispielen.
+
 ### 4. Output strukturiert zurueckgeben
 
 Gib **EXAKT diese Struktur** zurueck. Der Orchestrator parst sie und schreibt die Files.
@@ -112,6 +117,7 @@ LEARNING_LOG_ENTRY:
 ### Vorgeschlagene Verbesserungen
 - [ ] {Guideline-Datei}: {konkrete Aenderung}
 - [ ] {Agent-Datei}: {konkrete Aenderung}
+- [ ] eval-fixture: {kategorie}/{kurzname} — {Bug der uebersehen wurde, falls erkannt}
 
 LEARNING_LOG_ENTRY_END
 

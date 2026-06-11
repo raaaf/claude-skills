@@ -76,6 +76,7 @@ Projects can override globals by adding files to their own `.claude/`:
 - **Plan mode on `model: opus` switches to Sonnet during execution** if you use `opusplan` globally. Skill frontmatter override (`model: opus`) keeps it on Opus end-to-end.
 - **`maxTurns` on agents is a hard limit.** A worker that exceeds it returns whatever it has, including partial findings. Triage and fix-agent need slack (5 turns minimum); fix-verifier is tighter (3-5 is plenty).
 - **Worker output never includes code snippets.** Findings reference `file:line` only. This is by design — keeps consolidation cheap and prevents the worker from being a code generator.
+- **Stop-hook `additionalContext` does NOT block.** Verified against the hooks docs (June 2026): `hookSpecificOutput.additionalContext` on Stop/SubagentStop lets the stop proceed and only injects context. The audit loop needs blocking to force the next round — `exit 2` in `~/.claude/hooks/audit-loop.sh` stays. Don't "modernize" this.
 
 ## Adding a new skill
 

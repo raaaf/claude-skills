@@ -71,6 +71,13 @@ Sparring partner for turning ideas into solid implementation plans. Asks the rig
 
 Creates new skills following the canonical structure: orchestrator + `agents/` for parallel workers + `references/` for progressive disclosure + `guidelines/` for content best practices. Inspired by [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md).
 
+## Personal skills
+
+Two more skills live in this repo as architecture examples. They are wired to personal infrastructure and not meant for reuse — read them for patterns, not for installing.
+
+- **`/live-audit`** — Scheduled weekly live-site audit (PageSpeed Insights API + SSL check) for my own domains. New findings become GitHub Issues in the matching repo; a suppress-label closes the learning loop. Shows: Scheduled-Tasks-MCP integration, API-based auditing without a browser, issue dedup.
+- **`/rafael-writing-style`** — My personal writing style for blog posts, web copy, and emails. Shows: how to encode tone-of-voice rules as a skill.
+
 ## Stack
 
 | | |
