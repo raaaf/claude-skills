@@ -185,6 +185,10 @@ Optionale Pre-Checks (nur bei lokalem Diff): `pre-checks.sh` ausfuehren.
 
 **i18n-Vollstaendigkeit (deterministisch):** `bash "$AUDIT_BIN/check-i18n-keys.sh"` — bei `I18N_RESULT=MISSING` wird jede Zeile ein Important-Finding `[i18n]` (Full-Audit prueft die ganze Codebase, daher alle Gaps melden).
 
+**Dependency-Health (deterministisch):** `bash "$AUDIT_BIN/check-outdated.sh"` (voller Modus) —
+- `DEP_SECURITY_RESULT=VULNS` → jede verwundbare Dependency ein **Critical**-Finding `[Security]`
+- `DEP_OUTDATED_RESULT=OUTDATED` → als **Minor**-Findings `[Dependencies]` sammeln (gruppiert, nicht pro Paket ein Issue); Major-Spruenge mit Breaking-Change-Risiko (z.B. `stripe-php 17 → 20`) als Offener Punkt statt Auto-Update — Dependency-Updates macht NIE der Fix-Agent automatisch
+
 **Project-Specific Guidelines:**
 
 ```bash

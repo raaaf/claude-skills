@@ -38,6 +38,7 @@ Key invariants:
 | `bash ~/.claude/hooks/sync-skills.sh` | Copy + zip skills to `~/.claude/skills/` after edits |
 | `bash audit/bin/verify-agents.sh audit/agents` | Verify all 17 required agent files present |
 | `bash audit/bin/check-i18n-keys.sh [root]` | Deterministic i18n key-set diff across locales |
+| `bash audit/bin/check-outdated.sh [root] [--security-only]` | Dependency vulnerabilities (audit-grade) + outdated majors (full-audit only) |
 | `bash audit/evals/run-evals.sh` | Run eval suite against fixtures (recall + false-positive count) |
 | `echo "..." \| bash audit/bin/normalize-suppression.sh` | Test the semantic dedup key for a suppression |
 

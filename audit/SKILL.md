@@ -78,6 +78,14 @@ bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
 bash "$AUDIT_BIN/pre-checks.sh"
 
+# Dependency-Vulnerabilities (nur wenn Manifest/Lockfile im Diff)
+if echo "$ALLE_DATEIEN" | grep -qE '(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Podfile(\.lock)?|Package\.(swift|resolved)|pubspec\.(yaml|lock)|build\.gradle)'; then
+  bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)" --security-only
+  # DEP_SECURITY_RESULT=VULNS -> jede gemeldete Zeile wird ein Critical-Finding
+  # [Security] (verwundbare Dependency blockiert Push wie jedes Critical).
+  # SKIP/CLEAN -> nichts tun. Outdated-Check laeuft hier bewusst NICHT (Noise).
+fi
+
 # i18n-Vollstaendigkeit (deterministisch, kein LLM)
 bash "$AUDIT_BIN/check-i18n-keys.sh"
 # I18N_RESULT=MISSING → jede Zeile "MISSING {locale}: {key}" wird ein

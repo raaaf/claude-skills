@@ -10,6 +10,7 @@ Plattformspezifische Audit-Regeln fuer native und cross-platform Apps. Nur relev
 - V. i18n & Typography nativ
 - VI. Release-Hygiene
 - VII. Audit-Checkliste
+- VIII. Deprecated APIs (Apple / Android)
 
 ## I. Accessibility (VoiceOver / TalkBack)
 
@@ -95,3 +96,33 @@ Plattformspezifische Audit-Regeln fuer native und cross-platform Apps. Nur relev
 | Eager-Rendering langer Listen | Important |
 | Hex-Farben statt Semantic Colors (Dark Mode kaputt) | Minor |
 | Eigenbau-Komponente wo System-Komponente existiert | Minor |
+
+## VIII. Deprecated APIs (Apple / Android)
+
+Apple deprecated jede WWDC aggressiv; der App Store erzwingt Builds mit aktuellem SDK. Veraltete API-Nutzung ist daher ein echtes Finding — aber mit Halluzinations-Schutz:
+
+**Verifikations-Regel (PFLICHT):**
+- Deprecation-Findings bekommen IMMER ein Confidence-Label
+- `high` nur wenn die Deprecation sicher bekannt ist (lange deprecated, prominent dokumentiert)
+- Bei `medium`/`low`: VOR dem Melden via context7 oder Apple/Android-Doku verifizieren. Nicht verifizierbar → NICHT melden
+- NIE eine Deprecation auto-fixen ohne Verifikation — falsche "Modernisierung" ist schlimmer als alte API
+
+**Schweregrad:**
+- Minor: deprecated, kompiliert aber noch ohne Termin
+- Important: Removal angekuendigt, SDK-Mindestversion betroffen, oder Xcode warnt im Build
+
+**Stabile Beispiele (Muster, keine erschoepfende Liste — Listen veralten selbst):**
+
+| Veraltet | Ersatz |
+|---|---|
+| `NavigationView` | `NavigationStack` / `NavigationSplitView` (iOS 16+) |
+| `UIScreen.main` | `view.window.windowScene.screen` / Trait-basiert |
+| `UIApplication.shared.keyWindow` | `windowScene.keyWindow` |
+| `.onChange(of:) { value in }` (1-Param) | 2-Param-Signatur `{ old, new in }` (iOS 17+) |
+| `.foregroundColor()` | `.foregroundStyle()` |
+| `CTCarrier` | entfernt ohne Ersatz (iOS 16+) |
+| `AsyncTask` (Android) | Kotlin Coroutines |
+| `startActivityForResult` | Activity Result API |
+| `Handler()` ohne Looper | `Handler(Looper.getMainLooper())` |
+
+**Audit-Prozedur:** Beim Lesen nativer Files auf bekannte deprecated Patterns achten. Build-Logs (falls im Diff/Projekt vorhanden) nach Deprecation-Warnings greppen — die sind deterministisch und brauchen keine Verifikation.

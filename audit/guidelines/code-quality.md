@@ -478,3 +478,22 @@ Add a new variant to `Order['status']` and TypeScript points to this `never` lin
 ### Audit Signal
 
 When reviewing typed code, ask: "If I deleted this `as any` / `mixed` / `Object` cast, would TypeScript / PHPStan find a real bug or just complain?" If real bug → fix it. If false positive → narrow the type instead of casting.
+
+## XVII. Deprecated APIs (Web / PHP / Node)
+
+Gleiche Verifikations-Regel wie native-mobile.md VIII: Deprecation-Findings IMMER mit Confidence-Label; bei medium/low erst via context7/Doku verifizieren, sonst nicht melden. Nie ohne Verifikation auto-"modernisieren".
+
+Stabile Beispiele (Muster, keine erschoepfende Liste):
+
+| Veraltet | Ersatz |
+|---|---|
+| PHP: `utf8_encode()` / `utf8_decode()` | `mb_convert_encoding()` (removed in PHP 9) |
+| PHP: dynamische Properties ohne `#[AllowDynamicProperties]` | explizite Properties (deprecated seit 8.2) |
+| PHP: `${var}` String-Interpolation | `{$var}` (deprecated seit 8.2) |
+| Laravel: `$dates` Property | `$casts` mit `datetime` |
+| Node: `url.parse()` | `new URL()` |
+| Node: `Buffer()` Konstruktor | `Buffer.from()` / `Buffer.alloc()` |
+| JS: `document.execCommand()` | Clipboard API / `contenteditable`-Alternativen |
+| JS: `unload`-Event | `pagehide` / `visibilitychange` |
+
+Schweregrad: Minor solange funktional; Important wenn Removal in der naechsten Major-Version der im Projekt genutzten Runtime ansteht (PHP-Version aus composer.json, Node aus engines lesen).
