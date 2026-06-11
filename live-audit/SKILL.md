@@ -2,7 +2,7 @@
 name: live-audit
 description: "Scheduled live-audit pipeline for rafaelalex.de, events.rafaelalex.de, zeit.rafaelalex.de. Runs weekly via Scheduled Tasks MCP. Audits via PageSpeed Insights API (Performance, SEO, A11y, Core Web Vitals) + SSL check. New findings become GitHub Issues in the respective repo. Learns via suppress-label. Also triggered manually via /live-audit."
 when_to_use: "/live-audit, run live audit, check sites, scheduled audit"
-model: claude-sonnet-4-6
+model: sonnet
 allowed-tools:
   - Agent
   - Bash
@@ -45,7 +45,7 @@ Agent(
     PSI_STRATEGY={psi_strategy als JSON-Array}
     SKILL_DIR={SKILL_DIR}",
   subagent_type: general-purpose,
-  model: claude-sonnet-4-6,
+  model: sonnet,
   mode: bypassPermissions
 )
 ```
@@ -82,7 +82,7 @@ Agent(
     SKILL_DIR={SKILL_DIR}
     RUN_DATE={DATUM}",
   subagent_type: general-purpose,
-  model: claude-haiku-4-5-20251001,
+  model: haiku,
   mode: bypassPermissions
 )
 ```

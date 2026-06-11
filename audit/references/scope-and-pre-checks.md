@@ -7,7 +7,7 @@ Detail-Logik fuer Phase 1. Wird vom Orchestrator gelesen wenn Pre-Checks nicht-t
 | `DIFF_SIZE_RESULT` | Aktion |
 |---|---|
 | `OK` | Weiter. `MODEL_OVERRIDE=null` (Subagents nutzen ihre Default-Modelle). |
-| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Gezielte Escalation: Nur Architektur und Security laufen auf Opus 4.7. Ausgabe: "Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — Architektur + Security laufen auf Opus 4.7 fuer tieferes Reasoning." Setze `HEAVY_REASONING_OVERRIDE=claude-opus-4-7`. Weiter. |
+| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Gezielte Escalation: Nur Architektur und Security laufen auf Opus. Ausgabe: "Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — Architektur + Security laufen auf Opus fuer tieferes Reasoning." Setze `HEAVY_REASONING_OVERRIDE=opus`. Weiter. |
 | `HUGE` (>5000 Zeilen ODER >50 Dateien) | Hard-Block: Abbrechen. "Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
 
 **Warum nur zwei Dimensionen escalieren:** Architektur (Code-Reasoning ueber mehrere Module) und Security (subtile Angriffsvektoren) profitieren messbar von Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation sind ueberwiegend regel- oder musterbasiert — Sonnet reicht. Triage- und Fix-Agents bleiben auf Haiku.

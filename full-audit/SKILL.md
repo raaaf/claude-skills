@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 10 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
+description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 11 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
 model: opus
@@ -286,7 +286,7 @@ Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.7):
 
 Minor-Findings nur fixen wenn `FIX_MINOR=1` (high/xhigh).
 
-**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Fix, egal wie trivial, geht via paralleler Fix-Subagent (Haiku). Orchestrator-Edits auf Opus kosten ~5x so viel.
+**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Fix, egal wie trivial, geht via paralleler Fix-Subagent (Sonnet). Orchestrator-Edits auf Opus kosten ein Mehrfaches.
 
 **Erlaubte Orchestrator-Edits:** `.claude/audits/*.md` (Log), `CLAUDE.md`-Context-Entwurf, `suppressions.json`, Changelog-Dateien.
 

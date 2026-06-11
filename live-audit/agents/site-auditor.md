@@ -1,6 +1,6 @@
 # Site Auditor Agent
 
-- **model:** `claude-sonnet-4-6`
+- **model:** `sonnet`
 - **maxTurns:** `30`
 
 Du audierst eine einzelne Live-Site via PageSpeed Insights API und SSL-Check. Du erstellst GitHub Issues für neue Findings und lernst aus dem `suppress`-Label.

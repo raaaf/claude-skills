@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation), runs secret/lockfile pre-checks, auto-fixes via parallel fix-agents, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync), runs secret/lockfile pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: scope hint]"
 model: opus
@@ -154,7 +154,7 @@ Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
 
 **KEIN UNIFIED_DIFF.** Workers lesen Code via Read-Tool wenn noetig (max 5 Files pro Agent pro Runde).
 
-**Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE=claude-opus-4-7` aus Phase 1 gesetzt ist (LARGE-Diff), Agent 1 (Architektur) und Agent 2 (Security) explizit auf Opus dispatchen. Andere Agents nutzen ihr `agents/*.md` Default.
+**Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE=opus` aus Phase 1 gesetzt ist (LARGE-Diff), Agent 1 (Architektur) und Agent 2 (Security) explizit auf Opus dispatchen. Andere Agents nutzen ihr `agents/*.md` Default.
 
 | # | Agent | Kurzname |
 |---|---|---|
@@ -216,12 +216,12 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 - `floor=medium` (medium effort): `high`+`medium` fixen, `low` als Offener Punkt
 - `floor=low` (high effort): alle fixen, `low`-Fixes mit Warn-Marker `(LOW CONFIDENCE FIX)`
 
-**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Haiku). Edits vom Orchestrator kosten ~5x so viel.
+**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Sonnet). Edits vom Orchestrator auf Opus kosten ein Mehrfaches.
 
 **Erlaubte Orchestrator-Edits:** `.claude/audits/*.md`, `CLAUDE.md` Audit-Context-Entwurf, `suppressions.json` (mit User-Zustimmung), Changelog-Dateien.
 
 1. Findings nach Datei gruppieren
-2. Pro Datei einen `fix-agent.md`-Subagent (Haiku) parallel dispatchen
+2. Pro Datei einen `fix-agent.md`-Subagent (Sonnet) parallel dispatchen
 3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
 4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt
 5. Minor: bei `FIX_MINOR=1` (high effort) alle high-confidence Minor fixen, sonst skippen
