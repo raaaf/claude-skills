@@ -10,6 +10,8 @@ N+1, Memory Leaks, Bundle Size, Re-Renders, redundante Operationen (doppelte Fil
 
 **Vollstaendige Guidelines:** Lies `guidelines/performance.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
 
+**Bei nativen Apps** (`FRAMEWORK` = ios/android/react-native/flutter): zusaetzlich `guidelines/native-mobile.md` Section III — Main-Thread-Blocking, Retain Cycles / Context-Leaks, Listen-Virtualisierung, Bild-Downsampling, App-Start. Web-Vitals (INP/LCP/CLS) gelten dort nicht.
+
 ## Full-Audit Fokus (zusaetzlich)
 
 N+1-Queries (ORM-Relations ohne eager loading), Queries in Loops, fehlende Memoization bei teuren Operationen, wiederholte identische DB-Queries innerhalb einer Request-Lifecycle, fehlende Aggregations-Funktionen wo Subselects noetig waeren. **Skalierungspruefung der gesamten Codebase:** Connection Pooling, Queue-Nutzung, Session-Backend, Caching-Strategie, Pagination aller Listen, Index-Abdeckung, horizontale Skalierbarkeit (Stateless-Check), Bulk-Operations statt Einzeloperationen.

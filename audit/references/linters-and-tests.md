@@ -21,6 +21,18 @@ Erkennungsreihenfolge: **Formatter → Linter → Static Analysis → Tests**. A
 | `.prettierrc*` oder `prettier.config.*` | `npx prettier --write {GEÄNDERTE_JS_CSS_DATEIEN}` | Geänderte Dateien |
 | `.stylelintrc*` | `npx stylelint --fix {GEÄNDERTE_CSS_DATEIEN}` | Geänderte Dateien |
 
+## Native Mobile (iOS / Android / Flutter)
+
+| Erkennungsmerkmal | Befehl | Scope (audit) |
+|---|---|---|
+| `.swiftlint.yml` | `swiftlint --fix {GEÄNDERTE_SWIFT_DATEIEN}` dann `swiftlint lint {DATEIEN}` | Geänderte Dateien |
+| `.swiftformat` | `swiftformat {GEÄNDERTE_SWIFT_DATEIEN}` | Geänderte Dateien |
+| `.editorconfig` + `*.kt` ohne detekt | `ktlint -F {GEÄNDERTE_KT_DATEIEN}` (falls installiert) | Geänderte Dateien |
+| `detekt.yml` / `config/detekt` | `./gradlew detekt` | Global (Gradle-Task) |
+| `pubspec.yaml` (Flutter) | `dart format {GEÄNDERTE_DART_DATEIEN}` + `dart analyze` | format scoped, analyze global |
+
+Tool nicht installiert (`command -v` schlaegt fehl)? → ueberspringen mit Hinweis, NICHT via brew/gem installieren.
+
 Für `/full-audit` werden alle Linter/Formatter global statt datei-scoped ausgeführt.
 
 Bei Static-Analysis-Fehlern: manuell fixen, erneut laufen lassen. Wiederholen bis sauber.
@@ -38,6 +50,9 @@ Pro geaenderter Code-Datei wird die zugehoerige Test-Datei gesucht:
 | Laravel/PHPUnit | `app/Foo/Bar.php` → `tests/**/BarTest.php` (grep nach Klassennamen) |
 | Vitest/Jest | `src/foo/bar.ts` → `src/foo/bar.{test,spec}.{ts,tsx,js,jsx}` oder `__tests__/bar.test.*` |
 | Pytest | `src/foo/bar.py` → `tests/**/test_bar.py` oder `tests/**/bar_test.py` |
+| XCTest/Swift Testing | `Sources/Foo/Bar.swift` → `Tests/**/BarTests.swift` |
+| JUnit (Android) | `app/src/main/**/Bar.kt` → `app/src/test/**/BarTest.kt` |
+| Flutter | `lib/foo/bar.dart` → `test/foo/bar_test.dart` |
 
 Zusaetzlich: direkt geaenderte Test-Dateien (`*Test.php`, `*.test.ts`, `test_*.py`) laufen immer mit.
 
@@ -52,6 +67,9 @@ Keine betroffenen Tests gefunden? → Test-Step ueberspringen, Hinweis im Audit-
 | `vitest.config.*` | `npx vitest run {BETROFFENE_TEST_DATEIEN}` |
 | `jest.config.*` | `npx jest {BETROFFENE_TEST_DATEIEN}` |
 | `pytest.ini` oder `pyproject.toml` mit pytest | `pytest {BETROFFENE_TEST_DATEIEN}` |
+| `*.xcodeproj` / `Package.swift` | `xcodebuild test -only-testing:{TARGET}/{KLASSE}` bzw. `swift test --filter {KLASSE}` |
+| `build.gradle(.kts)` | `./gradlew test --tests "{KLASSE}"` |
+| `pubspec.yaml` (Flutter) | `flutter test {BETROFFENE_TEST_DATEIEN}` |
 
 **Nicht nutzen in /audit:** `composer test`, `npm test`, `npm run test` — diese fuehren typischerweise die volle Suite aus. Stattdessen Runner direkt mit Datei-Argumenten aufrufen.
 

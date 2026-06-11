@@ -28,7 +28,8 @@ Key invariants:
 - **Orchestrator writes, subagents return.** Subagents cannot write under `.claude/` (hardcoded permission protection, also under `bypassPermissions`). Learning, suppression, log files: structured output → parsed by orchestrator → written by orchestrator.
 - **Single source of truth.** `/full-audit` references `../audit/agents/` instead of duplicating. Same for `guidelines/`. Edit once.
 - **Frontmatter `model: opus`**, not pinned versions. Resolves to latest Opus on Anthropic API. Pin only on Bedrock/Vertex/Foundry.
-- **Worker model routing.** Haiku for pattern-matching (0-triage, 4-code-quality, 5-seo, 7-typography, 8-ui-design, 10-animation). Sonnet for reasoning (1-arch, 2-security, 3-performance, 6-a11y, 9-ux, 11-docs-sync, 12-copy, fix-agent, fix-verifier, learning-agent).
+- **Worker model routing.** Haiku for pattern-matching (0-triage, 4-code-quality, 5-seo, 7-typography, 8-ui-design, 10-animation). Sonnet for reasoning (1-arch, 3-performance, 6-a11y, 9-ux, 11-docs-sync, 12-copy, fix-agent, fix-verifier, learning-agent). Opus for 2-security (exploit reasoning).
+- **Platform support.** `detect-framework.sh` emits `PLATFORM=web|native|cross` (laravel/nextjs/nuxt/django vs ios/android vs react-native/flutter). Native projects: workers 2/3/6/7/8/9 additionally read `guidelines/native-mobile.md`; Swift/Kotlin/Dart count as frontend files; `check-i18n-keys.sh` handles `.lproj` and `values-*/strings.xml`.
 
 ## Commands
 

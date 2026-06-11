@@ -92,6 +92,10 @@ check_pair "Gemfile.lock"      "Gemfile"
 check_pair "poetry.lock"       "pyproject.toml"
 check_pair "Cargo.lock"        "Cargo.toml"
 check_pair "go.sum"            "go.mod"
+check_pair "Podfile.lock"      "Podfile"
+check_pair "Package.resolved"  "Package.swift"
+check_pair "pubspec.lock"      "pubspec.yaml"
+check_pair "gradle.lockfile"   "build.gradle"
 
 if [ -n "$LOCKFILE_DRIFT" ]; then
   echo "LOCKFILE_DRIFT_RESULT=DRIFT"

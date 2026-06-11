@@ -19,31 +19,30 @@ set -uo pipefail
 
 ROOT="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
-# --- locate translation base dir ---------------------------------------------
+# --- locate translation base dir (web layouts; native modes C/D run regardless)
 BASE=""
 for candidate in "$ROOT/resources/lang" "$ROOT/lang" "$ROOT/locales" "$ROOT/translations" "$ROOT/i18n"; do
   [ -d "$candidate" ] && { BASE="$candidate"; break; }
 done
 
-if [ -z "$BASE" ]; then
-  echo "I18N_RESULT=SKIP (no translation directory found)"
-  exit 0
-fi
-
 MISSING_COUNT=0
+FOUND_ANY_SOURCE=0
 report() { echo "MISSING $1: $2"; MISSING_COUNT=$((MISSING_COUNT + 1)); }
 
 # --- Mode A: per-locale subdirectories (Laravel) ------------------------------
 LOCALE_DIRS=()
-while IFS= read -r d; do
-  name=$(basename "$d")
-  # locale dirs are short: de, en, fr, de_DE, pt-BR, vendor excluded
-  if [[ "$name" =~ ^[a-z]{2}([_-][A-Za-z]{2})?$ ]]; then
-    LOCALE_DIRS+=("$d")
-  fi
-done < <(find "$BASE" -mindepth 1 -maxdepth 1 -type d | sort)
+if [ -n "$BASE" ]; then
+  while IFS= read -r d; do
+    name=$(basename "$d")
+    # locale dirs are short: de, en, fr, de_DE, pt-BR, vendor excluded
+    if [[ "$name" =~ ^[a-z]{2}([_-][A-Za-z]{2})?$ ]]; then
+      LOCALE_DIRS+=("$d")
+    fi
+  done < <(find "$BASE" -mindepth 1 -maxdepth 1 -type d | sort)
+fi
 
 if [ "${#LOCALE_DIRS[@]}" -ge 2 ]; then
+  FOUND_ANY_SOURCE=1
   REF="${LOCALE_DIRS[0]}"
   REF_NAME=$(basename "$REF")
 
@@ -96,12 +95,15 @@ fi
 
 # --- Mode B: flat per-locale JSON files ({locale}.json) -----------------------
 JSON_FILES=()
-while IFS= read -r f; do
-  name=$(basename "$f" .json)
-  [[ "$name" =~ ^[a-z]{2}([_-][A-Za-z]{2})?$ ]] && JSON_FILES+=("$f")
-done < <(find "$BASE" -maxdepth 1 -type f -name "*.json" | sort)
+if [ -n "$BASE" ]; then
+  while IFS= read -r f; do
+    name=$(basename "$f" .json)
+    [[ "$name" =~ ^[a-z]{2}([_-][A-Za-z]{2})?$ ]] && JSON_FILES+=("$f")
+  done < <(find "$BASE" -maxdepth 1 -type f -name "*.json" | sort)
+fi
 
 if [ "${#JSON_FILES[@]}" -ge 2 ] && command -v jq >/dev/null 2>&1; then
+  FOUND_ANY_SOURCE=1
   REF_JSON="${JSON_FILES[0]}"
   REF_JSON_NAME=$(basename "$REF_JSON" .json)
   dump_json_keys() { jq -r 'paths(scalars) | join(".")' "$1" 2>/dev/null | sort; }
@@ -115,8 +117,66 @@ if [ "${#JSON_FILES[@]}" -ge 2 ] && command -v jq >/dev/null 2>&1; then
   done
 fi
 
+# --- Mode C: iOS .lproj bundles (Localizable.strings) -------------------------
+LPROJ_DIRS=()
+while IFS= read -r d; do
+  LPROJ_DIRS+=("$d")
+done < <(find "$ROOT" -type d -name "*.lproj" -not -path "*/build/*" -not -path "*/Pods/*" -not -path "*/DerivedData/*" 2>/dev/null | grep -v "Base.lproj" | sort)
+
+if [ "${#LPROJ_DIRS[@]}" -ge 2 ]; then
+  FOUND_ANY_SOURCE=1
+  dump_strings_keys() {
+    # Lines like: "key" = "value";  (also matches unquoted keys)
+    grep -oE '^[[:space:]]*"[^"]+"[[:space:]]*=' "$1" 2>/dev/null \
+      | sed -E 's/^[[:space:]]*"([^"]+)".*/\1/' | sort -u
+  }
+  REF_LPROJ="${LPROJ_DIRS[0]}"
+  REF_LPROJ_NAME=$(basename "$REF_LPROJ" .lproj)
+  for d in "${LPROJ_DIRS[@]:1}"; do
+    loc=$(basename "$d" .lproj)
+    while IFS= read -r relfile; do
+      ref_file="$REF_LPROJ/$relfile"
+      loc_file="$d/$relfile"
+      if [ ! -f "$loc_file" ]; then report "$loc" "file $relfile"; continue; fi
+      gaps=$(comm -23 <(dump_strings_keys "$ref_file") <(dump_strings_keys "$loc_file"))
+      rev_gaps=$(comm -13 <(dump_strings_keys "$ref_file") <(dump_strings_keys "$loc_file"))
+      [ -n "$gaps" ] && while IFS= read -r k; do report "$loc" "$k"; done <<< "$gaps"
+      [ -n "$rev_gaps" ] && while IFS= read -r k; do report "$REF_LPROJ_NAME" "$k"; done <<< "$rev_gaps"
+    done < <(cd "$REF_LPROJ" && find . -maxdepth 1 -name "*.strings" | sed 's|^\./||')
+  done
+fi
+
+# --- Mode D: Android values dirs (strings.xml) ---------------------------------
+ANDROID_DEFAULT=$(find "$ROOT" -type d -name "values" -path "*/res/values" -not -path "*/build/*" 2>/dev/null | head -1)
+if [ -n "$ANDROID_DEFAULT" ] && [ -f "$ANDROID_DEFAULT/strings.xml" ]; then
+  FOUND_ANY_SOURCE=1
+  dump_xml_keys() {
+    grep -oE '<(string|plurals|string-array)[^>]*name="[^"]+"' "$1" 2>/dev/null \
+      | grep -oE 'name="[^"]+"' | sed -E 's/name="([^"]+)"/\1/' | sort -u
+  }
+  RES_DIR=$(dirname "$ANDROID_DEFAULT")
+  for d in "$RES_DIR"/values-*; do
+    [ -d "$d" ] && [ -f "$d/strings.xml" ] || continue
+    suffix=$(basename "$d" | sed 's/^values-//')
+    # only locale qualifiers (de, fr-rCA), skip night/w600dp etc.
+    [[ "$suffix" =~ ^[a-z]{2}(-r[A-Z]{2})?$ ]] || continue
+    gaps=$(comm -23 <(dump_xml_keys "$ANDROID_DEFAULT/strings.xml") <(dump_xml_keys "$d/strings.xml"))
+    rev_gaps=$(comm -13 <(dump_xml_keys "$ANDROID_DEFAULT/strings.xml") <(dump_xml_keys "$d/strings.xml"))
+    # translatable="false" keys legitimately exist only in default values/
+    # (attribute order varies: name can come before or after translatable)
+    nontranslatable=$(grep 'translatable="false"' "$ANDROID_DEFAULT/strings.xml" 2>/dev/null | grep -oE 'name="[^"]+"' | sed -E 's/name="([^"]+)"/\1/' || true)
+    [ -n "$gaps" ] && while IFS= read -r k; do
+      echo "$nontranslatable" | grep -qx "$k" && continue
+      report "$suffix" "$k"
+    done <<< "$gaps"
+    [ -n "$rev_gaps" ] && while IFS= read -r k; do report "default" "$k (only in values-$suffix)"; done <<< "$rev_gaps"
+  done
+fi
+
 # --- result -------------------------------------------------------------------
-if [ "$MISSING_COUNT" -gt 0 ]; then
+if [ "$FOUND_ANY_SOURCE" -eq 0 ]; then
+  echo "I18N_RESULT=SKIP (no multi-locale translation source found)"
+elif [ "$MISSING_COUNT" -gt 0 ]; then
   echo "I18N_RESULT=MISSING ($MISSING_COUNT gaps)"
 else
   echo "I18N_RESULT=OK"

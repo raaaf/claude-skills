@@ -28,7 +28,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 |---|---|---|
 | 0 | Triage | haiku |
 | 1 | Architecture | sonnet |
-| 2 | Security | sonnet |
+| 2 | Security | opus |
 | 3 | Performance | sonnet |
 | 4 | Code Quality | haiku |
 | 5 | SEO | haiku |
@@ -41,6 +41,8 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 | 12 | Copy & UX-Writing | sonnet |
 
 Triage routes the diff to relevant workers only; workers receive triage-marked hotspots, never the full diff. Saves 40-60% input tokens per worker.
+
+**Platform support:** web (Laravel, Next.js, Nuxt, Django) and native mobile (iOS, Android, React Native, Flutter). Framework detection sets `PLATFORM`; on native projects the security/performance/a11y/typography/UI/UX workers switch to `guidelines/native-mobile.md` (Keychain/Keystore, VoiceOver/TalkBack, Dynamic Type, main-thread, HIG/Material), and the i18n pre-check reads `.lproj` bundles and `values-*/strings.xml`.
 
 **Per-finding output cap:** 50 words, no code snippets, only `file:line` refs.
 

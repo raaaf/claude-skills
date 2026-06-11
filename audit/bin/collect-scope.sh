@@ -50,15 +50,17 @@ echo "---FILES---"
 [ -n "$FILES" ] && printf '%s\n' "$FILES"
 
 # --- 4. Classify: frontend + translation ----------------------------------
+# "Frontend" = files that render UI. Native UI files (Swift, Kotlin, Dart)
+# count too, so the a11y/UI/UX/animation workers run on native apps.
 FRONTEND=""
-[ -n "$FILES" ] && FRONTEND=$(printf '%s\n' "$FILES" | grep -E '\.(blade\.php|html|vue|tsx?|jsx?|css|scss|svelte|astro)$' || true)
+[ -n "$FILES" ] && FRONTEND=$(printf '%s\n' "$FILES" | grep -E '\.(blade\.php|html|vue|tsx?|jsx?|css|scss|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$' | grep -vE '(^|/)(build|\.gradle)/' || true)
 echo "---FRONTEND---"
 [ -n "$FRONTEND" ] && printf '%s\n' "$FRONTEND"
 
 TRANSLATIONS=""
 [ -n "$FILES" ] && TRANSLATIONS=$(printf '%s\n' "$FILES" \
-  | grep -E '(^|/)(lang|locales?|translations?|messages|i18n)/' \
-  | grep -E '\.(php|json|ya?ml|pot?|ts|js)$' || true)
+  | grep -E '((^|/)(lang|locales?|translations?|messages|i18n)/|\.lproj/|(^|/)values(-[a-zA-Z-]+)?/strings\.xml$)' \
+  | grep -E '\.(php|json|ya?ml|pot?|ts|js|strings|stringsdict|xml|arb)$' || true)
 echo "---TRANSLATIONS---"
 [ -n "$TRANSLATIONS" ] && printf '%s\n' "$TRANSLATIONS"
 

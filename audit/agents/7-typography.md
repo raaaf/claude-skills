@@ -8,7 +8,9 @@
 
 Typographie nach professionellen Standards in CSS/SCSS, Templates und Translation-Dateien (`lang/`, `locales/`, `translations/`, `messages/`, `i18n/` — `.php`, `.json`, `.yaml`, `.po`, `.ts`).
 
-**Vollstaendige Guidelines:** Lies `guidelines/typography.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln. Sprachregeln (Anfuehrungszeichen, geschuetzte Leerzeichen, Apostrophe) sind sprachspezifisch — Sprache aus Verzeichnis-/Dateiname ableiten (`de/`, `en/`, `fr.json`).
+**Vollstaendige Guidelines:** Lies `guidelines/typography.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln. Sprachregeln (Anfuehrungszeichen, geschuetzte Leerzeichen, Apostrophe) sind sprachspezifisch — Sprache aus Verzeichnis-/Dateiname ableiten (`de/`, `en/`, `fr.json`, `de.lproj/`, `values-de/`).
+
+**Bei nativen Apps:** Translation-Files sind `Localizable.strings`/`.stringsdict` (iOS) bzw. `strings.xml` (Android) — typografische Zeichenregeln gelten dort genauso. Plus `guidelines/native-mobile.md` Section V: Dynamic Type / `sp`-Units statt fixer Groessen.
 
 **Kontext-Hinweis:** Variablen-Platzhalter (`:name`, `{count}`, `%s`), HTML-Tags und technische Strings (URLs, Pfade) ignorieren — nur menschenlesbare Textfragmente pruefen.
 
