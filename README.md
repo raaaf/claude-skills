@@ -14,7 +14,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented)
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
-3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, project-specific guidelines from `.claude/audit-guidelines.md`)
+3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`)
 4. Phase 2: Audit-loop with triage routing, 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan, GitHub Issues for open items)
