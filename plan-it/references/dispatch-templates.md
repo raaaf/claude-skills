@@ -40,13 +40,18 @@ ZENTRALE_PATTERNS ermitteln:
 
 ## Phase 3: Challenge-Dispatch
 
-5 Subagents parallel.
+Subagents parallel — nur die in `CHALLENGE_DIMS` (Phase 0.5) enthaltenen Dimensionen (low=3, medium=4, high/xhigh=5).
 
-**Product, Design, Simplicity** erhalten nur den Plan:
+`{PROJECT_GUIDELINES}` kommt aus Phase 0.7 (`.claude/plan-guidelines.md`); wenn leer, Block weglassen.
+
+**Product, Design, Simplicity** erhalten den Plan + Projekt-Guidelines:
 ```
 Agent(
   prompt: "Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
-    {PLAN_INHALT}",
+    {PLAN_INHALT}
+
+    PROJEKT-GUIDELINES (haben Vorrang vor generischen Best Practices):
+    {PROJECT_GUIDELINES}",
   subagent_type: general-purpose,
   model: haiku
 )
@@ -57,6 +62,9 @@ Agent(
 Agent(
   prompt: "Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
     {PLAN_INHALT}
+
+    PROJEKT-GUIDELINES (haben Vorrang vor generischen Best Practices):
+    {PROJECT_GUIDELINES}
 
     Codebase-Kontext:
     DATEISTRUKTUR: {DATEISTRUKTUR}
@@ -83,6 +91,9 @@ Agent(
 
     {PLAN_INHALT}
 
+    PROJEKT-GUIDELINES (haben Vorrang vor generischen Best Practices):
+    {PROJECT_GUIDELINES}
+
     Codebase-Kontext:
     DATEISTRUKTUR: {DATEISTRUKTUR}
     ZENTRALE_PATTERNS: {ZENTRALE_PATTERNS}
@@ -92,9 +103,9 @@ Agent(
 
     1. Vollstaendigkeit — Fehlen Schritte? Luecken zwischen 'was steht im Plan' und 'was muesste man tatsaechlich tun'?
     2. Reihenfolge — Stimmt die Abfolge? Abhaengigkeiten falsch oder gar nicht beruecksichtigt?
-    3. Aufwand — Scope realistisch? Wird etwas unterschaetzt oder aufgeblaeht?
+    3. Aufwand — Passt die Aufwand-Angabe im Plan zur Schritt-Liste? Fehlt sie, schaetze selbst und benenne den groessten Posten.
     4. Risiken — Was ist das groesste Risiko das der Plan nicht adressiert?
-    5. Umsetzbarkeit — Kann ein Entwickler den Plan nehmen und direkt loslegen, oder fehlen konkrete Details?
+    5. Umsetzbarkeit — Kann ein Entwickler den Plan nehmen und direkt loslegen? Hat jeder Schritt ein pruefbares verify-Kriterium?
 
     PFLICHT-Checkliste (knapp pruefen):
     - Monitoring/Alerting-Blindspots: Failure-Modi die der Plan nicht observable macht?

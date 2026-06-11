@@ -24,8 +24,13 @@ Datei: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 {Beschreibung des Loesungswegs — warum dieser Weg und nicht ein anderer.}
 
 ### Schritte
-1. {Konkret — welche Datei, welche Komponente, was aendert sich}
-2. ...
+1. {Konkret — welche Datei, welche Komponente, was aendert sich} → verify: {pruefbares Kriterium, z.B. "Test X gruen", "Route Y liefert 200", "Grep nach Z leer"}
+2. ... → verify: ...
+
+Jeder Schritt bekommt ein verify-Kriterium. Ein Schritt ohne pruefbares Ergebnis ist kein Schritt, sondern eine Absicht.
+
+### Aufwand
+{Grobe Einschaetzung: S (<0,5 Tag) / M (0,5-2 Tage) / L (3-5 Tage) / XL (>1 Woche) — plus der groesste Einzelposten in 1 Satz.}
 
 ### Betroffene Dateien
 - `pfad/zur/datei` — {was sich aendert}
