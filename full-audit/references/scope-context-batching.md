@@ -32,6 +32,12 @@ fi
 EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/*'
 # shellcheck disable=SC2086
 find $SOURCE_DIRS \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
+# Prompt-Template-Dateien — LLM-Prompt-Templates (*.md unter prompt[s]/) sind Security-Targets
+# (Untrusted-Placeholder-Isolation, siehe guidelines/security.md Section XII), werden aber von
+# den Standard-Globs nicht erfasst. Mit aufnehmen, damit Template-Dateien nie uebersehen werden.
+# shellcheck disable=SC2086
+find $SOURCE_DIRS \( -path "*/prompts/*" -o -path "*/prompt/*" \) -name "*.md" $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt
+sort -u -o /tmp/full-audit-files.txt /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
 # Frontend-Dateien

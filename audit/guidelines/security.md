@@ -296,6 +296,8 @@ If the application calls an LLM API or processes LLM output, treat the LLM as an
 - Re-prompt with stronger guardrails after each fetched-content turn
 - Treat tool-call arguments derived from fetched content as low-trust
 
+**Prompt-template files.** When prompts are assembled from template files (e.g. `src/prompts/*.md`, `resources/prompts/*`) with `{{placeholder}}` substitution, audit the templates themselves, not only the callers. Any `{{placeholder}}` whose value originates from external data (search-console queries, scraped page copy, third-party API titles/snippets, prior LLM output) MUST be wrapped in an explicit untrusted-data block inside the template (`<<<UNTRUSTED_*_START>>>` / `<<<UNTRUSTED_*_END>>>` or equivalent) so the model treats it as data, not instructions. A bare external placeholder in a template is an indirect-prompt-injection hole even when the calling code looks safe. Template files are skipped by default file globs — verify they are in audit scope. Substituted values must also have the fence-marker tokens stripped, otherwise a value containing the literal end marker breaks out of the block.
+
 **Output handling.** LLM output is user-controlled. If you render it as HTML, escape it. If you pass it to a shell/SQL/eval, treat it as user input — same parameterization rules as Section V apply.
 
 **Secret exposure.** Never include API keys, internal URLs, or PII in the system prompt — the model may echo them back on craft prompts. Use server-side fetch + post-processed results instead of giving the LLM direct credentials.

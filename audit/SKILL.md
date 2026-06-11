@@ -37,7 +37,7 @@ LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
 ```
 
 Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
-- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md`. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Audit weiter mit Phase 1.
+- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md`. **WICHTIG — ins Quell-Repo editieren:** `~/.claude/skills/*` kann ein Sync-Ziel sein (Symlink oder entpacktes `.skill`-Bundle), dessen Inhalt ueberschrieben wird. Vor dem ersten Edit Quelle aufloesen (`readlink` bzw. Skill-Quell-Repo finden, z.B. `~/Local Sites/claude-skills`) und DORT editieren — Edits in der entpackten Kopie gehen beim naechsten Sync verloren. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Audit weiter mit Phase 1.
 - **Spaeter, Audit jetzt** → Phase 1 starten, Vorschlaege bleiben offen.
 - **Nie wieder fragen fuer diese Audits** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
 
@@ -231,6 +231,7 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 1. Findings nach Datei gruppieren
 2. Pro Datei einen `fix-agent.md`-Subagent (Sonnet) parallel dispatchen
 3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
+3a. **Zentralisierungs-Findings (neue Shared-Utility):** Extrahiert ein Finding ein dupliziertes Pattern in ein neues `lib/*.js` / Helper / Trait, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent jede Fundstelle migriert (siehe `fix-agent.md` Sonderfall).
 4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt
 5. Minor: bei `FIX_MINOR=1` (high effort) alle high-confidence Minor fixen, sonst skippen
 6. Nicht fixbar: als Offener Punkt mit Begruendung; `patterns-store.sh dismissed {pattern}` aufrufen

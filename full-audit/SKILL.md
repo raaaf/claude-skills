@@ -64,13 +64,47 @@ LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
 ```
 
 Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
-- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md` (das sind die GLOBALEN Skill-Files, die alle Projekte betreffen). Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Full-Audit weiter mit Phase 0.5.
+- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md` (das sind die GLOBALEN Skill-Files, die alle Projekte betreffen). **WICHTIG — ins Quell-Repo editieren:** `~/.claude/skills/*` kann ein Sync-Ziel sein (Symlink oder entpacktes `.skill`-Bundle), dessen Inhalt ueberschrieben wird. Vor dem ersten Edit Quelle aufloesen: `readlink` pruefen bzw. das Skill-Quell-Repo finden (z.B. `~/Local Sites/claude-skills`) und DORT editieren. Edits in der entpackten Kopie gehen beim naechsten Sync verloren. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Full-Audit weiter mit Phase 0.5.
 - **Spaeter, Full-Audit jetzt** → Phase 0.5 starten, Vorschlaege bleiben offen.
 - **Nie wieder fragen fuer diese Punkte** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
 
 Wenn `0`: Phase 0.5 starten ohne Frage.
 
 **Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` ODER `FULL_AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
+
+---
+
+## Phase 0.4: Test-Runner-Streak-Check
+
+Hard-Check: Fehlt ein konfigurierter Test-Runner ueber mehrere Full-Audits hinweg, wird die Luecke zur Critical-Finding eskaliert (statt nur Gap-Note). Ohne Runner kann kein Fix-Agent Regressionen verifizieren.
+
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+STREAK_FILE="$ROOT/.claude/audits/no-test-runner-streak"
+HAS_RUNNER=0
+# JS/TS-Runner in package.json oder Config-Dateien
+if [ -f "$ROOT/package.json" ] && grep -Eq '"(vitest|jest|mocha)"|node:test|node --test' "$ROOT/package.json" 2>/dev/null; then HAS_RUNNER=1; fi
+# find statt Glob — zsh bricht bei nicht-matchenden Globs ab
+[ -n "$(find "$ROOT" -maxdepth 1 \( -name 'vitest.config.*' -o -name 'jest.config.*' \) 2>/dev/null)" ] && HAS_RUNNER=1
+# PHP / Python
+{ [ -f "$ROOT/phpunit.xml" ] || [ -f "$ROOT/phpunit.xml.dist" ]; } && HAS_RUNNER=1
+[ -f "$ROOT/pytest.ini" ] && HAS_RUNNER=1
+grep -q "\[tool.pytest" "$ROOT/pyproject.toml" 2>/dev/null && HAS_RUNNER=1
+
+if [ "$HAS_RUNNER" -eq 1 ]; then
+  rm -f "$STREAK_FILE"; TEST_RUNNER_ESCALATE=0
+  echo "Test-Runner: vorhanden (Streak zurueckgesetzt)"
+else
+  STREAK=$(( $(cat "$STREAK_FILE" 2>/dev/null || echo 0) + 1 ))
+  echo "$STREAK" > "$STREAK_FILE"
+  if [ "$STREAK" -ge 3 ]; then TEST_RUNNER_ESCALATE=1; else TEST_RUNNER_ESCALATE=0; fi
+  echo "Test-Runner: FEHLT (Streak=$STREAK, Escalate=$TEST_RUNNER_ESCALATE)"
+fi
+```
+
+`TEST_RUNNER_ESCALATE=1` → in Phase 3c die fehlende Test-Infrastruktur als **Critical** ins Audit-Log und als GitHub-Issue (Phase 4) aufnehmen, nicht als Gap-Note. `=0` → wie bisher Gap-Note.
+
+**Skip wenn:** ENV `FULL_AUDIT_SKIP_TESTRUNNER_CHECK=1`.
 
 ---
 
@@ -295,6 +329,7 @@ Minor-Findings nur fixen wenn `FIX_MINOR=1` (high/xhigh).
 
 - 0 Findings → `SAUBER`
 - Sonst: alle high/medium fixen via Fix-Subagent. Findings nach Datei gruppieren, mehrere Findings pro Datei in einem Fix-Agent-Call bundeln.
+- **Zentralisierungs-Findings (neue Shared-Utility / Helper / Trait):** Wenn ein Finding ein dupliziertes Pattern in eine neue `lib/*.js` (o.ae.) extrahiert, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN einzigen Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent die erweiterte Datei-Grenze (siehe `fix-agent.md` Sonderfall) anwendet und jede Fundstelle migriert.
 - Jeden Fix zu `BEREITS_GEFIXT`. `GESAMT_*` inkrementieren.
 - Unklarer Fix → kurz nachfragen. Keine "Offener Punkt" ohne explizite User-Zustimmung.
 - Ergebnis: `FIXES_APPLIED`.
@@ -344,6 +379,8 @@ Siehe `{AUDIT_REFS}/linters-and-tests.md`. Im Full-Audit-Modus laufen alle Linte
 ### 3c. Tests
 
 Siehe `{AUDIT_REFS}/linters-and-tests.md` (Test-Runner-Tabelle). Alle erkannten Runner ausfuehren. Failures fixen. Unfixbare als Offener Punkt.
+
+**Kein Test-Runner konfiguriert:** Bei `TEST_RUNNER_ESCALATE=1` (Phase 0.4, Streak >= 3) die fehlende Test-Infrastruktur als **Critical** ins Audit-Log und als GitHub-Issue (Phase 4) aufnehmen. Sonst nur Gap-Note (`Tests: uebersprungen — kein Runner konfiguriert`).
 
 ### 3d. Manueller Testplan
 

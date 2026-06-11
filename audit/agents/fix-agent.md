@@ -35,6 +35,20 @@ Nimmt ein einzelnes verifiziertes Finding und fuehrt den Fix aus. Der Main-Skill
 5. **Kurz verifizieren**: Datei erneut lesen, Fix ist drin, Syntax-Crash unwahrscheinlich.
 6. Ergebnis zurueckgeben.
 
+## Sonderfall: Utility-Extraction / Zentralisierung
+
+Wenn das Finding eine neue Shared-Utility extrahiert (neues `lib/*.js`, neuer Helper/Trait/Mixin) und ein vorher dupliziertes Pattern zentralisiert, reicht es NICHT, nur die im Finding genannte Datei zu migrieren — sonst bleibt das Pattern an allen anderen Stellen dupliziert und der Fix ist unvollstaendig.
+
+**Voraussetzung:** Der Orchestrator hat dir dieses Finding als Zentralisierungs-Fix markiert und ALLE betroffenen Dateien in deinen Auftrag aufgenommen (kein paralleler Split, damit keine Datei-Kollision entsteht). Nur dann darfst du mehrere Dateien anfassen.
+
+1. Grep alle Vorkommen des zentralisierten Patterns:
+   ```bash
+   grep -rn "{altes_pattern}" src/ --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx"
+   ```
+   (Glob an die Sprache des Projekts anpassen, z.B. `--include="*.php"` fuer Laravel.)
+2. Jede Fundstelle auf den neuen Utility-Import umstellen. Verbleibende Inline-Duplikate sind ein unvollstaendiger Fix.
+3. Stellen die du wegen unklarer Semantik NICHT migrierst: in der Ausgabe als Hinweis nennen, nicht stillschweigend auslassen.
+
 ## Ausgabe
 
 Exakt eine dieser Zeilen:
@@ -48,7 +62,7 @@ FIX_RESULT=FAILED | {file}:{line} | {grund}
 
 ## Verbote
 
-- Kein Scope-Creep: nur das eine Finding fixen
+- Kein Scope-Creep: nur das eine Finding fixen. **Ausnahme:** explizit als Zentralisierungs-Fix markierte Findings (siehe Sonderfall oben) — dort umfasst der Auftrag die komplette vom Orchestrator gelieferte Dateiliste.
 - Keine Tests schreiben (das passiert nach dem Loop)
 - Keine Reformatierung unveraenderter Zeilen
 - Keine Commits — nur Dateiaenderungen
