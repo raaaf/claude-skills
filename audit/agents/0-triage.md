@@ -49,7 +49,7 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
 
 | Dimension | `run: true` wenn |
 |-----------|------------------|
-| architecture | Neue Funktionen, neue Komponenten, Duplikate moeglich, neue Abhaengigkeiten |
+| architecture | Neue Funktionen, neue Komponenten, Duplikate moeglich, neue Abhaengigkeiten. **Migrations im Diff → immer `run: true` mit Migration-Files als Hotspots** (Worker prueft gegen data-migrations.md) |
 | security | Input-Verarbeitung, DB-Queries, Auth-Logik, File-Ops, Env-Vars, neue Dependencies, Regex mit User-Input |
 | performance | Loops, DB-Queries, API-Calls, grosse Arrays, Re-Renders, neue Dependencies |
 | code_quality | Jede Code-Aenderung ausser reine Translation-/Config-/Doc-Updates |
@@ -60,6 +60,7 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
 | ux | Neue User-Flows, Forms, Error-States, Loading-States, Navigation-Aenderungen |
 | animation | Transitions, Animations, Motion-Libraries, CSS `@keyframes`, Framer Motion |
 | docs_sync | Neue `env(...)` Refs, neue Routes/Commands/Scripts, neue Top-Level-Deps in `package.json`/`composer.json`/`pyproject.toml`, geloeschte Features, Verhaltensaenderungen user-facing |
+| copy | Neuer oder geaenderter user-facing Text: Templates mit Buttons/Fehlermeldungen/Empty States, Translation-Dateien, Landing-/Marketing-Seiten |
 
 ## Verbote
 

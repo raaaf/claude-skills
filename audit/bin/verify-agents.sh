@@ -25,6 +25,7 @@ REQUIRED=(
   9-ux.md
   10-animation.md
   11-docs-sync.md
+  12-copy.md
   0-triage.md
   fix-agent.md
   fix-verifier.md

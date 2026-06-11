@@ -15,14 +15,14 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented)
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
 3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, project-specific guidelines from `.claude/audit-guidelines.md`)
-4. Phase 2: Audit-loop with triage routing, 11 specialized workers, hallucination validator, fix-agents, fix-verifier peer review
+4. Phase 2: Audit-loop with triage routing, 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan, GitHub Issues for open items)
 7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
 8. Phase 5: Learning (subagent returns structured output, orchestrator writes `learning-log.md` and `suppressions.json`)
 9. Phase 6: PR creation if applicable
 
-**Worker dispatch (11 dimensions, parallel):**
+**Worker dispatch (12 dimensions, parallel):**
 
 | # | Dimension | Model |
 |---|---|---|
@@ -38,6 +38,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 | 9 | UX Patterns | sonnet |
 | 10 | Animation | haiku |
 | 11 | Docs Sync | sonnet |
+| 12 | Copy & UX-Writing | sonnet |
 
 Triage routes the diff to relevant workers only; workers receive triage-marked hotspots, never the full diff. Saves 40-60% input tokens per worker.
 
@@ -47,7 +48,7 @@ Triage routes the diff to relevant workers only; workers receive triage-marked h
 
 Comprehensive one-time audit of an entire codebase. Auto-detects framework, batches large codebases (>80 files), runs Phase 0 backlog check, Phase 0.5 dimension selection (Alles / Nur Backend / Nur Frontend / Custom multi-select), Phase 0.7 effort configuration. Cross-Reference pass after all batches (xhigh runs it even in SINGLE mode).
 
-Same 11 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
+Same 12 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
 
 ### `/plan-it` — Iterative Plan Builder
 

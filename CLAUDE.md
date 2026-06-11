@@ -28,14 +28,15 @@ Key invariants:
 - **Orchestrator writes, subagents return.** Subagents cannot write under `.claude/` (hardcoded permission protection, also under `bypassPermissions`). Learning, suppression, log files: structured output → parsed by orchestrator → written by orchestrator.
 - **Single source of truth.** `/full-audit` references `../audit/agents/` instead of duplicating. Same for `guidelines/`. Edit once.
 - **Frontmatter `model: opus`**, not pinned versions. Resolves to latest Opus on Anthropic API. Pin only on Bedrock/Vertex/Foundry.
-- **Worker model routing.** Haiku for pattern-matching (0-triage, 4-code-quality, 5-seo, 7-typography, 8-ui-design, 10-animation). Sonnet for reasoning (1-arch, 2-security, 3-performance, 6-a11y, 9-ux, 11-docs-sync, fix-agent, fix-verifier, learning-agent).
+- **Worker model routing.** Haiku for pattern-matching (0-triage, 4-code-quality, 5-seo, 7-typography, 8-ui-design, 10-animation). Sonnet for reasoning (1-arch, 2-security, 3-performance, 6-a11y, 9-ux, 11-docs-sync, 12-copy, fix-agent, fix-verifier, learning-agent).
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
 | `bash ~/.claude/hooks/sync-skills.sh` | Copy + zip skills to `~/.claude/skills/` after edits |
-| `bash audit/bin/verify-agents.sh audit/agents` | Verify all 13 required agent files present |
+| `bash audit/bin/verify-agents.sh audit/agents` | Verify all 17 required agent files present |
+| `bash audit/bin/check-i18n-keys.sh [root]` | Deterministic i18n key-set diff across locales |
 | `bash audit/evals/run-evals.sh` | Run eval suite against fixtures (recall + false-positive count) |
 | `echo "..." \| bash audit/bin/normalize-suppression.sh` | Test the semantic dedup key for a suppression |
 

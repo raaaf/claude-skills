@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 11 parallel subagents per batch (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
+description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 12 parallel subagents per batch (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
 model: opus
@@ -83,7 +83,7 @@ Bevor Scope gesammelt wird, klaeren welche Dimensionen geprueft werden sollen. S
 ```bash
 if [ -n "${FULL_AUDIT_DIMENSIONS:-}" ]; then
   case "$FULL_AUDIT_DIMENSIONS" in
-    all|"") SELECTED_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync" ;;
+    all|"") SELECTED_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy" ;;
     *)      SELECTED_DIMENSIONS="$FULL_AUDIT_DIMENSIONS" ;;
   esac
   echo "Dimensions via ENV: $SELECTED_DIMENSIONS"
@@ -96,16 +96,16 @@ Frage 1 — Preset:
 
 | Option | Dimensionen |
 |---|---|
-| Alles (Standard) | architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync |
+| Alles (Standard) | architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy |
 | Nur Backend | architecture, security, performance, code_quality, docs_sync |
-| Nur Frontend | seo, a11y, typography, ui_design, ux, animation |
+| Nur Frontend | seo, a11y, typography, ui_design, ux, animation, copy |
 | Custom | (loest Frage 2 aus) |
 
-Frage 2 (nur bei Custom) — Multi-Select aller 11 Dimensionen. User waehlt beliebige Kombination.
+Frage 2 (nur bei Custom) — Multi-Select aller 12 Dimensionen. User waehlt beliebige Kombination.
 
 **Validierung:** `SELECTED_DIMENSIONS` muss min. 1 gueltige Dimension enthalten. Ungueltige Werte verwerfen.
 
-**Anzeige:** `Full-Audit Scope: {N}/11 Dimensionen — {Liste}`.
+**Anzeige:** `Full-Audit Scope: {N}/12 Dimensionen — {Liste}`.
 
 ---
 
@@ -148,6 +148,8 @@ Im Folgenden bedeutet `{MAX_RUNDEN_PRO_BATCH}` der hier gesetzte Wert.
 Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste, PROJECT_CONTEXT, SUPPRESSIONS) und ARCHITEKTUR-NOTIZ-Erstellung in `references/scope-context-batching.md`. Resultierende Variablen: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `ARCHITEKTUR-NOTIZ`.
 
 Optionale Pre-Checks (nur bei lokalem Diff): `pre-checks.sh` ausfuehren.
+
+**i18n-Vollstaendigkeit (deterministisch):** `bash "$AUDIT_BIN/check-i18n-keys.sh"` — bei `I18N_RESULT=MISSING` wird jede Zeile ein Important-Finding `[i18n]` (Full-Audit prueft die ganze Codebase, daher alle Gaps melden).
 
 **Project-Specific Guidelines:**
 
@@ -235,13 +237,14 @@ Agent-Definitionen: `{AUDIT_AGENTS}/*.md`.
 | 9 | `9-ux.md` | UX Patterns |
 | 10 | `10-animation.md` | Animation |
 | 11 | `11-docs-sync.md` | Docs Sync & Style |
+| 12 | `12-copy.md` | Copy & UX-Writing |
 
 Prompt-Template: `{AUDIT_AGENTS}/prompt-template.md` → Abschnitt "Fuer /full-audit".
 
 **Ueberspringen-Regeln:**
 - Dimension NICHT in `SELECTED_DIMENSIONS` → Agent gar nicht dispatchen
 - 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): keine Frontend-Dateien im Batch
-- 7 (Typography): weder Frontend- noch Translation-Dateien im Batch
+- 7 (Typography), 12 (Copy): weder Frontend- noch Translation-Dateien im Batch
 - 11 (Docs Sync): laeuft genau einmal pro Full-Audit (im ersten Batch oder als eigener finaler Pass nach Phase 2.5) — nicht pro Batch.
 
 Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch app-interne Views.
@@ -392,7 +395,7 @@ Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell).
 
 ```
 Full Audit abgeschlossen.
-- Scope: {N}/11 Dimensionen — {SELECTED_DIMENSIONS}
+- Scope: {N}/12 Dimensionen — {SELECTED_DIMENSIONS}
 - Modus: {BATCH_MODUS} ({N} Batches, {RUNDEN_GESAMT} Runden)
 - {GESAMT_CRITICAL} Critical, {GESAMT_IMPORTANT} Important, {GESAMT_MINOR} Minor gefunden und gefixt
 - Log: .claude/audits/{DATUM}-full-audit.md

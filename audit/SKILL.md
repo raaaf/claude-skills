@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync), runs secret/lockfile pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: scope hint]"
 model: opus
@@ -77,6 +77,13 @@ bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebroc
 bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
 bash "$AUDIT_BIN/pre-checks.sh"
+
+# i18n-Vollstaendigkeit (deterministisch, kein LLM)
+bash "$AUDIT_BIN/check-i18n-keys.sh"
+# I18N_RESULT=MISSING → jede Zeile "MISSING {locale}: {key}" wird ein
+# Important-Finding [i18n] (Schritt D), sofern die betroffenen Keys/Files
+# im Diff liegen. Bei /audit ausserhalb des Diffs: als Hinweis ausgeben,
+# nicht als Finding. SKIP/OK → nichts tun.
 
 # Project-Specific Guidelines (Override global)
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
@@ -169,6 +176,7 @@ Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
 | 9 | `agents/9-ux.md` | UX Patterns |
 | 10 | `agents/10-animation.md` | Animation |
 | 11 | `agents/11-docs-sync.md` | Docs Sync & Style |
+| 12 | `agents/12-copy.md` | Copy & UX-Writing |
 
 Prompt-Template: `agents/prompt-template.md`, Abschnitt "Fuer /audit (Diff-basiert)".
 

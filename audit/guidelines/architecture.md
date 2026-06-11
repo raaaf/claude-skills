@@ -271,3 +271,29 @@ Create and Edit views often share 80-95% of their markup. This is a DRY violatio
 **Blade template duplication:** When two Blade views share >50% identical markup, extract the shared sections into partials (`@include('invoices.partials._items-section')`) or slot-based components. Only the unique parts (page title, action buttons) remain in the parent views.
 
 **Indicator:** If a change to form validation, item handling, or computed totals requires editing two files, the duplication has not been sufficiently resolved.
+
+## XIV. Observability & Error Reporting (2026)
+
+Code that fails silently in production is worse than code that fails loudly in review. Check:
+
+**Silent catch blocks.** `catch (Exception $e) {}` or `catch { return null; }` without logging or rethrow is a finding, always. Minimum: log with context. Better: report to the error tracker.
+
+**Error-tracker context.** When Sentry (or similar) is integrated: exceptions in business-critical paths should carry context — `user_id`, `request_id`, the affected entity ID. A bare exception without context costs an hour of debugging that one `setContext()` line would have saved.
+
+**Structured logging over string interpolation.**
+
+```php
+// BAD — unparseable, unsearchable
+Log::info("User $userId booked slot $slotId");
+
+// GOOD — filterable in any log aggregator
+Log::info('slot.booked', ['user_id' => $userId, 'slot_id' => $slotId]);
+```
+
+**Log levels mean something.** `error` = needs human attention, `warning` = degraded but handled, `info` = business event, `debug` = development only. An app that logs routine events as `error` trains everyone to ignore errors.
+
+**Alert-worthy failures must be alertable.** Payment failed, queue job dead-lettered, external API circuit-broken — these need to reach the error tracker, not just a log file nobody reads. Audit signal: a `try/catch` around a payment or notification call that only logs.
+
+**No PII in logs.** Email addresses, names, tokens in log lines are a privacy and security finding (see security.md). Log IDs, not identities.
+
+**Queue jobs:** `failed()` method (or equivalent dead-letter handling) on jobs with side effects. A job that silently exhausts retries loses data invisibly.
