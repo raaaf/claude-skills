@@ -1,0 +1,21 @@
+{
+  "fixture": "security/cache-key-without-userid.php",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 16,
+      "matches": ["cache key", "user_id", "static key", "cross-user", "data leak", "user-scoped"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP component class, no markup"
+    },
+    {
+      "dimension": "typography",
+      "reason": "no user-facing text"
+    }
+  ]
+}

@@ -14,6 +14,12 @@ Redundanter State (dupliziert/ableitbar), Parameter Sprawl, Copy-Paste mit leich
 
 Dead Code, unused Imports, fehlende Return-Types bei Public Methods, copy-paste Logik, stringly-typed Code (Magic Strings statt Konstanten/Enums), veraltete Framework-Patterns, untypisierte Properties in Components.
 
+## Pflicht-Verifikation VOR dem Flaggen
+
+- **XSS/Injection-nahen Findings:** Erst die zugehoerige Store-/Form-Request-Validierung bzw. Sanitization gegenchecken. Wenn der Input dort bereits abgefangen wird, kein Finding.
+- **Enum-Findings (rohe Strings statt Enum):** Vor dem Flaggen pruefen, ob der vorgeschlagene Enum-Case ueberhaupt existiert (`grep app/Enums/`). Findings zu nicht existierenden Cases sind Halluzinationen.
+- **Operator-Render-Risiko in Alpine `x-data`:** Nur `>`/`>=` flaggen — `<`/`<=` sind sicher.
+
 ## Projektspezifischer Kontext
 
 {PROJECT_CONTEXT}

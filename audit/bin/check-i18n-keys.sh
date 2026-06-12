@@ -27,7 +27,34 @@ done
 
 MISSING_COUNT=0
 FOUND_ANY_SOURCE=0
-report() { echo "MISSING $1: $2"; MISSING_COUNT=$((MISSING_COUNT + 1)); }
+
+# Locale-gated keys: projects may render different key sets per locale on
+# purpose (e.g. locale-specific landing pages). Prefixes listed in
+# .claude/audits/i18n-locale-gated.txt (one per line, # comments allowed)
+# are excluded from key-level gap reporting.
+GATED_PREFIXES=()
+GATED_FILE="$ROOT/.claude/audits/i18n-locale-gated.txt"
+if [ -f "$GATED_FILE" ]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(echo "$line" | tr -d '[:space:]')"
+    [ -n "$line" ] && GATED_PREFIXES+=("$line")
+  done < "$GATED_FILE"
+fi
+
+is_gated() {
+  local key="$1" prefix
+  for prefix in "${GATED_PREFIXES[@]+"${GATED_PREFIXES[@]}"}"; do
+    case "$key" in "$prefix"*) return 0 ;; esac
+  done
+  return 1
+}
+
+report() {
+  is_gated "$2" && return 0
+  echo "MISSING $1: $2"
+  MISSING_COUNT=$((MISSING_COUNT + 1))
+}
 
 # --- Mode A: per-locale subdirectories (Laravel) ------------------------------
 LOCALE_DIRS=()

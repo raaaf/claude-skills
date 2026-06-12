@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/alpine-data-extraction-no-guard.js",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 4,
+      "matches": ["Alpine.data", "alpine:init", "guard", "not initialized", "top-level", "window.Alpine"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input, no auth logic"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "JS module, no markup"
+    }
+  ]
+}

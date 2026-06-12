@@ -83,6 +83,14 @@ ARIA (Accessible Rich Internet Applications) supplements HTML semantics for dyna
   <a href="/dashboard" aria-current="page">Dashboard</a>
   ```
 
+**New-view checklist (run on every newly added view/page).** These gaps recur in fresh markup — verify each before the view ships:
+
+- [ ] Every icon-only button (edit, delete, close, toggle, expand) has an `aria-label` describing the *action*, not the icon
+- [ ] Every interactive non-`<button>`/`<a>` element (clickable `<div>`/`<span>`/`<li>`) has `role`, `tabindex="0"`, and a keyboard handler — or is converted to a real `<button>`
+- [ ] Decorative icons/images carry `aria-hidden="true"` (or `alt=""`)
+- [ ] One `<h1>`, no skipped heading levels
+- [ ] Modals/toasts: focus is trapped while open and returned on close; the dismiss control has an accessible name
+
 ## III. Form Accessibility
 
 Forms are where accessibility fails most often — and where it matters most, because forms are how users accomplish tasks.

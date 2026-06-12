@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/filament-candelete-no-effect.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 15,
+      "matches": ["canDelete", "visible()", "policy", "delete action", "not gated", "no effect"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP resource class, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "admin panel, not public"
+    }
+  ]
+}

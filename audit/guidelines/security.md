@@ -55,6 +55,21 @@ function canDelete(user, post):
         || user.hasRole('editor')
 ```
 
+**Ownership guard on every mutating action.** Any controller method that mutates a record — `update`, `destroy`, `store` (when writing to an existing parent), and any custom write action — must verify that the record belongs to the current user's tenant/owner scope **before any other logic block**, not after loading or transforming data. A logged-in user can swap the ID in the URL or payload (IDOR); route-model binding alone does not scope by owner.
+
+```
+// BAD — route binds the model, but any user can pass any id
+function update(request, transaction):
+    transaction.update(request.validated())  // IDOR: no ownership check
+
+// GOOD — ownership asserted first, before everything else
+function update(request, transaction):
+    abortUnless(transaction.tenant_id === auth.user.tenant_id, 403)
+    transaction.update(request.validated())
+```
+
+If the framework supports tenant-global query scopes (e.g. a global scope that filters every query by the current tenant), prefer that as defense in depth — but still keep the explicit `abortUnless`/`authorize` guard in the action so the protection is visible and survives a scope being disabled. New controllers are the recurring offender: audit every `update`/`destroy`/`store` for a first-line ownership check.
+
 **Client-exposed state:** Public properties or state exposed to the client are readable and writable from the browser. Never put sensitive data (other users' records, internal IDs used for authorization) in client-accessible state without server-side validation. Use immutable/locked properties or server-side validation hooks to prevent client-side tampering:
 
 ```

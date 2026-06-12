@@ -155,7 +155,7 @@ case "$CLAUDE_EFFORT" in
     SKIP_CROSS_REF=1; CONFIDENCE_FLOOR=high
     ;;
   medium)
-    MAX_RUNDEN_PRO_BATCH=2; FIX_MINOR=0; SKIP_LEARNING=0
+    MAX_RUNDEN_PRO_BATCH=2; FIX_MINOR=1; SKIP_LEARNING=0
     SKIP_CROSS_REF=0; CONFIDENCE_FLOOR=medium
     ;;
   high|xhigh|*)
@@ -170,7 +170,7 @@ echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN_PRO_BATCH | FixMinor=$FIX_MINOR
 | Level | Runden/Batch | Fix Minor | Cross-Ref | Learning | Confidence-Floor |
 |---|---|---|---|---|---|
 | low | 1 | nein | skip | skip | high |
-| medium | 2 | nein | nur BATCHED | ja | medium |
+| medium | 2 | ja | nur BATCHED | ja | medium |
 | high / xhigh (Default) | 3 | ja | immer (auch SINGLE) | ja | low |
 
 Im Folgenden bedeutet `{MAX_RUNDEN_PRO_BATCH}` der hier gesetzte Wert.
@@ -321,11 +321,13 @@ TodoWrite: `Runde {RUNDE} — Findings fixen` (in_progress).
 **Grundregel:** Alles wird gefixt — ausser `low confidence`.
 
 Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.7):
-- `floor=high` (low effort): nur `high` fixen, alles andere als Offener Punkt
-- `floor=medium` (medium effort): `high`+`medium` fixen, `low` als Offener Punkt
+- `floor=high` (low effort): nur `high` fixen, Rest bleibt im Log
+- `floor=medium` (medium effort): `high`+`medium` fixen. `low` → Nachverifikation: Stelle gezielt lesen; bestaetigt → fixen, sonst verwerfen (kein Offener Punkt, kein Issue)
 - `floor=low` (high/xhigh effort, Default): alle fixen, `low` mit Warn-Marker
 
-Minor-Findings nur fixen wenn `FIX_MINOR=1` (high/xhigh).
+Minor-Findings fixen wenn `FIX_MINOR=1` (medium/high/xhigh). Nicht gefixte Minor bleiben NUR im Log.
+
+**Offene Punkte sind NUR echte Entscheidungs-Punkte** (Architektur-Tradeoffs, Verhaltens-Aenderungen) — alles andere wird gefixt oder verworfen.
 
 **HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Fix, egal wie trivial, geht via paralleler Fix-Subagent (Sonnet). Orchestrator-Edits auf Opus kosten ein Mehrfaches.
 
@@ -398,8 +400,7 @@ Detail in `references/audit-log-and-issues.md`. Kurz:
 
 - Audit-Log nach `.claude/audits/{datum}-full-audit.md` schreiben (Format-Template in der reference). Im Header `SELECTED_DIMENSIONS` festhalten, damit spaetere Audits wissen welche Dimensionen nicht geprueft wurden.
 - Log via Read-Tool laden und im Chat als Markdown-Codeblock anzeigen (PFLICHT)
-- Offene Punkte + Minor als GitHub-Issues anlegen (PFLICHT bei gh + GitHub-Repo, Dedup pro Finding)
-- User fragen ob Offene Punkte jetzt umgesetzt werden sollen
+- Offene Punkte dem User vorlegen (AskUserQuestion): **Jetzt entscheiden + fixen / Als Issue vertagen / Verwerfen**. Issues NUR fuer Vertagtes (Dedup pro Finding). Minor bekommt NIE Issues — bleibt im Log.
 
 ---
 

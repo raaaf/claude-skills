@@ -62,9 +62,20 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
 | docs_sync | Neue `env(...)` Refs, neue Routes/Commands/Scripts, neue Top-Level-Deps in `package.json`/`composer.json`/`pyproject.toml`, geloeschte Features, Verhaltensaenderungen user-facing |
 | copy | Neuer oder geaenderter user-facing Text: Templates mit Buttons/Fehlermeldungen/Empty States, Translation-Dateien, Landing-/Marketing-Seiten |
 
+## Zeilennummern-Pflicht
+
+Hotspot-Zeilennummern MUESSEN aus der Quelldatei stammen, nicht aus dem Diff-Hunk. Diff-Offsets (die `+42`/`-17`-Zeilen im Unified-Diff) sind KEINE Quelldatei-Zeilennummern und duerfen NICHT als Hotspot-Koordinaten weitergegeben werden.
+
+Vor der Ausgabe jeden Hotspot verifizieren:
+```bash
+grep -n "{snippet_aus_dem_hotspot}" {datei}
+```
+Der zurueckgegebene Zeilennummer-Wert aus `grep -n` ist die Quelldatei-Zeile. Nur dieser Wert darf in `hotspots` stehen.
+
 ## Verbote
 
 - Keine Findings erstellen — das ist Job der Spezial-Agents
 - Keine Erklaerungen drumherum — nur das JSON
 - Nicht uebermaessig aggressiv skippen — im Zweifel `run: true`
 - `security` fast immer `run: true` ausser bei 100% reinen Doc/Translation-Changes
+- Diff-Hunk-Offsets NIEMALS als Quelldatei-Zeilennummern in Hotspots eintragen

@@ -54,7 +54,7 @@ CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"
 case "$CLAUDE_EFFORT" in
   low)    MAX_RUNDEN=1; FIX_MINOR=0; SKIP_LEARNING=1; CONFIDENCE_FLOOR=high ;;
   high)   MAX_RUNDEN=3; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=low ;;
-  medium|*) MAX_RUNDEN=2; FIX_MINOR=0; SKIP_LEARNING=0; CONFIDENCE_FLOOR=medium ;;
+  medium|*) MAX_RUNDEN=2; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=medium ;;
 esac
 echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLearning=$SKIP_LEARNING | ConfidenceFloor=$CONFIDENCE_FLOOR"
 ```
@@ -62,7 +62,7 @@ echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLea
 | Level | Runden | Fix Minor | Learning | Confidence-Floor |
 |---|---|---|---|---|
 | low | 1 | nein | skip | high (nur sichere Fixes) |
-| medium (Default) | 2 | nein | ja | medium |
+| medium (Default) | 2 | ja | ja | medium |
 | high | 3 | ja | ja | low (auch unsichere fixen, mit Warnung) |
 
 Im Folgenden bedeutet `{MAX_RUNDEN}` der hier gesetzte Wert.
@@ -101,6 +101,10 @@ if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
   echo "Project guidelines: $PROJECT_GUIDELINES_FILE ($(wc -l < "$PROJECT_GUIDELINES_FILE") lines)"
 fi
 bash "$AUDIT_BIN/diff-size-gate.sh"
+
+# Working-Tree-Exklusivitaet: Basis-Zustand festhalten (Check in Phase 4)
+AUDIT_BASE_HEAD=$(git rev-parse HEAD)
+AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
 
 Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
@@ -228,9 +232,13 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 **0 Critical und 0 Important?** → `SAUBER`. Early-Exit (Minor blockiert nie Push).
 
 **Sonst — Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.5):**
-- `floor=high` (low effort): nur `high` fixen, alles andere als Offener Punkt
-- `floor=medium` (medium effort): `high`+`medium` fixen, `low` als Offener Punkt
+- `floor=high` (low effort): nur `high` fixen, Rest bleibt im Log (keine Issues, kein Nachverifizieren — low effort ist der Schnell-Modus)
+- `floor=medium` (medium effort): `high`+`medium` fixen. `low` → **Nachverifikation** (siehe unten)
 - `floor=low` (high effort): alle fixen, `low`-Fixes mit Warn-Marker `(LOW CONFIDENCE FIX)`
+
+**Nachverifikation fuer low-confidence (medium effort):** Orchestrator liest die betroffene Stelle gezielt (Read-Tool). Bestaetigt sich das Finding → wie `medium` behandeln (fixen). Nicht bestaetigbar → verwerfen + `patterns-store.sh dismissed` — ein unbestaetigtes Finding gehoert NICHT in den Issue-Tracker.
+
+**Offene Punkte sind ab jetzt NUR noch:** echte Entscheidungs-Punkte (Architektur-Tradeoffs, Verhaltens-Aenderungen, Scope-Fragen), die ein Agent nicht entscheiden darf. Alles andere wird gefixt oder verworfen.
 
 **HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Sonnet). Edits vom Orchestrator auf Opus kosten ein Mehrfaches.
 
@@ -241,8 +249,8 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
 3a. **Zentralisierungs-Findings (neue Shared-Utility):** Extrahiert ein Finding ein dupliziertes Pattern in ein neues `lib/*.js` / Helper / Trait, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent jede Fundstelle migriert (siehe `fix-agent.md` Sonderfall).
 4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt
-5. Minor: bei `FIX_MINOR=1` (high effort) alle high-confidence Minor fixen, sonst skippen
-6. Nicht fixbar: als Offener Punkt mit Begruendung; `patterns-store.sh dismissed {pattern}` aufrufen
+5. Minor: bei `FIX_MINOR=1` (medium + high effort) alle high/medium-confidence Minor fixen, sonst skippen. Nicht gefixte Minor bleiben NUR im Audit-Log — nie als Issue.
+6. Nicht fixbar weil Entscheidung noetig: als Offener Punkt mit Begruendung (siehe Definition oben). Nicht fixbar aus anderem Grund (z.B. externes System): verwerfen + `patterns-store.sh dismissed {pattern}`
 7. Gefixte Issues zu `BEREITS_GEFIXT` adden, via `patterns-store.sh add` ins Learning-Store
 
 **Schritt E.5 — Fix-Verification (PFLICHT bei medium/high effort, SKIP bei low)**
@@ -358,15 +366,24 @@ Nur Dateien, die nach allen Fixes sauber sind. Dateien mit Offenen Punkten NICHT
 | 3c | Diff-scoped Tests | nie |
 | 3d | Manueller Testplan | wenn `VISUELL_RELEVANTE_DATEIEN` leer |
 | 3e | Audit-Log im Chat anzeigen (Markdown-Block) | nie |
-| 3f | **Offene Punkte + Minor als GitHub-Issues anlegen** | nur wenn `gh repo view` failt oder kein github-Remote |
+| 3f | **Offene Punkte: User-Entscheid → fixen / Issue / verwerfen** | wenn keine Offenen Punkte |
 
-**3f ist HARTE PFLICHT bei GitHub-Repos.** Jeder Eintrag unter `## Offene Punkte` UND jedes verifizierte Minor-Finding bekommt ein Issue (mit Dedup). Format und Bash siehe `references/post-loop.md` Section 3f.
-
-Wenn 3f geskippt wird (kein gh / kein github), das explizit ausgeben: `WARN: 3f uebersprungen, weil <grund>`.
+**3f:** Offene Punkte (nur Entscheidungs-Punkte, siehe Phase 2 Schritt E) werden dem User via AskUserQuestion vorgelegt — pro Punkt: **Jetzt entscheiden + fixen** / **Als Issue vertagen** / **Verwerfen**. Issues entstehen NUR fuer explizit Vertagtes (mit Dedup). Minor-Findings bekommen NIE Issues. Details in `references/post-loop.md` Section 3f.
 
 ---
 
 ## Phase 4: Pre-Push-Verhalten
+
+**Working-Tree-Exklusivitaet pruefen (vor Marker):**
+
+```bash
+# Drift-Check gegen Basis aus Phase 1. Eigene Audit-Fixes zaehlen nicht als
+# Drift (sie sind im Status-Hash erwartbar) — verglichen wird HEAD und ob
+# Aenderungen auftauchen, die weder Basis noch Fix-Agents zuzuordnen sind.
+[ "$(git rev-parse HEAD)" = "$AUDIT_BASE_HEAD" ] || echo "WARN: Fremd-Commit waehrend Audit, Diff-Basis instabil."
+```
+
+Bei Abweichung: warnen (`Fremd-Commit/Index-Drift waehrend Audit, Diff-Basis instabil`), Scope via `collect-scope.sh` neu erheben und entscheiden, ob die Findings noch zur Diff-Basis passen. Kein automatischer Abbruch, aber Push nur nach bewusster Bestaetigung der neuen Basis.
 
 **Hard-Block (nie pushen):**
 - `SECRET_SCAN_RESULT=FINDINGS` → Push abbrechen, Secrets entfernen + History bereinigen (BFG / `git filter-repo`).

@@ -17,7 +17,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`)
 4. Phase 2: Audit-loop with triage routing, 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
-6. Phase 3: Post-loop (changelog, linter, tests, manual test plan, GitHub Issues for open items)
+6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
 7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
 8. Phase 5: Learning (subagent returns structured output, orchestrator writes `learning-log.md` and `suppressions.json`)
 9. Phase 6: PR creation if applicable
@@ -133,7 +133,7 @@ All three skills respect `CLAUDE_EFFORT`:
 | Level | /audit | /full-audit | /plan-it |
 |---|---|---|---|
 | low | 1 round, no Minor, no Learning | 1 round/batch, no Cross-Ref, no Learning | 3 challenges, no eval, no learning |
-| medium | 2 rounds, floor=medium | 2 rounds/batch, Cross-Ref BATCHED-only | 4 challenges, no eval |
+| medium | 2 rounds, fix Minor, floor=medium | 2 rounds/batch, fix Minor, Cross-Ref BATCHED-only | 4 challenges, no eval |
 | high / xhigh (default) | 3 rounds, fix Minor, floor=low | 3 rounds/batch, Cross-Ref always, fix Minor | 5 challenges, full eval |
 
 ```bash

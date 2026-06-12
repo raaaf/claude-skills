@@ -16,6 +16,11 @@ N+1, Memory Leaks, Bundle Size, Re-Renders, redundante Operationen (doppelte Fil
 
 N+1-Queries (ORM-Relations ohne eager loading), Queries in Loops, fehlende Memoization bei teuren Operationen, wiederholte identische DB-Queries innerhalb einer Request-Lifecycle, fehlende Aggregations-Funktionen wo Subselects noetig waeren. **Skalierungspruefung der gesamten Codebase:** Connection Pooling, Queue-Nutzung, Session-Backend, Caching-Strategie, Pagination aller Listen, Index-Abdeckung, horizontale Skalierbarkeit (Stateless-Check), Bulk-Operations statt Einzeloperationen.
 
+## Pflicht-Verifikation VOR dem Flaggen
+
+- **Factory-State-Semantik:** Die Bedeutung eines Factory-States NIE aus dem Methodennamen ableiten. Vor dem Flaggen die State-Definition lesen und gegen die Enum-Definition pruefen (Beispiel: `public()` kann `Visibility::Hidden` setzen). Findings auf Basis des Namens ohne Definition-Check sind unzulaessig.
+- **FK-Index-Abdeckung:** Vor jedem FK-Index-Finding pruefen, ob ein Composite-Index mit der Spalte als leading column existiert. Ein solcher Composite-Index deckt den Einzel-Index-Lookup ab, ein zusaetzlicher Einzel-Index waere redundant. Findings ohne diesen Check sind False-Positives.
+
 ## Projektspezifischer Kontext
 
 {PROJECT_CONTEXT}

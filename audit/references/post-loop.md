@@ -34,34 +34,39 @@ Audit-Log: {LOGFILE}
 
 So hat der User das vollstaendige Ergebnis inkl. Testplan auf einen Blick.
 
-## 3f. Offene Punkte + Minor als GitHub-Issues tracken
+## 3f. Offene Punkte: User-Entscheid → fixen / Issue / verwerfen
 
-**Ziel:** Keine Finding geht verloren. Alles was nicht im Loop gefixt wurde, landet als Issue — dokumentiert, durchsuchbar, nicht im Audit-Log vergraben.
+**Ziel:** Issues sind die Ausnahme, nicht der Default. Offene Punkte sind nur noch echte Entscheidungs-Punkte (Architektur-Tradeoffs, Verhaltens-Aenderungen) — alles Fixbare wurde im Loop gefixt, Unbestaetigtes verworfen. Minor-Findings bekommen NIE Issues (sie stehen im Audit-Log und tauchen beim naechsten Audit wieder auf, falls relevant).
 
-**Precheck:**
+**Wenn `## Offene Punkte` leer ist:** 3f komplett ueberspringen, `3f: n/a (keine offenen Punkte)` loggen.
+
+**Schritt 1 — User-Entscheid via AskUserQuestion:**
+
+Alle Offenen Punkte kompakt auflisten (Dimension, datei:zeile, 1-Satz-Frage). Dann fragen — bei <= 4 Punkten eine Frage pro Punkt (multiSelect-faehig buendeln), bei mehr eine Sammel-Frage mit Optionen:
+- **Jetzt entscheiden + fixen** — User gibt pro Punkt die Richtung vor (1 Satz reicht), Orchestrator dispatcht Fix-Agents mit der Entscheidung als Kontext. Fix-Verifier prueft wie immer.
+- **Als Issue vertagen** — nur diese Punkte werden Issues (Schritt 2).
+- **Verwerfen** — Punkt wird verworfen + `patterns-store.sh dismissed`; bei wiederholtem Verwerfen schlaegt der Learning-Agent eine Suppression vor.
+
+**Schritt 2 — Issues NUR fuer explizit Vertagtes:**
+
+Precheck:
 ```bash
-gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — Issue-Erstellung ueberspringen"
+gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — vertagte Punkte bleiben im Log"
 ```
 
-**Scope:** Fuer jeden Eintrag unter `## Offene Punkte` UND jeden verifizierten Minor-Finding der nicht gefixt wurde (Log aus Schritt E/Fix-Phase):
-
-1. **Dedup:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — wenn schon ein Issue mit diesem `[Dimension] datei:zeile` existiert, **skip** (keine Dublette erzeugen).
+1. **Dedup:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — existiert schon ein Issue mit diesem `[Dimension] datei:zeile`, **skip**.
 2. **Issue erstellen:**
    ```bash
    gh issue create \
      --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" \
      --body "{Finding-Beschreibung}
 
-   **Warum nicht im Audit gefixt:** {Begruendung: Minor / groesserer Refactor / architektonische Entscheidung}
+   **Entscheidung noetig:** {die konkrete Frage an den User}
 
    **Quelle:** \`{LOGFILE}\` (Audit vom {DATUM}, Branch \`{BRANCH}\`, HEAD \`{SHORT_SHA}\`)" \
      --label "audit-finding"
    ```
-3. Wenn `--label audit-finding` fehlschlaegt (Label existiert noch nicht im Repo): Label via `gh label create audit-finding --color FBCA04` anlegen, dann Issue nochmal.
-4. Issue-URLs sammeln und am Ende ausgeben: `X Issues erstellt: {urls}`.
+3. Label fehlt im Repo → `gh label create audit-finding --color FBCA04`, dann erneut.
+4. Ausgabe: `{N} Punkte gefixt, {M} vertagt als Issues: {urls}, {K} verworfen`.
 
-**Wichtig:** Fehler blockieren den Push NICHT. Bei `gh`-Fehler (offline, auth expired, etc.) einfach kurz melden `WARN: Issue-Erstellung uebersprungen, siehe Offene Punkte im Log` und weiter mit Phase 4.
-
-## Offene Punkte — sofort umsetzen? (optional)
-
-Nach Issue-Erstellung User via AskUserQuestion fragen: "Issues erstellt. Jetzt einzelne umsetzen / alle spaeter angehen?". Bei "einzeln umsetzen": User entscheidet welches Issue pro PR.
+**Wichtig:** Fehler blockieren den Push NICHT. Bei `gh`-Fehler kurz melden und weiter mit Phase 4. In CI/Headless (`AUDIT_SKIP_LEARNING_CHECK=1` als Proxy fuer non-interactive): Schritt 1 ueberspringen, alle Offenen Punkte direkt als Issues vertagen (altes Verhalten).

@@ -121,6 +121,8 @@ Each layer has one job. Don't let layers bleed into each other.
 
 A controller that queries the database, applies business rules, and formats output has collapsed three layers into one. When requirements change, you touch everything.
 
+**No database queries in templates or layouts.** A view or layout that runs a query (`Model::where(...)`, `DB::table(...)`, an Eloquent relation triggered for the sole purpose of rendering chrome like a nav badge or account list) couples presentation to data access and re-runs on every render, including partial re-renders. Pass the data in from the controller, or for layout-wide data that every page needs (sidebar counts, account balances, the authenticated user's menu), use a **View Composer** (Laravel) / context provider / equivalent so the query lives in one testable place and the template only consumes the result. A query inside a Blade/template file is a finding regardless of how small it looks.
+
 ## VIII. Feature Cohesion
 
 Related code should live together. Organizing strictly by type (all controllers in one folder, all models in another) scatters related features across the codebase.
@@ -225,6 +227,8 @@ Before writing a raw HTML element (`<button>`, `<a>`, `<input>`, `<div class="ca
 - When a component exists but is not used in new code — that's a **Critical** finding (inconsistency + maintenance burden)
 - Components ensure consistent styling, accessibility attributes (aria, role), and behavior across the entire application
 
+**Only allowed exception:** a raw element is acceptable when the component genuinely cannot express a required custom behavior (e.g. an Alpine/`x-`-directive `@change` handler, a `wire:model` binding, or a framework directive the component does not forward). Even then, prefer extending the component to accept the directive over dropping to raw HTML. Document the reason inline; an undocumented raw element next to an existing component is still a finding.
+
 **Checking for components:**
 ```bash
 # Find all existing UI components
@@ -297,3 +301,7 @@ Log::info('slot.booked', ['user_id' => $userId, 'slot_id' => $slotId]);
 **No PII in logs.** Email addresses, names, tokens in log lines are a privacy and security finding (see security.md). Log IDs, not identities.
 
 **Queue jobs:** `failed()` method (or equivalent dead-letter handling) on jobs with side effects. A job that silently exhausts retries loses data invisibly.
+
+## XV. Admin-Panel Action Gating (Filament 5)
+
+Filament 5 gates `DeleteAction` via Policy + `Action->visible()`, NOT via `Resource::canDelete()`. A `canDelete()` override on the Resource has no effect on the Edit-page header action: the DeleteAction stays clickable. Audit signal: a delete guard that only exists as `Resource::canDelete()` is a finding. Anchor delete guards at `Action->visible()` AND at the Policy (defense in depth, the Policy also covers bulk actions and direct Livewire calls).

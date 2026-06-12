@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/project-type-switch-missing-retainer.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 14,
+      "matches": ["retainer", "missing branch", "unhandled match", "enum", "type", "incomplete"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP service class, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "backend service, not public"
+    }
+  ]
+}

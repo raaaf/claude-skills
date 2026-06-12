@@ -1,0 +1,21 @@
+{
+  "fixture": "a11y/role-button-missing-space-handler.blade.php",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 1,
+      "matches": ["space", "@keydown.space", "role=\"button\"", "keyboard", "missing"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup, no user input processing"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

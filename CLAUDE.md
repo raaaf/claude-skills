@@ -58,8 +58,10 @@ Key invariants:
 | Level | /audit | /full-audit | /plan-it |
 |---|---|---|---|
 | low | 1 round | 1 round/batch, no Cross-Ref | 3 challenges, no eval, no learning |
-| medium | 2 rounds | 2 rounds/batch | 4 challenges, no eval |
+| medium | 2 rounds, fix Minor | 2 rounds/batch, fix Minor | 4 challenges, no eval |
 | high / xhigh (default) | 3 rounds, fix Minor | 3 rounds/batch, Cross-Ref always | 5 challenges, full eval |
+
+Issue policy: GitHub issues only for decision points the user explicitly defers (fix now / defer / dismiss prompt at audit end). Minor findings never become issues; unconfirmed low-confidence findings are verified or dropped, never tracked.
 
 ## Project-specific overrides
 
