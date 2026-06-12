@@ -4,3 +4,4 @@ node_modules/
 .env
 
 .claude/audits/cache.json
+.claude/plans/logs/
