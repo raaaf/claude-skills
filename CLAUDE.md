@@ -61,7 +61,7 @@ Key invariants:
 | medium | 2 rounds, fix Minor | 2 rounds/batch, fix Minor | 4 challenges, no eval |
 | high / xhigh (default) | 3 rounds, fix Minor | 3 rounds/batch, Cross-Ref always | 5 challenges, full eval |
 
-Issue policy: GitHub issues only for decision points the user explicitly defers (fix now / defer / dismiss prompt at audit end). Minor findings never become issues; unconfirmed low-confidence findings are verified or dropped, never tracked.
+Issue policy: GitHub issues only for decision points the user explicitly defers (fix now / defer / dismiss prompt at audit end). Minor findings never become issues; unconfirmed low-confidence findings are verified or dropped, never tracked. At audit start (Phase 0.2), open `audit-finding` issues are offered for fixing in the same run (closed via `gh issue close` after a verified fix); open PRs are collected as dedup context — no issue is created for something an open PR already addresses.
 
 ## Project-specific overrides
 

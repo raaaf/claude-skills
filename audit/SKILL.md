@@ -41,9 +41,26 @@ Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
 - **Spaeter, Audit jetzt** → Phase 1 starten, Vorschlaege bleiben offen.
 - **Nie wieder fragen fuer diese Audits** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
 
-Wenn `0`: Phase 1 starten ohne Frage.
+Wenn `0`: weiter ohne Frage.
 
-**Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
+### Phase 0.2: Offene Audit-Issues & PRs
+
+```bash
+if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com; then
+  OPEN_AUDIT_ISSUES=$(gh issue list --state open --label audit-finding --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null || true)
+  OPEN_PRS=$(gh pr list --state open --json number,title,headRefName --jq '.[] | "#\(.number) \(.title) [\(.headRefName)]"' 2>/dev/null || true)
+fi
+```
+
+**Offene `audit-finding`-Issues vorhanden?** → AskUserQuestion (Liste kompakt zeigen):
+- **Jetzt mitfixen** — ausgewaehlte Issues werden als verifizierte Findings in Runde 1 eingespeist (Fix-Agent + Fix-Verifier wie ueblich). Nach erfolgreichem Fix: `gh issue close {N} --comment "Fixed in audit {DATUM}, commit folgt im naechsten Push."`
+- **Offen lassen** — Issues bleiben, Audit laeuft normal.
+
+**`OPEN_PRS` nicht leer?** → Als Kontext merken (keine Frage):
+- In Phase 3f-Dedup: kein neues Issue fuer etwas, das ein offener PR bereits adressiert.
+- Wenn ein offener PR dieselben Dateien anfasst wie der aktuelle Diff: Hinweis im Audit-Log (`## Hinweise: PR-Ueberschneidung`) — Merge-Konflikt-Risiko.
+
+**Skip dieser Phase (0 + 0.2) wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs) — dann auch keine Issue-Frage.
 
 ## Phase 0.5: Effort Configuration
 

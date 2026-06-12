@@ -68,7 +68,18 @@ Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
 - **Spaeter, Full-Audit jetzt** → Phase 0.5 starten, Vorschlaege bleiben offen.
 - **Nie wieder fragen fuer diese Punkte** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
 
-Wenn `0`: Phase 0.5 starten ohne Frage.
+Wenn `0`: weiter ohne Frage.
+
+**Zusaetzlich — Offene Audit-Issues & PRs** (identisch zu `/audit` Phase 0.2):
+
+```bash
+if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com; then
+  OPEN_AUDIT_ISSUES=$(gh issue list --state open --label audit-finding --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null || true)
+  OPEN_PRS=$(gh pr list --state open --json number,title,headRefName --jq '.[] | "#\(.number) \(.title) [\(.headRefName)]"' 2>/dev/null || true)
+fi
+```
+
+Offene `audit-finding`-Issues → AskUserQuestion: **Jetzt mitfixen** (als verifizierte Findings in Batch 1 einspeisen, nach Fix `gh issue close` mit Kommentar) / **Offen lassen**. `OPEN_PRS` als Kontext: Phase-4-Dedup prueft dagegen, PR-Datei-Ueberschneidungen kommen als Hinweis ins Log.
 
 **Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` ODER `FULL_AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
 

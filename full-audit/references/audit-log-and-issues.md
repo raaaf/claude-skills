@@ -66,7 +66,7 @@ Punkte kompakt auflisten (Dimension, datei:zeile, 1-Satz-Frage), dann pro Punkt 
 **Schritt 2 — Issues NUR fuer explizit Vertagtes:**
 
 1. **Precheck:** `gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com` — sonst bleiben vertagte Punkte im Log.
-2. **Dedup pro Finding:** `gh issue list --state open --search "[audit] {Dimension} {datei}" --json number` — bereits existierendes Issue → skip.
+2. **Dedup pro Finding:** `gh issue list --state open --search "[audit] {Dimension} {datei}" --json number` — bereits existierendes Issue → skip. Zusaetzlich gegen `OPEN_PRS` (Phase 0.3) pruefen — adressiert ein offener PR dieselbe Stelle → skip + Log-Hinweis.
 3. **Erstellen:**
    ```bash
    gh issue create \

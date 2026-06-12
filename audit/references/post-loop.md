@@ -54,7 +54,8 @@ Precheck:
 gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — vertagte Punkte bleiben im Log"
 ```
 
-1. **Dedup:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — existiert schon ein Issue mit diesem `[Dimension] datei:zeile`, **skip**.
+1. **Dedup gegen Issues:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — existiert schon ein Issue mit diesem `[Dimension] datei:zeile`, **skip**.
+1b. **Dedup gegen offene PRs:** `OPEN_PRS` aus Phase 0.2 pruefen (Fallback: `gh pr list --state open --search "{datei}"`) — adressiert ein offener PR dieselbe Stelle, **skip** + Hinweis im Log (`vertagt — wird von PR #{N} abgedeckt`).
 2. **Issue erstellen:**
    ```bash
    gh issue create \
