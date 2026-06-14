@@ -52,6 +52,58 @@ Comprehensive one-time audit of an entire codebase. Auto-detects framework, batc
 
 Same 12 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
 
+### `/diagnose` — Bug Diagnosis Workflow
+
+Reproduce-first debugging. Never hypothesizes before a working repro exists. Minimizes the
+reproduction to the smallest failing case, forms ranked hypotheses, instruments precisely,
+fixes, writes a regression test, and removes all debug output.
+
+**Pipeline:**
+
+1. Phase 0: Intake (expected vs actual, last known good)
+2. Phase 1: Reproduce (one command, one output, deterministic — STOP if unrepro)
+3. Phase 2: Minimize (smallest failing case, exact file:line)
+4. Phase 3: Hypothesize (2-3 ranked, evidence-based only)
+5. Phase 4: Instrument (max 2 debug points, test hypothesis)
+6. Phase 5: Fix (surgical, re-run repro to confirm)
+7. Phase 6: Regression test (fails pre-fix, passes post-fix)
+8. Phase 7: Cleanup (no debug output in committed code)
+
+### `/review` — Two-Axis Code Review
+
+Checks implementation from two independent angles in parallel. Use before merging a feature
+branch or when you want to verify a PR matches its spec. Complements `/audit` (which is
+pre-push and automated); `/review` is manual and spec-aware.
+
+**Axes (parallel):**
+
+| Axis | Question | Agent |
+|---|---|---|
+| Standards | Does the code follow project conventions and guidelines? | standards-reviewer (sonnet) |
+| Spec | Does the implementation match the linked issue or PRD? | spec-reviewer (sonnet) |
+
+If no issue/PR is linked: Standards axis only.
+
+Findings: max 50 words, file:line refs only, no code snippets. Critical and Important findings
+require resolution (fix, accepted deviation, or spec update). Minor findings are listed only.
+
+### `/handoff` — Session Compaction
+
+Compacts the current session into a self-contained handoff document for a fresh agent or a
+new session. Includes: what was done, commits made, current state, next steps, open questions,
+key files, and suggested skills. Saves to `/tmp/` (never committed). Redacts tokens and keys.
+
+### `/triage` — GitHub Issue State Machine
+
+Fetches open `needs-triage` issues (or a specific issue number), classifies them, updates
+labels, posts reasoning comments, and generates agent briefs for issues ready to work
+autonomously. Requires `gh` CLI and a GitHub remote.
+
+**States:** `needs-triage` (entry) → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`
+
+`ready-for-agent` issues get an agent brief with task description, likely files, acceptance
+criteria, and suggested skills.
+
 ### `/plan-it` — Iterative Plan Builder
 
 Sparring partner for turning ideas into solid implementation plans. Asks the right questions (each with a recommended answer), builds a structured plan, then challenges it from 5 perspectives.

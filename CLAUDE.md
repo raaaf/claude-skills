@@ -53,6 +53,21 @@ Key invariants:
 - **Finding output cap** is 50 words, only `file:line` refs, no code snippets. Enforced in `audit/agents/prompt-template.md`.
 - **Hook safety:** never `claude` from inside a Stop/PreToolUse hook (would spawn an infinite loop). All hooks live in `~/.claude/hooks/`, not the repo.
 
+## Skill roster
+
+| Skill | Model | Purpose |
+|---|---|---|
+| `/audit` | opus | Pre-push diff audit, 12 dimensions, fix-loop |
+| `/full-audit` | opus | Full codebase audit, batched |
+| `/diagnose` | sonnet | Reproduce-first bug diagnosis, regression test |
+| `/review` | sonnet | Two-axis review: Standards + Spec (parallel agents) |
+| `/triage` | sonnet | GitHub issue state machine, agent briefs |
+| `/handoff` | sonnet | Session compaction to /tmp for fresh agent |
+| `/plan-it` | opus | Iterative plan builder, parallel challenges |
+| `/write-a-skill` | opus | Skill scaffolding |
+| `/live-audit` | opus | Scheduled live-site audit (personal) |
+| `/rafael-writing-style` | sonnet | Personal writing style (personal) |
+
 ## Effort levels (set on skill frontmatter or via `CLAUDE_EFFORT`)
 
 | Level | /audit | /full-audit | /plan-it |
