@@ -36,33 +36,93 @@ git diff --stat HEAD 2>/dev/null
 
 If no tracked changes and no staged files: report and stop. Nothing to ship.
 
-Detect deploy method (check in priority order):
+Detect deploy method and health check URL (check in priority order):
 
 ```bash
-# 1. Project config (wins)
-cat .claude/ship.md 2>/dev/null
+# 1. Project config wins — read both values if present
+DEPLOY_COMMAND=$(grep '^deploy-command:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
+HEALTH_URL=$(grep '^health-check:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
 
-# 2. Known deploy files
-[ -f fly.toml ]                                          && echo "DEPLOY=fly deploy"
-[ -f vapor.yml ] || [ -f vapor.yaml ]                   && echo "DEPLOY=vapor deploy production"
-[ -f "deploy.sh" ]                                       && echo "DEPLOY=bash deploy.sh"
-[ -f .vercel/project.json ]                              && echo "DEPLOY=vercel --prod"
-[ -f netlify.toml ]                                      && echo "DEPLOY=netlify deploy --prod"
-[ -f railway.toml ]                                      && echo "DEPLOY=railway up"
-ls .github/workflows/deploy*.yml 2>/dev/null | head -1  && echo "DEPLOY=ci" # CI deploys on push
+# 2. Detect deploy method from known files
+if [ -z "$DEPLOY_COMMAND" ]; then
+  [ -f fly.toml ]               && DEPLOY_COMMAND="fly deploy"
+  [ -f vapor.yml ]              && DEPLOY_COMMAND="vapor deploy production"
+  [ -f vapor.yaml ]             && DEPLOY_COMMAND="vapor deploy production"
+  [ -f deploy.sh ]              && DEPLOY_COMMAND="bash deploy.sh"
+  [ -f .vercel/project.json ]   && DEPLOY_COMMAND="vercel --prod"
+  [ -f netlify.toml ]           && DEPLOY_COMMAND="netlify deploy --prod"
+  [ -f railway.toml ]           && DEPLOY_COMMAND="railway up"
+  ls .github/workflows/deploy*.yml 2>/dev/null | head -1 | grep -q . && DEPLOY_COMMAND="ci"
+fi
+
+# 3. Auto-detect health check URL from codebase (only if not in .claude/ship.md)
+if [ -z "$HEALTH_URL" ]; then
+
+  # fly.toml: app name + health_checks path
+  if [ -f fly.toml ]; then
+    FLY_APP=$(grep '^app\s*=' fly.toml | head -1 | sed 's/.*=\s*["\x27]\(.*\)["\x27]/\1/')
+    FLY_HEALTH=$(grep -A2 'health_checks' fly.toml | grep 'path' | head -1 \
+      | sed 's/.*path\s*=\s*["\x27]\(.*\)["\x27]/\1/')
+    FLY_HEALTH="${FLY_HEALTH:-/health}"
+    [ -n "$FLY_APP" ] && HEALTH_URL="https://${FLY_APP}.fly.dev${FLY_HEALTH}"
+  fi
+
+  # vapor.yml: production domain -> Laravel /up route
+  if [ -z "$HEALTH_URL" ] && [ -f vapor.yml ]; then
+    VAPOR_DOMAIN=$(awk '/^production:/,/^[a-z]/' vapor.yml | grep 'domain:' | head -1 \
+      | awk '{print $2}' | tr -d '"')
+    [ -n "$VAPOR_DOMAIN" ] && HEALTH_URL="https://${VAPOR_DOMAIN}/up"
+  fi
+
+  # netlify.toml: production URL
+  if [ -z "$HEALTH_URL" ] && [ -f netlify.toml ]; then
+    NETLIFY_URL=$(grep -A5 '\[context\.production\]' netlify.toml | grep 'url' | head -1 \
+      | cut -d'"' -f2)
+    [ -n "$NETLIFY_URL" ] && HEALTH_URL="${NETLIFY_URL}/health"
+  fi
+
+  # .env.example: APP_URL (readable, unlike .env)
+  if [ -z "$HEALTH_URL" ] && [ -f .env.example ]; then
+    APP_URL=$(grep '^APP_URL=' .env.example | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d ' ')
+    if [ -n "$APP_URL" ] && [ "$APP_URL" != "http://localhost" ] \
+        && [ "$APP_URL" != "http://127.0.0.1" ]; then
+      # Laravel has /up built-in (11+); else try /health
+      [ -f artisan ] && HEALTH_URL="${APP_URL}/up" || HEALTH_URL="${APP_URL}/health"
+    fi
+  fi
+
+  # Laravel route files: find explicit health/up/ping route
+  if [ -z "$HEALTH_URL" ] && [ -f artisan ]; then
+    HEALTH_ROUTE=$(grep -rh "Route::get.*['\"]\/\(health\|up\|ping\|status\)" \
+      routes/ 2>/dev/null | head -1 | grep -oE "'[/a-z_-]+'" | head -1 | tr -d "'")
+    # HEALTH_ROUTE is the path only; combine with APP_URL if found above
+  fi
+fi
 ```
 
-If no method found: AskUserQuestion with options:
-- "CI/CD deploys on push (no extra command)" → set `DEPLOY=ci`
+Log what was detected:
+```
+Deploy: {DEPLOY_COMMAND}
+Health: {HEALTH_URL or "not detected"}
+```
+
+If no deploy method found: AskUserQuestion with options:
+- "CI/CD deploys on push (no extra command)"
 - "fly deploy"
 - "vercel --prod"
 - "Custom..." (user types the command)
 
-Then write the chosen command to `.claude/ship.md`:
+Save to `.claude/ship.md` if not already present (never overwrite existing config):
 ```bash
-echo "deploy-command: {command}" >> .claude/ship.md
+if [ ! -f .claude/ship.md ]; then
+  mkdir -p .claude
+  {
+    echo "deploy-command: ${DEPLOY_COMMAND}"
+    [ -n "$HEALTH_URL" ] && echo "health-check: ${HEALTH_URL}"
+  } > .claude/ship.md
+  echo "Created .claude/ship.md"
+fi
 ```
-(Skip write if DEPLOY=ci or file already exists.)
 
 ## Phase 1: Commit
 
@@ -152,16 +212,20 @@ Stream output. If command exits non-zero: jump to Phase 6.
 ## Phase 5: Verify
 
 ```bash
-# CI status (if gh available)
+# CI run status
 gh run list --limit 1 --json status,conclusion,url 2>/dev/null
 
-# Health check (if URL configured in .claude/ship.md or detectable)
-HEALTH_URL=""
-grep -q "health-check:" .claude/ship.md 2>/dev/null && HEALTH_URL=$(grep "health-check:" .claude/ship.md | cut -d' ' -f2)
-
-# Fallback: infer from fly.toml app name or vercel output
+# Health check — HEALTH_URL was resolved in Phase 0
 if [ -n "$HEALTH_URL" ]; then
-  curl -sf --max-time 10 "$HEALTH_URL" && echo "Health: OK" || echo "Health: FAILED ($HEALTH_URL)"
+  HTTP_STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 15 "$HEALTH_URL" 2>/dev/null)
+  if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+    echo "Health: OK ($HTTP_STATUS) — $HEALTH_URL"
+  else
+    echo "Health: FAILED ($HTTP_STATUS) — $HEALTH_URL"
+    # Jump to Phase 6 health-check-failed branch
+  fi
+else
+  echo "Health: not configured (add 'health-check: https://...' to .claude/ship.md)"
 fi
 ```
 
