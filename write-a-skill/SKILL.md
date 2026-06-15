@@ -1,5 +1,6 @@
 ---
 name: write-a-skill
+disable-model-invocation: true
 description: "Create a new Claude Code skill with proper frontmatter, scoped trigger description, progressive disclosure into references/, optional subagent dispatch, and self-learning loop. Use when user wants to write, build, or scaffold a new skill, when adding a workflow that should run via slash command, or when refactoring an existing skill into the canonical structure."
 when_to_use: "/write-a-skill, build a new skill, neuen skill schreiben, scaffold skill, refactor skill"
 argument-hint: "[skill-name or short description]"

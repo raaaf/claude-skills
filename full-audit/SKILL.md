@@ -1,5 +1,6 @@
 ---
 name: full-audit
+disable-model-invocation: true
 description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 12 parallel subagents per batch (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
@@ -33,8 +34,8 @@ Anti-Patterns (rote Flaggen) siehe `{AUDIT_REFS}/anti-patterns.md` (Pfad aus Pha
 # Resolve audit skill root — try multiple known locations.
 AUDIT_ROOT=""
 for candidate in \
+  "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
   "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit}" \
-  "$(dirname "${CLAUDE_PROJECT_DIR:-/nonexistent}")/audit" \
   "$HOME/.claude/skills/audit" \
   "$HOME/.claude/skills/claude-skills/audit"; do
   [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
@@ -292,6 +293,7 @@ Prompt-Template: `{AUDIT_AGENTS}/prompt-template.md` → Abschnitt "Fuer /full-a
 
 **Ueberspringen-Regeln:**
 - Dimension NICHT in `SELECTED_DIMENSIONS` → Agent gar nicht dispatchen
+- **5 (SEO): projektweit ueberspringen, wenn das Projekt gar kein Web-Frontend hat.** Einmal pro Full-Audit pruefen: `find . -path ./node_modules -prune -o \( -name '*.html' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' -o -name '*.astro' -o -name '*.blade.php' \) -print -quit` gibt nichts zurueck → reines natives/CLI/JSON-API-Projekt (z.B. nur Swift + bun-Backend), SEO hat keine Angriffsflaeche → Agent 5 nie dispatchen (kein Token verbrennen). Bei Treffer normal nach Batch-Inhalt entscheiden.
 - 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): keine Frontend-Dateien im Batch
 - 7 (Typography), 12 (Copy): weder Frontend- noch Translation-Dateien im Batch
 - 11 (Docs Sync): laeuft genau einmal pro Full-Audit (im ersten Batch oder als eigener finaler Pass nach Phase 2.5) — nicht pro Batch.

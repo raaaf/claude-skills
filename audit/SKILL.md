@@ -1,5 +1,6 @@
 ---
 name: audit
+disable-model-invocation: true
 description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: scope hint]"
@@ -87,8 +88,12 @@ Im Folgenden bedeutet `{MAX_RUNDEN}` der hier gesetzte Wert.
 ## Phase 1: Pre-Flight & Scope
 
 ```bash
-AUDIT_BIN="${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/bin"
-AUDIT_AGENTS_DIR="${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/agents"
+AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
+AUDIT_AGENTS_DIR="${CLAUDE_SKILL_DIR}/agents"
+
+# PreCompact-Schutz: blockiert Auto-Compaction waehrend des Audit-Runs
+CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
+touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 bash "$AUDIT_BIN/collect-scope.sh"
@@ -123,6 +128,8 @@ bash "$AUDIT_BIN/diff-size-gate.sh"
 AUDIT_BASE_HEAD=$(git rev-parse HEAD)
 AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
+
+**WIP-/Stale-Snapshot-Scope-Check (vor Phase 2):** `git status --porcelain` + `git diff --stat` ansehen. Enthaelt der Working-Tree Dateien, die erkennbar NICHT zur gerade besprochenen Aufgabe gehoeren (vorbestehende WIP eines anderen Arbeitsstrangs, fremde uncommittete Edits, stale Snapshots)? Dann NICHT stillschweigend mitauditieren, sondern den User via `AskUserQuestion` nach dem Scope fragen: **nur die Session-/Aufgaben-Aenderungen** vs. **ganzer Working-Tree**. Heuristik fuer "gehoert nicht dazu": Dateien in ganz anderen Modulen als der Rest des Diffs, oder Dateien die schon vor Sessionbeginn `M` waren. Im Zweifel fragen — ein Audit auf fremdem WIP produziert Findings auf Code, den der User gerade gar nicht bearbeitet.
 
 Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
 - Diff-Size-Gate-Tabelle (OK/LARGE/HUGE)
@@ -256,6 +263,8 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 **Nachverifikation fuer low-confidence (medium effort):** Orchestrator liest die betroffene Stelle gezielt (Read-Tool). Bestaetigt sich das Finding → wie `medium` behandeln (fixen). Nicht bestaetigbar → verwerfen + `patterns-store.sh dismissed` — ein unbestaetigtes Finding gehoert NICHT in den Issue-Tracker.
 
 **Offene Punkte sind ab jetzt NUR noch:** echte Entscheidungs-Punkte (Architektur-Tradeoffs, Verhaltens-Aenderungen, Scope-Fragen), die ein Agent nicht entscheiden darf. Alles andere wird gefixt oder verworfen.
+
+**Self-Regression vs. pre-existing (Priorisierung):** Liegt ein Finding auf einer Zeile, die im aktuellen Branch-Diff geaendert wurde (`git blame`/Diff-Abgleich), ist es eine **Self-Regression** — IMMER fixen, nie parken, auch wenn es ein Entscheidungs-Punkt zu sein scheint (der Branch hat das Problem eingefuehrt). Nur Findings auf unveraenderten, pre-existing Zeilen duerfen als Offener Punkt geparkt werden.
 
 **HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Sonnet). Edits vom Orchestrator auf Opus kosten ein Mehrfaches.
 
@@ -463,5 +472,11 @@ Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` dre
 ---
 
 ## Phase 6: PR erstellen (nach Push)
+
+```bash
+# PreCompact-Marker entfernen — Audit abgeschlossen
+CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
+rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
+```
 
 Detail: `references/pr-creation.md`. Kurzfassung: Branch pruefen, Commits sammeln, optional Plan-Doc fuer Description, PR via `gh pr create`, URL ausgeben. Fehler blockieren nicht.

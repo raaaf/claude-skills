@@ -1,11 +1,15 @@
 ---
 name: review
+disable-model-invocation: true
 description: |
   Two-axis code review: checks that implementation follows coding standards (Axis 1) AND
   matches what the linked issue or PRD specified (Axis 2). Axes run in parallel and produce
   independent findings. Use before merging a feature branch, after implementing a spec, or
   when asked to review a PR. Complements /audit (which is pre-push and diff-scoped);
   /review is triggered manually and can target any files or a spec.
+when_to_use: "/review, review this PR, does this match the spec, review my implementation, check against issue, code review"
+argument-hint: "[issue number, PR number, or file path]"
+arguments: [target]
 model: sonnet
 effort: medium
 allowed-tools:
@@ -31,7 +35,9 @@ If no issue or PR is linked: Standards only.
 
 ### Files to review
 
-Argument given (e.g. `/review app/Http/Controllers/Foo.php`): use those files.
+`$target` set and looks like a file path: review that file.
+`$target` is a number: treat as issue/PR number (see Spec section below).
+No `$target`: auto-detect from git diff.
 
 No argument:
 ```bash
@@ -51,8 +57,9 @@ Try in order:
 # 1. Current branch PR
 gh pr view --json number,title,body,url 2>/dev/null
 
-# 2. Specific issue number if given as argument (/review 42)
-gh issue view {N} --json number,title,body,url 2>/dev/null
+# 2. Specific issue/PR number from $target argument (/review 42)
+gh issue view "$target" --json number,title,body,url 2>/dev/null \
+  || gh pr view "$target" --json number,title,body,url 2>/dev/null
 
 # 3. Issue linked in recent commits
 git log --oneline -5 2>/dev/null

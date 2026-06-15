@@ -97,6 +97,11 @@ Projects can override globals by adding files to their own `.claude/`:
 - **`maxTurns` on agents is a hard limit.** A worker that exceeds it returns whatever it has, including partial findings. Triage and fix-agent need slack (5 turns minimum); fix-verifier is tighter (3-5 is plenty).
 - **Worker output never includes code snippets.** Findings reference `file:line` only. This is by design — keeps consolidation cheap and prevents the worker from being a code generator.
 - **Stop-hook `additionalContext` does NOT block.** Verified against the hooks docs (June 2026): `hookSpecificOutput.additionalContext` on Stop/SubagentStop lets the stop proceed and only injects context. The audit loop needs blocking to force the next round — `exit 2` in `~/.claude/hooks/audit-loop.sh` stays. Don't "modernize" this.
+- **`PreCompact` hook blocks auto-compaction during audit runs.** `~/.claude/hooks/pre-compact.sh` checks for `/tmp/claude-audit-in-progress-{cwd-hash}`. Marker is written in `audit/SKILL.md` Phase 1 and removed in Phase 6. Markers older than 3 hours are treated as stale and auto-removed.
+- **`disable-model-invocation: true`** is set on all skills. Claude never auto-triggers them; only explicit `/skill-name` invocations work. Required for destructive/long-running skills like `/audit`, `/full-audit`.
+- **`${CLAUDE_SKILL_DIR}`** expands to the skill's own directory. Used in `audit/SKILL.md` for `AUDIT_BIN` and `AUDIT_AGENTS_DIR`. Replaces the old `${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}` pattern. `full-audit/SKILL.md` uses it as the first candidate in the AUDIT_ROOT resolution loop.
+- **`disallowed-tools`** on `/handoff` and `/triage` blocks `AskUserQuestion` — both are fully autonomous and should never interrupt for input.
+- **Named `arguments:`** on `/review` (`$target`) and `/triage` (`$issue`) replace positional `{N}` placeholders.
 
 ## Adding a new skill
 

@@ -1,9 +1,14 @@
 ---
 name: handoff
+disable-model-invocation: true
+disallowed-tools:
+  - AskUserQuestion
 description: |
   Compacts the current session into a handoff document for a fresh agent or a new session.
   Use when context is running out, before switching to a different branch, or when passing
   ongoing work to another session. Saves to /tmp (not committed). Redacts secrets.
+when_to_use: "/handoff, context running out, new session, pass to fresh agent, compact session, running out of context"
+argument-hint: "[optional: focus area for the handoff]"
 model: sonnet
 effort: low
 allowed-tools:

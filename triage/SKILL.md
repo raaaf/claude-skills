@@ -1,10 +1,16 @@
 ---
 name: triage
+disable-model-invocation: true
+disallowed-tools:
+  - AskUserQuestion
 description: |
   GitHub issue state machine. Fetches open issues labeled needs-triage (or a specific issue
   number), classifies them, updates their state labels, posts a reasoning comment, and
   generates an agent brief for issues ready to be worked autonomously. Use after a batch of
   new issues lands or when the issue tracker needs a cleanup pass.
+when_to_use: "/triage, triage issues, process new issues, classify issues, needs-triage, issue state machine"
+argument-hint: "[optional: issue number]"
+arguments: [issue]
 model: sonnet
 effort: medium
 allowed-tools:
@@ -45,13 +51,13 @@ done
 
 ## Phase 1: Fetch Issues
 
-If an issue number was given (e.g. `/triage 42`): fetch only that issue.
+If `$issue` is set (e.g. `/triage 42`): fetch only that issue.
 
 Otherwise: fetch all open issues labeled `needs-triage`.
 
 ```bash
-# Specific issue
-gh issue view {N} --json number,title,body,labels,comments,url
+# Specific issue ($issue = the argument passed to /triage)
+gh issue view "$issue" --json number,title,body,labels,comments,url
 
 # All needs-triage
 gh issue list --label needs-triage --state open --json number,title,body,labels,url --limit 50
