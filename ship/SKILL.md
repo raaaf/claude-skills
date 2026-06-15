@@ -10,7 +10,7 @@ when_to_use: "/ship, ready to ship, commit and deploy, commit push deploy, ship 
 argument-hint: "[optional: commit message]"
 arguments: [message]
 model: sonnet
-effort: medium
+effort: low
 allowed-tools:
   - Read
   - Write
@@ -53,6 +53,21 @@ if [ -z "$DEPLOY_COMMAND" ]; then
   [ -f netlify.toml ]           && DEPLOY_COMMAND="netlify deploy --prod"
   [ -f railway.toml ]           && DEPLOY_COMMAND="railway up"
   ls .github/workflows/deploy*.yml 2>/dev/null | head -1 | grep -q . && DEPLOY_COMMAND="ci"
+  # iOS / BaaS
+  [ -f fastlane/Fastfile ]        && DEPLOY_COMMAND="fastlane"       # lane asked below
+  [ -f firebase.json ]            && DEPLOY_COMMAND="firebase deploy"
+  [ -f .firebaserc ]              && DEPLOY_COMMAND="firebase deploy"
+  [ -f supabase/config.toml ]     && DEPLOY_COMMAND="supabase db push && supabase functions deploy"
+  [ -f amplify.yml ]              && DEPLOY_COMMAND="amplify push --yes"
+  [ -d .xcode/cloud ]             && DEPLOY_COMMAND="ci"             # Xcode Cloud triggers on push
+fi
+
+# Fastlane: ask which lane (beta / release / custom)
+if [ "$DEPLOY_COMMAND" = "fastlane" ]; then
+  LANES=$(grep -E '^\s*lane\s+:' fastlane/Fastfile 2>/dev/null \
+    | sed 's/.*lane\s*:\([a-z_]*\).*/\1/' | tr '\n' ' ')
+  # DEPLOY_COMMAND resolved by AskUserQuestion below (see "no method found" block)
+  # Pass LANES as context to the question
 fi
 
 # 3. Auto-detect health check URL from codebase (only if not in .claude/ship.md)
@@ -97,6 +112,26 @@ if [ -z "$HEALTH_URL" ]; then
       routes/ 2>/dev/null | head -1 | grep -oE "'[/a-z_-]+'" | head -1 | tr -d "'")
     # HEALTH_ROUTE is the path only; combine with APP_URL if found above
   fi
+
+  # Firebase Hosting: site name from firebase.json -> https://{site}.web.app/
+  if [ -z "$HEALTH_URL" ] && [ -f firebase.json ]; then
+    FB_SITE=$(python3 -c "import json,sys; d=json.load(open('firebase.json')); \
+      h=d.get('hosting',{}); print((h[0] if isinstance(h,list) else h).get('site',''))" \
+      2>/dev/null)
+    # Fall back to project ID from .firebaserc
+    [ -z "$FB_SITE" ] && FB_SITE=$(python3 -c "import json; \
+      print(json.load(open('.firebaserc'))['projects']['default'])" 2>/dev/null)
+    [ -n "$FB_SITE" ] && HEALTH_URL="https://${FB_SITE}.web.app/"
+  fi
+
+  # Supabase: project_id from supabase/config.toml -> https://{id}.supabase.co/health
+  if [ -z "$HEALTH_URL" ] && [ -f supabase/config.toml ]; then
+    SB_ID=$(grep '^project_id' supabase/config.toml | cut -d'"' -f2)
+    [ -n "$SB_ID" ] && HEALTH_URL="https://${SB_ID}.supabase.co/health"
+  fi
+
+  # Fastlane / iOS: no HTTP health check applicable
+  # Xcode Cloud / TestFlight: no HTTP health check applicable
 fi
 ```
 
@@ -106,10 +141,16 @@ Deploy: {DEPLOY_COMMAND}
 Health: {HEALTH_URL or "not detected"}
 ```
 
+If `DEPLOY_COMMAND = "fastlane"`: AskUserQuestion — which lane?
+- Each detected lane name as an option (from `$LANES`)
+- "Custom lane..." (user types it)
+→ Set `DEPLOY_COMMAND="fastlane {lane}"`
+
 If no deploy method found: AskUserQuestion with options:
 - "CI/CD deploys on push (no extra command)"
 - "fly deploy"
-- "vercel --prod"
+- "firebase deploy"
+- "fastlane beta"
 - "Custom..." (user types the command)
 
 Save to `.claude/ship.md` if not already present (never overwrite existing config):
