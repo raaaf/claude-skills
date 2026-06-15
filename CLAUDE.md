@@ -59,6 +59,7 @@ Key invariants:
 |---|---|---|
 | `/audit` | opus | Pre-push diff audit, 12 dimensions, fix-loop |
 | `/full-audit` | opus | Full codebase audit, batched |
+| `/ship` | sonnet | Commit + audit gate + push + deploy + verify |
 | `/diagnose` | sonnet | Reproduce-first bug diagnosis, regression test |
 | `/review` | sonnet | Two-axis review: Standards + Spec (parallel agents) |
 | `/triage` | sonnet | GitHub issue state machine, agent briefs |

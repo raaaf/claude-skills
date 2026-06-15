@@ -104,6 +104,34 @@ autonomously. Requires `gh` CLI and a GitHub remote.
 `ready-for-agent` issues get an agent brief with task description, likely files, acceptance
 criteria, and suggested skills.
 
+### `/ship` — Commit, Audit, Push, Deploy
+
+Full pipeline from "changes ready" to "live in production." Generates a conventional commit
+message from the diff (or uses the one you provide), enforces the audit marker before push,
+runs the project-specific deploy command, and verifies with a health check.
+
+**Pipeline:**
+
+1. Phase 0: Pre-flight (git status, detect deploy method from `fly.toml`/`vapor.yml`/`deploy.sh`/`.vercel`/CI, or save to `.claude/ship.md` on first run)
+2. Phase 1: Commit (diff summary, generate conventional commit message, AskUserQuestion to confirm or edit, `git add -u`, sensitive-file check, `git commit`)
+3. Phase 2: Audit gate (marker fresh < 30 min? skip. Stale or missing? AskUserQuestion: run `/audit` now or bypass explicitly)
+4. Phase 3: Push (`git push`, auto-handles no-upstream and diverged branches)
+5. Phase 4: Deploy (run detected command; skip if CI/CD deploys on push)
+6. Phase 5: Verify (`gh run list` + health check if URL configured)
+7. Phase 6: Failure handling (last 20 lines of output + `/diagnose` pointer)
+
+**Arguments:**
+```bash
+/ship                     # auto-generate commit message
+/ship "feat: add login"   # explicit commit message, no prompt
+```
+
+**Config** (`.claude/ship.md`, auto-created on first run):
+```
+deploy-command: fly deploy
+health-check: https://myapp.fly.dev/health
+```
+
 ### `/plan-it` — Iterative Plan Builder
 
 Sparring partner for turning ideas into solid implementation plans. Asks the right questions (each with a recommended answer), builds a structured plan, then challenges it from 5 perspectives.
