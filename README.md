@@ -15,7 +15,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented); Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
 3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`)
-4. Phase 2: Audit-loop with triage routing, 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review
+4. Phase 2: Audit-loop with triage routing, 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
 7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
@@ -51,6 +51,25 @@ Triage routes the diff to relevant workers only; workers receive triage-marked h
 Comprehensive one-time audit of an entire codebase. Auto-detects framework, batches large codebases (>80 files), runs Phase 0 backlog check, Phase 0.5 dimension selection (Alles / Nur Backend / Nur Frontend / Custom multi-select), Phase 0.7 effort configuration. Cross-Reference pass after all batches (xhigh runs it even in SINGLE mode).
 
 Same 12 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
+
+### `/feature-audit` — Feature Test Matrix (Goal-Loop)
+
+Builds and maintains `FEATURE_AUDIT.md`: a canonical table of every user-facing feature, route,
+command, or exported entry point, with one automated test per row, and drives the suite to
+all-green. This is a **goal-driven loop** (the right shape for open-ended, long-horizon work —
+unlike the deterministic pre-push `/audit`). It detects the stack, ensures a test runner (with
+confirmation before installing one), derives coverage from source, writes and runs tests per row,
+fixes until the suite exits 0 without weakening assertions, re-verifies, then writes a holistic
+`FEATURE_REVIEW.md` (Inconsistencies / Gaps / Potentials).
+
+**Loop contract:** every turn ends with a machine-checkable status line
+(`AUDIT_STATUS total=… with_story=… tested=… passing=… failing=… needs_review=… test_exit=…`).
+Both the counts and `test_exit` are **computed by Bash helpers** (`bin/status-line.sh` parses the
+table, `bin/run-tests.sh` reports the real process exit code), never self-reported by the model, so
+completion is objectively checkable. State lives in the committed `FEATURE_AUDIT.md`, so the loop
+survives interruption and resumes. Commits per passing feature (branch-first on the default
+branch, scoped staging — never `git add -A`). Stops after 3 consecutive identical failures or 50
+turns. Pair with `/loop /feature-audit` for the unattended grind.
 
 ### `/diagnose` — Bug Diagnosis Workflow
 
@@ -204,6 +223,12 @@ Tech-Stack: Laravel 11 + Livewire 3 + Spatie Permissions
 ## Security
 - Always use Spatie\Permission for role checks, never `$user->role === 'admin'`
 - All Livewire components: `#[Locked]` on properties not meant for user input
+```
+
+**Verify-by-measurement for performance fixes (opt-in).** Add a `perf-measure:` line to `.claude/audit-guidelines.md` (or set `PERF_MEASURE_CMD`) with a command that prints exactly one line `PERF_METRIC=<number>` (lower is better). `/audit` then measures the metric before and after the round's performance fixes and decides `keep` vs revert from the real delta, instead of a subjective peer-review. Without it, performance fixes fall back to the fix-verifier. Examples (bundle bytes, build seconds, query count) and the full flow live in `audit/references/perf-measurement.md`.
+
+```
+perf-measure: npx size-limit --json | jq -r '"PERF_METRIC=\([.[].size]|add)"'
 ```
 
 ## Effort scaling

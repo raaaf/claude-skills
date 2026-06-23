@@ -124,6 +124,10 @@ if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
 fi
 bash "$AUDIT_BIN/diff-size-gate.sh"
 
+# Verify-by-Measurement: Mess-Kommando fuer Performance-Fixes erkennen (opt-in)
+eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"   # setzt PERF_MEASURE_CMD (evtl. leer)
+[ -n "$PERF_MEASURE_CMD" ] && echo "Perf-Messung aktiv: $PERF_MEASURE_CMD"
+
 # Working-Tree-Exklusivitaet: Basis-Zustand festhalten (Check in Phase 4)
 AUDIT_BASE_HEAD=$(git rev-parse HEAD)
 AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
@@ -270,6 +274,8 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 
 **Erlaubte Orchestrator-Edits:** `.claude/audits/*.md`, `CLAUDE.md` Audit-Context-Entwurf, `suppressions.json` (mit User-Zustimmung), Changelog-Dateien.
 
+**Verify-by-Measurement (Perf) — Baseline:** Enthaelt die Runde ein `[Performance]`-Finding und ist `PERF_MEASURE_CMD` gesetzt, VOR dem Fix-Agent-Dispatch einmal die Baseline messen: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_BASELINE="$PERF_METRIC"`. Details: `references/perf-measurement.md`.
+
 1. Findings nach Datei gruppieren
 2. Pro Datei einen `fix-agent.md`-Subagent (Sonnet) parallel dispatchen
 3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
@@ -303,6 +309,8 @@ Auswertung des `FIX_VERIFIER_RESULT`:
 Parallelisierung: Alle Verifier in einem Message-Block, max 10 parallel. Latenz-Add: ~3-5s pro Runde.
 
 **Token-Cost:** Verifier ist Sonnet, kostet ca. ein Drittel eines Workers. Bei N Fixes also +N*0.3 Worker-Kosten. Lohnt sich weil falsche Fixes spaeter teuer sind.
+
+**Performance-Fixes — Verify-by-Measurement (wenn `PERF_MEASURE_CMD` gesetzt und Baseline in Schritt E erhoben):** Nach allen Fixes der Runde re-messen: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_AFTER="$PERF_METRIC"`. Verdikt deterministisch: `AFTER <= BASELINE` → Perf-Fixes `keep` (Log: `Verifikation: measured {BASELINE}->{AFTER}`); `AFTER > BASELINE` → Regression, Perf-Fixes als Offenen Punkt + fix-verifier zur Eingrenzung; `NA` → Fallback fix-verifier. Korrektheit/Regression anderer Dimensionen prueft weiterhin der fix-verifier. Details: `references/perf-measurement.md`.
 
 **PFLICHT — Status-Zeile am Ende jeder Runde:**
 

@@ -41,6 +41,9 @@ Key invariants:
 | `bash audit/bin/check-outdated.sh [root] [--security-only]` | Dependency vulnerabilities (audit-grade) + outdated majors (full-audit only) |
 | `bash audit/evals/run-evals.sh` | Run eval suite against fixtures (recall + false-positive count) |
 | `echo "..." \| bash audit/bin/normalize-suppression.sh` | Test the semantic dedup key for a suppression |
+| `bash audit/bin/perf-measure.sh --detect` / `--run "<cmd>"` | Verify-by-measurement helper for performance fixes (detect `perf-measure:` command, run it, emit `PERF_METRIC`) |
+| `bash feature-audit/bin/run-tests.sh [FILE]` | Run the `test-command:` from FEATURE_AUDIT.md, report real `TEST_EXIT=<code\|none>` |
+| `bash feature-audit/bin/status-line.sh FILE <exit>` | Parse FEATURE_AUDIT.md table + needs-review, emit the deterministic `AUDIT_STATUS` line |
 
 ## Conventions
 
@@ -59,6 +62,7 @@ Key invariants:
 |---|---|---|
 | `/audit` | opus | Pre-push diff audit, 12 dimensions, fix-loop |
 | `/full-audit` | opus | Full codebase audit, batched |
+| `/feature-audit` | opus | Goal-loop: FEATURE_AUDIT.md matrix, one test per feature, drive to all-green |
 | `/ship` | sonnet | Commit + audit gate + push + deploy + verify |
 | `/diagnose` | sonnet | Reproduce-first bug diagnosis, regression test |
 | `/review` | sonnet | Two-axis review: Standards + Spec (parallel agents) |
@@ -83,7 +87,7 @@ Issue policy: GitHub issues only for decision points the user explicitly defers 
 
 Projects can override globals by adding files to their own `.claude/`:
 
-- `.claude/audit-guidelines.md` — read in `audit` Phase 1, takes precedence over global `guidelines/*.md`
+- `.claude/audit-guidelines.md` — read in `audit` Phase 1, takes precedence over global `guidelines/*.md`. May also declare a `perf-measure: <cmd>` line to enable verify-by-measurement for performance fixes (see Gotchas)
 - `.claude/plan-guidelines.md` — read in `plan-it` Phase 0.7, threaded to all challenge agents
 - `.claude/audits/learning-log.md` — auto-generated per-project audit history
 - `.claude/audits/suppressions.json` — auto-generated dismissed-finding list
@@ -91,6 +95,7 @@ Projects can override globals by adding files to their own `.claude/`:
 
 ## Gotchas
 
+- **Verify-by-measurement is opt-in and deterministic.** Performance fixes are only measured (baseline before / re-measure after / verdict from the delta) when `PERF_MEASURE_CMD` or a `perf-measure:` line in `.claude/audit-guidelines.md` is set; the command must print exactly one `PERF_METRIC=<number>` line (lower = better). The before/after comparison is plain Bash in `audit/SKILL.md` Schritt E/E.5, not an LLM judgment — by design (Bash decides branching). No command set → unchanged fix-verifier peer-review. `--detect` emits a `printf %q`-quoted assignment so `eval` reconstructs commands with spaces; don't "simplify" it back to a bare `echo`. Full flow + honest limits (per-round aggregate, not per-finding): `audit/references/perf-measurement.md`. Inspired by AvdLee's Xcode-Build-Optimization skill.
 - **`.claude/` write block applies in foreground too.** Earlier learning agents tried `mode: bypassPermissions` and still failed. The fix is always: subagent returns structured output, orchestrator parses + writes.
 - **Pre-push marker and `git push` must be separate Bash calls.** The PreToolUse hook scans the command string for `git push` and blocks before any marker write in the same call would execute. See `audit/SKILL.md` Phase 4.
 - **`sync-skills.sh` only runs in the claude-skills working directory.** Edits to `~/.claude/skills/audit/SKILL.md` directly are not synced anywhere — always edit in this repo and let the Stop hook copy.
