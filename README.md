@@ -196,9 +196,15 @@ Two more skills live in this repo as architecture examples. They are wired to pe
 git clone https://github.com/raaaf/claude-skills ~/.claude/skills/claude-skills
 
 # Symlink each skill (or use sync-skills.sh if you cloned alongside another location)
-ln -s ~/.claude/skills/claude-skills/audit       ~/.claude/skills/audit
-ln -s ~/.claude/skills/claude-skills/full-audit  ~/.claude/skills/full-audit
-ln -s ~/.claude/skills/claude-skills/plan-it     ~/.claude/skills/plan-it
+ln -s ~/.claude/skills/claude-skills/audit         ~/.claude/skills/audit
+ln -s ~/.claude/skills/claude-skills/full-audit    ~/.claude/skills/full-audit
+ln -s ~/.claude/skills/claude-skills/feature-audit ~/.claude/skills/feature-audit
+ln -s ~/.claude/skills/claude-skills/ship          ~/.claude/skills/ship
+ln -s ~/.claude/skills/claude-skills/diagnose      ~/.claude/skills/diagnose
+ln -s ~/.claude/skills/claude-skills/review        ~/.claude/skills/review
+ln -s ~/.claude/skills/claude-skills/triage        ~/.claude/skills/triage
+ln -s ~/.claude/skills/claude-skills/handoff       ~/.claude/skills/handoff
+ln -s ~/.claude/skills/claude-skills/plan-it       ~/.claude/skills/plan-it
 ln -s ~/.claude/skills/claude-skills/write-a-skill ~/.claude/skills/write-a-skill
 ```
 
