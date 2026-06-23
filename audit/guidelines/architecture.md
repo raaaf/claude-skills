@@ -305,3 +305,23 @@ Log::info('slot.booked', ['user_id' => $userId, 'slot_id' => $slotId]);
 ## XV. Admin-Panel Action Gating (Filament 5)
 
 Filament 5 gates `DeleteAction` via Policy + `Action->visible()`, NOT via `Resource::canDelete()`. A `canDelete()` override on the Resource has no effect on the Edit-page header action: the DeleteAction stays clickable. Audit signal: a delete guard that only exists as `Resource::canDelete()` is a finding. Anchor delete guards at `Action->visible()` AND at the Policy (defense in depth, the Policy also covers bulk actions and direct Livewire calls).
+
+## XVI. Seeder Idempotency & Stale Keys
+
+`firstOrCreate` / `updateOrCreate(..., $attributes)` and `Model::create()` seeders set the data **only on first insert**. When a seeded `data`/JSON/settings structure is later **extended with new keys**, existing production rows never receive them — they keep the old shape. The Admin form then renders an empty field while a frontend fallback masks it, so nothing looks broken until the admin saves and overwrites the fallback with an empty string.
+
+**Audit signal:** a seeder that builds a `data`/`settings`/`config` array via `firstOrCreate`/`create` for a structure that has grown since first deploy, with no merge step for missing keys.
+
+**Fix — merge missing keys without clobbering admin edits:**
+
+```php
+// BAD — new keys never reach existing rows
+Page::firstOrCreate(['slug' => 'home'], ['data' => $defaults]);
+
+// GOOD — create with defaults, then backfill only missing keys
+$page = Page::firstOrCreate(['slug' => 'home'], ['data' => $defaults]);
+$page->data = array_replace_recursive($defaults, $page->data ?? []);
+$page->save();
+```
+
+`array_replace_recursive($defaults, $existing)` keeps every admin-edited value and only fills keys the row lacks. Re-runnable, deploy-safe. Pairs with the CMS-fallback rule in ui-ux-patterns.md (a stale key plus a `??` fallback is the exact combo that ships an empty heading).

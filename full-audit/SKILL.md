@@ -214,6 +214,14 @@ fi
 
 `PROJECT_GUIDELINES` an alle Workers durchreichen (siehe prompt-template).
 
+**Concurrent-Tree-Check (Baseline):** Ein Full-Audit laeuft minutenlang ueber viele Batches. Aendert der User (oder ein anderer Prozess) waehrenddessen den Working-Tree, auditieren spaetere Batches einen veralteten Stand. Baseline-Hash festhalten:
+
+```bash
+AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
+```
+
+Nach JEDEM Batch (in "Nach jeder Runde", bevor der naechste Batch startet) erneut hashen und vergleichen: weicht der Wert ab → **Warnung ins Audit-Log** (`## Hinweise: Tree waehrend Audit veraendert`), den naechsten Batch auf den aktuellen Stand (`collect-scope.sh` erneut) resetten und `AUDIT_TREE_HASH` aktualisieren. Findings auf inzwischen ueberschriebenen Zeilen verwerfen (Halluzinations-Risiko).
+
 ---
 
 ## Phase 1.5: Batching-Entscheidung
@@ -412,8 +420,9 @@ Wenn `VISUELL_RELEVANTE_DATEIEN` nicht leer: max. 15 Schritte (mehr als /audit, 
 Detail in `references/audit-log-and-issues.md`. Kurz:
 
 - Audit-Log nach `.claude/audits/{datum}-full-audit.md` schreiben (Format-Template in der reference). Im Header `SELECTED_DIMENSIONS` festhalten, damit spaetere Audits wissen welche Dimensionen nicht geprueft wurden.
+- **Open-Point-Aging:** Vor dem Vorlegen die offenen Punkte gegen die vorherigen `.claude/audits/*-full-audit.md` (chronologisch) abgleichen. Ein Punkt, der inhaltlich (gleiche Datei + gleiche Kernaussage) bereits in `>= 2` frueheren Audit-Logs als offen stand, bekommt im aktuellen Log einen **`AGED`**-Marker und erscheint als priorisierter Block ganz oben im Offene-Punkte-Abschnitt ("3x+ offen — Entscheidung ueberfaellig"). So versanden Tradeoff-Entscheidungen nicht audit-um-audit.
 - Log via Read-Tool laden und im Chat als Markdown-Codeblock anzeigen (PFLICHT)
-- Offene Punkte dem User vorlegen (AskUserQuestion): **Jetzt entscheiden + fixen / Als Issue vertagen / Verwerfen**. Issues NUR fuer Vertagtes (Dedup pro Finding). Minor bekommt NIE Issues — bleibt im Log.
+- Offene Punkte dem User vorlegen (AskUserQuestion): **Jetzt entscheiden + fixen / Als Issue vertagen / Verwerfen**. `AGED`-Punkte zuerst vorlegen. Issues NUR fuer Vertagtes (Dedup pro Finding). Minor bekommt NIE Issues — bleibt im Log.
 
 ---
 

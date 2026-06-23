@@ -82,3 +82,27 @@ const { elementRef } = useForesight({
 
 - **Use:** Data-heavy dashboards, multi-page apps with slow APIs, e-commerce product pages
 - **Skip:** Static sites with instant navigation, SPAs with all data preloaded
+
+## CMS / Settings Field with View Fallback
+
+An editable CMS/settings field that also has a default has **three consistency points** that must all carry the same text:
+
+1. **Seed value** — what the seeder writes on first deploy.
+2. **View fallback** — what renders when the field is empty.
+3. **Form default / placeholder** — what the admin sees in the editor.
+
+If these drift, the admin edits one value but the visitor sees another, or an emptied field renders something the admin never chose.
+
+**The empty-string trap (high-recurrence bug):** `??` only catches `null`, NOT an empty string. When an admin clears a field, most form/DB layers store `""`, which sails straight through `??` and renders an empty heading.
+
+```blade
+{{-- BAD — admin clears the field, visitor sees a blank <h1> --}}
+<h1>{{ $page['hero_title'] ?? 'Standardtitel' }}</h1>
+
+{{-- GOOD — filled() treats '' and null alike --}}
+<h1>{{ filled($page['hero_title'] ?? null) ? $page['hero_title'] : 'Standardtitel' }}</h1>
+```
+
+In plain PHP/JS use a truthiness check (`$x !== '' && $x !== null`, or `value || 'default'`), not nullish-coalescing, for any field a human can empty.
+
+**Audit signal:** a view fallback via `??` on a CMS/settings/user-editable field → flag and switch to `filled()`/truthiness. Then verify the seed, fallback, and form-default texts match. Pairs with the seeder stale-key rule in architecture.md XVI.

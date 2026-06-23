@@ -224,6 +224,14 @@ The same problem should be solved the same way everywhere. Inconsistency forces 
 
 **Rule:** When you find an existing pattern in the codebase, follow it — even if you think a different approach is slightly better. Consistency beats local optimization. If the pattern truly needs changing, change it everywhere in a dedicated refactoring.
 
+**Custom browser events — name drift across emit/listen:** Custom events (`dispatch('foo')` / `$dispatch('foo')` / `new CustomEvent('foo')` and the matching `@foo`, `x-on:foo`, `wire:foo`, `addEventListener('foo')`, `.window` listeners) couple two sides by a string only — a typo or rename on one side fails silently. When a diff touches an event name, grep BOTH sides across the whole project and reconcile:
+
+```bash
+grep -rn "dispatch('eventName'\|@eventName\|addEventListener('eventName'\|CustomEvent('eventName'" resources/ app/
+```
+
+A dispatched event with no listener (or vice versa) is a finding. Watch especially for a parallel Alpine path and a plain-JS path listening for the same name — they drift independently.
+
 ## X. Comments
 
 Comments that explain *what* the code does are a sign the code should be rewritten. Comments that explain *why* are valuable.

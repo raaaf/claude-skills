@@ -50,10 +50,10 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
 | Dimension | `run: true` wenn |
 |-----------|------------------|
 | architecture | Neue Funktionen, neue Komponenten, Duplikate moeglich, neue Abhaengigkeiten. **Migrations im Diff → immer `run: true` mit Migration-Files als Hotspots** (Worker prueft gegen data-migrations.md) |
-| security | Input-Verarbeitung, DB-Queries, Auth-Logik, File-Ops, Env-Vars, neue Dependencies, Regex mit User-Input |
+| security | Input-Verarbeitung, DB-Queries, Auth-Logik, File-Ops, Env-Vars, neue Dependencies, Regex mit User-Input. **Widget-/Extension-Aenderungen (WidgetKit, `*Widget*`, `TimelineProvider`, App-Intents, Share-/Notification-Extensions) → immer `run: true`** (Lock-/Privacy-Bypass-Risiko: Extensions umgehen den In-App-Lock und lesen den geteilten Store) |
 | performance | Loops, DB-Queries, API-Calls, grosse Arrays, Re-Renders, neue Dependencies |
 | code_quality | Jede Code-Aenderung ausser reine Translation-/Config-/Doc-Updates |
-| seo | Template-Aenderungen mit `<head>`, Meta-Tags, Routes, Sitemap, robots.txt |
+| seo | Template-Aenderungen mit `<head>`, Meta-Tags, Routes, Sitemap, robots.txt. **Native Projekte (kein HTML/PHP/Blade/JSX im Baum, oder `platform: native`) → immer `run: false`** (keine Web-Oberflaeche, SEO nicht anwendbar) |
 | a11y | Frontend-Aenderungen mit interaktiven Elementen, Forms, Modals, Navigation |
 | typography | Translation-Dateien, CSS/SCSS Typography, Text-Content in Templates |
 | ui_design | Frontend-Aenderungen mit visuellen Komponenten, neue Variants, Farben, Spacings |

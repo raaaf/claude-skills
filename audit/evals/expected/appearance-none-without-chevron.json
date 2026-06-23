@@ -1,0 +1,21 @@
+{
+  "fixture": "ui/appearance-none-without-chevron.blade.php",
+  "must_find": [
+    {
+      "dimension": "ui",
+      "line": 3,
+      "matches": ["appearance-none", "chevron", "arrow", "dropdown indicator", "no replacement"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static select markup, no user input processing"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

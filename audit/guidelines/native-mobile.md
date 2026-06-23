@@ -126,3 +126,14 @@ Apple deprecated jede WWDC aggressiv; der App Store erzwingt Builds mit aktuelle
 | `Handler()` ohne Looper | `Handler(Looper.getMainLooper())` |
 
 **Audit-Prozedur:** Beim Lesen nativer Files auf bekannte deprecated Patterns achten. Build-Logs (falls im Diff/Projekt vorhanden) nach Deprecation-Warnings greppen — die sind deterministisch und brauchen keine Verifikation.
+
+## IX. Test-Runner & Test-Determinismus (iOS)
+
+Native Test-Suiten haben zwei Stolperfallen, die ein Audit als "Tests fehlen" oder "Test rot" fehldeuten kann:
+
+**Swift Testing vs. XCTest beim Filtern.** `xcodebuild ... -only-testing:Target/Klasse` matcht NUR XCTest-Klassen/-Methoden, NICHT Swift-Testing-`@Test`-Funktionen. Eine gemischte Suite kann also "alle Tests laufen lassen" melden, obwohl die `@Test`-Faelle uebersprungen wurden. Zwei Konsequenzen fuers Audit:
+- Die `xcodebuild`-Zusammenfassung `Executed N tests` zaehlt nur XCTest. Swift Testing rapportiert separat als `✔ Test run with N tests in M suites passed`. Beide Zeilen pruefen, sonst wirkt eine 117-Faelle-Suite wie 7 Tests.
+- Zum Isolieren einzelner Swift-Testing-Faelle `swift test --filter` oder einen Test-Plan nutzen, nicht `-only-testing`.
+
+**On-Device-Modell-abhaengige Tests (FoundationModels / Apple Intelligence).** Tests, deren Code-Pfad das On-Device-Modell aufruft (z.B. an bestimmten Wochentagen/Bedingungen), sind auf Geraeten/Sims MIT verfuegbarem Modell nicht-deterministisch. Korrekte Loesung: die Modell-Stufe per Umgebungsvariable/Launch-Flag (z.B. `JOURNAL_NO_AI=1`) deaktivieren und den deterministischen Fallback (kuratierte Rotation) isoliert testen.
+- **Nicht** einen solchen Test als "flaky" in `suppressions.json` aufnehmen, wenn ein Env-Flag ihn bereits deterministisch macht — das maskiert echte Regressionen. Erst das Harness pruefen (laeuft die Suite mit dem Deaktivierungs-Flag?), bevor ein Flaky-Suppress vorgeschlagen wird.

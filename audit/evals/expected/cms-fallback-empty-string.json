@@ -1,0 +1,17 @@
+{
+  "fixture": "ux/cms-fallback-empty-string.blade.php",
+  "must_find": [
+    {
+      "dimension": "ux",
+      "line": 9,
+      "matches": ["empty string", "filled(", "?? ", "null coalesc", "fallback", "blank heading"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input sink, no SQL, no auth; display-only fallback"
+    }
+  ]
+}

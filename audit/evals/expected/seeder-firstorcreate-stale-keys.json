@@ -1,0 +1,17 @@
+{
+  "fixture": "architecture/seeder-firstorcreate-stale-keys.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 28,
+      "matches": ["firstorcreate", "stale", "missing key", "new key", "merge", "array_replace", "backfill", "only on first insert"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "seeder with static defaults, no user input, no secrets"
+    }
+  ]
+}

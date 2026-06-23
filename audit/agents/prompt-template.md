@@ -26,6 +26,7 @@ Regeln:
 - Projekt-spezifische Guidelines (oben) HABEN VORRANG vor globalen Guidelines
 - Keine stilistischen Vorschlaege (dafuer gibt es den Linter)
 - Keine theoretischen "koennte ein Problem sein"-Findings -- nur wenn es ein Problem IST
+- **Code schlaegt Docs:** Lautet ein Finding "X fehlt / ist falsch, laut CLAUDE.md/Docs/Kommentar sollte es Y sein", IMMER zuerst den tatsaechlichen Code verifizieren (Read/grep), bevor das Finding emittiert wird. Docs + Kommentare sind eine Hypothese, der Code ist die Wahrheit. Veraltete Doku ist selbst hoechstens ein Docs-Sync-Finding, kein Korrektheits-Finding.
 - **Code-Lesen on-demand:** Wenn ein Hotspot allein nicht ausreicht (z.B. Konsistenzpruefung gegen bestehende Komponente), lies die betreffende Datei mit dem Read-Tool. Max 5 Files pro Audit-Lauf.
 - **KEIN ungezielter Diff-Scan.** Du bekommst keinen kompletten Diff mehr — der Triage-Agent hat bereits die fuer dich relevanten Stellen markiert. Nutze die Hotspots als Startpunkt, lies via Read-Tool gezielt nach wenn noetig.
 - Fuer Full-Scans gibt es /full-audit

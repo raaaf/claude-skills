@@ -20,6 +20,7 @@ N+1-Queries (ORM-Relations ohne eager loading), Queries in Loops, fehlende Memoi
 
 - **Factory-State-Semantik:** Die Bedeutung eines Factory-States NIE aus dem Methodennamen ableiten. Vor dem Flaggen die State-Definition lesen und gegen die Enum-Definition pruefen (Beispiel: `public()` kann `Visibility::Hidden` setzen). Findings auf Basis des Namens ohne Definition-Check sind unzulaessig.
 - **FK-Index-Abdeckung:** Vor jedem FK-Index-Finding pruefen, ob ein Composite-Index mit der Spalte als leading column existiert. Ein solcher Composite-Index deckt den Einzel-Index-Lookup ab, ein zusaetzlicher Einzel-Index waere redundant. Findings ohne diesen Check sind False-Positives.
+- **bun:sqlite Statement-Caching:** `db.query(sql)` cached das prepared Statement automatisch per SQL-String (zweiter Aufruf mit gleichem SQL = kein Re-Prepare). Nur ein nacktes `db.prepare()` wird pro Aufruf neu praepariert. "Statement re-prepared per call" / "prepare in Loop" ist daher KEIN valides Finding fuer `db.query(...)`-Aufrufe in einer Schleife — nur fuer `db.prepare(...)` in einer Schleife.
 
 ## Projektspezifischer Kontext
 

@@ -1,0 +1,21 @@
+{
+  "fixture": "quality/blade-component-silent-prop-drop.blade.php",
+  "must_find": [
+    {
+      "dimension": "quality",
+      "line": 5,
+      "matches": ["trendDirection", "not in @props", "unknown prop", "silently", "stat-card"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static component usage, no user input"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}

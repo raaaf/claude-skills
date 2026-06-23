@@ -19,6 +19,12 @@ Halte Projekt-Dokumentation aktuell und im Stil konsistent. Pruefe `README.md`, 
 - Install-/Run-Befehle im README funktionieren noch (kein veralteter `npm run dev` wenn Skript geloescht)?
 - Verwiesene Pfade/Dateien existieren noch?
 
+**Test-Count-Drift (UNCONDITIONAL, jeder Lauf):**
+Egal ob der Diff Tests beruehrt: realen Test-Count ermitteln und gegen in Docs genannte Zahlen diffen. Test-Zahl-Drift ist ein 5x-Wiederkehrer.
+- Ist-Count: Test-Runner-Summary (z.B. `./vendor/bin/pest --ci`-Tail, `jest`/`vitest`-Summary) ODER greppen (`grep -rcE '\b(it|test)\(' tests/`).
+- Soll-Count: jede "Zahl + Test/Assertion"-Phrase in `README.md`/`CLAUDE.md` (z.B. "149 Pest-Tests, 395 Assertions").
+- Weicht Soll von Ist ab → `[Docs]`-Finding mit beiden Zahlen. Fix: Doku auf Ist-Wert setzen oder circa-/Bereichs-Formulierung vorschlagen, wenn die Zahl staendig driftet.
+
 **Struktur (siehe Guideline):**
 - README hat klare Sektionen: Was/Warum, Install, Usage, Dev, Stack, License
 - CLAUDE.md hat klare Sektionen: Identity/Stack, Commands, Conventions, Architecture-Notes
@@ -39,6 +45,8 @@ Komplette Stilueberarbeitung statt nur Drift-Check. Restrukturierung nach Standa
 
 - `/audit`-Mode UND der Diff enthaelt keine doc-relevanten Aenderungen (keine neuen `env(...)`, keine neuen Routes/Commands/Scripts, keine neuen Top-Level-Dependencies, keine Verhaltensaenderung user-facing)
 - Reines i18n-Update oder reine Test-Aenderung
+
+**Ausnahme:** Der Test-Count-Drift-Check oben laeuft IMMER, auch wenn der Agent sonst geskippt wuerde.
 
 ## Projektspezifischer Kontext
 

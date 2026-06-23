@@ -67,6 +67,21 @@ Nach jedem Rename oder Extract eines benannten Symbols (Trait, Klasse, Methode, 
 2. Jeden Konsumenten und jeden Import auf den neuen Namen umstellen. Verbleibende Treffer sind ein unvollstaendiger Fix.
 3. Auf jede geaenderte Datei `vendor/bin/phpstan analyse {datei}` laufen lassen. Das faengt fehlende Imports und erfundene Framework-Methoden ab, die ein reiner Grep nicht sieht.
 
+## Sonderfall: UI-/Color-/Token-Rename
+
+Bei jedem Color- oder Design-Token-Replace (z.B. `indigo` → `blue`, alter Token → neuer Token) reicht es NICHT, nur den Default-State zu aendern. Eine Farbe taucht typisch in mehreren States derselben Datei auf — ein partieller Replace hinterlaesst inkonsistentes UI.
+
+1. ZWINGEND alle States derselben Datei pruefen und mitziehen:
+   - `base` / Default
+   - `hover:` / `focus:` / `focus-visible:` / `active:` / `disabled:`
+   - Status-Varianten (error/success/warning)
+   - jede `dark:`-Variante der obigen
+2. Nach dem Edit den alten Farb-/Token-Namen erneut ueber die geaenderte Datei greppen:
+   ```bash
+   grep -n "indigo" {datei}
+   ```
+   (alten Token-Namen einsetzen.) Verbleibende Treffer sind ein unvollstaendiger Fix.
+
 ## Sonderfall: Fachliche Domaenenwerte
 
 Fachliche Domaenenwerte (SKR03-Kontonummern, Steuersaetze, Kontenrahmen, gesetzliche Fristen) NIE ohne belegbare Quelle aendern. Im Zweifel als Finding melden statt fixen: `FIX_RESULT=FAILED` mit Hinweis, dass der Wert eine belegbare Quelle braucht.
@@ -122,6 +137,26 @@ Cache-Key-Fixes muessen Setzer UND Clear-Pfad konsistent halten:
    grep -rn "Cache::forget" app/
    ```
    Jeder gesetzte Key braucht einen passenden Clear-Pfad und umgekehrt.
+
+## Sonderfall: Komponenten-Klassen auf Raw-Elemente kopieren
+
+Wenn ein Fix Utility-Klassen aus einer bestehenden Komponente auf ein Raw-Element uebertraegt, ZWINGEND die Quell-Komponente komplett lesen, bevor du Klassen uebernimmst. Klassen tragen oft Begleit-Markup:
+
+- `appearance-none` an einem `<select>` braucht ein Ersatz-Chevron-SVG — ohne das verschwindet der Dropdown-Pfeil.
+- Icon-/Spinner-Klassen brauchen das zugehoerige SVG/Element.
+- `sr-only`-Partner, Focus-Ring-Wrapper etc.
+
+Klassen nie isoliert aus dem Default-State kopieren. Besser gleich aufs Component konvertieren statt Raw-Markup mit geliehenen Klassen zu bauen. Nach dem Fix pruefen, dass kein Begleit-Markup fehlt.
+
+## Sonderfall: Konvertierung auf eine Blade-Komponente
+
+Bei jeder Umstellung von Raw-Markup auf eine Blade-Komponente (`<x-...>`) jeden uebergebenen Prop gegen die `@props`-Deklaration der Zieldatei pruefen:
+
+```bash
+grep -n "@props" resources/views/components/{komponente}.blade.php
+```
+
+Blade ignoriert unbekannte Props stillschweigend (sie landen still im `$attributes`-Bag oder verpuffen) — ein vertippter oder veralteter Prop-Name wirft keinen Fehler, die Funktion fehlt einfach. Jeder im Fix gesetzte Prop MUSS in `@props` der Zieldatei existieren. Verbleibende unbekannte Props sind ein unvollstaendiger Fix.
 
 ## Ausgabe
 
