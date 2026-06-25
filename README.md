@@ -62,6 +62,13 @@ confirmation before installing one), derives coverage from source, writes and ru
 fixes until the suite exits 0 without weakening assertions, re-verifies, then writes a holistic
 `FEATURE_REVIEW.md` (Inconsistencies / Gaps / Potentials).
 
+**Post-run usability:** `FEATURE_REVIEW.md` and the `Needs human review` section are written as
+tickable `- [ ] [severity] … (rows: …)` checklists, not prose, so they double as a to-do list. Every
+run (success or stop) ends with a human **Final digest** (matrix counts, review/human findings,
+top-3 by severity, branch) on top of the machine status line, and a partial review is written even on
+an aborted run. If a GitHub remote exists, it offers (once, opt-in) to file the open Gaps / Potentials
+/ human-review items as deduped `feature-audit`-labelled issues.
+
 **Loop contract:** every turn ends with a machine-checkable status line
 (`AUDIT_STATUS total=… with_story=… tested=… passing=… failing=… needs_review=… test_exit=…`).
 Both the counts and `test_exit` are **computed by Bash helpers** (`bin/status-line.sh` parses the

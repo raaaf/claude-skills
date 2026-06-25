@@ -111,20 +111,24 @@ it still exits `0`.
 
 **(5) Holistic review (does not gate code, required as an artifact).** Once all rows pass, re-read
 `FEATURE_AUDIT.md` from disk and assess the stories together as one product. Write `FEATURE_REVIEW.md`
-under three headings, each finding referencing the affected row `ID`(s):
+as an **actionable checklist** under three headings. Every finding is one line so you can triage and
+tick it off afterwards:
+`- [ ] [high|med|low] <finding> (rows: <ID>, <ID>): <one-line rationale or fix>`
 - **Inconsistencies:** contradictory or duplicated behaviours, divergent naming/patterns, DE/EN or
   cross-page mismatches.
 - **Gaps:** implied features without a story, missing error states, edge cases, empty/loading states.
-- **Potentials:** concrete improvement, simplification, or UX opportunity, each with a one-line
-  rationale.
+- **Potentials:** concrete improvement, simplification, or UX opportunity.
 
-Mark an empty heading `none found`. Do **not** change code or tests in this phase; it does not
-affect completion beyond the file having to exist with the three headings.
+Empty heading: write `- none found` (plain, no checkbox). Do **not** change code or tests in this
+phase; it does not affect completion beyond the file existing with the three headings.
 
 ## Needs human review
 
 Anything no automated check can decide (subjective behaviour, product intent, ambiguous spec) goes
-into the **needs human review** list in `FEATURE_AUDIT.md`. It does not block completion.
+into a `## Needs human review` section in `FEATURE_AUDIT.md`, as a tickable checklist:
+`- [ ] [high|med|low] <question or item> (rows: <ID>)`. It does not block completion. Empty section:
+`none found` (plain). `status-line.sh` counts these bullets as `needs_review`; a plain `none found`
+line is not counted.
 
 ## Commit policy
 
@@ -169,9 +173,38 @@ Achieved ONLY when, **in the current turn**:
 `test_exit=none` is acceptable for completion only if the header documents why a runner was
 impossible (or the user declined one).
 
+## Final digest (print on completion AND on every stop)
+
+In addition to the machine `AUDIT_STATUS` line, end the run with a short human wrap-up so the result
+is usable without opening files:
+
+```
+Feature-Audit: <complete | stopped: reason>
+  Matrix:  FEATURE_AUDIT.md (<total> features, <passing> passing, <failing> failing)
+  Review:  FEATURE_REVIEW.md (<N> findings: <H> high, <M> med, <L> low)
+  Human:   <N> needs-human-review items
+  Top:     up to 3 highest-severity review/human items, one line each, with row IDs
+  Branch:  <branch>, <N> commits this run
+```
+
+## Optional: file findings as issues
+
+After the digest, if a GitHub remote exists (`gh repo view` succeeds), offer **once** via
+AskUserQuestion to file the open Gaps / Potentials / needs-human-review items as GitHub issues, so they
+enter your tracker instead of resting in a file:
+- one issue per selected finding, label `feature-audit`, title = the finding, body = rationale +
+  affected rows + a pointer to `FEATURE_AUDIT.md`.
+- **Dedup:** skip a finding whose title already matches an open `feature-audit`-labelled issue
+  (`gh issue list --label feature-audit --state open`).
+- skip silently if no remote, the user declines, or running unattended. Inconsistencies that are
+  really bugs should be fixed in-loop, not filed.
+
 ## Stop conditions
 
-Stop and report (do not loop forever):
-- the **same failure** persists 3 consecutive turns: report the failure, the row, and what you
-  tried, then hand back to the user.
-- **50 turns** total: report progress (status line + remaining rows) and stop.
+Stop (do not loop forever):
+- the **same failure** persists 3 consecutive turns: report the failure, the row, and what you tried.
+- **50 turns** total.
+
+On either stop, before handing back, still run the holistic review on whatever is done so far
+(Phase 5, Gaps especially), write/update `FEATURE_REVIEW.md`, then print the Final digest. A stopped
+run must still leave you the matrix, a partial review, and the digest, not a dead loop.
