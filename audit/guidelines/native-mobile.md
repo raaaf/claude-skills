@@ -137,3 +137,19 @@ Native Test-Suiten haben zwei Stolperfallen, die ein Audit als "Tests fehlen" od
 
 **On-Device-Modell-abhaengige Tests (FoundationModels / Apple Intelligence).** Tests, deren Code-Pfad das On-Device-Modell aufruft (z.B. an bestimmten Wochentagen/Bedingungen), sind auf Geraeten/Sims MIT verfuegbarem Modell nicht-deterministisch. Korrekte Loesung: die Modell-Stufe per Umgebungsvariable/Launch-Flag (z.B. `JOURNAL_NO_AI=1`) deaktivieren und den deterministischen Fallback (kuratierte Rotation) isoliert testen.
 - **Nicht** einen solchen Test als "flaky" in `suppressions.json` aufnehmen, wenn ein Env-Flag ihn bereits deterministisch macht — das maskiert echte Regressionen. Erst das Harness pruefen (laeuft die Suite mit dem Deaktivierungs-Flag?), bevor ein Flaky-Suppress vorgeschlagen wird.
+
+## X. SwiftUI Accessibility (a11y)
+
+- **Dekorative Bildelemente ausblenden:** Jedes rein dekorative SwiftUI `Image` / `Image(systemName:)` / Icon-Glyph in Buttons, Labels oder Karten braucht `.accessibilityHidden(true)`, sonst liest VoiceOver den SF-Symbol-Namen ("chevron right", "books vertical") als Inhalt vor. Die Bedeutung tragen die begleitenden Text-Labels. In `accessibilityElement(children: .combine)`-Gruppen das Chevron VOR dem `.combine` ausblenden.
+- **Reduce Motion respektieren:** Jede kontinuierliche Animation (`TimelineView(.animation)`, `withAnimation(...repeatForever)`, dauerhafte Offset-/Rotations-Loops) prueft `@Environment(\.accessibilityReduceMotion)` und pausiert bzw. rendert statisch (z.B. `TimelineView(.animation(paused: reduceMotion))` + `t = reduceMotion ? 0 : context.date...`). Positionsbasierte Uebergaenge unter Reduce Motion auf reine Opacity reduzieren. Dekorative Endlos-Animationen zusaetzlich `.accessibilityHidden(true)`.
+- Confidence: dekoratives Icon ohne `accessibilityHidden` oder kontinuierliche Animation ohne RM-Pruefung im Diff nachweisbar -> Important.
+
+## XI. Async-SwiftUI-Views: Lade-, Fehler-, Empty-State (Pflicht)
+
+Jede SwiftUI-View, die Daten async laedt (`.task`, `await`-Fetch), braucht EXPLIZIT alle drei Zustaende:
+
+- **Lade-Zustand:** sichtbarer Indikator (ProgressView/Platzhalter), solange der Fetch laeuft, statt stiller Verzoegerung.
+- **Fehler-/Offline-Zustand:** `try?` ohne UI-Feedback ist ein Finding. Bei Fehlschlag dezenter Hinweis (+ ggf. Retry). Nicht still einen Fallback zeigen, ohne dem Nutzer den Zustand zu signalisieren.
+- **Empty-State:** leeres Ergebnis (0 Items) zeigt eine Meldung (+ ggf. Next-Step/CTA), nie eine kommentarlose leere Flaeche.
+
+Confidence: fehlt einer der drei Zustaende in einer async View nachweisbar -> Important.
