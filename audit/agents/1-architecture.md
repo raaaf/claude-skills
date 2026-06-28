@@ -10,6 +10,7 @@ Bestehende Utilities/Helpers die neuen Code ersetzen koennten (Grep nutzen!), DR
 
 **Vollstaendige Guidelines:** Lies diese Dateien im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln:
 - `guidelines/architecture.md` — DRY, SRP, Layers, Component Reuse, API Design, Observability (Section XIV: stille catch-Bloecke, Sentry-Kontext, strukturiertes Logging, failed()-Handler)
+- `guidelines/atomic-design.md` — nur bei Frontend-Dateien: Komponenten-Komposition (Token-Layer/Atoms, dupliziertes Markup das ein Component sein sollte, God-Components, Daten-Fetch in praesentationalen Komponenten). XII bleibt fuer Einzelelemente, atomic-design fuer die Schichtung.
 - `guidelines/data-migrations.md` — Nur relevant wenn Migrations im Diff/Batch: destruktive Ops, Locking, Rollback, Expand-Contract, Backfill-Chunking
 - `guidelines/theme-fork.md` — Nur relevant wenn das Projekt ein geforktes Theme ist (WordPress Starter-Theme, UI-Kit-Fork etc.): Namespace, Text Domain, Logging, Tests
 

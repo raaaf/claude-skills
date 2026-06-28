@@ -10,6 +10,8 @@ Visuelle Design-Qualitaet und Konsistenz: Spacing-Skala, Komponenten-Konsistenz 
 
 **Vollstaendige Guidelines:** Lies `guidelines/ui-visual-design.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
 
+**Atomic Design / Tokens:** Zusaetzlich `guidelines/atomic-design.md` — rohe Werte (Farbe/Spacing/Font/Radius/Shadow) statt vorhandener Design-Tokens, Varianten-Wildwuchs gleicher UI-Funktion, Komponenten-Konsistenz. Vor jedem Token-Finding den Token wirklich nachweisen (Pflicht-Verifikation in der Guideline).
+
 **Bei nativen Apps** (`FRAMEWORK` = ios/android/react-native/flutter): zusaetzlich `guidelines/native-mobile.md` Section IV — HIG/Material-Konventionen, System-Komponenten vor Eigenbau, Safe Areas/Insets, Semantic Colors fuer Dark Mode.
 
 ## Full-Audit Fokus (zusaetzlich)
