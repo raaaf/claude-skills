@@ -124,9 +124,8 @@ if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
 fi
 bash "$AUDIT_BIN/diff-size-gate.sh"
 
-# Verify-by-Measurement: Mess-Kommando fuer Performance-Fixes erkennen (opt-in)
-eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"   # setzt PERF_MEASURE_CMD (evtl. leer)
-[ -n "$PERF_MEASURE_CMD" ] && echo "Perf-Messung aktiv: $PERF_MEASURE_CMD"
+# Verify-by-Measurement: Mess-Kommando fuer Performance-Fixes erkennen (opt-in, evtl. leer)
+eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"   # setzt PERF_MEASURE_CMD
 
 # Working-Tree-Exklusivitaet: Basis-Zustand festhalten (Check in Phase 4)
 AUDIT_BASE_HEAD=$(git rev-parse HEAD)
@@ -190,9 +189,19 @@ Agent(
 
 Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension. Speichern fuer Folgerunden.
 
+**Schritt C.0.5 — Sanity-Floor + Routing-Transparenz (deterministisch, JEDE Runde)**
+
+Triage laeuft auf Haiku, dem billigsten Modell, und entscheidet was alle teuren Worker sehen. Verlasse dich nicht allein darauf:
+
+```bash
+printf '%s' '{TRIAGE_RESULT_JSON}' | bash "$AUDIT_BIN/check-skips.sh" "{FRAMEWORK}"
+```
+
+Er leitet Datei-Signale selbst aus git ab und ueberschreibt offensichtliche Fehlskips (Frontend → `a11y`/`ui_design`/`ux`; Translation → `copy`/`typography`; Migration → `architecture`; Code → `code_quality`/`security`; Regeln im Script) und gibt `ROUTING_RUN` (Triage-run plus Floor), `ROUTING_SKIPPED`, `ROUTING_OVERRIDE` und eine `Routing:`-Zeile zurueck. **PFLICHT:** Die `Routing:`-Zeile jede Runde im Chat ausgeben und am Loop-Ende unter `## Routing` ins Audit-Log (eine Zeile pro Runde); Dispatch (Schritt C) nutzt `ROUTING_RUN`. Floor laeuft auch ab Runde 2 (billig), das Haiku-Triage wird ab Runde 2 wiederverwendet.
+
 **Schritt C — Spezial-Subagents parallel dispatchen**
 
-Nur Agents mit `relevance.{dimension}.run == true` aus dem Triage. Security fast immer. Alle nicht-geskippten Agents in JEDER Runde.
+Nur Agents aus `ROUTING_RUN` (Schritt C.0.5: Triage-run plus deterministischer Floor) dispatchen. Security fast immer. Alle nicht-geskippten Agents in JEDER Runde.
 
 Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
 - `TRIAGE_SUMMARY` (1-2 Zeilen)

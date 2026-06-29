@@ -44,6 +44,7 @@ Key invariants:
 | `bash audit/bin/perf-measure.sh --detect` / `--run "<cmd>"` | Verify-by-measurement helper for performance fixes (detect `perf-measure:` command, run it, emit `PERF_METRIC`) |
 | `bash feature-audit/bin/run-tests.sh [FILE]` | Run the `test-command:` from FEATURE_AUDIT.md, report real `TEST_EXIT=<code\|none>` |
 | `bash feature-audit/bin/status-line.sh FILE <exit>` | Parse FEATURE_AUDIT.md table + needs-review, emit the deterministic `AUDIT_STATUS` line |
+| `echo '<triage-json>' \| bash audit/bin/check-skips.sh [framework]` | Deterministic sanity-floor over the haiku triage routing: derive file signals from git, force obvious wrong skips back on, emit the `Routing:` line |
 
 ## Conventions
 
@@ -95,6 +96,7 @@ Projects can override globals by adding files to their own `.claude/`:
 
 ## Gotchas
 
+- **Triage routing has a deterministic floor + is now visible.** The triage agent (haiku) decides which workers run; haiku is the cheapest model gating the whole audit, so `audit/bin/check-skips.sh` (SKILL.md Schritt C.0.5) derives file-type signals from git and forces obvious wrong skips back on (frontend files present but a11y/ui/ux off, etc.) before dispatch. It also emits a `Routing:` line printed every round and written to the audit log under `## Routing`, so every skip is visible with a reason. The floor only forces dims with a clear file signal (a11y/ui/ux/copy/typography/architecture/code_quality/security); perf/seo/animation/docs_sync stay with the triage to avoid false floors. Fails open (all dims run) if jq is missing or the JSON is unparseable. bash 3.2 safe.
 - **Verify-by-measurement is opt-in and deterministic.** Performance fixes are only measured (baseline before / re-measure after / verdict from the delta) when `PERF_MEASURE_CMD` or a `perf-measure:` line in `.claude/audit-guidelines.md` is set; the command must print exactly one `PERF_METRIC=<number>` line (lower = better). The before/after comparison is plain Bash in `audit/SKILL.md` Schritt E/E.5, not an LLM judgment — by design (Bash decides branching). No command set → unchanged fix-verifier peer-review. `--detect` emits a `printf %q`-quoted assignment so `eval` reconstructs commands with spaces; don't "simplify" it back to a bare `echo`. Full flow + honest limits (per-round aggregate, not per-finding): `audit/references/perf-measurement.md`. Inspired by AvdLee's Xcode-Build-Optimization skill.
 - **`.claude/` write block applies in foreground too.** Earlier learning agents tried `mode: bypassPermissions` and still failed. The fix is always: subagent returns structured output, orchestrator parses + writes.
 - **Pre-push marker and `git push` must be separate Bash calls.** The PreToolUse hook scans the command string for `git push` and blocks before any marker write in the same call would execute. See `audit/SKILL.md` Phase 4.
