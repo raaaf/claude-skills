@@ -91,6 +91,14 @@ ARIA (Accessible Rich Internet Applications) supplements HTML semantics for dyna
 - [ ] One `<h1>`, no skipped heading levels
 - [ ] Modals/toasts: focus is trapped while open and returned on close; the dismiss control has an accessible name
 
+**DRY-refactoring repeated markup must preserve every label variant.** When you unify repeated blocks (gallery items, thumbnails, tabs, cards) into one loop or template, each original branch often carried its *own* `aria-label`/`alt`/`aria-*`. A shared loop must reproduce all of them — collapsing a specific label (`aria-label="view {color}"`) onto a generic one (`aria-label="view {n}"`) silently drops the accessible name with no syntax error to catch it. Before and after such a refactor, grep the label-bearing attributes in the block and confirm none were lost:
+
+```bash
+grep -nE 'aria-label|aria-[a-z]+|\balt=' {file}
+```
+
+This is a self-regression introduced *by* the cleanup itself, so it is easy to miss — the diff looks like a tidy simplification.
+
 ## III. Form Accessibility
 
 Forms are where accessibility fails most often — and where it matters most, because forms are how users accomplish tasks.

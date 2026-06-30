@@ -1,0 +1,21 @@
+{
+  "fixture": "a11y/loop-unify-drops-aria-label.blade.php",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 10,
+      "matches": ["aria-label", "color", "index", "generic", "accessible name"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup, no user input processing"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

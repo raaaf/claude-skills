@@ -103,6 +103,18 @@ Jede gefundene Stelle braucht ALLE vier Attribute gleichzeitig — ein partielle
 
 Enter-only (`@keydown.enter` ohne `@keydown.space.prevent`) ist eine unvollstaendige A11y-Reparatur und erzeugt ein neues Finding. Nach dem Fix den Grep erneut laufen lassen und alle Treffer in der Datei pruefen.
 
+## Sonderfall: Loop-/Template-Konsolidierung mit ARIA/alt
+
+Wenn ein Fix wiederholte Markup-Bloecke (Galerie-Items, Thumbnails, Tabs, Karten) zu einem gemeinsamen Loop oder Template zusammenfasst, ZWINGEND vor und nach dem Edit die label-tragenden Attribute im betroffenen Block greppen und vergleichen:
+
+```bash
+grep -nE 'aria-label|aria-[a-z]+|\balt=' {datei}
+```
+
+Ein gemeinsamer Loop muss JEDE vorher vorhandene Label-Variante reproduzieren. Hatte ein Zweig ein spezifischeres Label (z.B. `aria-label="ansicht {farbe}"`) und der andere ein generisches (`aria-label="ansicht {n}"`), darf die Konsolidierung die spezifische Variante nicht auf die generische kollabieren. Das ist eine Self-Regression durch den A11y-Fix selbst — der Farbname/Kontext geht still verloren, kein Syntaxfehler warnt.
+
+PFLICHT: Als explizite Ausgabe-Zeile melden, z.B. `ARIA-CHECK: vorher 2 label-Varianten (ansicht {farbe}, ansicht {n}), nachher beide erhalten`. Fehlt eine: Edit nachbessern, bevor du `APPLIED` meldest.
+
 ## Sonderfall: Alpine.data-Extraktion
 
 Nach jeder Extraktion oder Aenderung einer `Alpine.data()`-Registrierung ZWINGEND die Init-Reihenfolge pruefen:
