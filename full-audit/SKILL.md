@@ -54,8 +54,21 @@ AUDIT_REFS="$AUDIT_ROOT/references"
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
+# Eigene Scripts + persistenter Goal-Loop-State (Format/Resume: references/state-file.md)
+FULL_AUDIT_BIN="${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/full-audit}/bin"
+STATE_FILE="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-state.md"
+BATCH_DIR="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-batches"
+
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 ```
+
+**Resume-Check:** Existiert `$STATE_FILE` bereits → RESUME-Modus:
+
+```bash
+bash "$FULL_AUDIT_BIN/resume-check.sh" "$STATE_FILE"
+```
+
+Jede `BATCH_DIRTY`-Zeile: Batch-Zeile auf `pending` zuruecksetzen (Runden `0/{max}`, C/I/M nullen, HEAD `-`). `running`-Zeilen ebenfalls auf `pending` (halb auditierte Batches werden neu auditiert, nie fortgesetzt). `mode`/`effort`/`dimensions` aus dem State-Header uebernehmen, Phasen 0.3-1.5 SKIPPEN, direkt zu Phase 2 ab dem ersten `pending`-Batch. Detail: `references/state-file.md`.
 
 ---
 
@@ -218,13 +231,7 @@ fi
 
 `PROJECT_GUIDELINES` an alle Workers durchreichen (siehe prompt-template).
 
-**Concurrent-Tree-Check (Baseline):** Ein Full-Audit laeuft minutenlang ueber viele Batches. Aendert der User (oder ein anderer Prozess) waehrenddessen den Working-Tree, auditieren spaetere Batches einen veralteten Stand. Baseline-Hash festhalten:
-
-```bash
-AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
-```
-
-Nach JEDEM Batch (in "Nach jeder Runde", bevor der naechste Batch startet) erneut hashen und vergleichen: weicht der Wert ab → **Warnung ins Audit-Log** (`## Hinweise: Tree waehrend Audit veraendert`), den naechsten Batch auf den aktuellen Stand (`collect-scope.sh` erneut) resetten und `AUDIT_TREE_HASH` aktualisieren. Findings auf inzwischen ueberschriebenen Zeilen verwerfen (Halluzinations-Risiko).
+**Concurrent-Tree-Check (Baseline):** `AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })` festhalten; nach JEDEM Batch erneut hashen. Abweichung → Warnung ins Audit-Log (`## Hinweise: Tree waehrend Audit veraendert`), Scope fuer den naechsten Batch neu erheben, Findings auf ueberschriebenen Zeilen verwerfen. Detail: `references/scope-context-batching.md`.
 
 ---
 
@@ -237,37 +244,33 @@ Nach JEDEM Batch (in "Nach jeder Runde", bevor der naechste Batch startet) erneu
 
 Batch-Regeln und Bash-Logik in `references/scope-context-batching.md`. Max ~30-40 Dateien pro Batch, zusammengehoeriges zusammen.
 
+**State-Datei anlegen (PFLICHT, vor Phase 2):** Batch-Dateilisten zusaetzlich nach `$BATCH_DIR/batch-NN.txt` kopieren (repo-root-relativ — /tmp ist fluechtig). Dann `$STATE_FILE` schreiben: Header (`mode`, `effort`, `dimensions`, `batch-dir`, `post-phases` alle pending, `started`) plus eine Tabellenzeile pro Batch mit Status `pending` (SINGLE-Modus = genau eine Zeile). Format: `references/state-file.md`.
+
 ---
 
 ## Phase 2: Audit-Loop
 
-Initialisiere:
-```
-RUNDE = 1
-BEREITS_GEFIXT = []
-GESAMT_CRITICAL = 0; GESAMT_IMPORTANT = 0; GESAMT_MINOR = 0
-AKTUELLER_BATCH = 1
-FINDINGS_VORHERIGE_RUNDE = null   # pro Batch zuruecksetzen
-```
+**Der Loop-Zustand lebt in `$STATE_FILE`, nicht im Kontext.** Runden-lokal bleiben nur `BEREITS_GEFIXT` und `FINDINGS_VORHERIGE_RUNDE` (pro Batch neu). **PFLICHT nach JEDER Runde:** die Batch-Zeile aktualisieren (Runden verbraucht, C/I/M kumuliert) — crash-safe, ein Session-Tod kostet maximal den laufenden Batch.
+
+**Nicht-Determinismus:** Findings sind LLM-Urteile, keine reproduzierbaren Tests. `clean` heisst "in diesem Lauf auditiert und gefixt", nie "re-verifizierbar gruen". Clean-Batches werden NIE zur Bestaetigung re-auditiert — Re-Audit ausschliesslich via `resume-check.sh` bei geaenderten Dateien.
 
 **Convergence-Check:** Pro Batch nach jeder Runde. Wenn Critical+Important NICHT sinken UND RUNDE >= 2 → `NO_CONVERGENCE`, verbleibende Findings als Offene Punkte.
 
-### Modus SINGLE (TOTAL_FILES <= 80)
-
-Alle Dateien in einer Runde, max {MAX_RUNDEN_PRO_BATCH} Runden bis SAUBER. Springe zu **Prozedur AUDIT_RUNDE**.
-
-### Modus BATCHED
+### Loop (SINGLE = 1 Batch-Zeile, BATCHED = N Zeilen)
 
 ```
-for BATCH in 1..N:
+while $STATE_FILE hat pending-Zeilen:
+    BATCH = erste pending-Zeile → Status running (State-Datei schreiben)
     RUNDE = 1
-    BATCH_SAUBER = false
-    while RUNDE <= {MAX_RUNDEN_PRO_BATCH} AND NOT BATCH_SAUBER:
-        AUDIT_RUNDE mit DATEILISTE = Batch-Dateien
-        if SAUBER: BATCH_SAUBER = true
-        else: RUNDE += 1
-    AKTUELLER_BATCH += 1
+    while RUNDE <= {MAX_RUNDEN_PRO_BATCH} AND NOT SAUBER:
+        AUDIT_RUNDE mit DATEILISTE = $BATCH_DIR/batch-{ID}.txt
+        Batch-Zeile aktualisieren (Runden, C/I/M)
+        if not SAUBER: RUNDE += 1
+    SAUBER        → Zeile: clean + HEAD-Kurz-SHA
+    NO_CONVERGENCE → Zeile: blocked + Checkbox-Bullet unter "## Blocked / Needs review"
 ```
+
+**Loop-Modus (optional, Detail `references/state-file.md`):** Bei `FULL_AUDIT_BATCHES_PER_TURN=N` (oder Betrieb via `/loop /full-audit`) nach N Batches die Status-Zeile ausgeben und den Turn beenden — /loop treibt weiter. Stop-Bedingungen: derselbe Batch 3 Turns in Folge blocked ohne Fortschritt (blocked lassen, naechster Batch) oder 50 Turns gesamt. Default ohne /loop: alle Batches in einem Lauf (heutiges Verhalten).
 
 ### Prozedur AUDIT_RUNDE
 
@@ -356,26 +359,32 @@ Minor-Findings fixen wenn `FIX_MINOR=1` (medium/high/xhigh). Nicht gefixte Minor
 
 **HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Fix, egal wie trivial, geht via paralleler Fix-Subagent (Sonnet). Orchestrator-Edits auf Opus kosten ein Mehrfaches.
 
-**Erlaubte Orchestrator-Edits:** `.claude/audits/*.md` (Log), `CLAUDE.md`-Context-Entwurf, `suppressions.json`, Changelog-Dateien.
+**Erlaubte Orchestrator-Edits:** `.claude/audits/*.md` (Log + State-Datei), `.claude/audits/full-audit-batches/*.txt`, `CLAUDE.md`-Context-Entwurf, `suppressions.json`, Changelog-Dateien.
 
 - 0 Findings → `SAUBER`
 - Sonst: alle high/medium fixen via Fix-Subagent. Findings nach Datei gruppieren, mehrere Findings pro Datei in einem Fix-Agent-Call bundeln.
 - **Zentralisierungs-Findings (neue Shared-Utility / Helper / Trait):** Wenn ein Finding ein dupliziertes Pattern in eine neue `lib/*.js` (o.ae.) extrahiert, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN einzigen Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent die erweiterte Datei-Grenze (siehe `fix-agent.md` Sonderfall) anwendet und jede Fundstelle migriert.
-- Jeden Fix zu `BEREITS_GEFIXT`. `GESAMT_*` inkrementieren.
+- Jeden Fix zu `BEREITS_GEFIXT`. C/I/M in der Batch-Zeile der State-Datei inkrementieren.
 - Unklarer Fix → kurz nachfragen. Keine "Offener Punkt" ohne explizite User-Zustimmung.
 - **Hook-blockierte Dateien** (z.B. `.env.example` durch einen Schreibschutz-Hook): kein reiner Offener Punkt. Fertigen Diff/Copy-Paste-Block im Chat praesentieren und aktiv anbieten, ihn per `!`-Befehl selbst einzuspielen — nicht nur auflisten.
 - Ergebnis: `FIXES_APPLIED`.
 
-**Hinweis:** Full-Audit loopt intern (while-Schleife), NICHT ueber `audit-loop.sh` Stop-Hook. Kein `AUDIT_STATUS:` ausgeben.
+**Hinweis:** Full-Audit loopt intern (while-Schleife), NICHT ueber `audit-loop.sh` Stop-Hook. NIEMALS `AUDIT_STATUS:` ausgeben (Hook-Kollision) — die Full-Audit-Zeile heisst `FULL_AUDIT_STATUS`. **Jeder Turn endet mit:**
 
-### Nach jeder Runde
+```bash
+bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE"
+```
+
+Zeile verbatim als letzte Zeile ausgeben. Completion entscheidet sich NUR an dieser Zeile des aktuellen Turns, nie aus dem Gedaechtnis.
+
+### Nach jeder Runde (State-Zeile aktualisieren, dann:)
 
 | Ergebnis | RUNDE | Aktion |
 |---|---|---|
-| `SAUBER` | — | Naechster Batch (oder Phase 2.5) |
+| `SAUBER` | — | Zeile → clean + HEAD; naechster pending-Batch (oder Phase 2.5) |
 | `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | Convergence-Check; sonst RUNDE+1 |
-| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | Naechster Batch (oder Phase 2.5) |
-| `NO_CONVERGENCE` | — | Batch abbrechen, offene Findings als Offene Punkte |
+| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | Zeile → clean + HEAD; naechster Batch (oder Phase 2.5) |
+| `NO_CONVERGENCE` | — | Zeile → blocked + Bullet; offene Findings als Offene Punkte |
 
 ---
 
@@ -395,6 +404,8 @@ Sonst nach allen Batches: 2 Subagents parallel:
 
 Input: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + Zusammenfassung aller Batch-Findings.
 Fixes wie Schritt C. Keine weiteren Runden.
+
+Danach (auch bei Skip): in `$STATE_FILE` `post-phases:` → `cross_ref=done` setzen.
 
 ---
 
@@ -426,8 +437,8 @@ Detail in `references/audit-log-and-issues.md`. Kurz:
 
 - Audit-Log nach `.claude/audits/{datum}-full-audit.md` schreiben (Format-Template in der reference). Im Header `SELECTED_DIMENSIONS` festhalten, damit spaetere Audits wissen welche Dimensionen nicht geprueft wurden.
 - **Open-Point-Aging:** Vor dem Vorlegen die offenen Punkte gegen die vorherigen `.claude/audits/*-full-audit.md` (chronologisch) abgleichen. Ein Punkt, der inhaltlich (gleiche Datei + gleiche Kernaussage) bereits in `>= 2` frueheren Audit-Logs als offen stand, bekommt im aktuellen Log einen **`AGED`**-Marker und erscheint als priorisierter Block ganz oben im Offene-Punkte-Abschnitt ("3x+ offen — Entscheidung ueberfaellig"). So versanden Tradeoff-Entscheidungen nicht audit-um-audit.
-- Log via Read-Tool laden und im Chat als Markdown-Codeblock anzeigen (PFLICHT)
-- Offene Punkte dem User vorlegen (AskUserQuestion): **Jetzt entscheiden + fixen / Als Issue vertagen / Verwerfen**. `AGED`-Punkte zuerst vorlegen. Issues NUR fuer Vertagtes (Dedup pro Finding). Minor bekommt NIE Issues — bleibt im Log.
+- Log via Read-Tool laden und im Chat als Markdown-Codeblock anzeigen (PFLICHT). Danach `post-phases:` → `log=done`.
+- Offene Punkte dem User vorlegen (AskUserQuestion): **Jetzt entscheiden + fixen / Als Issue vertagen / Verwerfen**. `AGED`-Punkte zuerst vorlegen. Issues NUR fuer Vertagtes (Dedup pro Finding). Minor bekommt NIE Issues — bleibt im Log. Danach (auch wenn keine offenen Punkte) `post-phases:` → `issues=done`.
 
 ---
 
@@ -452,7 +463,15 @@ Agent(
 
 ## Abschluss
 
-**Push-Marker schreiben (PFLICHT):**
+**Completion-Gate (Bash entscheidet, nicht das Gedaechtnis):**
+
+```bash
+bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE"
+```
+
+Zeigt die Zeile NICHT `pending=0 running=0` und `post_phases=done` → KEIN Marker: Zwischen-Digest + Status-Zeile ausgeben, Turn beenden (Resume oder /loop macht weiter). `blocked>0` blockt die Completion nicht (Punkte stehen in State-Sektion + Log).
+
+**Sonst — Push-Marker schreiben (PFLICHT):**
 
 ```bash
 # Marker schreiben — KEIN git push im selben Bash-Aufruf!
@@ -463,6 +482,8 @@ touch "/tmp/claude-audit-passed-$hash"
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
 ```
+
+Die State-Datei bleibt liegen (Historie + Dirty-Check-Basis fuer den naechsten Lauf). Frischer Neustart: State-Datei + `$BATCH_DIR` loeschen.
 
 Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell).
 

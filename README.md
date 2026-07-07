@@ -50,6 +50,8 @@ Triage routes the diff to relevant workers only; workers receive triage-marked h
 
 Comprehensive one-time audit of an entire codebase. Auto-detects framework, batches large codebases (>80 files), runs Phase 0 backlog check, Phase 0.5 dimension selection (Alles / Nur Backend / Nur Frontend / Custom multi-select), Phase 0.7 effort configuration. Cross-Reference pass after all batches (xhigh runs it even in SINGLE mode).
 
+Runs as a persistent goal-loop: batch progress lives in `.claude/audits/full-audit-state.md` (matrix + deterministic `FULL_AUDIT_STATUS` line from `full-audit/bin/status-line.sh`), so an interrupted run resumes at the first pending batch instead of starting over — clean batches are only re-audited when `resume-check.sh` detects their files changed since completion. For very large codebases it can be driven turn-by-turn via `/loop /full-audit`.
+
 Same 12 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
 
 ### `/feature-audit` — Feature Test Matrix (Goal-Loop)

@@ -2,6 +2,8 @@
 
 Detail-Bash und Batching-Heuristik fuer Phase 1 (Scope & Context) und Phase 1.5 (Batching-Entscheidung). Wird vom Orchestrator gelesen.
 
+Inhalt: Phase 1 Scope-Bash · Context-Building · Optionale Pre-Checks · Phase 1.5 Batching · Concurrent-Tree-Check
+
 ## Phase 1: Scope & Context — Bash
 
 ```bash
@@ -95,3 +97,13 @@ done | sort -rn
 - Config + Routing zusammen
 
 Batch-Uebersicht ausgeben: `Batch N: verzeichnis (X Dateien)`.
+
+## Concurrent-Tree-Check (Detail)
+
+Ein Full-Audit laeuft minutenlang ueber viele Batches. Aendert der User (oder ein anderer Prozess) waehrenddessen den Working-Tree, auditieren spaetere Batches einen veralteten Stand. Deshalb in Phase 1 die Baseline festhalten und nach jedem Batch vergleichen:
+
+```bash
+AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
+```
+
+Weicht der Wert nach einem Batch ab: Warnung ins Audit-Log (`## Hinweise: Tree waehrend Audit veraendert`), den naechsten Batch auf den aktuellen Stand resetten (Scope-Erhebung dieses references-Dokuments erneut ausfuehren), `AUDIT_TREE_HASH` aktualisieren. Findings auf inzwischen ueberschriebenen Zeilen verwerfen (Halluzinations-Risiko).

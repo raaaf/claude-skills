@@ -5,3 +5,5 @@ node_modules/
 
 .claude/audits/cache.json
 .claude/plans/logs/
+.claude/audits/full-audit-state.md
+.claude/audits/full-audit-batches/
