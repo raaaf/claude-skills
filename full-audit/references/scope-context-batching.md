@@ -107,3 +107,7 @@ AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; }
 ```
 
 Weicht der Wert nach einem Batch ab: Warnung ins Audit-Log (`## Hinweise: Tree waehrend Audit veraendert`), den naechsten Batch auf den aktuellen Stand resetten (Scope-Erhebung dieses references-Dokuments erneut ausfuehren), `AUDIT_TREE_HASH` aktualisieren. Findings auf inzwischen ueberschriebenen Zeilen verwerfen (Halluzinations-Risiko).
+
+## Intent-Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
+
+Gleiche Ableitung wie /audit (`../audit/references/scope-and-pre-checks.md`, Abschnitt "Intent-Docs"): `docs/adr/`, `docs/adrs/`, `docs/decisions/`, `DESIGN.md`, `PRODUCT.md`, `CONTEXT.md` globben, Entscheide als max 15 Zeilen zusammenfassen, an alle Worker durchreichen. Dokumentierte Tradeoffs sind keine Findings; Code-Drift vom Entscheid ist ein docs_sync-Finding.

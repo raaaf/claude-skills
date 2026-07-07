@@ -107,11 +107,14 @@ If any box is unchecked: `ready-for-human` (not `needs-info`, unless the reporte
 
 **What to do:** {clear task description, 2-3 sentences}
 **Files likely involved:** {list from codebase scan or issue body}
+**Out of scope:** {related-looking files/areas the agent must NOT touch, with a 1-line reason — or "none identified"}
 **Acceptance criteria:**
-{extracted or inferred from issue body as bullet list}
+{extracted or inferred from issue body as bullet list — each one checkable by a command or observable behavior, not prose like "works correctly"}
+**Verification:** {the exact test/lint command(s) to run and expected result, from the repo's tooling}
+**STOP conditions:** {when the agent should stop and report instead of improvising, e.g. "the described code no longer exists", "fix requires touching an out-of-scope file"}
 **Suggested skills:** {e.g. /diagnose for bugs, /plan-it for non-trivial features}
 
-*AI-generated brief based on issue #{N}. Verify before acting.*
+*AI-generated brief based on issue #{N} at commit {git rev-parse --short HEAD}. Run `git diff --stat {sha}..HEAD -- {files}` before starting; on drift, re-verify the issue still applies.*
 ```
 
 ## Phase 3: Apply State Changes

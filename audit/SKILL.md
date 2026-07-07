@@ -113,7 +113,7 @@ Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
 - Variable-Ableitung (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
 - Audit-Context-Check (PFLICHT bei fehlendem Context)
 
-Übergib `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS` und `GUIDELINE_MATCHES` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
+Übergib `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS`, `GUIDELINE_MATCHES` und `DECIDED_TRADEOFFS` (Intent-Docs/ADRs, Ableitung in `references/scope-and-pre-checks.md`) an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
 
 ---
 

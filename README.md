@@ -129,8 +129,8 @@ autonomously. Requires `gh` CLI and a GitHub remote.
 
 **States:** `needs-triage` (entry) → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`
 
-`ready-for-agent` issues get an agent brief with task description, likely files, acceptance
-criteria, and suggested skills.
+`ready-for-agent` issues get an executor-grade agent brief: task description, likely files, out-of-scope list, checkable acceptance
+criteria, exact verification commands, STOP conditions, a planned-at commit for drift detection, and suggested skills.
 
 ### `/ship` — Commit, Audit, Push, Deploy
 
@@ -175,6 +175,9 @@ Sparring partner for turning ideas into solid implementation plans. Asks the rig
 7. Phase 3: Parallel challenges (Product · Architecture · Risk · Simplicity · Design), explicit dedupe step, user decides what to incorporate
 8. Phase 3.5: Final evaluation pass
 9. Phase 4: Learning (structured output, orchestrator writes)
+10. Phase 5 (on demand): `execute <plan>` dispatches an executor subagent in an isolated git worktree and reviews its diff like a tech lead (verdict: approve / revise / block — merging stays yours); `reconcile` refreshes the plan backlog against code drift.
+
+Plans are written for an executor with zero session context: planned-at commit + drift check, a verify criterion per step, machine-checkable done criteria, out-of-scope list, and STOP conditions instead of improvisation.
 
 **Inspired by:** [Grill Me Skill](https://www.aihero.dev/my-grill-me-skill-has-gone-viral).
 
@@ -182,9 +185,17 @@ Sparring partner for turning ideas into solid implementation plans. Asks the rig
 
 Creates new skills following the canonical structure: orchestrator + `agents/` for parallel workers + `references/` for progressive disclosure + `guidelines/` for content best practices. Inspired by [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md).
 
+### `/delegate` — Analyze (expensive) → Implement (Sonnet) → Review (expensive)
+
+Default working mode for implementation requests (auto-triggers, no slash command needed). The session model (Fable/Opus) analyzes the task, asks clarifying questions only for real ambiguities (each with a recommended answer), writes an executor-grade mini-spec (steps with verify criteria, out-of-scope list, STOP conditions), and hands implementation to a Sonnet subagent. The expensive model then reviews like a tech lead: reads the full diff, re-runs every done criterion itself, checks scope, reads the new tests for substance. Verdict: APPROVE / REVISE (max 2 rounds) / BLOCK. Large or architectural tasks get a gate offering `/plan-it` first. Committing stays with you.
+
+The economics: the expensive model does the work where intelligence compounds (understanding, judging, specifying, reviewing); Sonnet generates the code mass. The orchestrator has no Edit/Write tools — advisor-only by construction.
+
 ### `/improve` — Product Perspective Analysis
 
 Discovers what the app could do better from a product-owner perspective: feature gaps, growth opportunities, marketing, business potential, unfinished work. Complements /audit (code quality) with product thinking.
+
+Hard grounding rule: every suggestion must cite evidence from the repo itself (TODO clusters, stated-but-undelivered README promises, surface asymmetries like export-without-import, capabilities the architecture makes cheap, friction users visibly work around). Generic idea-slop ("add dark mode") is not a finding.
 
 ## Personal skills
 
@@ -209,6 +220,8 @@ These skills live in this repo as architecture examples. They are wired to perso
 | Runtime | Claude Code 2.1.150+ (uses skill frontmatter `model`, `effort`, `allowed-tools`) |
 | Model resolution | `model: opus` alias (auto-resolves to latest Opus on Anthropic API) |
 | Dependencies | none — no npm, no composer, no Python venv |
+
+Real output artifacts (an actual audit log, a full-audit state file) live in [examples/](./examples/).
 
 ## Installation
 
@@ -349,6 +362,7 @@ Follow the canonical structure: orchestrator (under 500 lines, references kept o
 
 - [Grill Me Skill](https://www.aihero.dev/my-grill-me-skill-has-gone-viral) — recommended-answer-per-question technique used in `/plan-it`
 - [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md) — description discipline, body-size discipline
+- [shadcn/improve](https://github.com/shadcn/improve) — executor-grade plan template (drift check, STOP conditions, machine-checkable done criteria), worktree execute-and-review loop, prompt-injection and secret-handling hard rules for audit workers, evidence-grounded direction findings
 
 ## License
 

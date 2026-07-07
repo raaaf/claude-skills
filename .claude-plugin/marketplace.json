@@ -1,0 +1,15 @@
+{
+  "name": "claude-skills",
+  "owner": {
+    "name": "Rafael Alex"
+  },
+  "metadata": {
+    "description": "Claude marketplace catalog for the claude-skills plugin (audit, full-audit, feature-audit, plan-it, review, triage, ship, diagnose, handoff)."
+  },
+  "plugins": [
+    {
+      "name": "claude-skills",
+      "source": "./"
+    }
+  ]
+}

@@ -2,12 +2,27 @@
 
 Templates fuer Phase 2 (Plan-Datei) und Phase 4 (Plan-Log).
 
+Inhalt: Plan-Format (executor-grade, mit Drift-Check/STOP/Done-Kriterien) · Plan-Log-Format · Runden-Heuristik
+
 ## Plan-Format (Phase 2)
 
 Datei: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
+**Executor-Regel:** Der Plan wird fuer einen Executor OHNE Session-Kontext geschrieben (anderes Modell, andere Session, oder ein Mensch). Alles Noetige steht in der Datei: exakte Pfade, Ist-Zustand, Konventionen mit Exemplar-Datei, Befehle. "Wie besprochen" ist ein Bruch.
+
 ```markdown
 # {Titel}
+
+> **Executor-Anweisung:** Schritt fuer Schritt folgen, jedes verify-Kriterium
+> pruefen bevor es weitergeht. Tritt eine STOP-Bedingung ein: stoppen und
+> berichten, nicht improvisieren.
+>
+> **Drift-Check (zuerst):** `git diff --stat {PLANNED_AT_SHA}..HEAD -- {in-scope Pfade}`
+> Hat sich eine In-Scope-Datei seit Plan-Erstellung geaendert: Ist-Zustand
+> gegen den Live-Code abgleichen; bei Abweichung ist das eine STOP-Bedingung.
+
+## Meta
+- Planned at: commit `{git rev-parse --short HEAD}`, {DATUM}
 
 ## Problem
 {Was ist das Problem — in 1-3 Saetzen. Das PROBLEM, nicht die Loesung.}
@@ -17,6 +32,9 @@ Datei: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
 ## Nicht-Ziele
 {Was ist explizit NICHT Teil davon.}
+
+## Out of Scope (Dateien)
+{Dateien/Bereiche, die verwandt aussehen, aber NICHT angefasst werden duerfen — mit 1-Satz-Grund (z.B. "legacy-api.ts: deprecated, v1-Clients haengen dran").}
 
 ## Loesung
 
@@ -35,8 +53,28 @@ Jeder Schritt bekommt ein verify-Kriterium. Ein Schritt ohne pruefbares Ergebnis
 ### Betroffene Dateien
 - `pfad/zur/datei` — {was sich aendert}
 
+### Konventionen
+{Welche Repo-Patterns gelten, mit einer Exemplar-Datei: "Error-Handling folgt dem Result-Pattern — siehe src/lib/result.ts und dessen Nutzung in src/users/api.ts:40-60. Genau so."}
+
 ## Edge Cases
 - {Case}: {Handling}
+
+## Done-Kriterien
+Maschinell pruefbar, ALLE muessen gelten — Befehle mit erwartetem Ergebnis, keine Prosa wie "funktioniert korrekt":
+- [ ] `{test-befehl}` → exit 0, inkl. {N} neuer Tests
+- [ ] `{lint/typecheck-befehl}` → exit 0
+- [ ] `grep -rn "{altes_pattern}" src/` → keine Treffer
+- [ ] Keine Dateien ausserhalb der Betroffene-Dateien-Liste geaendert (`git status`)
+
+## STOP-Bedingungen
+Stoppen und berichten (nicht improvisieren) wenn:
+- Der Ist-Zustand an den genannten Stellen nicht den Beschreibungen entspricht (Codebase ist gedriftet).
+- Ein verify-Kriterium nach einem ernsthaften Fix-Versuch zweimal fehlschlaegt.
+- Der Fix eine Out-of-Scope-Datei anfassen muesste.
+- {plan-spezifische Kernannahme} sich als falsch herausstellt.
+
+## Maintenance-Notizen
+{Was kuenftige Aenderungen mit diesem Code zu tun haben werden; was ein Reviewer im PR pruefen sollte; explizit Vertagtes mit Grund.}
 
 ## Offene Fragen
 - {Falls noch welche — sonst weglassen}

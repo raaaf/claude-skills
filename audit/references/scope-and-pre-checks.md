@@ -61,3 +61,17 @@ Marker-Check vor der Frage:
 ```bash
 [ -f "$(git rev-parse --show-toplevel)/.claude/audit-no-context.flag" ] && SKIP_CONTEXT_PROMPT=true
 ```
+
+## Intent-Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
+
+Bewusste, dokumentierte Entscheidungen duerfen nicht als Findings wiederaufgetischt werden. Deterministisch globben:
+
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+INTENT_DOCS=$( { ls "$ROOT"/docs/adr/*.md "$ROOT"/docs/adrs/*.md "$ROOT"/docs/decisions/*.md 2>/dev/null
+                 ls "$ROOT"/DESIGN.md "$ROOT"/PRODUCT.md "$ROOT"/CONTEXT.md 2>/dev/null; } | sort -u )
+```
+
+- Treffer vorhanden → Dateien lesen (bei vielen ADRs: nur Titel + Status + Decision-Zeile je ADR) und als `DECIDED_TRADEOFFS` zusammenfassen: eine Zeile pro Entscheid ("ADR-007: sync-over-async Write in store.ts ist bewusst — Konsistenz vor Latenz"). Max 15 Zeilen.
+- Keine Treffer → `DECIDED_TRADEOFFS="keine dokumentierten Entscheidungen gefunden"`.
+- Wird an alle Worker durchgereicht (prompt-template.md Platzhalter). Worker-Regel dort: dokumentierte Tradeoffs nicht melden; Code-Drift vom Entscheid ist ein docs_sync-Finding ("stale ADR ist selbst ein Finding").

@@ -1,0 +1,13 @@
+{
+  "name": "claude-skills",
+  "description": "A set of Claude Code skills for the whole development lifecycle: pre-push diff audits with auto-fix loops (/audit), full-codebase audits as a resumable goal-loop (/full-audit), feature test matrices (/feature-audit), iterative planning with adversarial challenges and executor handoff (/plan-it), two-axis reviews (/review), issue triage with agent briefs (/triage), and ship/diagnose/handoff workflows. Markdown + Bash, no runtime dependencies.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Rafael Alex",
+    "url": "https://rafaelalex.de"
+  },
+  "homepage": "https://github.com/raaaf/claude-skills",
+  "repository": "https://github.com/raaaf/claude-skills",
+  "license": "MIT",
+  "keywords": ["audit", "code-review", "planning", "agents", "goal-loop", "triage", "skills"]
+}

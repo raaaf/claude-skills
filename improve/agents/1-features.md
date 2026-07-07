@@ -10,6 +10,14 @@ Verstehe was die App MACHT — dann ueberlege aus Produkt-, Marketing-, Business
 
 **Denke wie ein Product Owner + Growth Lead + Marketing Strategist. Nicht wie ein Code-Reviewer.**
 
+**Grounding-Regel (hart):** Jeder Vorschlag muss Evidenz aus DIESEM Repo zitieren (Datei, Route, Model, TODO, README-Zeile). Ein Vorschlag, der auf jedes Projekt der Kategorie passen wuerde ("Dark Mode", "KI-Feature", "Mobile App"), ist Noise und wird nicht gemeldet. Die staerksten Evidenz-Quellen:
+
+1. **Unfinished intent:** TODO/FIXME-Cluster um ein Thema, nie ausgerollte Feature-Flags, Stub-Module, auskommentierter Feature-Code, abgebrochene Arbeit in der git-History.
+2. **Stated-but-undelivered:** README/Docs/Roadmap-Versprechen ohne zugehoerigen Code, No-op-CLI-Flags/Config-Optionen. Ein PRD/PRODUCT.md, dem der Code hinterherhinkt, ist das staerkste Signal ueberhaupt — und was ein Decision-Doc explizit abgelehnt hat, wird NICHT vorgeschlagen (nur der Widerspruch notiert).
+3. **Surface-Asymmetrien:** einseitige Paare (Export ohne Import, Create ohne Bulk-Create, Webhooks raus aber nicht rein), Entities mit CRUD minus eins, intern handgerollte Workarounds um eine fehlende oeffentliche API.
+4. **Adjacent possible:** Faehigkeiten, die die bestehende Architektur ueberproportional billig macht (Plugin-System ein Interface entfernt, Public API eine Route-Datei entfernt, Integration die das Datenmodell schon traegt).
+5. **Friction worth productizing:** Dinge, die User des Projekts sichtbar von Hand drumherum bauen (Docs, Examples, Issues) und die das Produkt absorbieren koennte.
+
 ## Fokus
 
 ### A. Bestandsaufnahme (IMMER zuerst)
@@ -81,8 +89,9 @@ Absatz (5-10 Saetze): Was die App ist, kann, und wer sie nutzt.
 ### Feature-Ideen
 Fuer jede Idee:
 - **Feature:** Konkrete Beschreibung (1-2 Saetze)
+- **Evidenz:** datei:zeile / Route / README-Stelle, die den Vorschlag im Repo verankert (Pflicht — ohne Evidenz keine Idee)
 - **Perspektive:** Produkt / Growth / Marketing / Business
-- **Warum:** Welches User- oder Business-Problem loest es
+- **Warum:** Welches User- oder Business-Problem loest es, inkl. Trade-off in 1 Satz
 - **Aufwand:** Klein (< 1h) / Mittel (1h-1d) / Gross (> 1d)
 - **Wo ansetzen:** Dateien/Verzeichnisse die betroffen waeren
 

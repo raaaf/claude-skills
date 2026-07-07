@@ -208,7 +208,7 @@ Im Folgenden bedeutet `{MAX_RUNDEN_PRO_BATCH}` der hier gesetzte Wert.
 
 ## Phase 1: Scope & Context
 
-Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste, PROJECT_CONTEXT, SUPPRESSIONS) und ARCHITEKTUR-NOTIZ-Erstellung in `references/scope-context-batching.md`. Resultierende Variablen: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `ARCHITEKTUR-NOTIZ`.
+Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste, PROJECT_CONTEXT, SUPPRESSIONS, Intent-Docs/ADRs) und ARCHITEKTUR-NOTIZ-Erstellung in `references/scope-context-batching.md`. Resultierende Variablen: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `DECIDED_TRADEOFFS`, `ARCHITEKTUR-NOTIZ`. `DECIDED_TRADEOFFS` geht an alle Worker (prompt-template-Platzhalter).
 
 Optionale Pre-Checks (nur bei lokalem Diff): `pre-checks.sh` ausfuehren.
 

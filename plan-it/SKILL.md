@@ -296,3 +296,10 @@ Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` zwe
 - `TRENDS_BLOCK` am Anfang der `learning-log.md` einfuegen oder vorhandenen Block ersetzen (Top-Snapshot, kein Append).
 
 TodoWrite: `Plan-Log schreiben und Learning` (completed)
+
+## Phase 5: Execute & Reconcile (Aufruf-Varianten)
+
+Nur wenn der Aufruf es verlangt — Standard-/plan-it endet nach Phase 4.
+
+- **`/plan-it execute <plan-datei>`** — Executor-Subagent (sonnet, `isolation: worktree`) setzt einen fertigen Plan um; der Orchestrator reviewt wie ein Tech-Lead (Done-Kriterien selbst re-runnen, Scope via Diff, Tests auf Substanz lesen) und faellt ein Verdict: APPROVE / REVISE (max 2 Runden) / BLOCK. Mergen bleibt IMMER beim User. Vor dem ersten Dispatch PFLICHT: `references/execute-review.md` lesen.
+- **`/plan-it reconcile`** — Plan-Bestand in `docs/plans/` pflegen: Umgesetztes verifizieren, Gedriftetes refreshen oder verwerfen, Blockiertes umplanen. Ablauf in `references/execute-review.md`.
