@@ -19,6 +19,7 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
+  - AskUserQuestion
 ---
 
 # Review
@@ -26,8 +27,8 @@ allowed-tools:
 Two independent axes. Standards violations and spec mismatches are different problems
 answered by different agents running in parallel.
 
-**Axis 1 — Standards:** Does the code follow project conventions, patterns, and guidelines?
-**Axis 2 — Spec:** Does the implementation match what the issue/PRD asked for?
+**Axis 1 (Standards):** Does the code follow project conventions, patterns, and guidelines?
+**Axis 2 (Spec):** Does the implementation match what the issue/PRD asked for?
 
 If no issue or PR is linked: Standards only.
 
@@ -107,7 +108,7 @@ Group output:
 ## Axis 1: Standards
 
 ### Critical
-- {file}:{line} — {what violated} ({which guideline or visible pattern it breaks})
+- {file}:{line}: {what violated} ({which guideline or visible pattern it breaks})
 
 ### Important
 - ...
@@ -132,9 +133,9 @@ Finding format: max 50 words, file:line refs only, no code snippets (same rules 
 
 For each Critical or Important finding, offer resolution:
 
-- **Fix now** — dispatch `../audit/agents/fix-agent.md`, verify with `../audit/agents/fix-verifier.md`
-- **Accepted deviation** — document why the deviation is intentional (recorded in output)
-- **Spec update** — the implementation is better than the spec; user updates the issue/PRD
+- **Fix now**: dispatch `../audit/agents/fix-agent.md`, verify with `../audit/agents/fix-verifier.md`
+- **Accepted deviation**: document why the deviation is intentional (recorded in output)
+- **Spec update**: the implementation is better than the spec; user updates the issue/PRD
 
 Rules:
 - Critical Standards findings must be fixed or explicitly accepted. Never silently deferred.

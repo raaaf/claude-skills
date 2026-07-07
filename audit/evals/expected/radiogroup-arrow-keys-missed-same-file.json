@@ -1,0 +1,28 @@
+{
+  "fixture": "a11y/radiogroup-arrow-keys-missed-same-file.blade.php",
+  "note": "Regression eval: audit 2026-07-02 found the contrast issue on a radiogroup but missed the missing arrow-key handlers of the SAME widget (roving tabindex without keydown). Both must be found in one pass.",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 16,
+      "matches": ["contrast", "kontrast", "text-gray-400", "4.5:1"],
+      "severity": "important"
+    },
+    {
+      "dimension": "a11y",
+      "line": 12,
+      "matches": ["arrow", "keydown", "roving", "tabindex", "keyboard", "unbedienbar"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup, no user input processing"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 ```
 skill-name/
-├── SKILL.md                     # Orchestrator (max 120 lines)
+├── SKILL.md                     # Orchestrator (under 500 lines)
 ├── agents/                      # Optional: parallel workers
 │   ├── 0-triage.md             # Routes scope to relevant workers
 │   ├── 1-aspect-a.md           # Worker, single aspect
@@ -40,6 +40,16 @@ skill-name/
 - Worker files: `{number}-{aspect}.md` (e.g. `1-architecture.md`, `2-security.md`). Number gives sort order in dispatch.
 - Bash scripts in `bin/`: kebab-case, `.sh` extension, executable.
 - References: descriptive name, no numbers (e.g. `security-guidelines.md`, not `ref-1.md`).
+
+## Path resolution
+
+Resolve paths to the skill's own files via `${CLAUDE_SKILL_DIR}` (expands to the skill's directory at runtime), with the install location as fallback:
+
+```bash
+SKILL_DIR="${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/skill-name}"
+```
+
+Never hardcode `~/.claude/skills/...` alone, and never use `${CLAUDE_PROJECT_DIR}` for skill files (that points at the user's project, not the skill).
 
 ## Sharing across skills
 

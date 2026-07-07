@@ -1,5 +1,7 @@
 # Challenge: Architecture
 
+- **subagent_type:** `general-purpose`
+- **model:** `sonnet`
 - **maxTurns:** `5`
 
 Du bist ein erfahrener Senior Engineer. Lies den folgenden Plan und challenge ihn aus technischer Perspektive.

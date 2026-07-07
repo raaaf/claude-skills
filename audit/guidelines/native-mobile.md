@@ -1,3 +1,8 @@
+---
+applies_to: \.(swift|kt|kts|dart|m|mm|h)$|/(ios|android)/|\.xcodeproj|\.pbxproj$|/values[^/]*/|\.lproj/|Podfile|build\.gradle
+priority: mandatory
+---
+
 # Native Mobile Guidelines (iOS / Android / React Native / Flutter)
 
 Plattformspezifische Audit-Regeln fuer native und cross-platform Apps. Nur relevant wenn `FRAMEWORK` = ios, android, react-native oder flutter. Web-Aequivalente (WCAG/ARIA, CSP, INP) gelten dort NICHT — diese Datei ersetzt sie.
@@ -23,8 +28,9 @@ Plattformspezifische Audit-Regeln fuer native und cross-platform Apps. Nur relev
 | Gruppierung | `.accessibilityElement(children: .combine)` fuer Karten | `mergeDescendants = true` |
 | Status-Aenderungen ansagen | `UIAccessibility.post(notification: .announcement, ...)` / `AccessibilityNotification` | `announceForAccessibility` / Live-Region |
 | Reduced Motion | `@Environment(\.accessibilityReduceMotion)` respektieren | `Settings.Global.ANIMATOR_DURATION_SCALE` |
+| Range-Controls (Stepper/Slider/Custom-Counter) | `.accessibilityAdjustableAction` mit Schrittweite, die mit der UI-Range skaliert — bei Range 1-999 ist fixer Step 1 unbenutzbar (999 Swipes); Schrittweite an sichtbare Increments oder ~5% der Range koppeln | `ProgressBarRangeInfo` / `Modifier.progressSemantics`, `stateDescription` mit aktuellem Wert |
 
-**Audit-Signal:** Icon-only Button ohne Label, Text mit hartkodierter Pixel-Groesse, Custom-Gesten ohne Alternative.
+**Audit-Signal:** Icon-only Button ohne Label, Text mit hartkodierter Pixel-Groesse, Custom-Gesten ohne Alternative, Adjustable-Control mit fixer Schrittweite 1 bei grosser Range.
 
 ## II. Security (Storage, Transport, Deep Links, Privacy)
 

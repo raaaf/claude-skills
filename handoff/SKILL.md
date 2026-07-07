@@ -111,6 +111,6 @@ Then print:
 Handoff saved: /tmp/handoff-{filename}.md
 
 To resume in a fresh session:
-  claude --resume /tmp/handoff-{filename}.md
+  claude "$(cat /tmp/handoff-{filename}.md)"
   (or paste the file contents as the opening message)
 ```

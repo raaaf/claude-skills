@@ -1,5 +1,7 @@
 # Challenge: Simplicity
 
+- **subagent_type:** `general-purpose`
+- **model:** `haiku`
 - **maxTurns:** `5`
 
 Du bist ein Minimalist. Lies den folgenden Plan und pruefe ob er unnoetig komplex ist.

@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/soft-delete-cascade-missing.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 19,
+      "matches": ["cascade", "soft delete", "soft-delete", "child", "group_id", "dangling", "null"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "service class, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "backend service, not a public page"
+    }
+  ]
+}

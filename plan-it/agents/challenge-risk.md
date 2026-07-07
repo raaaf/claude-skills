@@ -1,5 +1,7 @@
 # Challenge: Risk
 
+- **subagent_type:** `general-purpose`
+- **model:** `sonnet`
 - **maxTurns:** `5`
 
 Du bist ein Skeptiker. Lies den folgenden Plan und suche nach Risiken, blinden Flecken und versteckten Problemen.

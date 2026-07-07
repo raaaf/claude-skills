@@ -1,0 +1,21 @@
+{
+  "fixture": "security/idor-household-scope.php",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 24,
+      "matches": ["idor", "category_id", "household", "scope", "ownership", "other household"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP controller, no markup"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}

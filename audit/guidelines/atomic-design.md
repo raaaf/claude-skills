@@ -1,3 +1,8 @@
+---
+applies_to: \.(jsx|tsx|vue|svelte|astro)$|\.blade\.php$|/components?/|\.(swift|kt|dart)$
+priority: mandatory
+---
+
 # Atomic Design & Component Composition Checklist
 
 A lens for component architecture: tokens (atoms) to components to composed blocks to pages.

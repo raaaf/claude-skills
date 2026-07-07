@@ -5,8 +5,10 @@
 #   SECURITY  known-vulnerable dependencies (audit databases). Push-blocking
 #             material -> /audit runs this part when a manifest/lockfile is
 #             in the diff; /full-audit always.
-#   OUTDATED  stale majors/minors. Informational -> /full-audit only,
-#             reported as Minor. Never run on pre-push (noise).
+#   OUTDATED  stale majors/minors. Informational, reported as Minor. Runs in
+#             /full-audit (always) and /audit (when a manifest/lockfile is in
+#             the diff). --security-only suppresses it for callers that only
+#             want the push-blocking part.
 #
 # Output:
 #   DEP_SECURITY_RESULT=CLEAN | VULNS (N) | SKIP

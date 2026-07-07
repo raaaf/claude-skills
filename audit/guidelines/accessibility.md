@@ -195,6 +195,8 @@ Every interactive element must be operable with a keyboard alone. This is non-ne
 
 **Focus trapping in modals:** When a modal is open, Tab and Shift+Tab must cycle within the modal. Focus must move to the modal on open and return to the triggering element on close.
 
+**Never hand-roll a modal with manual `role="dialog"`/`aria-modal` attributes.** Use the project's existing modal component (`x-modal` or equivalent) instead — it already solves focus trapping, Escape-to-close, backdrop click, and return-focus in one place. A hand-rolled `<div role="dialog" aria-modal="true">` reintroduces every one of those bugs from scratch, and inconsistently across occurrences. Only skip the component when it genuinely cannot express the required structure — document the reason inline next to the markup.
+
 ## V. Color & Contrast
 
 Color contrast is a hard requirement, not a design preference. Insufficient contrast makes text illegible for users with low vision — and uncomfortable for everyone in bright environments.

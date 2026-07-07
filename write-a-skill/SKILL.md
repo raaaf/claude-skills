@@ -29,7 +29,7 @@ Inspired by Matt Pocock's [write-a-skill](https://github.com/mattpocock/skills/b
    - Is there state across runs (logs, learning, suppressions)? Then we need a learning agent.
 
 2. **Draft the skill** (canonical structure in `references/structure.md`):
-   - `SKILL.md` orchestrator, max 120 lines
+   - `SKILL.md` orchestrator, under 500 lines
    - `agents/*.md` per worker if subagents are needed
    - `agents/prompt-template.md` if multiple workers share a prompt
    - `references/*.md` for guidelines, lookup tables, edge-case lists
@@ -97,7 +97,7 @@ See `references/subagents.md` for the agents/-folder pattern, prompt-template, m
 ## When to Split into references/
 
 Split if any applies:
-- SKILL.md exceeds 120 lines
+- SKILL.md exceeds 500 lines
 - Content has distinct domains (e.g. WordPress-specific vs generic checks)
 - Lookup tables or edge-case lists that the orchestrator doesn't always need
 
@@ -126,7 +126,7 @@ See `references/self-learning.md` for the standard pattern.
 Run before declaring done:
 
 - [ ] Description has "Use when..." trigger phrases
-- [ ] SKILL.md under 120 lines
+- [ ] SKILL.md under 500 lines
 - [ ] No time-sensitive info ("as of 2024"...) in the orchestrator
 - [ ] Consistent terminology (one name per concept)
 - [ ] Concrete examples included

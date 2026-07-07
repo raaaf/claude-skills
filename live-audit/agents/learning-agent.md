@@ -1,5 +1,6 @@
 # Learning Agent
 
+- **subagent_type:** `general-purpose`
 - **model:** `haiku`
 - **maxTurns:** `15`
 

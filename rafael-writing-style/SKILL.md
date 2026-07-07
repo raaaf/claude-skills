@@ -6,6 +6,11 @@ description: >
   allen anderen Texten, die im persönlichen Rafael-Stil geschrieben werden sollen.
 when_to_use: "im Rafael-Stil, wie ich schreibe, mein Schreibstil, authentisch formulieren, Blog-Post schreiben, Website-Text schreiben"
 model: sonnet
+effort: medium
+allowed-tools:
+  - Read
+  - Write
+  - Edit
 ---
 
 # Rafael Writing Style

@@ -38,9 +38,9 @@ Return findings in this format only. Max 50 words per description. File:line ref
 
 ```
 STANDARDS_FINDINGS_START
-[Critical] {file}:{line} — {what was violated and which convention it breaks}
-[Important] {file}:{line} — {what was violated and which convention it breaks}
-[Minor] {file}:{line} — {what was violated and which convention it breaks}
+[Critical] {file}:{line}: {what was violated and which convention it breaks}
+[Important] {file}:{line}: {what was violated and which convention it breaks}
+[Minor] {file}:{line}: {what was violated and which convention it breaks}
 STANDARDS_FINDINGS_END
 ```
 
@@ -51,9 +51,9 @@ STANDARDS_FINDINGS_END
 ```
 
 Confidence rules (same as /audit workers):
-- `high` — violation directly verified in the code, fix is clear
-- `medium` — violation clear, but fix requires project context
-- `low` — uncertain; flag only if the risk is concrete
+- `high`: violation directly verified in the code, fix is clear
+- `medium`: violation clear, but fix requires project context
+- `low`: uncertain; flag only if the risk is concrete
 
 Include confidence label after severity: `[Critical|high]`, `[Important|medium]`, etc.
 

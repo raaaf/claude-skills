@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/duplicate-submit-guard-missing-call-site.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 39,
+      "matches": ["duplicate submit", "guard", "missing trait", "idempoten", "PreventsDuplicateSubmit", "rollout", "double-click"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP component classes, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "backend components, not public pages"
+    }
+  ]
+}

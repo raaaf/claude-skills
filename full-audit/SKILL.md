@@ -50,6 +50,10 @@ AUDIT_AGENTS="$AUDIT_ROOT/agents"
 AUDIT_BIN="$AUDIT_ROOT/bin"
 AUDIT_REFS="$AUDIT_ROOT/references"
 
+# PreCompact-Schutz: blockiert Auto-Compaction waehrend des Full-Audit-Runs
+CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
+touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 ```
 
@@ -359,6 +363,7 @@ Minor-Findings fixen wenn `FIX_MINOR=1` (medium/high/xhigh). Nicht gefixte Minor
 - **Zentralisierungs-Findings (neue Shared-Utility / Helper / Trait):** Wenn ein Finding ein dupliziertes Pattern in eine neue `lib/*.js` (o.ae.) extrahiert, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN einzigen Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent die erweiterte Datei-Grenze (siehe `fix-agent.md` Sonderfall) anwendet und jede Fundstelle migriert.
 - Jeden Fix zu `BEREITS_GEFIXT`. `GESAMT_*` inkrementieren.
 - Unklarer Fix → kurz nachfragen. Keine "Offener Punkt" ohne explizite User-Zustimmung.
+- **Hook-blockierte Dateien** (z.B. `.env.example` durch einen Schreibschutz-Hook): kein reiner Offener Punkt. Fertigen Diff/Copy-Paste-Block im Chat praesentieren und aktiv anbieten, ihn per `!`-Befehl selbst einzuspielen — nicht nur auflisten.
 - Ergebnis: `FIXES_APPLIED`.
 
 **Hinweis:** Full-Audit loopt intern (while-Schleife), NICHT ueber `audit-loop.sh` Stop-Hook. Kein `AUDIT_STATUS:` ausgeben.
@@ -453,6 +458,10 @@ Agent(
 # Marker schreiben — KEIN git push im selben Bash-Aufruf!
 hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-passed-$hash"
+
+# PreCompact-Marker entfernen — Full Audit abgeschlossen
+CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
+rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
 ```
 
 Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell).

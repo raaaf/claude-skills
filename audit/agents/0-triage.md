@@ -2,7 +2,7 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `haiku`
-- **maxTurns:** `5`
+- **maxTurns:** `7`
 
 ## Zweck
 
@@ -40,7 +40,8 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
     "ui_design": {"run": true, "hotspots": ["components/Button.tsx"], "reason": "neue Variant"},
     "ux": {"run": false, "reason": "kein Interaction-Pattern betroffen"},
     "animation": {"run": false, "reason": "keine Transitions/Animations im Diff"},
-    "docs_sync": {"run": true, "hotspots": ["config/services.php:12", "src/routes.ts:88"], "reason": "neue env('STRIPE_KEY') und neue Route -- README/CLAUDE.md/.env.example pruefen"}
+    "docs_sync": {"run": true, "hotspots": ["config/services.php:12", "src/routes.ts:88"], "reason": "neue env('STRIPE_KEY') und neue Route -- README/CLAUDE.md/.env.example pruefen"},
+    "copy": {"run": true, "hotspots": ["components/Button.tsx:22"], "reason": "neuer user-facing Button-Text"}
   }
 }
 ```
@@ -54,7 +55,7 @@ Analysiere den Diff und gib EXAKT dieses JSON zurueck (keine Erklaerung drumheru
 | performance | Loops, DB-Queries, API-Calls, grosse Arrays, Re-Renders, neue Dependencies |
 | code_quality | Jede Code-Aenderung ausser reine Translation-/Config-/Doc-Updates |
 | seo | Template-Aenderungen mit `<head>`, Meta-Tags, Routes, Sitemap, robots.txt. **Native Projekte (kein HTML/PHP/Blade/JSX im Baum, oder `platform: native`) → immer `run: false`** (keine Web-Oberflaeche, SEO nicht anwendbar) |
-| a11y | Frontend-Aenderungen mit interaktiven Elementen, Forms, Modals, Navigation |
+| a11y | Frontend-Aenderungen mit interaktiven Elementen, Forms, Modals, Navigation. **Auch wenn nur ein Limit/eine Range eines BESTEHENDEN Controls geaendert wird (Stepper-Cap, Slider-Range, Zeichen-Limit) → `run: true` mit dem Control als Hotspot** — ein frueherer a11y-Pass hat gegen die alte Range geprueft (z.B. Adjustable-Schrittweite), die Aenderung invalidiert das Ergebnis |
 | typography | Translation-Dateien, CSS/SCSS Typography, Text-Content in Templates |
 | ui_design | Frontend-Aenderungen mit visuellen Komponenten, neue Variants, Farben, Spacings |
 | ux | Neue User-Flows, Forms, Error-States, Loading-States, Navigation-Aenderungen |
@@ -78,4 +79,5 @@ Der zurueckgegebene Zeilennummer-Wert aus `grep -n` ist die Quelldatei-Zeile. Nu
 - Keine Erklaerungen drumherum — nur das JSON
 - Nicht uebermaessig aggressiv skippen — im Zweifel `run: true`
 - `security` fast immer `run: true` ausser bei 100% reinen Doc/Translation-Changes
+- Das `relevance`-Objekt MUSS ALLE 12 Dimensionen enthalten (architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy), auch die geskippten mit `run: false`. Fehlt eine, wird sie als geskippt behandelt und ein ganzer Worker faellt still aus.
 - Diff-Hunk-Offsets NIEMALS als Quelldatei-Zeilennummern in Hotspots eintragen

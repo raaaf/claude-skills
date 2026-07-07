@@ -8,7 +8,9 @@ Detail-Logik fuer Phase 1. Wird vom Orchestrator gelesen wenn Pre-Checks nicht-t
 |---|---|
 | `OK` | Weiter. `MODEL_OVERRIDE=null` (Subagents nutzen ihre Default-Modelle). |
 | `LARGE` (>2000 Zeilen ODER >20 Dateien) | Gezielte Escalation: Nur Architektur und Security laufen auf Opus. Ausgabe: "Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — Architektur + Security laufen auf Opus fuer tieferes Reasoning." Setze `HEAVY_REASONING_OVERRIDE=opus`. Weiter. |
-| `HUGE` (>5000 Zeilen ODER >50 Dateien) | Hard-Block: Abbrechen. "Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
+| `HUGE` (>5000 Zeilen; oder >50 Dateien UND >=1000 Zeilen) | Hard-Block: Abbrechen. "Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
+
+**Zweiachsige HUGE-Bewertung:** Ueberschreitet nur die Datei-Achse die Schwelle (>50 Dateien), liegen die Zeilen aber unter 20% der Zeilen-Schwelle (<1000), stuft das Script selbst auf `LARGE` herab und gibt `DIFF_SIZE_NOTE=...` aus. Die Note im Chat ausgeben (Warnung: viele kleine, logisch getrennte Aenderungen) und normal weiterlaufen — kein manueller Override noetig.
 
 **Warum nur zwei Dimensionen escalieren:** Architektur (Code-Reasoning ueber mehrere Module) und Security (subtile Angriffsvektoren) profitieren messbar von Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation sind ueberwiegend regel- oder musterbasiert — Sonnet reicht. Triage- und Fix-Agents bleiben auf Haiku.
 

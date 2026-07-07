@@ -1,0 +1,21 @@
+{
+  "fixture": "correctness/n26-str-getcsv-deprecation.php",
+  "must_find": [
+    {
+      "dimension": "quality",
+      "line": 17,
+      "matches": ["str_getcsv", "escape", "deprecat", "backslash", "trailing"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "local file parsing, no user-facing input or injection sink"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "PHP service class, no markup"
+    }
+  ]
+}

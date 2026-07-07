@@ -44,9 +44,15 @@ gh repo view >/dev/null 2>&1 || { echo "No GitHub remote. Triage requires gh CLI
 
 Ensure labels exist:
 ```bash
-for label in "needs-triage" "needs-info" "ready-for-agent" "ready-for-human" "wontfix"; do
-  gh label create "$label" --color "$(echo $label | md5sum | cut -c1-6)" 2>/dev/null || true
-done
+while IFS=: read -r label color; do
+  gh label create "$label" --color "$color" 2>/dev/null || true
+done <<'EOF'
+needs-triage:d4c5f9
+needs-info:fbca04
+ready-for-agent:0e8a16
+ready-for-human:1d76db
+wontfix:ffffff
+EOF
 ```
 
 ## Phase 1: Fetch Issues
@@ -72,9 +78,9 @@ For each issue, determine the exit state. Work through all issues before writing
 ### Classification
 
 **Type:**
-- `bug` — something that was working is broken
-- `enhancement` — new capability requested
-- `question` — asking how something works
+- `bug`: something that was working is broken
+- `enhancement`: new capability requested
+- `question`: asking how something works
 
 **Exit state decision:**
 

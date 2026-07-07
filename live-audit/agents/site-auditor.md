@@ -1,5 +1,6 @@
 # Site Auditor Agent
 
+- **subagent_type:** `general-purpose`
 - **model:** `sonnet`
 - **maxTurns:** `30`
 
@@ -59,8 +60,10 @@ Wenn neue Suppressions: `suppressions.json` updaten (Schritt 8).
 Für jede Strategy in `PSI_STRATEGY`, sequenziell mit 2s Delay:
 
 ```
-WebFetch: https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{SITE_URL}&strategy={strategy}&category=performance&category=accessibility&category=seo
+WebFetch: https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{SITE_URL}&strategy={strategy}&category=performance&category=accessibility&category=seo&key=$GOOGLE_PSI_API_KEY
 ```
+
+`$GOOGLE_PSI_API_KEY` kommt aus der Umgebung (gesetzt in `~/.claude/settings.json` env). Ohne Key antwortet die PSI API mit 429 (Quota 0 fuer anonyme Aufrufe).
 
 Bei HTTP 429: Strategy skippen, `PSI_429=true` setzen, weitermachen.
 Bei Timeout/Fehler: `PSI_ERROR=true` setzen.
@@ -183,13 +186,13 @@ gh api repos/{GITHUB_REPO}/contents/.claude/live-audit/suppressions.json \
 
 ```json
 {
-  "rollout_week": {ROLLOUT_WEEK + 1 wenn >= 4 Wochen vergangen, sonst ROLLOUT_WEEK},
+  "rollout_week": {min(ROLLOUT_WEEK + 1, 4)},
   "last_run": "{DATUM}",
   "pending_findings": {aktualisierte PENDING_FINDINGS Map}
 }
 ```
 
-Rollout-Woche erhöht sich automatisch jede Woche bis Woche 4. Danach bleibt sie bei 4.
+Rollout-Woche erhöht sich bei jedem erfolgreichen Run um 1, Cap bei 4. Bei degraded Run (`PSI_429` oder `PSI_ERROR` gesetzt): state.json NICHT schreiben, `rollout_week` bleibt unverändert.
 
 Schreibe state.json via `gh api` (wie suppressions.json oben).
 

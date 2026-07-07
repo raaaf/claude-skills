@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/service-layer-bypass-fix-missed-sibling-call-site.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 35,
+      "matches": ["bypass", "service", "sibling", "call site", "deleteGroup", "grep", "rollout"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP component classes, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "backend components, not public pages"
+    }
+  ]
+}

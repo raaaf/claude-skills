@@ -1,3 +1,7 @@
+---
+applies_to: \.(jsx|tsx|vue|svelte|astro|html)$|\.blade\.php$|sitemap|robots\.txt|/pages/
+priority: recommended
+---
 # SEO Guidelines
 
 Search engine optimization is not a marketing afterthought — it is a technical discipline that determines whether your carefully built application is discoverable at all. Every page that lacks a proper title, every image without alt text, every broken heading hierarchy is a missed signal to search engines and a worse experience for the users who find you through search.

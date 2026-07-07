@@ -1,3 +1,7 @@
+---
+applies_to: \.(css|scss|sass|less)$|\.(jsx|tsx|vue|svelte|astro)$|\.blade\.php$|\.(swift|kt|dart)$
+priority: recommended
+---
 # UI Animation Checklist
 
 ## 1. Should This Animate?
@@ -177,6 +181,10 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 ## 12. Reduced Motion
 
 - Wrap hover animations in `@media (hover: hover) and (pointer: fine)`
+
+**Before flagging "missing `prefers-reduced-motion`":** check whether a global catch-all already exists (e.g. a `@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; ... } }` block in the base/app CSS). If it does, an individual animated element without its own reduced-motion rule is already covered — not a finding.
+
+**Before flagging "missing duration" on a Tailwind `transition*` utility:** Tailwind's `transition`, `transition-colors`, `transition-transform`, etc. ship a default duration of 150ms. A bare utility class without an explicit `duration-*` is not a finding unless the default 150ms is demonstrably wrong for that interaction.
 
 ## 13. Review Checklist
 

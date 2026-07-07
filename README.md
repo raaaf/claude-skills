@@ -14,7 +14,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented); Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
-3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`)
+3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching so workers load only guidelines whose `applies_to` glob matches the diff)
 4. Phase 2: Audit-loop with triage routing (haiku triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
@@ -180,12 +180,23 @@ Sparring partner for turning ideas into solid implementation plans. Asks the rig
 
 Creates new skills following the canonical structure: orchestrator + `agents/` for parallel workers + `references/` for progressive disclosure + `guidelines/` for content best practices. Inspired by [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md).
 
+### `/improve` — Product Perspective Analysis
+
+Discovers what the app could do better from a product-owner perspective: feature gaps, growth opportunities, marketing, business potential, unfinished work. Complements /audit (code quality) with product thinking.
+
 ## Personal skills
 
-Two more skills live in this repo as architecture examples. They are wired to personal infrastructure and not meant for reuse — read them for patterns, not for installing.
+These skills live in this repo as architecture examples. They are wired to personal infrastructure and not meant for reuse — read them for patterns, not for installing. All API keys live in the environment (`~/.claude/settings.json` env or `~/.zshrc`), never in the skill files.
 
 - **`/live-audit`** — Scheduled weekly live-site audit (PageSpeed Insights API + SSL check) for my own domains. New findings become GitHub Issues in the matching repo; a suppress-label closes the learning loop. Shows: Scheduled-Tasks-MCP integration, API-based auditing without a browser, issue dedup.
 - **`/rafael-writing-style`** — My personal writing style for blog posts, web copy, and emails. Shows: how to encode tone-of-voice rules as a skill.
+- **`/mockup`** — Photorealistic mockups of any design (logo, flyer, packaging, apparel) via Nano Banana Pro over OpenRouter; pixel-faithful browser/phone frames via deterministic ImageMagick composite. Shows: image-API orchestration with retry/backoff, AI-vs-deterministic routing.
+- **`/produktbild`** — Faithful AI lifestyle product images: a motif is placed unchanged as a framed print into realistic rooms. Shows: prompt engineering for reference fidelity, parallel per-mood generation.
+- **`/produktvideo`** — AI lifestyle video of a poster in a room via Runway Gen-4 (two-step: render still, then animate), loopable and web-optimized. Shows: multi-step generation pipelines with user checkpoints.
+
+## Third-party skills
+
+- **`/find-skills`** — Vendored from the [skills.sh](https://skills.sh) ecosystem. Discovers and installs skills via `npx skills`. Deliberate exceptions: needs npm at runtime, auto-triggers on discovery questions, and always asks before installing anything.
 
 ## Stack
 

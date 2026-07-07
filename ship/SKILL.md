@@ -106,13 +106,6 @@ if [ -z "$HEALTH_URL" ]; then
     fi
   fi
 
-  # Laravel route files: find explicit health/up/ping route
-  if [ -z "$HEALTH_URL" ] && [ -f artisan ]; then
-    HEALTH_ROUTE=$(grep -rh "Route::get.*['\"]\/\(health\|up\|ping\|status\)" \
-      routes/ 2>/dev/null | head -1 | grep -oE "'[/a-z_-]+'" | head -1 | tr -d "'")
-    # HEALTH_ROUTE is the path only; combine with APP_URL if found above
-  fi
-
   # Firebase Hosting: site name from firebase.json -> https://{site}.web.app/
   if [ -z "$HEALTH_URL" ] && [ -f firebase.json ]; then
     FB_SITE=$(python3 -c "import json,sys; d=json.load(open('firebase.json')); \
@@ -205,7 +198,7 @@ If commit fails (hook rejection, empty): report the hook output and stop.
 ## Phase 2: Audit Gate
 
 ```bash
-CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
+CWD_HASH=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
 MARKER="/tmp/claude-audit-passed-${CWD_HASH}"
 
 if [ -f "$MARKER" ]; then
@@ -241,7 +234,7 @@ If push fails:
 
 ## Phase 4: Deploy
 
-If `DEPLOY=ci`: skip this phase. CI/CD will deploy from the push.
+If `DEPLOY_COMMAND` is `ci`: skip this phase. CI/CD will deploy from the push.
 
 Otherwise run the detected/configured deploy command:
 ```bash

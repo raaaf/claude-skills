@@ -1,3 +1,8 @@
+---
+applies_to: /migrations?/|/migrate/|\.migration\.|_migration\.|\.sql$
+priority: non_negotiable
+---
+
 # Data-Migration Safety Guidelines
 
 Regeln fuer Datenbank-Migrationen: destruktive Operationen, Locking, Rollback, Deploy-Reihenfolge. Gilt fuer Laravel-Migrations, aber die Prinzipien sind framework-agnostisch (Django, Rails, raw SQL).

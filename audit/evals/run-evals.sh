@@ -14,6 +14,10 @@
 # NOTE: This is a scaffold. It uses pattern-match scoring on finding
 # descriptions, which is fragile. A proper eval would compare structured
 # finding objects against the expected JSON with stricter field checks.
+#
+# Dev-only tool: runs on the developer's machine, never invoked by the
+# orchestrator. Requires bash 4+ (declare -A) — exempt from the bash 3.2
+# rule that applies to audit/bin/. macOS: run via `brew install bash`.
 
 set -euo pipefail
 

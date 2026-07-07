@@ -94,9 +94,9 @@ from scanning the codebase.
 Example format:
 ```
 Hypotheses:
-1. (most likely) {file}:{line} — {what might be wrong} — evidence: {from repro output}
-2. {file}:{line} — {what might be wrong} — evidence: {from repro output}
-3. {file}:{line} — {what might be wrong} — evidence: {from repro output}
+1. (most likely) {file}:{line}: {what might be wrong}; evidence: {from repro output}
+2. {file}:{line}: {what might be wrong}; evidence: {from repro output}
+3. {file}:{line}: {what might be wrong}; evidence: {from repro output}
 ```
 
 ## Phase 4: Instrument
@@ -152,7 +152,7 @@ No debug output in committed code.
 Diagnose complete
 
 Bug:       {one-line description}
-Root cause: {file}:{line} — {what went wrong and why}
+Root cause: {file}:{line}: {what went wrong and why}
 Fix:       {what was changed}
 Test:      {test file}:{line} (run: {command})
 Repro was: {the Phase 1 command}

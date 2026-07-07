@@ -28,40 +28,11 @@ hooks:
 
 Anti-Patterns / häufige Fehler im Loop: `references/anti-patterns.md`.
 
-## Phase 0: Learning-Backlog-Check
+## Phase 0: Pre-Flight-Checks (Learning-Backlog + offene Issues/PRs)
 
-Pruefe ob unverarbeitete Lerning-Vorschlaege aus frueheren Audits offen sind:
+Beide Checks (Learning-Backlog-Frage, offene `audit-finding`-Issues + PR-Dedup-Kontext) stehen in `references/pre-flight-checks.md` — lesen und ausfuehren. Ergebnis: ggf. Issues als Findings fuer Runde 1, `OPEN_PRS` als Dedup-Kontext fuer Phase 3f.
 
-```bash
-LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
-[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
-```
-
-Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
-- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md`. **WICHTIG — ins Quell-Repo editieren:** `~/.claude/skills/*` kann ein Sync-Ziel sein (Symlink oder entpacktes `.skill`-Bundle), dessen Inhalt ueberschrieben wird. Vor dem ersten Edit Quelle aufloesen (`readlink` bzw. Skill-Quell-Repo finden, z.B. `~/Local Sites/claude-skills`) und DORT editieren — Edits in der entpackten Kopie gehen beim naechsten Sync verloren. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Audit weiter mit Phase 1.
-- **Spaeter, Audit jetzt** → Phase 1 starten, Vorschlaege bleiben offen.
-- **Nie wieder fragen fuer diese Audits** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
-
-Wenn `0`: weiter ohne Frage.
-
-### Phase 0.2: Offene Audit-Issues & PRs
-
-```bash
-if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com; then
-  OPEN_AUDIT_ISSUES=$(gh issue list --state open --label audit-finding --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null || true)
-  OPEN_PRS=$(gh pr list --state open --json number,title,headRefName --jq '.[] | "#\(.number) \(.title) [\(.headRefName)]"' 2>/dev/null || true)
-fi
-```
-
-**Offene `audit-finding`-Issues vorhanden?** → AskUserQuestion (Liste kompakt zeigen):
-- **Jetzt mitfixen** — ausgewaehlte Issues werden als verifizierte Findings in Runde 1 eingespeist (Fix-Agent + Fix-Verifier wie ueblich). Nach erfolgreichem Fix: `gh issue close {N} --comment "Fixed in audit {DATUM}, commit folgt im naechsten Push."`
-- **Offen lassen** — Issues bleiben, Audit laeuft normal.
-
-**`OPEN_PRS` nicht leer?** → Als Kontext merken (keine Frage):
-- In Phase 3f-Dedup: kein neues Issue fuer etwas, das ein offener PR bereits adressiert.
-- Wenn ein offener PR dieselben Dateien anfasst wie der aktuelle Diff: Hinweis im Audit-Log (`## Hinweise: PR-Ueberschneidung`) — Merge-Konflikt-Risiko.
-
-**Skip dieser Phase (0 + 0.2) wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs) — dann auch keine Issue-Frage.
+**Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs) — dann auch keine Issue-Frage.
 
 ## Phase 0.5: Effort Configuration
 
@@ -100,12 +71,14 @@ bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
 bash "$AUDIT_BIN/pre-checks.sh"
 
-# Dependency-Vulnerabilities (nur wenn Manifest/Lockfile im Diff)
+# Dependency-Health (nur wenn Manifest/Lockfile im Diff)
 if echo "$ALLE_DATEIEN" | grep -qE '(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Podfile(\.lock)?|Package\.(swift|resolved)|pubspec\.(yaml|lock)|build\.gradle)'; then
-  bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)" --security-only
+  bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)"
   # DEP_SECURITY_RESULT=VULNS -> jede gemeldete Zeile wird ein Critical-Finding
   # [Security] (verwundbare Dependency blockiert Push wie jedes Critical).
-  # SKIP/CLEAN -> nichts tun. Outdated-Check laeuft hier bewusst NICHT (Noise).
+  # DEP_OUTDATED_RESULT=OUTDATED -> jede gemeldete Zeile (npm/composer outdated)
+  # wird ein Minor-Finding [Dependencies] (neue Version verfuegbar, kein Blocker).
+  # SKIP/CLEAN/CURRENT -> nichts tun.
 fi
 
 # i18n-Vollstaendigkeit (deterministisch, kein LLM)
@@ -124,8 +97,8 @@ if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
 fi
 bash "$AUDIT_BIN/diff-size-gate.sh"
 
-# Verify-by-Measurement: Mess-Kommando fuer Performance-Fixes erkennen (opt-in, evtl. leer)
-eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"   # setzt PERF_MEASURE_CMD
+eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"   # PERF_MEASURE_CMD: Verify-by-Measurement (opt-in, evtl. leer)
+GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)  # Guidelines die den Diff treffen (name+priority); ohne applies_to = always
 
 # Working-Tree-Exklusivitaet: Basis-Zustand festhalten (Check in Phase 4)
 AUDIT_BASE_HEAD=$(git rev-parse HEAD)
@@ -140,7 +113,7 @@ Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
 - Variable-Ableitung (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
 - Audit-Context-Check (PFLICHT bei fehlendem Context)
 
-Übergib `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK` und `SOURCE_DIRS` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
+Übergib `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS` und `GUIDELINE_MATCHES` an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
 
 ---
 
@@ -206,7 +179,7 @@ Nur Agents aus `ROUTING_RUN` (Schritt C.0.5: Triage-run plus deterministischer F
 Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
 - `TRIAGE_SUMMARY` (1-2 Zeilen)
 - `HOTSPOTS` (markierte Stellen, exakte Datei:Zeile)
-- `DATEILISTE` (zur Orientierung)
+- `DATEILISTE` + `GUIDELINE_MATCHES` (zur Orientierung; Worker laedt nur gelistete Guidelines, siehe prompt-template)
 
 **KEIN UNIFIED_DIFF.** Workers lesen Code via Read-Tool wenn noetig (max 5 Files pro Agent pro Runde).
 
@@ -289,7 +262,8 @@ Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Con
 2. Pro Datei einen `fix-agent.md`-Subagent (Sonnet) parallel dispatchen
 3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
 3a. **Zentralisierungs-Findings (neue Shared-Utility):** Extrahiert ein Finding ein dupliziertes Pattern in ein neues `lib/*.js` / Helper / Trait, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent jede Fundstelle migriert (siehe `fix-agent.md` Sonderfall).
-4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt
+3b. **Fix-Wave-Groesse begrenzen:** Ein Fix-Auftrag, der >2 Templates anfasst oder eine Partial-Extraktion enthaelt, wird auf mehrere Fix-Agents gesplittet (ausser Zentralisierungs-Fix nach 3a, der bewusst gebuendelt bleibt) ODER bekommt einen Report-Checkpoint: der Fix-Agent MUSS vor den letzten Edits einen Zwischenreport liefern. Grosse Auftraege ohne Report-Checkpoint brechen erfahrungsgemaess stillschweigend ab.
+4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt. **Fehlt der Agent-Report komplett** (Agent beendet ohne `FIX_RESULT`-Zeile), den Fix NICHT als verloren annehmen: `git diff` auf die Auftrags-Dateien pruefen — liegen Aenderungen vor, zaehlt der Fix als APPLIED und der Fix-Verifier-Lauf (E.5) ist fuer diese Dateien OBLIGATORISCH (kein stilles Entfallen).
 5. Minor: bei `FIX_MINOR=1` (medium + high effort) alle high/medium-confidence Minor fixen, sonst skippen. Nicht gefixte Minor bleiben NUR im Audit-Log — nie als Issue.
 6. Nicht fixbar weil Entscheidung noetig: als Offener Punkt mit Begruendung (siehe Definition oben). Nicht fixbar aus anderem Grund (z.B. externes System): verwerfen + `patterns-store.sh dismissed {pattern}`
 7. Gefixte Issues zu `BEREITS_GEFIXT` adden, via `patterns-store.sh add` ins Learning-Store

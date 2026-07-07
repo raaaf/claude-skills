@@ -26,8 +26,18 @@ TOTAL_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null | wc -l | tr -d ' ')
 echo "DIFF_LINES=$TOTAL"
 echo "DIFF_FILES=$TOTAL_FILES"
 
-if [ "$TOTAL" -gt 5000 ] || [ "$TOTAL_FILES" -gt 50 ]; then
+if [ "$TOTAL" -gt 5000 ]; then
   echo "DIFF_SIZE_RESULT=HUGE"
+elif [ "$TOTAL_FILES" -gt 50 ]; then
+  # Two-axis rule: file threshold exceeded, but lines under 20% of the line
+  # threshold means many small, logically separate changes — warn and continue
+  # as LARGE instead of recommending an abort.
+  if [ "$TOTAL" -lt 1000 ]; then
+    echo "DIFF_SIZE_RESULT=LARGE"
+    echo "DIFF_SIZE_NOTE=$TOTAL_FILES files exceed the file threshold, but only $TOTAL changed lines (<20% of the line threshold) — downgraded from HUGE, continuing with a warning"
+  else
+    echo "DIFF_SIZE_RESULT=HUGE"
+  fi
 elif [ "$TOTAL" -gt 2000 ] || [ "$TOTAL_FILES" -gt 20 ]; then
   echo "DIFF_SIZE_RESULT=LARGE"
 else

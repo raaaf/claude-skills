@@ -21,7 +21,11 @@ Suppressions (bekannte akzeptierte Issues -- NICHT melden):
 PROJEKT-SPEZIFISCHE GUIDELINES (ueberschreiben globale wenn Konflikt):
 {PROJECT_GUIDELINES}
 
+GUIDELINE-MATCH (welche Guidelines den Diff treffen, mit priority; Guidelines ohne `applies_to` sind immer dabei):
+{GUIDELINE_MATCHES}
+
 Regeln:
+- **Guideline-Scope:** Lies eine in deiner Agent-Definition referenzierte Guideline NUR, wenn ihr Dateiname oben in GUIDELINE-MATCH steht (sonst trifft sie den Diff nicht). Die `priority` ist dein Severity-Anker: non_negotiable → Critical-Kandidat, mandatory → Important, recommended → Minor.
 - Nur Issues melden die tatsaechlich Schaden anrichten oder gegen Best Practices verstossen
 - Projekt-spezifische Guidelines (oben) HABEN VORRANG vor globalen Guidelines
 - Keine stilistischen Vorschlaege (dafuer gibt es den Linter)
@@ -29,6 +33,8 @@ Regeln:
 - **Code schlaegt Docs:** Lautet ein Finding "X fehlt / ist falsch, laut CLAUDE.md/Docs/Kommentar sollte es Y sein", IMMER zuerst den tatsaechlichen Code verifizieren (Read/grep), bevor das Finding emittiert wird. Docs + Kommentare sind eine Hypothese, der Code ist die Wahrheit. Veraltete Doku ist selbst hoechstens ein Docs-Sync-Finding, kein Korrektheits-Finding.
 - **Code-Lesen on-demand:** Wenn ein Hotspot allein nicht ausreicht (z.B. Konsistenzpruefung gegen bestehende Komponente), lies die betreffende Datei mit dem Read-Tool. Max 5 Files pro Audit-Lauf.
 - **KEIN ungezielter Diff-Scan.** Du bekommst keinen kompletten Diff mehr — der Triage-Agent hat bereits die fuer dich relevanten Stellen markiert. Nutze die Hotspots als Startpunkt, lies via Read-Tool gezielt nach wenn noetig.
+- **Severity-Deckel fuer reine Typsicherheits-/Stil-Konsistenz-Findings:** Ein Finding ohne akuten Exploit- oder Datenverlust-Pfad (fehlendes `strict_types`, Fokus-Ring-Farbe, uneinheitliche Namenskonvention) ist maximal Important, nie Critical — auch wenn die zugrundeliegende Guideline `non_negotiable` markiert ist.
+- **Guideline-Referenzen nur mit verifizierter Sektionsnummer.** Bevor du eine Guideline-Sektion zitierst (z.B. "verstoesst gegen Abschnitt III"), die Guideline-Datei gegenlesen — es gibt unnummerierte Abschnitte. Eine erfundene oder falsche Sektionsnummer ist schlimmer als kein Zitat.
 - Fuer Full-Scans gibt es /full-audit
 - Melde NICHT Issues die bereits in einer vorherigen Runde gefixt wurden: {BEREITS_GEFIXT}
 - Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert
@@ -67,6 +73,8 @@ Dateien die du pruefen MUSST (lies JEDE einzelne Datei):
 WICHTIG: Lies JEDE Datei in der Liste. Ueberspringe keine. Beginne mit den wahrscheinlichsten Problem-Kandidaten, aber arbeite die komplette Liste ab.
 Melde nur echte, konkrete Probleme. Keine theoretischen Findings.
 Melde NICHT Issues die in den Suppressions stehen -- diese wurden bewusst akzeptiert.
+Reine Typsicherheits-/Stil-Konsistenz-Findings ohne akuten Exploit-/Datenverlust-Pfad sind maximal Important, nie Critical.
+Guideline-Sektionen nur zitieren, wenn du die Sektionsnummer zuvor in der Guideline-Datei verifiziert hast -- es gibt unnummerierte Abschnitte.
 
 Format (jedes Finding MUSS ein Confidence-Label haben):
 **Maximal 50 Worte pro Finding-Beschreibung. Keine Code-Snippets im Finding -- nur Datei:Zeile referenzieren.**

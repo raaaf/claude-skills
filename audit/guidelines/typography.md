@@ -1,3 +1,7 @@
+---
+applies_to: \.(css|scss|sass|less|styl)$|tailwind\.config|\.(jsx|tsx|vue|svelte|astro|html)$|\.blade\.php$|/fonts?/|\.(swift|kt|dart)$
+priority: recommended
+---
 # Typography Guidelines
 
 Typography is often the foundation of great design. Make sure to pay the attention it deserves.

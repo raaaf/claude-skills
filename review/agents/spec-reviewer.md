@@ -37,8 +37,8 @@ Return findings in this format only. Max 50 words per description.
 
 ```
 SPEC_FINDINGS_START
-[Missing] Spec says: "{criterion}" — not found in implementation (searched: {files})
-[Contradicts] {file}:{line} — spec says "{expected}", implementation does "{what it actually does}" instead
+[Missing] Spec says: "{criterion}": not found in implementation (searched: {files})
+[Contradicts] {file}:{line}: spec says "{expected}", implementation does "{what it actually does}" instead
 SPEC_FINDINGS_END
 ```
 
@@ -49,8 +49,8 @@ SPEC_FINDINGS_END
 ```
 
 Severity:
-- `Missing` — a spec requirement has no corresponding implementation
-- `Contradicts` — the implementation inverts or disables what the spec requires
+- `Missing`: a spec requirement has no corresponding implementation
+- `Contradicts`: the implementation inverts or disables what the spec requires
 
 Maximum 15 findings. Report the most impactful if you find more.
 
