@@ -50,7 +50,7 @@ Unterstuetzte Formate: JPEG, PNG, WebP.
 
 ### 3. Raumstil waehlen
 
-Per `AskUserQuestion`, Frage "Welcher Raumstil?":
+Per `AskUserQuestion`, Frage "Welcher Raumstil?" (single):
 
 - `skandinavisch-hell` — Helles Holz, weisse Waende, Morgenlicht, klare Linien
 - `warm-boho` — Warme Erdtoene, Rattan, Textilien, weiches Abendlicht, Pflanzen
@@ -59,7 +59,7 @@ Per `AskUserQuestion`, Frage "Welcher Raumstil?":
 
 ### 4. Web-Optimierung abfragen
 
-Per `AskUserQuestion`, Frage "Video nach der Generierung mit HandBrake fuers Web optimieren?":
+Per `AskUserQuestion`, Frage "Video nach der Generierung mit HandBrake fuers Web optimieren?" (single):
 - `ja` — zusaetzliche `_web.mp4`, faststart, RF23, volles Seitenverhaeltnis (empfohlen)
 - `nein` — nur Roh-Loop behalten
 

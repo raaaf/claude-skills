@@ -38,7 +38,7 @@ Key invariants:
 | `bash ~/.claude/hooks/sync-skills.sh` | Copy + zip skills to `~/.claude/skills/` after edits |
 | `bash audit/bin/verify-agents.sh audit/agents` | Verify all 17 required agent files present |
 | `bash audit/bin/check-i18n-keys.sh [root]` | Deterministic i18n key-set diff across locales |
-| `bash audit/bin/check-outdated.sh [root] [--security-only]` | Dependency vulnerabilities (audit-grade) + outdated majors (full-audit only) |
+| `bash audit/bin/check-outdated.sh [root] [--security-only]` | Dependency vulnerabilities (audit-grade, push-blocking) + outdated majors (Minor; runs in /full-audit always, in /audit wenn Manifest/Lockfile im Diff; `--security-only` unterdrueckt den Outdated-Teil) |
 | `bash audit/evals/run-evals.sh` | Run eval suite against fixtures (recall + false-positive count) |
 | `echo "..." \| bash audit/bin/normalize-suppression.sh` | Test the semantic dedup key for a suppression |
 | `bash audit/bin/perf-measure.sh --detect` / `--run "<cmd>"` | Verify-by-measurement helper for performance fixes (detect `perf-measure:` command, run it, emit `PERF_METRIC`) |
