@@ -77,7 +77,7 @@ Agent(
 )
 ```
 
-Praeambel-Kern (Langform in der Referenz): Schritt fuer Schritt, jedes verify bestaetigen, nur Betroffene Dateien, STOP-Bedingungen respektieren statt improvisieren, jede Report-Behauptung gegen ein echtes Tool-Ergebnis pruefen, Report-Format exakt (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
+Praeambel-Kern (Langform in der Referenz; `{WORKDIR}`/`{COMMIT_REGEL}` fuer den Working-Tree-Fall einsetzen — Executor committet hier NICHT): Schritt fuer Schritt, jedes verify bestaetigen, nur Betroffene Dateien, STOP-Bedingungen respektieren statt improvisieren, jede Report-Behauptung gegen ein echtes Tool-Ergebnis pruefen, Report-Format exakt (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 
 Referenz aufloesen (gleiche Kandidaten-Logik wie full-audit → audit):
 

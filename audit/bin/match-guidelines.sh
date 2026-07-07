@@ -23,7 +23,7 @@ changed=$( {
   git ls-files --others --exclude-standard 2>/dev/null
   up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
   [ -n "$up" ] && git diff --name-only "${up}...HEAD" 2>/dev/null
-} | sort -u )
+} | sort -u | grep -vE '(^|/)audit/evals/fixtures/' )   # fixtures = test data, no guideline signal (same rule as check-skips.sh)
 
 for f in "$DIR"/*.md; do
   [ -f "$f" ] || continue

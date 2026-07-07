@@ -73,6 +73,9 @@ Suppressions (bekannte akzeptierte Issues -- NICHT melden):
 PROJEKT-SPEZIFISCHE GUIDELINES (ueberschreiben globale wenn Konflikt):
 {PROJECT_GUIDELINES}
 
+DOKUMENTIERTE TRADEOFFS (aus ADRs/DESIGN.md/PRODUCT.md — bewusste Entscheidungen, NICHT als Finding melden):
+{DECIDED_TRADEOFFS}
+
 Dateien die du pruefen MUSST (lies JEDE einzelne Datei):
 {BATCH_DATEILISTE}
 

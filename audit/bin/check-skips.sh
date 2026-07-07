@@ -31,13 +31,16 @@ if ! command -v jq >/dev/null 2>&1 || ! printf '%s' "$json" | jq -e . >/dev/null
 fi
 
 # --- derive file-type signals from git (audit scope: working tree + staged + untracked + unpushed) ---
+# Eval fixtures are intentionally-broken TEST DATA, not product code: they must not
+# count as a frontend/code signal for the floor (learning 2026-07-07: a fixture
+# blade.php force-dispatched a11y/ui/ux/security for nothing).
 changed=$( {
   git diff --name-only HEAD 2>/dev/null
   git diff --name-only --cached 2>/dev/null
   git ls-files --others --exclude-standard 2>/dev/null
   up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
   [ -n "$up" ] && git diff --name-only "${up}...HEAD" 2>/dev/null
-} | sort -u )
+} | sort -u | grep -vE '(^|/)audit/evals/fixtures/' )
 
 match(){ printf '%s\n' "$changed" | grep -qiE "$1"; }
 
