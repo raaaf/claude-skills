@@ -20,6 +20,7 @@ Gesamtbild: Ist die App konsistent in ihrem Motion-Design — gleiche Easing-Fun
 
 - **Reduced-Motion-Catch-All:** Vor jedem "fehlt `prefers-reduced-motion`"-Finding pruefen, ob ein globaler Catch-All dafuer existiert (globales CSS/`app.css`, Tailwind-Preset). Existiert er bereits, ist ein einzelnes Element ohne eigene `@media`-Regel KEIN Finding.
 - **Tailwind-Transition-Defaults:** Tailwind-Utilities wie `transition`/`transition-colors`/`transition-transform` haben eine Default-Duration von 150ms. "Fehlende Duration" ist daher KEIN Finding, solange keine explizit abweichende (zu lange/zu kurze) Duration noetig ist.
+- **Findings gegen neue Dependencies:** Vor einem Finding, das einer im Diff neu eingefuehrten Animations-Library ein Fehlverhalten unterstellt (z.B. "respektiert Reduced Motion nicht"), zuerst deren Defaults pruefen (README/Docs in `node_modules/{pkg}/`, z.B. `respectMotionPreference`). Viele Libraries erledigen das Unterstellte bereits per Default.
 
 ## Ueberspringen wenn
 

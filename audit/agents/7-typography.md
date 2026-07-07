@@ -14,6 +14,11 @@ Typographie nach professionellen Standards in CSS/SCSS, Templates und Translatio
 
 **Kontext-Hinweis:** Variablen-Platzhalter (`:name`, `{count}`, `%s`), HTML-Tags und technische Strings (URLs, Pfade) ignorieren — nur menschenlesbare Textfragmente pruefen.
 
+## Pflicht-Verifikation VOR dem Flaggen
+
+- **font-display-Findings:** NUR nach `grep -rn "@font-face"` im Projekt. Kein `@font-face` vorhanden (z.B. System-Font-Stack oder Font kommt aus einer Library mit eigenem Loading) → kein `font-display`-Finding.
+- **Findings gegen neue Dependencies:** Vor einem Finding, das einer im Diff neu eingefuehrten Library ein Fehlverhalten unterstellt, zuerst deren Defaults pruefen (README/Docs in `node_modules/{pkg}/`). Viele Libraries erledigen das Unterstellte bereits per Default.
+
 ## Full-Audit Fokus (zusaetzlich)
 
 Codebase-weite Inkonsistenzen: unterschiedliche font-size Definitionen, gemischte font-family Deklarationen, fehlende `clamp()` fuer responsive Text, fehlende `font-variant-numeric` in Tabellen, typografische Fehler in Translation-Dateien.

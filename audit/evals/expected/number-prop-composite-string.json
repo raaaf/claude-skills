@@ -1,0 +1,21 @@
+{
+  "fixture": "quality/number-prop-composite-string.blade.php",
+  "must_find": [
+    {
+      "dimension": "architecture|quality",
+      "line": 6,
+      "matches": ["composite", "3/5", "cast", "(int)", "numeric prop", "value", "schluckt", "swallow"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input reaches the component, values come from model counts"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}
