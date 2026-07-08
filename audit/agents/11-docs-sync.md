@@ -4,50 +4,50 @@
 - **model:** `sonnet`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-Halte Projekt-Dokumentation aktuell und im Stil konsistent. Pruefe `README.md`, `CLAUDE.md`, `.env.example`, `CHANGELOG.md` und `docs/**` gegen den tatsaechlichen Code-Stand. Findings unter Kategorie `[Docs]`.
+Keep project documentation current and consistent in style. Check `README.md`, `CLAUDE.md`, `.env.example`, `CHANGELOG.md` and `docs/**` against the actual state of the code. Findings under category `[Docs]`.
 
-**Vollstaendige Guidelines:** Lies `guidelines/documentation.md` im Skill-Verzeichnis und pruefe gegen alle dort beschriebenen Regeln (Struktur-Standards fuer README/CLAUDE.md, Sync-Regeln fuer .env.example, Stilregeln nach Strunk/Caveman).
+**Complete guidelines:** Read `guidelines/documentation.md` in the skill directory and check against all rules described there (structure standards for README/CLAUDE.md, sync rules for .env.example, style rules per Strunk/Caveman).
 
-## Was pruefen (Kurzfassung)
+## What to Check (Short Version)
 
-**Sync gegen Code (PFLICHT):**
-- Jede `env('FOO')` / `process.env.FOO` / `os.getenv('FOO')` Referenz im Code → Eintrag in `.env.example`?
-- Neue Routes, CLI-Commands, Artisan-Commands, Scripts → im README erwaehnt?
-- Neue Top-Level-Dependencies in `package.json`/`composer.json`/`pyproject.toml` → Stack-Abschnitt in CLAUDE.md aktuell?
-- Install-/Run-Befehle im README funktionieren noch (kein veralteter `npm run dev` wenn Skript geloescht)?
-- Verwiesene Pfade/Dateien existieren noch?
+**Sync against code (MANDATORY):**
+- Every `env('FOO')` / `process.env.FOO` / `os.getenv('FOO')` reference in the code → entry in `.env.example`?
+- New routes, CLI commands, Artisan commands, scripts → mentioned in README?
+- New top-level dependencies in `package.json`/`composer.json`/`pyproject.toml` → stack section in CLAUDE.md current?
+- Do install/run commands in the README still work (no outdated `npm run dev` if the script was deleted)?
+- Do referenced paths/files still exist?
 
-**Test-Count-Drift (UNCONDITIONAL, jeder Lauf):**
-Egal ob der Diff Tests beruehrt: realen Test-Count ermitteln und gegen in Docs genannte Zahlen diffen. Test-Zahl-Drift ist ein 5x-Wiederkehrer.
-- Ist-Count: Test-Runner-Summary (z.B. `./vendor/bin/pest --ci`-Tail, `jest`/`vitest`-Summary) ODER greppen (`grep -rcE '\b(it|test)\(' tests/`).
-- Soll-Count: jede "Zahl + Test/Assertion"-Phrase in `README.md`/`CLAUDE.md` (z.B. "149 Pest-Tests, 395 Assertions").
-- Weicht Soll von Ist ab → `[Docs]`-Finding mit beiden Zahlen. Fix: Doku auf Ist-Wert setzen oder circa-/Bereichs-Formulierung vorschlagen, wenn die Zahl staendig driftet.
+**Test-count drift (UNCONDITIONAL, every run):**
+Regardless of whether the diff touches tests: determine the real test count and diff it against the numbers stated in docs. Test-count drift is a 5x repeat offender.
+- Actual count: test-runner summary (e.g. `./vendor/bin/pest --ci` tail, `jest`/`vitest` summary) OR grep (`grep -rcE '\b(it|test)\(' tests/`).
+- Documented count: every "number + test/assertion" phrase in `README.md`/`CLAUDE.md` (e.g. "149 Pest tests, 395 assertions").
+- Documented differs from actual → `[Docs]` finding with both numbers. Fix: set the doc to the actual value or suggest a circa/range wording if the number keeps drifting.
 
-**Struktur (siehe Guideline):**
-- README hat klare Sektionen: Was/Warum, Install, Usage, Dev, Stack, License
-- CLAUDE.md hat klare Sektionen: Identity/Stack, Commands, Conventions, Architecture-Notes
-- Keine Doppelungen zwischen README und CLAUDE.md (CLAUDE.md verweist, dupliziert nicht)
+**Structure (see guideline):**
+- README has clear sections: what/why, install, usage, dev, stack, license
+- CLAUDE.md has clear sections: identity/stack, commands, conventions, architecture notes
+- No duplication between README and CLAUDE.md (CLAUDE.md references, doesn't duplicate)
 
-**Stil (siehe Guideline):**
-- Keine Filler ("just", "simply", "basically", "im Grunde", "eigentlich")
-- Keine Preambles ("In the following section we will...")
-- Tabellen statt Prosa wo moeglich
-- Code-Bloecke statt Beschreibungen von Code
-- Kurze Saetze (max 3 Zeilen pro Absatz)
+**Style (see guideline):**
+- No filler ("just", "simply", "basically", "im Grunde", "eigentlich")
+- No preambles ("In the following section we will...")
+- Tables instead of prose where possible
+- Code blocks instead of descriptions of code
+- Short sentences (max 3 lines per paragraph)
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Komplette Stilueberarbeitung statt nur Drift-Check. Restrukturierung nach Standard-Sektionen erlaubt. Veraltete docs/**-Dateien identifizieren (z.B. Feature-Docs zu entfernten Features).
+Complete style overhaul instead of just a drift check. Restructuring into standard sections allowed. Identify outdated docs/**-files (e.g. feature docs for removed features).
 
-## Ueberspringen wenn
+## Skip When
 
-- `/audit`-Mode UND der Diff enthaelt keine doc-relevanten Aenderungen (keine neuen `env(...)`, keine neuen Routes/Commands/Scripts, keine neuen Top-Level-Dependencies, keine Verhaltensaenderung user-facing)
-- Reines i18n-Update oder reine Test-Aenderung
+- `/audit` mode AND the diff contains no doc-relevant changes (no new `env(...)`, no new routes/commands/scripts, no new top-level dependencies, no user-facing behavior change)
+- Pure i18n update or pure test change
 
-**Ausnahme:** Der Test-Count-Drift-Check oben laeuft IMMER, auch wenn der Agent sonst geskippt wuerde.
+**Exception:** the test-count drift check above ALWAYS runs, even if the agent would otherwise be skipped.
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

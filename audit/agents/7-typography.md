@@ -4,29 +4,29 @@
 - **model:** `haiku`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-Typographie nach professionellen Standards in CSS/SCSS, Templates und Translation-Dateien (`lang/`, `locales/`, `translations/`, `messages/`, `i18n/` — `.php`, `.json`, `.yaml`, `.po`, `.ts`).
+Typography to professional standards in CSS/SCSS, templates, and translation files (`lang/`, `locales/`, `translations/`, `messages/`, `i18n/` — `.php`, `.json`, `.yaml`, `.po`, `.ts`).
 
-**Vollstaendige Guidelines:** Lies `guidelines/typography.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln. Sprachregeln (Anfuehrungszeichen, geschuetzte Leerzeichen, Apostrophe) sind sprachspezifisch — Sprache aus Verzeichnis-/Dateiname ableiten (`de/`, `en/`, `fr.json`, `de.lproj/`, `values-de/`).
+**Complete guidelines:** Read `guidelines/typography.md` in the skill directory and check the code against all rules described there. Language rules (quotation marks, non-breaking spaces, apostrophes) are language-specific — derive the language from the directory/file name (`de/`, `en/`, `fr.json`, `de.lproj/`, `values-de/`).
 
-**Bei nativen Apps:** Translation-Files sind `Localizable.strings`/`.stringsdict` (iOS) bzw. `strings.xml` (Android) — typografische Zeichenregeln gelten dort genauso. Plus `guidelines/native-mobile.md` Section V: Dynamic Type / `sp`-Units statt fixer Groessen.
+**For native apps:** translation files are `Localizable.strings`/`.stringsdict` (iOS) or `strings.xml` (Android) — typographic character rules apply there too. Plus `guidelines/native-mobile.md` section V: Dynamic Type / `sp` units instead of fixed sizes.
 
-**Kontext-Hinweis:** Variablen-Platzhalter (`:name`, `{count}`, `%s`), HTML-Tags und technische Strings (URLs, Pfade) ignorieren — nur menschenlesbare Textfragmente pruefen.
+**Context note:** Ignore variable placeholders (`:name`, `{count}`, `%s`), HTML tags, and technical strings (URLs, paths) — only check human-readable text fragments.
 
-## Pflicht-Verifikation VOR dem Flaggen
+## Mandatory Verification BEFORE Flagging
 
-- **font-display-Findings:** NUR nach `grep -rn "@font-face"` im Projekt. Kein `@font-face` vorhanden (z.B. System-Font-Stack oder Font kommt aus einer Library mit eigenem Loading) → kein `font-display`-Finding.
-- **Findings gegen neue Dependencies:** Vor einem Finding, das einer im Diff neu eingefuehrten Library ein Fehlverhalten unterstellt, zuerst deren Defaults pruefen (README/Docs in `node_modules/{pkg}/`). Viele Libraries erledigen das Unterstellte bereits per Default.
+- **font-display findings:** ONLY after `grep -rn "@font-face"` in the project. No `@font-face` present (e.g. system font stack, or the font comes from a library with its own loading) → no `font-display` finding.
+- **Findings against new dependencies:** Before a finding that attributes misbehavior to a library newly introduced in the diff, first check its defaults (README/docs in `node_modules/{pkg}/`). Many libraries already handle the assumed behavior by default.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Codebase-weite Inkonsistenzen: unterschiedliche font-size Definitionen, gemischte font-family Deklarationen, fehlende `clamp()` fuer responsive Text, fehlende `font-variant-numeric` in Tabellen, typografische Fehler in Translation-Dateien.
+Codebase-wide inconsistencies: differing font-size definitions, mixed font-family declarations, missing `clamp()` for responsive text, missing `font-variant-numeric` in tables, typographic errors in translation files.
 
-## Ueberspringen wenn
+## Skip When
 
-- Keine Frontend- und keine Translation-Dateien im Diff/Batch
+- No frontend and no translation files in the diff/batch
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

@@ -5,73 +5,73 @@ priority: non_negotiable
 
 # Data-Migration Safety Guidelines
 
-Regeln fuer Datenbank-Migrationen: destruktive Operationen, Locking, Rollback, Deploy-Reihenfolge. Gilt fuer Laravel-Migrations, aber die Prinzipien sind framework-agnostisch (Django, Rails, raw SQL).
+Rules for database migrations: destructive operations, locking, rollback, deploy order. Applies to Laravel migrations, but the principles are framework-agnostic (Django, Rails, raw SQL).
 
 ## Contents
-- I. Destruktive Operationen
-- II. Locking & grosse Tabellen
-- III. Rollback & Reversibilitaet
-- IV. Daten-Integritaet
-- V. Deploy-Reihenfolge (Expand-Contract)
-- VI. Laravel-Spezifika
-- VII. Audit-Checkliste
+- I. Destructive Operations
+- II. Locking & Large Tables
+- III. Rollback & Reversibility
+- IV. Data Integrity
+- V. Deploy Order (Expand-Contract)
+- VI. Laravel Specifics
+- VII. Audit Checklist
 
-## I. Destruktive Operationen
+## I. Destructive Operations
 
-- **`dropColumn` / `dropTable` nie im selben Release wie der Code-Entfernung-PR.** Erst Code deployen, der die Spalte nicht mehr nutzt, ein Release abwarten, DANN droppen. Sonst bricht ein Rollback des Codes auf eine Spalte, die nicht mehr existiert.
-- **Renames sind Drops in Verkleidung.** `renameColumn` bricht laufenden Code zwischen Migration und Deploy. Pattern: neue Spalte adden → Code schreibt beide → Backfill → Code liest neu → alte Spalte droppen (separates Release).
-- **Jeder Drop braucht eine explizite Begruendung** im Migration-Kommentar: warum ist das Datum verzichtbar, gibt es einen Export/Backup-Verweis?
-- **`truncate` / `delete` ohne `where` in Migrationen:** Critical-Finding, immer.
+- **Never `dropColumn` / `dropTable` in the same release as the code-removal PR.** Deploy the code that no longer uses the column first, wait one release, THEN drop it. Otherwise a code rollback breaks on a column that no longer exists.
+- **Renames are drops in disguise.** `renameColumn` breaks running code between migration and deploy. Pattern: add new column → code writes both → backfill → code reads new → drop old column (separate release).
+- **Every drop needs an explicit justification** in the migration comment: why is the data expendable, is there an export/backup reference?
+- **`truncate` / `delete` without `where` in migrations:** always a critical finding.
 
-## II. Locking & grosse Tabellen
+## II. Locking & Large Tables
 
-- **`ALTER TABLE` lockt** (MySQL: je nach Operation und Version). Auf Tabellen > ~100k Rows: Lock-Dauer abschaetzen, Migration ausserhalb der Stosszeiten oder mit Online-DDL (`ALGORITHM=INPLACE`).
-- **Index-Erstellung auf grossen Tabellen:** Postgres `CREATE INDEX CONCURRENTLY` (nicht in Transaktion!), MySQL Online-DDL pruefen.
-- **Backfills nie als ein UPDATE:** `chunkById()` (Laravel) oder Batch-Loop mit Limit. Ein `UPDATE users SET ...` ohne Chunking auf 1M Rows haelt die Tabelle fest und sprengt Replikation.
-- **Backfill gehoert in einen Command/Job, nicht in die Migration,** wenn er laenger als ~30s laufen kann. Migrationen blockieren den Deploy.
+- **`ALTER TABLE` locks** (MySQL: depending on operation and version). On tables > ~100k rows: estimate lock duration, run the migration outside peak hours or use online DDL (`ALGORITHM=INPLACE`).
+- **Index creation on large tables:** Postgres `CREATE INDEX CONCURRENTLY` (not in a transaction!), check MySQL online DDL.
+- **Never run backfills as a single UPDATE:** `chunkById()` (Laravel) or a batch loop with a limit. An `UPDATE users SET ...` without chunking on 1M rows locks the table and blows up replication.
+- **A backfill belongs in a command/job, not in the migration,** if it can run longer than ~30s. Migrations block the deploy.
 
-## III. Rollback & Reversibilitaet
+## III. Rollback & Reversibility
 
-- **`down()` muss funktionieren oder explizit leer sein mit Kommentar warum.** Ein `down()` das `dropColumn` auf eine Spalte mit Daten macht, ist kein Rollback, sondern Datenverlust — dann lieber `throw new RuntimeException('irreversible')` mit Begruendung.
-- **`down()` testen gehoert zum Review:** `migrate` + `migrate:rollback` + `migrate` muss durchlaufen.
-- **Daten-Migrationen (UPDATE/INSERT in Migration) sind fast nie reversibel** — explizit kennzeichnen.
+- **`down()` must work, or be explicitly empty with a comment explaining why.** A `down()` that runs `dropColumn` on a column with data isn't a rollback, it's data loss — prefer `throw new RuntimeException('irreversible')` with a justification.
+- **Testing `down()` is part of the review:** `migrate` + `migrate:rollback` + `migrate` must run cleanly.
+- **Data migrations (UPDATE/INSERT in a migration) are almost never reversible** — mark them explicitly.
 
-## IV. Daten-Integritaet
+## IV. Data Integrity
 
-- **NOT NULL auf bestehende Spalte:** erst Default setzen oder Backfill, dann Constraint. Reihenfolge im selben Migration-File pruefen.
-- **Foreign Key auf bestehende Daten:** Orphans VOR dem Constraint bereinigen (sonst schlaegt die Migration in Prod fehl, lokal mit sauberen Testdaten nicht).
-- **Unique Constraint nachtraeglich:** Duplikate-Check + Bereinigungsstrategie muss VOR dem Constraint laufen.
-- **Enum-/Status-Spalten erweitern statt umbauen:** neue Werte adden ist safe, Werte entfernen braucht Daten-Pruefung.
+- **NOT NULL on an existing column:** set a default or backfill first, then add the constraint. Check the order within the same migration file.
+- **Foreign key on existing data:** clean up orphans BEFORE the constraint (otherwise the migration fails in prod, but not locally with clean test data).
+- **Adding a unique constraint after the fact:** the duplicate check + cleanup strategy must run BEFORE the constraint.
+- **Extend enum/status columns instead of rebuilding them:** adding new values is safe, removing values needs a data check.
 
-## V. Deploy-Reihenfolge (Expand-Contract)
+## V. Deploy Order (Expand-Contract)
 
-Zero-Downtime-Grundregel: **Code-Version N und N+1 muessen beide mit dem aktuellen Schema funktionieren.**
+Zero-downtime base rule: **code versions N and N+1 must both work with the current schema.**
 
-1. **Expand:** Schema additiv erweitern (neue Spalte/Tabelle, nullable oder mit Default)
-2. **Migrate:** Code deployen der beides kann (schreibt neu, liest beides)
-3. **Backfill:** Alte Daten nachziehen (chunked, im Job)
-4. **Contract:** Altes Schema entfernen (separates Release, siehe I)
+1. **Expand:** extend the schema additively (new column/table, nullable or with a default)
+2. **Migrate:** deploy code that can do both (writes new, reads both)
+3. **Backfill:** catch up old data (chunked, in a job)
+4. **Contract:** remove the old schema (separate release, see I)
 
-Audit-Signal: Migration UND Code-Aenderung die sie sofort voraussetzt im selben Diff → pruefen ob ein Deploy-Zwischenzustand bricht.
+Audit signal: a migration AND a code change that immediately depends on it in the same diff → check whether an intermediate deploy state breaks.
 
-## VI. Laravel-Spezifika
+## VI. Laravel Specifics
 
-- **MySQL kann DDL nicht in Transaktionen:** Bei mehreren DDL-Statements in einer Migration schlaegt Statement 3 fehl → 1+2 sind schon applied, Migration haengt halb. Grosse Migrationen splitten.
-- **`Schema::hasColumn()` / `hasTable()` Guards** in Migrationen, die auf mehreren Umgebungen mit Drift laufen.
-- **`$withinTransaction = false`** fuer `CREATE INDEX CONCURRENTLY` (Postgres).
-- **Model-Nutzung in Migrationen vermeiden:** Models aendern sich, Migrationen sind eingefroren. `DB::table()` statt `User::` — sonst bricht die Migration, wenn das Model spaeter umzieht oder einen Global Scope bekommt.
-- **`migrate:fresh` vs Produktionsrealitaet:** Eine Migration-Folge, die nur via `fresh` funktioniert (nicht inkrementell von Prod-Stand), ist kaputt.
+- **MySQL can't run DDL in transactions:** if statement 3 of several DDL statements in a migration fails → 1+2 are already applied, the migration is half-applied. Split large migrations.
+- **`Schema::hasColumn()` / `hasTable()` guards** in migrations that run across multiple environments with drift.
+- **`$withinTransaction = false`** for `CREATE INDEX CONCURRENTLY` (Postgres).
+- **Avoid using models in migrations:** models change, migrations are frozen. `DB::table()` instead of `User::` — otherwise the migration breaks if the model later moves or gets a global scope.
+- **`migrate:fresh` vs production reality:** a migration sequence that only works via `fresh` (not incrementally from the prod state) is broken.
 
-## VII. Audit-Checkliste
+## VII. Audit Checklist
 
-| Check | Schweregrad bei Verstoss |
+| Check | Severity if violated |
 |---|---|
-| `dropColumn`/`dropTable`/`renameColumn` im selben Diff wie Code-Nutzung-Entfernung | Important |
-| `truncate`/`delete` ohne `where` in Migration | Critical |
-| Unchunked UPDATE/Backfill auf potentiell grosser Tabelle | Important |
-| `down()` mit Datenverlust ohne Kennzeichnung | Important |
-| NOT NULL / FK / Unique auf bestehende Daten ohne Bereinigung davor | Important |
-| Models statt `DB::table()` in Migration | Minor |
-| Mehrere DDL-Statements in einer Migration (MySQL) | Minor |
-| Backfill > 30s in Migration statt Command/Job | Important |
-| Migration + abhaengiger Code im selben Deploy ohne Expand-Contract | Important (medium confidence — Deploy-Setup beruecksichtigen) |
+| `dropColumn`/`dropTable`/`renameColumn` in the same diff as removing the code that uses it | Important |
+| `truncate`/`delete` without `where` in a migration | Critical |
+| Unchunked UPDATE/backfill on a potentially large table | Important |
+| `down()` with data loss and no marking | Important |
+| NOT NULL / FK / unique on existing data without cleanup beforehand | Important |
+| Models instead of `DB::table()` in a migration | Minor |
+| Multiple DDL statements in one migration (MySQL) | Minor |
+| Backfill > 30s in a migration instead of a command/job | Important |
+| Migration + dependent code in the same deploy without expand-contract | Important (medium confidence — consider deploy setup) |

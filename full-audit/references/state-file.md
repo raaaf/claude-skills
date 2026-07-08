@@ -1,15 +1,15 @@
-# Full-Audit State-Datei: Format, Resume, Loop-Modus
+# Full-Audit State File: Format, Resume, Loop Mode
 
-Persistenter Goal-Loop-Zustand fuer /full-audit nach dem /feature-audit-Muster. Der komplette Loop-Fortschritt (Batches, Runden, Findings-Zaehler, Post-Phasen) lebt in einer Datei auf Disk, nicht im Konversationskontext — er ueberlebt Session-Tod, Kontext-Kompaktierung und Unterbrechungen.
+Persistent goal-loop state for /full-audit, following the /feature-audit pattern. The entire loop progress (batches, rounds, finding counters, post-phases) lives in a file on disk, not in the conversation context — it survives session death, context compaction, and interruptions.
 
-## Dateien
+## Files
 
-| Datei | Inhalt |
+| File | Content |
 |---|---|
-| `.claude/audits/full-audit-state.md` | Matrix + Header (die State-Datei) |
-| `.claude/audits/full-audit-batches/batch-NN.txt` | Dateiliste je Batch, repo-root-relativ, eine pro Zeile |
+| `.claude/audits/full-audit-state.md` | Matrix + header (the state file) |
+| `.claude/audits/full-audit-batches/batch-NN.txt` | File list per batch, repo-root-relative, one per line |
 
-Beides lokale Lauf-Infrastruktur (steht in `.gitignore`, wie `cache.json`). Beide Pfade sind erlaubte Orchestrator-Edits.
+Both are local run infrastructure (in `.gitignore`, like `cache.json`). Both paths are allowed orchestrator edits.
 
 ## Format
 
@@ -22,7 +22,7 @@ batch-dir: .claude/audits/full-audit-batches
 post-phases: cross_ref=pending log=pending issues=pending
 started: 2026-07-07
 
-| ID | Verzeichnis | Dateien | Runden | C | I | M | Status | HEAD |
+| ID | Directory | Files | Rounds | C | I | M | Status | HEAD |
 |---|---|---|---|---|---|---|---|---|
 | 01 | app/Services | 34 | 2/3 | 1 | 3 | 5 | clean | a1b2c3d |
 | 02 | resources/views | 38 | 1/3 | 0 | 0 | 0 | running | - |
@@ -32,50 +32,52 @@ started: 2026-07-07
 - none
 ```
 
-Regeln:
+Rules:
 
-- **Statuswerte:** `pending` (noch nicht auditiert) | `running` (Batch in Arbeit) | `clean` (auditiert + gefixt) | `blocked` (NO_CONVERGENCE oder Entscheidungs-Punkte).
-- **Runden** = `verbraucht/max` (z.B. `2/3`). **C/I/M** = kumulierte Findings des Batches ueber alle Runden. **HEAD** = Kurz-SHA bei Batch-Abschluss (`git rev-parse --short HEAD`), sonst `-`.
-- **Header-Keys maschinenlesbar** (`key: value`, eine Zeile): `mode`, `effort`, `dimensions`, `batch-dir`, `post-phases`, `started`. Resume liest Modus/Effort/Dimensionen von hier statt den User erneut zu fragen.
-- **Zellen duerfen kein rohes `|` enthalten** (bricht den awk-Parser) — als `\|` escapen oder umformulieren.
-- **SINGLE-Modus** = eine Batch-Zeile (ID `01`, Verzeichnis `.`).
-- **Blocked-Sektion:** ein Checkbox-Bullet pro blockiertem Punkt (`- [ ] [ID] Kurzbeschreibung`). `- none` zaehlt nicht. Blocked blockt die Completion NICHT, muss aber hier UND im Audit-Log stehen.
+- **Status values:** `pending` (not yet audited) | `running` (batch in progress) | `clean` (audited + fixed) | `blocked` (NO_CONVERGENCE or decision points).
+- **Rounds** = `used/max` (e.g. `2/3`). **C/I/M** = accumulated findings of the batch across all rounds. **HEAD** = short SHA on batch completion (`git rev-parse --short HEAD`), else `-`.
+- **Header keys machine-readable** (`key: value`, one line): `mode`, `effort`, `dimensions`, `batch-dir`, `post-phases`, `started`. Resume reads mode/effort/dimensions from here instead of asking the user again.
+- **Cells must not contain a raw `|`** (breaks the awk parser) — escape as `\|` or rephrase.
+- **SINGLE mode** = one batch row (ID `01`, Directory `.`).
+- **Blocked section:** one checkbox bullet per blocked point (`- [ ] [ID] short description`). `- none` doesn't count. Blocked does NOT block completion, but must appear here AND in the audit log.
 
-## Scripts (bash 3.2, deterministisch — Bash entscheidet, nicht das LLM)
+**Column rename note:** `Verzeichnis`→`Directory` and `Dateien`→`Files` are safe — neither `status-line.sh` nor `resume-check.sh` looks up those two columns by name at all (they're never read, only occupy a position). `Runden`→`Rounds` is safe because `status-line.sh` matches `c=="runden" || c=="rounds"` bilingually, and `resume-check.sh` doesn't reference the rounds column at all. Verified by reading both scripts (see below); do not rename `ID`, `Status`, or `HEAD` without re-verifying the same way.
 
-**`status-line.sh <STATE_FILE>`** emittiert genau eine Zeile:
+## Scripts (bash 3.2, deterministic — Bash decides, not the LLM)
+
+**`status-line.sh <STATE_FILE>`** emits exactly one line:
 
 ```
 FULL_AUDIT_STATUS batches_total=3 pending=1 running=1 clean=1 blocked=0 rounds_used=3 critical=1 important=3 minor=5 blocked_items=1 post_phases=pending
 ```
 
-`post_phases=done` erst wenn ALLE Keys der `post-phases:`-Zeile `=done` sind. Fehlende Datei → Null-Zeile. Der Orchestrator entscheidet Completion NUR aus der Zeile des aktuellen Turns, nie aus dem Gedaechtnis.
+`post_phases=done` only once ALL keys of the `post-phases:` line are `=done`. Missing file → zero line. The orchestrator decides completion ONLY from the line of the current turn, never from memory.
 
-**`resume-check.sh <STATE_FILE>`** prueft jede `clean`-Zeile: Batch-Liste gegen alles, was sich seit dem vermerkten HEAD geaendert hat (`git diff <head>..HEAD` + Working-Tree via `git status --porcelain`). Output pro clean-Batch: `BATCH_DIRTY id=NN files=K` oder `BATCH_CLEAN id=NN`. Fehlende Batch-Liste oder unaufloesbarer HEAD → `BATCH_DIRTY files=unknown` (fail toward re-audit). Das Script liest nur — Zeilen auf `pending` zuruecksetzen macht der Orchestrator.
+**`resume-check.sh <STATE_FILE>`** checks every `clean` row: batch list against everything that changed since the recorded HEAD (`git diff <head>..HEAD` + working tree via `git status --porcelain`). Output per clean batch: `BATCH_DIRTY id=NN files=K` or `BATCH_CLEAN id=NN`. Missing batch list or unresolvable HEAD → `BATCH_DIRTY files=unknown` (fail toward re-audit). The script only reads — resetting rows to `pending` is the orchestrator's job.
 
-## Resume-Semantik
+## Resume Semantics
 
-Existiert die State-Datei beim Aufruf von /full-audit:
+If the state file exists when /full-audit is invoked:
 
-1. `resume-check.sh` laufen lassen. Jeden `BATCH_DIRTY` auf `pending` zuruecksetzen (Runden `0/{max}`, C/I/M nullen, HEAD `-`).
-2. `running`-Zeilen (Session mitten im Batch gestorben) auf `pending` zuruecksetzen — halbe Batches werden neu auditiert, nie fortgesetzt.
-3. Modus/Effort/Dimensionen aus dem Header uebernehmen, Phasen 0.3-1.5 skippen, direkt Phase 2 ab dem ersten `pending`-Batch.
-4. `clean`-Batches werden NIE zur Bestaetigung re-auditiert.
+1. Run `resume-check.sh`. Reset every `BATCH_DIRTY` to `pending` (Rounds `0/{max}`, zero C/I/M, HEAD `-`).
+2. Reset `running` rows (session died mid-batch) to `pending` — half batches are re-audited from scratch, never resumed.
+3. Take over mode/effort/dimensions from the header, skip phases 0.3-1.5, go directly to Phase 2 starting at the first `pending` batch.
+4. `clean` batches are NEVER re-audited for confirmation.
 
-**Nicht-Determinismus (wichtig):** Audit-Findings sind LLM-Urteile, keine reproduzierbaren Tests. `clean` heisst "in diesem Lauf auditiert und gefixt", nicht "re-verifizierbar gruen" — ein erneuter Worker-Lauf auf unveraendertem Code kann andere Findings produzieren. Deshalb gilt: kein Re-Audit von clean-Batches, Re-Audit ausschliesslich ueber den deterministischen Dirty-Check. (Genau hierin unterscheidet sich der Loop von /feature-audit, dessen Zeilen an echte Tests gebunden sind.)
+**Non-determinism (important):** audit findings are LLM judgments, not reproducible tests. `clean` means "audited and fixed in this run", not "re-verifiably green" — a fresh worker run on unchanged code can produce different findings. Hence: no re-audit of clean batches, re-audit exclusively via the deterministic dirty check. (This is exactly where the loop differs from /feature-audit, whose rows are tied to real tests.)
 
-Frisch abschliessen und neu starten: State-Datei + `full-audit-batches/` loeschen, /full-audit erneut aufrufen.
+Fresh finish and restart: delete the state file + `full-audit-batches/`, call /full-audit again.
 
-## Loop-Modus (optional)
+## Loop Mode (optional)
 
-Default bleibt single-session: alle Batches in einem Lauf, die State-Datei ist dann nur Crash-Versicherung.
+Default stays single-session: all batches in one run, the state file is then just crash insurance.
 
-Fuer sehr grosse Codebases turn-weise via `/loop /full-audit`:
+For very large codebases, turn-by-turn via `/loop /full-audit`:
 
-- `FULL_AUDIT_BATCHES_PER_TURN=N` (Default ohne Loop: alle) — nach N Batches endet der Turn mit der `FULL_AUDIT_STATUS`-Zeile (verbatim als letzte Zeile), /loop feuert den naechsten.
-- **Stop-Bedingungen** (feature-audit-Muster): derselbe Batch 3 Turns in Folge `blocked` ohne Fortschritt → Batch blocked lassen, weiter mit dem naechsten; 50 Turns gesamt → Abbruch mit Digest.
-- KEIN neuer Stop-Hook (Hook-Safety-Gotcha: `audit-loop.sh` gehoert /audit; die Zeile heisst deshalb `FULL_AUDIT_STATUS`, niemals `AUDIT_STATUS`).
+- `FULL_AUDIT_BATCHES_PER_TURN=N` (default without loop: all) — after N batches the turn ends with the `FULL_AUDIT_STATUS` line (verbatim as the last line), /loop fires the next one.
+- **Stop conditions** (feature-audit pattern): the same batch `blocked` for 3 turns in a row without progress → leave the batch blocked, continue with the next one; 50 turns total → abort with a digest.
+- NO new Stop hook (hook safety gotcha: `audit-loop.sh` belongs to /audit; the line is therefore called `FULL_AUDIT_STATUS`, never `AUDIT_STATUS`).
 
-## Future Option (bewusst NICHT gebaut)
+## Future Option (deliberately NOT built)
 
-Datei-genaues Caching via `audit/bin/cache-check.sh`/`cache-write.sh` (sha256 pro Datei): Fix-Agents invalidieren die Hashes waehrend des Laufs permanent, Resume-Granularitaet ist der Batch. Falls Batch-Granularitaet je zu grob wird, hier ansetzen.
+File-exact caching via `audit/bin/cache-check.sh`/`cache-write.sh` (sha256 per file): fix agents permanently invalidate the hashes during the run, resume granularity is the batch. If batch granularity ever gets too coarse, start here.

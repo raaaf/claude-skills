@@ -4,26 +4,26 @@
 - **model:** `opus`
 - **maxTurns:** `15`
 
-## Fokus
+## Focus
 
-Secrets, Injection, OWASP Top 10, Dependencies.
+Secrets, injection, OWASP Top 10, dependencies.
 
-**Vollstaendige Guidelines:** Lies `guidelines/security.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
+**Complete guidelines:** Read `guidelines/security.md` in the skill directory and check the code against all rules described there.
 
-**Bei nativen Apps** (`FRAMEWORK` = ios/android/react-native/flutter): zusaetzlich `guidelines/native-mobile.md` Section II — Keychain/Keystore statt UserDefaults, ATS/Cleartext, Deep-Link-Validierung, Privacy Manifest, Permission-Descriptions. XSS/CSP-Regeln gelten dort nicht.
+**For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section II — Keychain/Keystore instead of UserDefaults, ATS/cleartext, deep-link validation, privacy manifest, permission descriptions. XSS/CSP rules do not apply there.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-XSS (unescaped Output), fehlende Auth-Checks in Actions/Endpoints, SQL Injection, Secrets im Code, unsichere File-Uploads ohne Mime-Type-Pruefung, fehlende CSRF-Protection, Cache-Keys ohne User-Scope (Data Leak).
+XSS (unescaped output), missing auth checks in actions/endpoints, SQL injection, secrets in code, insecure file uploads without mime-type check, missing CSRF protection, cache keys without user scope (data leak).
 
-**Prompt-Templates (`src/prompts/*.md` o.ae.):** Pruefe Template-Dateien selbst, nicht nur die Caller. Jeder `{{placeholder}}` mit Wert aus externen Daten (Search-Console-Queries, API-Titel/Snippets, gefetchte Seiten-Copy, LLM-Output) MUSS im Template von einem `<<<UNTRUSTED_*_START>>>`-Block umschlossen sein, und substituierte Werte muessen die Fence-Marker-Tokens gestrippt bekommen. Bare externer Placeholder = Indirect-Prompt-Injection. Siehe `guidelines/security.md` Section XII.
+**Prompt templates (`src/prompts/*.md` or similar):** Check template files themselves, not only the callers. Every `{{placeholder}}` with a value from external data (Search Console queries, API titles/snippets, fetched page copy, LLM output) MUST be wrapped in the template by an `<<<UNTRUSTED_*_START>>>` block, and substituted values must have the fence marker tokens stripped. A bare external placeholder is indirect prompt injection. See `guidelines/security.md` section XII.
 
-## Pflicht-Verifikation VOR dem Flaggen
+## Mandatory Verification BEFORE Flagging
 
-- **XSS/Injection-Findings:** Erst die zugehoerige Store-/Form-Request-Validierung bzw. Sanitization gegenchecken (Request-Klasse, `SanitizesInput`-Trait, Validation-Rules). Wenn der Input dort bereits validiert/sanitisiert wird, kein Finding.
-- **Enum-Findings:** Vor dem Flaggen pruefen, ob der referenzierte Enum-Case ueberhaupt existiert (`grep app/Enums/`). Findings zu nicht existierenden Cases sind Halluzinationen.
-- **Operator-Render-Risiko in Alpine `x-data`:** Nur `>`/`>=` flaggen — `<`/`<=` sind sicher (Gotcha #7 der Projekt-Memory).
+- **XSS/injection findings:** First cross-check the associated store/form-request validation or sanitization (request class, `SanitizesInput` trait, validation rules). If the input is already validated/sanitized there, no finding.
+- **Enum findings:** Before flagging, check whether the referenced enum case actually exists (`grep app/Enums/`). Findings against non-existent cases are hallucinations.
+- **Operator render risk in Alpine `x-data`:** Only flag `>`/`>=` — `<`/`<=` are safe (gotcha #7 in project memory).
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

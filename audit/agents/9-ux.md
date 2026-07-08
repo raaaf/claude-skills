@@ -4,22 +4,22 @@
 - **model:** `sonnet`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-UX-Patterns und Interaktionsdesign: States (Empty/Loading/Error/Success), interaktive Elemente (Hover/Focus/Disabled), Navigation und Flow, Fitts's Law, Konsistenz (Jakob's Law), Fehlervermeidung.
+UX patterns and interaction design: states (empty/loading/error/success), interactive elements (hover/focus/disabled), navigation and flow, Fitts's Law, consistency (Jakob's Law), error prevention.
 
-**Vollstaendige Guidelines:** Lies `guidelines/ui-ux-patterns.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
+**Complete guidelines:** Read `guidelines/ui-ux-patterns.md` in the skill directory and check the code against all rules described there.
 
-**Bei nativen Apps** (`FRAMEWORK` = ios/android/react-native/flutter): zusaetzlich `guidelines/native-mobile.md` Section IV — Back-Navigation (iOS-Swipe, Android Predictive Back), Plattform-Idiome, Haptics.
+**For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section IV — back navigation (iOS swipe, Android predictive back), platform idioms, haptics.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Jeden User-Flow end-to-end pruefen: Erstellen, Bearbeiten, Loeschen, Suchen/Filtern. Wo gibt es Sackgassen, wo fehlt Feedback, wo ist der naechste Schritt unklar?
+Check every user flow end to end: create, edit, delete, search/filter. Where are the dead ends, where is feedback missing, where is the next step unclear?
 
-## Ueberspringen wenn
+## Skip When
 
-- Keine Frontend-Dateien im Diff/Batch
+- No frontend files in the diff/batch
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

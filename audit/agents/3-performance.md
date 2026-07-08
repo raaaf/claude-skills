@@ -4,24 +4,24 @@
 - **model:** `sonnet`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-N+1, Memory Leaks, Bundle Size, Re-Renders, redundante Operationen (doppelte File-Reads, wiederholte API-Calls), verpasste Concurrency (sequentiell statt parallel), Hot-Path-Bloat, TOCTOU Anti-Pattern, unbounded Data Structures. **Skalierungs-Probleme:** Code der bei 1 User funktioniert aber bei 100+ gleichzeitigen Usern bricht (fehlende Pagination, synchrone Jobs, File-basierte Sessions, unbounded SELECTs, fehlende Locks bei parallelen Schreibzugriffen).
+N+1, memory leaks, bundle size, re-renders, redundant operations (duplicate file reads, repeated API calls), missed concurrency (sequential instead of parallel), hot-path bloat, TOCTOU anti-pattern, unbounded data structures. **Scaling issues:** code that works with 1 user but breaks with 100+ concurrent users (missing pagination, synchronous jobs, file-based sessions, unbounded SELECTs, missing locks on concurrent writes).
 
-**Vollstaendige Guidelines:** Lies `guidelines/performance.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
+**Complete guidelines:** Read `guidelines/performance.md` in the skill directory and check the code against all rules described there.
 
-**Bei nativen Apps** (`FRAMEWORK` = ios/android/react-native/flutter): zusaetzlich `guidelines/native-mobile.md` Section III — Main-Thread-Blocking, Retain Cycles / Context-Leaks, Listen-Virtualisierung, Bild-Downsampling, App-Start. Web-Vitals (INP/LCP/CLS) gelten dort nicht.
+**For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section III — main-thread blocking, retain cycles / context leaks, list virtualization, image downsampling, app start. Web vitals (INP/LCP/CLS) do not apply there.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-N+1-Queries (ORM-Relations ohne eager loading), Queries in Loops, fehlende Memoization bei teuren Operationen, wiederholte identische DB-Queries innerhalb einer Request-Lifecycle, fehlende Aggregations-Funktionen wo Subselects noetig waeren. **Skalierungspruefung der gesamten Codebase:** Connection Pooling, Queue-Nutzung, Session-Backend, Caching-Strategie, Pagination aller Listen, Index-Abdeckung, horizontale Skalierbarkeit (Stateless-Check), Bulk-Operations statt Einzeloperationen.
+N+1 queries (ORM relations without eager loading), queries in loops, missing memoization for expensive operations, repeated identical DB queries within a request lifecycle, missing aggregation functions where subselects would be needed. **Scaling check across the whole codebase:** connection pooling, queue usage, session backend, caching strategy, pagination of all lists, index coverage, horizontal scalability (statelessness check), bulk operations instead of single operations.
 
-## Pflicht-Verifikation VOR dem Flaggen
+## Mandatory Verification BEFORE Flagging
 
-- **Factory-State-Semantik:** Die Bedeutung eines Factory-States NIE aus dem Methodennamen ableiten. Vor dem Flaggen die State-Definition lesen und gegen die Enum-Definition pruefen (Beispiel: `public()` kann `Visibility::Hidden` setzen). Findings auf Basis des Namens ohne Definition-Check sind unzulaessig.
-- **FK-Index-Abdeckung:** Vor jedem FK-Index-Finding pruefen, ob ein Composite-Index mit der Spalte als leading column existiert. Ein solcher Composite-Index deckt den Einzel-Index-Lookup ab, ein zusaetzlicher Einzel-Index waere redundant. Findings ohne diesen Check sind False-Positives.
-- **bun:sqlite Statement-Caching:** `db.query(sql)` cached das prepared Statement automatisch per SQL-String (zweiter Aufruf mit gleichem SQL = kein Re-Prepare). Nur ein nacktes `db.prepare()` wird pro Aufruf neu praepariert. "Statement re-prepared per call" / "prepare in Loop" ist daher KEIN valides Finding fuer `db.query(...)`-Aufrufe in einer Schleife — nur fuer `db.prepare(...)` in einer Schleife.
+- **Factory state semantics:** NEVER infer the meaning of a factory state from the method name. Before flagging, read the state definition and check it against the enum definition (example: `public()` can set `Visibility::Hidden`). Findings based on the name without checking the definition are not permitted.
+- **FK index coverage:** Before every FK-index finding, check whether a composite index exists with the column as the leading column. Such a composite index covers the single-index lookup, an additional single index would be redundant. Findings without this check are false positives.
+- **bun:sqlite statement caching:** `db.query(sql)` automatically caches the prepared statement per SQL string (a second call with the same SQL means no re-prepare). Only a bare `db.prepare()` gets re-prepared on every call. "Statement re-prepared per call" / "prepare in loop" is therefore NOT a valid finding for `db.query(...)` calls in a loop — only for `db.prepare(...)` in a loop.
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

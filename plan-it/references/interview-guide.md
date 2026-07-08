@@ -1,66 +1,66 @@
 # Phase 1 Interview Guide (Detail)
 
-Detail fuer Phase 1 (Verstehen). Wird vom Orchestrator gelesen wenn die Einschaetzung schwierig ist.
+Detail for Phase 1 (understanding). Read by the orchestrator when the assessment is difficult.
 
-## Schritt B: Codebase-Scan-Tabelle
+## Step B: Codebase Scan Table
 
-Was scannen, abhaengig vom Thema:
+What to scan, depending on the topic:
 
-| Thema | Scan-Aktion |
+| Topic | Scan action |
 |---|---|
-| Daten-Umbau / Schema-Migration | Grep alle Schreib- und Lesestellen des Felds, pruefe Cache-Layer, Trait-Mixins |
-| Multi-Kanal / Multi-Service | `ls` der Channel-/Service-Klassen, Reliability-Status (deprecated? in Tests?), Monitoring-Stellen |
-| Neues Feature | Grep nach aehnlichen Features (Naming-Suche), bestehende Patterns fuer Lifecycle/Permission/UI |
-| Refactoring / Umbenennung | Aufrufer-Liste mit Grep, Test-Coverage pruefen, Doku-Erwaehnungen |
-| Performance / Caching | Bestehende Cache-Keys finden, Invalidation-Pattern, N+1-Hotspots |
+| Data overhaul / schema migration | Grep all write and read sites of the field, check cache layer, trait mixins |
+| Multi-channel / multi-service | `ls` the channel/service classes, reliability status (deprecated? in tests?), monitoring sites |
+| New feature | Grep for similar features (naming search), existing patterns for lifecycle/permission/UI |
+| Refactoring / renaming | Caller list via grep, check test coverage, doc mentions |
+| Performance / caching | Find existing cache keys, invalidation pattern, N+1 hotspots |
 
-**Ausgabe-Format:** Kurze Codebase-Map (3-8 Bulletpoints) als Faktenbasis vor den Fragen:
-
-```
-Vor den Fragen — Codebase-Stand:
-- {Fakt 1, z.B. "Push-Channels: APNs, FCM, NativePushChannel — letzterer ist die einzige aktive Implementation"}
-- {Fakt 2}
-- {Fakt 3}
-```
-
-## Fragen-Format mit Eigener Einschaetzung
-
-Nicht nur fragen — direkt die beste Antwort auf Basis von Codebase, Kontext, typischen Patterns vorschlagen. User korrigiert oder bestaetigt nur.
+**Output format:** Short codebase map (3-8 bullet points) as a factual basis before the questions:
 
 ```
-{Frage}
-→ Meine Einschaetzung: {konkrete Annahme/Empfehlung, begruendet in 1 Satz}
+Before the questions — codebase state:
+- {Fact 1, e.g. "Push channels: APNs, FCM, NativePushChannel — the latter is the only active implementation"}
+- {Fact 2}
+- {Fact 3}
 ```
 
-Beispiele:
-- "Wer ist der User hier? → Meine Einschaetzung: Admin — weil die Route hinter Auth liegt und kein Onboarding-Flow existiert."
-- "Wie soll mit Fehlern umgegangen werden? → Meine Einschaetzung: Toast-Notification, da das der bestehende Pattern in der App ist."
-- "Brauchen wir eine Migration? → Meine Einschaetzung: Nein — das neue Feld ist optional und hat einen Default."
+## Question Format with Own Assessment
 
-## Abhaengigkeiten erkennen
+Don't just ask — directly propose the best answer based on codebase, context, typical patterns. The user only corrects or confirms.
 
-Bevor du eine Frage stellst, pruefe:
-- Haengt die Antwort von einer noch offenen Entscheidung ab? → Erst die Abhaengigkeit klaeren.
-- Oeffnet die Antwort einen neuen Ast? → Nach der Antwort sofort dort weiterfragen.
-- Sind mehrere Fragen unabhaengig voneinander? → Dann in derselben Runde stellen.
-
-Beispiel-Baum:
 ```
-Wer ist der User? (blockiert alles)
-├── Admin → Welche Berechtigungen? → Braucht es Audit-Logging?
-├── Endnutzer → Onboarding noetig? → Welcher Flow?
-└── Beide → Rollenbasierte Views? → Shared Components oder getrennt?
+{Question}
+→ My assessment: {concrete assumption/recommendation, justified in 1 sentence}
 ```
 
-## Tonfall
+Examples:
+- "Who is the user here? → My assessment: Admin — because the route sits behind auth and no onboarding flow exists."
+- "How should errors be handled? → My assessment: Toast notification, since that's the existing pattern in the app."
+- "Do we need a migration? → My assessment: No — the new field is optional and has a default."
 
-Der Skill redet wie ein kluger Kollege:
+## Detecting Dependencies
 
-Gut: "Mir faellt auf dass der Plan keine Fehlerbehandlung fuer X hat. Was passiert wenn Y schiefgeht?"
-Schlecht: "Re-grounding context: The user's plan lacks error handling. Completeness: 3/10."
+Before asking a question, check:
+- Does the answer depend on a still-open decision? → Clarify the dependency first.
+- Does the answer open a new branch? → Keep asking there right after the answer.
+- Are several questions independent of each other? → Then ask them in the same round.
 
-Gut: "Das klingt nach einem simplen Feature-Flag statt dem ganzen Umbau. Was spricht dagegen?"
-Schlecht: "Alternative approach detected. Please evaluate tradeoffs."
+Example tree:
+```
+Who is the user? (blocks everything)
+├── Admin → Which permissions? → Does it need audit logging?
+├── End user → Onboarding needed? → Which flow?
+└── Both → Role-based views? → Shared components or separate?
+```
 
-Gut: "Wer ist eigentlich der User hier? Admin oder Endnutzer? Das aendert den ganzen Ansatz."
-Schlecht: "Target user persona not specified. Please select: A) Admin B) End user C) Both."
+## Tone
+
+The skill talks like a smart colleague:
+
+Good: "I notice the plan has no error handling for X. What happens if Y goes wrong?"
+Bad: "Re-grounding context: The user's plan lacks error handling. Completeness: 3/10."
+
+Good: "This sounds like a simple feature flag rather than the whole overhaul. What's the case against that?"
+Bad: "Alternative approach detected. Please evaluate tradeoffs."
+
+Good: "Who's actually the user here? Admin or end user? That changes the whole approach."
+Bad: "Target user persona not specified. Please select: A) Admin B) End user C) Both."

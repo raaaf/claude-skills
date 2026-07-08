@@ -1,70 +1,70 @@
 # Scope & Pre-Checks (Phase 1 Detail)
 
-Detail-Logik fuer Phase 1. Wird vom Orchestrator gelesen wenn Pre-Checks nicht-trivial sind.
+Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-trivial.
 
-## Diff-Size-Gate auswerten
+## Evaluating the Diff-Size Gate
 
-| `DIFF_SIZE_RESULT` | Aktion |
+| `DIFF_SIZE_RESULT` | Action |
 |---|---|
-| `OK` | Weiter. `MODEL_OVERRIDE=null` (Subagents nutzen ihre Default-Modelle). |
-| `LARGE` (>2000 Zeilen ODER >20 Dateien) | Gezielte Escalation: Nur Architektur und Security laufen auf Opus. Ausgabe: "Diff ist gross ({LINES} Zeilen / {FILES} Dateien) — Architektur + Security laufen auf Opus fuer tieferes Reasoning." Setze `HEAVY_REASONING_OVERRIDE=opus`. Weiter. |
-| `HUGE` (>5000 Zeilen; oder >50 Dateien UND >=1000 Zeilen) | Hard-Block: Abbrechen. "Diff zu gross fuer sinnvollen Audit. Bitte in mehrere Commits/PRs splitten." Kein Audit-Lauf. |
+| `OK` | Continue. `MODEL_OVERRIDE=null` (subagents use their default models). |
+| `LARGE` (>2000 lines OR >20 files) | Targeted escalation: only Architecture and Security run on Opus. Output: "Diff is large ({LINES} lines / {FILES} files) — Architecture + Security run on Opus for deeper reasoning." Set `HEAVY_REASONING_OVERRIDE=opus`. Continue. |
+| `HUGE` (>5000 lines; or >50 files AND >=1000 lines) | Hard block: abort. "Diff too large for a meaningful audit. Please split into multiple commits/PRs." No audit run. |
 
-**Zweiachsige HUGE-Bewertung:** Ueberschreitet nur die Datei-Achse die Schwelle (>50 Dateien), liegen die Zeilen aber unter 20% der Zeilen-Schwelle (<1000), stuft das Script selbst auf `LARGE` herab und gibt `DIFF_SIZE_NOTE=...` aus. Die Note im Chat ausgeben (Warnung: viele kleine, logisch getrennte Aenderungen) und normal weiterlaufen — kein manueller Override noetig.
+**Two-axis HUGE evaluation:** if only the file axis exceeds the threshold (>50 files) but the line count is under 20% of the line threshold (<1000), the script itself downgrades to `LARGE` and emits `DIFF_SIZE_NOTE=...`. Output the note in chat (warning: many small, logically separate changes) and continue normally — no manual override needed.
 
-**Warum nur zwei Dimensionen escalieren:** Architektur (Code-Reasoning ueber mehrere Module) und Security (subtile Angriffsvektoren) profitieren messbar von Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation sind ueberwiegend regel- oder musterbasiert — Sonnet reicht. Triage- und Fix-Agents bleiben auf Haiku.
+**Why only two dimensions escalate:** Architecture (code reasoning across multiple modules) and Security (subtle attack vectors) benefit measurably from Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation are predominantly rule- or pattern-based — Sonnet is sufficient. Triage and fix agents stay on Haiku.
 
-## Output von collect-scope.sh
+## Output of collect-scope.sh
 
-`collect-scope.sh` liefert:
+`collect-scope.sh` provides:
 - `DEFAULT_BRANCH`, `BASE_REF`
-- Klassifizierte Dateilisten: `---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`
-- Deduplizierter Unified-Diff: `---DIFF---`
+- Classified file lists: `---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`
+- Deduplicated unified diff: `---DIFF---`
 
-## Output von detect-framework.sh
+## Output of detect-framework.sh
 
-Liefert: `FRAMEWORK`, `SOURCE_DIRS`.
+Provides: `FRAMEWORK`, `SOURCE_DIRS`.
 
-## Output von pre-checks.sh
+## Output of pre-checks.sh
 
-Drei Sektionen: `SECRET_SCAN_RESULT`, `LOCKFILE_DRIFT_RESULT`, `BINARY_ARTIFACTS_RESULT`.
+Three sections: `SECRET_SCAN_RESULT`, `LOCKFILE_DRIFT_RESULT`, `BINARY_ARTIFACTS_RESULT`.
 
-## Pre-Check-Auswertung (sofort, vor jedem Subagent-Dispatch)
+## Pre-Check Evaluation (immediately, before any subagent dispatch)
 
-| Pre-Check | Ergebnis | Aktion |
+| Pre-check | Result | Action |
 |---|---|---|
-| `SECRET_SCAN_RESULT=FINDINGS` | — | Als **Critical** ins Audit-Log. User sofort warnen. Push wird blockiert bis Secrets entfernt + History bereinigt sind. |
-| `LOCKFILE_DRIFT_RESULT=DRIFT` | — | Als **Important** ins Audit-Log. Manifest-Konsistenz pruefen, ggf. Lockfile regenerieren. |
-| `BINARY_ARTIFACTS_RESULT=FINDINGS` | — | Als **Important**. Vorschlag: aus Index entfernen, `.gitignore` ergaenzen. |
+| `SECRET_SCAN_RESULT=FINDINGS` | — | As **Critical** in the audit log. Warn the user immediately. Push is blocked until secrets are removed + history is cleaned. |
+| `LOCKFILE_DRIFT_RESULT=DRIFT` | — | As **Important** in the audit log. Check manifest consistency, regenerate lockfile if needed. |
+| `BINARY_ARTIFACTS_RESULT=FINDINGS` | — | As **Important**. Suggestion: remove from index, extend `.gitignore`. |
 
-Wenn der Diff leer ist und alle Pre-Checks `CLEAN`: melden und beenden. Kein Git-Repo? Fehler melden.
+If the diff is empty and all pre-checks are `CLEAN`: report and stop. Not a git repo? Report the error.
 
-## Variablen aus Script-Outputs ableiten
+## Deriving Variables from Script Outputs
 
-- **ALLE_DATEIEN:** Sektion `---FILES---` aus `collect-scope.sh`
-- **FRONTEND_DATEIEN:** Sektion `---FRONTEND---`
-- **TRANSLATION_DATEIEN:** Sektion `---TRANSLATIONS---`
-- **VISUELL_RELEVANTE_DATEIEN:** `FRONTEND_DATEIEN` + Framework-spezifische Backend-Dateien (z.B. `app/Livewire/`, Controller mit `return view(...)`/`return Inertia::render(...)`). NICHT: reine Services, Models, Migrations, Commands, Jobs, Middleware — ausser sie aendern was an den View uebergeben wird.
-- **UNIFIED_DIFF:** Sektion `---DIFF---` (geht nur an Triage, NICHT an Workers)
-- **SUPPRESSIONS:** `$(git rev-parse --show-toplevel)/.claude/audits/suppressions.json` laden falls vorhanden, `pattern`-Felder extrahieren. Sonst `"Keine Suppressions"`.
-- **PROJECT_CONTEXT:** `## Audit Context` aus `CLAUDE.md` (falls vorhanden), via `awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f'`. Sonst `"Kein projektspezifischer Kontext."`
+- **ALLE_DATEIEN:** section `---FILES---` from `collect-scope.sh`
+- **FRONTEND_DATEIEN:** section `---FRONTEND---`
+- **TRANSLATION_DATEIEN:** section `---TRANSLATIONS---`
+- **VISUELL_RELEVANTE_DATEIEN:** `FRONTEND_DATEIEN` + framework-specific backend files (e.g. `app/Livewire/`, controllers with `return view(...)`/`return Inertia::render(...)`). NOT: pure services, models, migrations, commands, jobs, middleware — unless they change what's passed to the view.
+- **UNIFIED_DIFF:** section `---DIFF---` (goes only to Triage, NOT to Workers)
+- **SUPPRESSIONS:** load `$(git rev-parse --show-toplevel)/.claude/audits/suppressions.json` if present, extract `pattern` fields. Otherwise `"No suppressions"`.
+- **PROJECT_CONTEXT:** `## Audit Context` from `CLAUDE.md` (if present), via `awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f'`. Otherwise `"No project-specific context."`
 
-## Audit-Context-Check (PFLICHT bei fehlendem Context)
+## Audit Context Check (MANDATORY when context is missing)
 
-Wenn `PROJECT_CONTEXT` leer ist oder die `CLAUDE.md` keinen `## Audit Context`-Abschnitt hat, **vor dem ersten Subagent-Dispatch** User via `AskUserQuestion` fragen, ob ein Context-Abschnitt (Stack/Framework-Regeln, bewusste Architektur-Entscheidungen, Skalierungsziele, kritische Schnittstellen) entworfen und in `CLAUDE.md` ergaenzt werden soll. Optionen:
+If `PROJECT_CONTEXT` is empty or `CLAUDE.md` has no `## Audit Context` section, **before the first subagent dispatch** ask the user via `AskUserQuestion` whether a context section (stack/framework rules, deliberate architecture decisions, scaling goals, critical interfaces) should be drafted and added to `CLAUDE.md`. Options:
 
-- **Ja, jetzt anlegen** → Repo-Struktur analysieren (`composer.json`/`package.json`, Routes, README), Vorschlag entwerfen, in `CLAUDE.md` einfuegen, dann Audit fortsetzen.
-- **Nein, einmal ueberspringen** → Audit ohne Context fortsetzen.
-- **Nie wieder fragen** → Marker `.claude/audit-no-context.flag` anlegen, Audit fortsetzen. Folge-Audits pruefen den Marker und ueberspringen die Frage.
+- **Yes, create it now** → analyze repo structure (`composer.json`/`package.json`, routes, README), draft a proposal, insert into `CLAUDE.md`, then continue the audit.
+- **No, skip once** → continue the audit without context.
+- **Never ask again** → create marker `.claude/audit-no-context.flag`, continue the audit. Follow-up audits check the marker and skip the question.
 
-Marker-Check vor der Frage:
+Marker check before the question:
 ```bash
 [ -f "$(git rev-parse --show-toplevel)/.claude/audit-no-context.flag" ] && SKIP_CONTEXT_PROMPT=true
 ```
 
 ## Intent-Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
 
-Bewusste, dokumentierte Entscheidungen duerfen nicht als Findings wiederaufgetischt werden. Deterministisch globben:
+Deliberate, documented decisions must not be re-raised as findings. Deterministic globbing:
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
@@ -72,6 +72,6 @@ INTENT_DOCS=$( { ls "$ROOT"/docs/adr/*.md "$ROOT"/docs/adrs/*.md "$ROOT"/docs/de
                  ls "$ROOT"/DESIGN.md "$ROOT"/PRODUCT.md "$ROOT"/CONTEXT.md 2>/dev/null; } | sort -u )
 ```
 
-- Treffer vorhanden → Dateien lesen (bei vielen ADRs: nur Titel + Status + Decision-Zeile je ADR) und als `DECIDED_TRADEOFFS` zusammenfassen: eine Zeile pro Entscheid ("ADR-007: sync-over-async Write in store.ts ist bewusst — Konsistenz vor Latenz"). Max 15 Zeilen.
-- Keine Treffer → `DECIDED_TRADEOFFS="keine dokumentierten Entscheidungen gefunden"`.
-- Wird an alle Worker durchgereicht (prompt-template.md Platzhalter). Worker-Regel dort: dokumentierte Tradeoffs nicht melden; Code-Drift vom Entscheid ist ein docs_sync-Finding ("stale ADR ist selbst ein Finding").
+- Matches found → read the files (for many ADRs: only title + status + decision line per ADR) and summarize as `DECIDED_TRADEOFFS`: one line per decision ("ADR-007: sync-over-async write in store.ts is deliberate — consistency over latency"). Max 15 lines.
+- No matches → `DECIDED_TRADEOFFS="no documented decisions found"`.
+- Passed through to all workers (prompt-template.md placeholder). Worker rule there: don't report documented tradeoffs; code drift from the decision is a docs_sync finding ("a stale ADR is itself a finding").

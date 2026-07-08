@@ -1,8 +1,8 @@
 ---
 name: delegate
-description: "Default-Arbeitsmodus fuer Implementierungs-Aufgaben: das teure Session-Modell (Fable/Opus) analysiert den Auftrag, stellt bei echten Mehrdeutigkeiten Rueckfragen, schreibt eine executor-taugliche Mini-Spec und uebergibt die Umsetzung an einen Sonnet-Executor. Danach reviewt das teure Modell das Ergebnis wie ein Tech-Lead (Diff lesen, Kriterien selbst re-runnen) und faellt ein Verdict. Use when the user asks to implement, build, fix, change, or refactor code (auch ohne /delegate zu tippen). NOT for: questions/explanations (direkt antworten), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
+description: "Default working mode for implementation tasks: the expensive session model (Fable/Opus) analyzes the task, asks clarifying questions on genuine ambiguities, writes an executor-ready mini-spec, and hands off implementation to a Sonnet executor. Afterward the expensive model reviews the result like a tech lead (reads the diff, re-runs criteria itself) and renders a verdict. Use when the user asks to implement, build, fix, change, or refactor code (even without typing /delegate). NOT for: questions/explanations (answer directly), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
 when_to_use: "/delegate, implementiere, baue, aendere, fixe, setz das um, refactor this, build this feature"
-argument-hint: "[Aufgabe in eigenen Worten; optional --worktree]"
+argument-hint: "[Task in your own words; optional --worktree]"
 effort: high
 allowed-tools:
   - Agent
@@ -15,71 +15,71 @@ allowed-tools:
   - SendMessage
 ---
 
-# Delegate: Analyse (teuer) → Umsetzung (Sonnet) → Review (teuer)
+# Delegate: Analysis (expensive) → Implementation (Sonnet) → Review (expensive)
 
-**SOFORT AUSFÜHREN — direkt mit Phase 0 beginnen.**
+**EXECUTE IMMEDIATELY — start directly with Phase 0.**
 
-> Frontmatter hat bewusst KEIN `model:`-Feld und KEIN `disable-model-invocation` (beides dokumentierte Ausnahmen der Repo-Konvention): Der Skill erbt das Session-Modell (Fable/Opus), damit Analyse und Review auf dem staerksten verfuegbaren Modell laufen — `model: opus` wuerde eine Fable-Session downgraden. Auto-Trigger auf Implementierungs-Auftraege ist gewollt, das ist der Default-Arbeitsmodus.
+> Frontmatter deliberately has NO `model:` field and NO `disable-model-invocation` (both documented exceptions to the repo convention): the skill inherits the session model (Fable/Opus) so analysis and review run on the strongest available model — `model: opus` would downgrade a Fable session. Auto-trigger on implementation tasks is intentional, this is the default working mode.
 
-Ökonomie dieses Skills: Das teure Modell macht die Arbeit, bei der Intelligenz zählt (verstehen, entscheiden, spezifizieren, reviewen). Sonnet generiert die Code-Masse. **HARTE REGEL: Der Orchestrator editiert NIE selbst Code** — Edit/Write sind bewusst nicht in allowed-tools. Jeder Code-Fix, auch im Review, geht durch den Executor.
+Economics of this skill: the expensive model does the work where intelligence matters (understand, decide, specify, review). Sonnet generates the code volume. **HARD RULE: the orchestrator NEVER edits code itself** — Edit/Write are deliberately not in allowed-tools. Every code fix, even during review, goes through the executor.
 
-## Phase 0: Scope-Gate
+## Phase 0: Scope Gate
 
-Auftrag einordnen, bevor Arbeit passiert:
+Classify the task before any work happens:
 
-| Einordnung | Signal | Aktion |
+| Classification | Signal | Action |
 |---|---|---|
-| Kein Implementierungs-Auftrag | Frage, Erklaerung, Meinung, Debugging-Diskussion | Skill verlassen, normal antworten |
-| Trivial | 1 Datei, < ~10 Zeilen, mechanisch (Typo, Rename, Config-Wert) | Phasen 1-2 skippen, Mini-Spec in 3 Zeilen, direkt Phase 3 |
-| Normal | klarer Auftrag, 1-5 Dateien, keine Architektur-Entscheidung | voller Ablauf |
-| Gross / architektonisch | neues Datenmodell, > ~5 Dateien, Framing unklar, mehrere valide Ansaetze, Breaking Change | **AskUserQuestion:** "Erst /plan-it (Recommended — Plan + Challenges, dann /plan-it execute)" vs. "Direkt umsetzen via /delegate". Bei plan-it: Skill beenden, /plan-it uebernimmt. |
+| Not an implementation task | question, explanation, opinion, debugging discussion | Leave the skill, answer normally |
+| Trivial | 1 file, < ~10 lines, mechanical (typo, rename, config value) | Skip phases 1-2, 3-line mini-spec, go straight to phase 3 |
+| Normal | clear task, 1-5 files, no architecture decision | full flow |
+| Large / architectural | new data model, > ~5 files, unclear framing, multiple valid approaches, breaking change | **AskUserQuestion:** "/plan-it first (Recommended — plan + challenges, then /plan-it execute)" vs. "Implement directly via /delegate". If plan-it: leave the skill, /plan-it takes over. |
 
-## Phase 1: Analyse (Orchestrator, teuer)
+## Phase 1: Analysis (orchestrator, expensive)
 
-- Auftrag in ein pruefbares Ziel uebersetzen ("add validation" → "Tests fuer invalide Inputs, dann gruen").
-- Gezielter Codebase-Scan: betroffene Dateien lesen, **jeden zu aendernden Identifier repo-weit greppen** (parallele Implementierungen, Wizard-Duplikate — nie annehmen, es gibt nur eine Stelle).
-- Konventionen + Exemplar-Datei identifizieren (Komponenten statt Roh-HTML, Error-Pattern, Teststil).
-- Verifikations-Kommandos des Repos ermitteln (Test-Runner, Linter, Typecheck) — NICHT raten, aus package.json/composer.json/CI lesen. Nur diff-scoped Tests, nie die volle Suite.
-- Annahmen explizit auflisten.
+- Translate the task into a verifiable goal ("add validation" → "tests for invalid inputs, then green").
+- Targeted codebase scan: read affected files, **grep every identifier to be changed repo-wide** (parallel implementations, wizard duplicates — never assume there's only one spot).
+- Identify conventions + an exemplar file (components instead of raw HTML, error pattern, test style).
+- Determine the repo's verification commands (test runner, linter, typecheck) — do NOT guess, read from package.json/composer.json/CI. Only diff-scoped tests, never the full suite.
+- List assumptions explicitly.
 
-## Phase 2: Rückfragen (nur echte Mehrdeutigkeiten)
+## Phase 2: Clarifying questions (only genuine ambiguities)
 
-Wenn mehrere Interpretationen existieren oder eine Annahme das Ergebnis kippen wuerde: **AskUserQuestion**, jede Frage mit empfohlener Antwort zuerst (Recommended-Muster aus /plan-it). Max 2 Runden. Keine Fragen, deren Antwort im Code steht.
+If multiple interpretations exist or an assumption would tip the outcome: **AskUserQuestion**, each question with the recommended answer first (Recommended pattern from /plan-it). Max 2 rounds. No questions whose answer is already in the code.
 
-## Phase 3: Mini-Spec schreiben
+## Phase 3: Write the mini-spec
 
-Inline (keine Datei), executor-tauglich — der Executor kennt diese Session nicht:
+Inline (no file), executor-ready — the executor does not know this session:
 
 ```markdown
-## Auftrag: {Titel}
-**Ziel:** {woran erkennt man Erfolg — messbar}
-**Kontext:** {Ist-Zustand mit datei:zeile; Konventionen mit Exemplar: "Error-Handling wie src/lib/result.ts, genau so"}
-**Betroffene Dateien:** {abschliessende Liste}
-**Out of Scope:** {verwandt aussehende Dateien, die NICHT angefasst werden — mit Grund}
-**Schritte:**
-1. {konkret, Datei + was} → verify: {Kommando → erwartetes Ergebnis}
+## Task: {Title}
+**Goal:** {how success is recognized — measurable}
+**Context:** {current state with file:line; conventions with exemplar: "error handling like src/lib/result.ts, exactly like that"}
+**Affected files:** {final list}
+**Out of Scope:** {related-looking files that will NOT be touched — with reason}
+**Steps:**
+1. {concrete, file + what} → verify: {command → expected result}
 2. ...
-**Bugfix?** Schritt 1 ist IMMER: Repro-Test schreiben, der rot ist. Fix danach, Test gruen.
-**Done-Kriterien (alle):** {Test-Kommando → exit 0 inkl. N neuer Tests; Lint/Typecheck → exit 0; git status: nur Betroffene Dateien}
-**STOP-Bedingungen:** {Ist-Zustand weicht ab; verify schlaegt 2x fehl; Fix braeuchte Out-of-Scope-Datei; Kernannahme falsch}
+**Bugfix?** Step 1 is ALWAYS: write a repro test that's red. Fix afterward, test green.
+**Done criteria (all):** {test command → exit 0 including N new tests; lint/typecheck → exit 0; git status: only affected files}
+**STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
 ```
 
-## Phase 4: Executor dispatchen (Sonnet)
+## Phase 4: Dispatch the executor (Sonnet)
 
-Standard: direkt im Working Tree (Review passiert vor jedem Commit). Isolierter Worktree (`isolation: worktree`) nur wenn: User `--worktree` sagt, der Working Tree fremde uncommittete Aenderungen enthaelt, oder der Auftrag riskant ist (Migrations, > 5 Dateien).
+Default: directly in the working tree (review happens before every commit). Isolated worktree (`isolation: worktree`) only when: the user says `--worktree`, the working tree contains foreign uncommitted changes, or the task is risky (migrations, > 5 files).
 
 ```
 Agent(
   subagent_type: general-purpose,
   model: sonnet,
-  prompt: "{Executor-Praeambel + Report-Format aus plan-it/references/execute-review.md, Abschnitt Dispatch}
+  prompt: "{Executor preamble + report format from plan-it/references/execute-review.md, section Dispatch}
     {MINI_SPEC inline}"
 )
 ```
 
-Praeambel-Kern (Langform in der Referenz; `{WORKDIR}`/`{COMMIT_REGEL}` fuer den Working-Tree-Fall einsetzen — Executor committet hier NICHT): Schritt fuer Schritt, jedes verify bestaetigen, nur Betroffene Dateien, STOP-Bedingungen respektieren statt improvisieren, jede Report-Behauptung gegen ein echtes Tool-Ergebnis pruefen, Report-Format exakt (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
+Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, respect STOP conditions instead of improvising, check every report claim against a real tool result, exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 
-Referenz aufloesen (gleiche Kandidaten-Logik wie full-audit → audit):
+Resolve the reference (same candidate logic as full-audit → audit):
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/plan-it" "$HOME/.claude/skills/plan-it"; do
@@ -87,33 +87,33 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/plan-it" "$HOME/.claude
 done
 ```
 
-## Phase 5: Review (Orchestrator, teuer)
+## Phase 5: Review (orchestrator, expensive)
 
-Dem Executor-Report NICHT trauen — selbst pruefen (Checkliste = execute-review.md, Abschnitt Review):
+Do NOT trust the executor report — verify it yourself (checklist = execute-review.md, section Review):
 
-1. `git diff` komplett lesen; gegen Ziel + Konventionen judgen (liest es sich wie der Rest des Repos?).
-2. Jedes Done-Kriterium selbst re-runnen (Bash).
-3. Scope: `git diff --stat` gegen Betroffene-Dateien-Liste. Datei ausserhalb = Fail.
-4. Neue Tests LESEN: asserted der Test etwas Sinnvolles oder gamed er das Kriterium?
-5. Dokumentierte Abweichung in NOTES nach Merit beurteilen; undokumentierte Abweichung = Fail.
+1. Read the full `git diff`; judge against the goal + conventions (does it read like the rest of the repo?).
+2. Re-run every done criterion yourself (Bash).
+3. Scope: `git diff --stat` against the affected-files list. A file outside it = fail.
+4. READ new tests: does the test assert something meaningful, or does it game the criterion?
+5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
 **Verdict:**
 
-| Verdict | Aktion |
+| Verdict | Action |
 |---|---|
-| APPROVE | Ergebnis-Report an User (unten). Kein Commit — Committen bleibt beim User (oder /ship). |
-| REVISE | SendMessage an DENSELBEN Executor mit konkretem Befund ("Kriterium 3 rot: X; api.ts:90 schluckt den Fehler — Result-Pattern laut Spec"). Max 2 Runden, dann BLOCK. |
-| BLOCK | Aenderungen im Working Tree: `git checkout` der betroffenen Dateien nach User-Rueckfrage, oder stehen lassen + Befund. Befund + korrigierte Spec an User. |
+| APPROVE | Result report to the user (below). No commit — committing stays with the user (or /ship). |
+| REVISE | SendMessage to the SAME executor with a concrete finding ("criterion 3 red: X; api.ts:90 swallows the error — result pattern per spec"). Max 2 rounds, then BLOCK. |
+| BLOCK | Changes in the working tree: `git checkout` the affected files after asking the user, or leave them + finding. Finding + corrected spec to the user. |
 
-## Phase 6: Ergebnis-Report
+## Phase 6: Result report
 
 ```
-Delegate abgeschlossen: {Titel}
-Verdict: APPROVE ({N} Revisions-Runden)
-Geaendert: {Dateien mit 1-Zeilen-Was}
-Verifiziert: {Kommando → Ergebnis, pro Done-Kriterium}
-NOTES des Executors: {falls relevant}
-Offen: {nichts | bewusst Vertagtes mit Grund}
+Delegate complete: {Title}
+Verdict: APPROVE ({N} revision rounds)
+Changed: {files with 1-line what}
+Verified: {command → result, per done criterion}
+Executor NOTES: {if relevant}
+Open: {nothing | deliberately deferred with reason}
 ```
 
-Tests rot oder Kriterium nicht erfuellbar: ehrlich sagen, nie schoenreden. Danach normale Regeln: Commit nur auf expliziten Auftrag, /audit vor Push.
+Tests red or criterion not achievable: say so honestly, never sugarcoat. Afterward normal rules apply: commit only on explicit request, /audit before push.

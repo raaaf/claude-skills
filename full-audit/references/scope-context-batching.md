@@ -1,8 +1,8 @@
 # Scope, Context, Batching (Phase 1 + 1.5 Detail)
 
-Detail-Bash und Batching-Heuristik fuer Phase 1 (Scope & Context) und Phase 1.5 (Batching-Entscheidung). Wird vom Orchestrator gelesen.
+Detail bash and batching heuristic for Phase 1 (Scope & Context) and Phase 1.5 (Batching Decision). Read by the orchestrator.
 
-Inhalt: Phase 1 Scope-Bash · Context-Building · Optionale Pre-Checks · Phase 1.5 Batching · Concurrent-Tree-Check
+Content: Phase 1 scope bash · context building · optional pre-checks · Phase 1.5 batching · concurrent tree check
 
 ## Phase 1: Scope & Context — Bash
 
@@ -51,34 +51,34 @@ find $SOURCE_DIRS \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -
 find $SOURCE_DIRS \( -path "*/lang/*" -o -path "*/locales/*" -o -path "*/locale/*" -o -path "*/translations/*" -o -path "*/messages/*" -o -path "*/i18n/*" \) \( -name "*.php" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.po" -o -name "*.pot" -o -name "*.ts" -o -name "*.js" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-translations.txt
 ```
 
-Variablen aus den Outputs:
+Variables from the outputs:
 - **ALLE_DATEIEN:** `/tmp/full-audit-files.txt`
 - **VISUELL_RELEVANTE_DATEIEN:** `/tmp/full-audit-frontend.txt`
 - **TRANSLATION_DATEIEN:** `/tmp/full-audit-translations.txt`
 - **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**
 
-## Context-Building (einmalig)
+## Context Building (one-time)
 
-Lies `CLAUDE.md`, Package-Manifest, Top-2-Ebenen der SOURCE_DIRS. Erstelle kompakte **ARCHITEKTUR-NOTIZ** (max 20 Zeilen): wiederverwendbare Module/Traits/Mixins, Services/Utils, Framework-Patterns.
+Read `CLAUDE.md`, package manifest, top 2 levels of SOURCE_DIRS. Create a compact **ARCHITEKTUR-NOTIZ** (max 20 lines): reusable modules/traits/mixins, services/utils, framework patterns.
 
-## Optionale Pre-Checks
+## Optional Pre-Checks
 
-Nur sinnvoll wenn ein lokaler Diff existiert. Bei Greenfield-Audit ueberspringen.
+Only useful when a local diff exists. Skip on a greenfield audit.
 
 ```bash
 [ -n "$(git status --porcelain)" ] && bash "$AUDIT_BIN/pre-checks.sh"
 ```
 
-`SECRET_SCAN_RESULT=FINDINGS` → als **Critical** ins Audit-Log. `LOCKFILE_DRIFT_RESULT=DRIFT` und `BINARY_ARTIFACTS_RESULT=FINDINGS` → als **Important**.
+`SECRET_SCAN_RESULT=FINDINGS` → **Critical** in the audit log. `LOCKFILE_DRIFT_RESULT=DRIFT` and `BINARY_ARTIFACTS_RESULT=FINDINGS` → **Important**.
 
-## Phase 1.5: Batching-Entscheidung
+## Phase 1.5: Batching Decision
 
-| TOTAL_FILES | Modus | Begruendung |
+| TOTAL_FILES | Mode | Rationale |
 |---|---|---|
-| ≤ 80 | `SINGLE` | Ein Durchlauf |
-| > 80 | `BATCHED` | Automatisch in Batches |
+| ≤ 80 | `SINGLE` | One pass |
+| > 80 | `BATCHED` | Automatically split into batches |
 
-### Batch-Erstellung (nur BATCHED)
+### Batch Creation (BATCHED only)
 
 ```bash
 # shellcheck disable=SC2086
@@ -88,26 +88,26 @@ for dir in $(find $SOURCE_DIRS -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sor
 done | sort -rn
 ```
 
-**Batch-Regeln:**
-- Max ~30-40 Dateien pro Batch
-- Zusammengehoeriges im selben Batch (Komponente + Template)
-- Verzeichnis >40 Dateien: Unterverzeichnisse aufsplitten
-- Verzeichnis <10 Dateien: mit verwandtem zusammenlegen
-- Models/Entities + Traits/Mixins zusammen
-- Config + Routing zusammen
+**Batch rules:**
+- Max ~30-40 files per batch
+- Related items in the same batch (component + template)
+- Directory with >40 files: split into subdirectories
+- Directory with <10 files: merge with a related one
+- Models/entities + traits/mixins together
+- Config + routing together
 
-Batch-Uebersicht ausgeben: `Batch N: verzeichnis (X Dateien)`.
+Output batch overview: `Batch N: directory (X files)`.
 
-## Concurrent-Tree-Check (Detail)
+## Concurrent Tree Check (Detail)
 
-Ein Full-Audit laeuft minutenlang ueber viele Batches. Aendert der User (oder ein anderer Prozess) waehrenddessen den Working-Tree, auditieren spaetere Batches einen veralteten Stand. Deshalb in Phase 1 die Baseline festhalten und nach jedem Batch vergleichen:
+A full audit runs for minutes across many batches. If the user (or another process) changes the working tree in the meantime, later batches audit a stale state. So record the baseline in Phase 1 and compare again after every batch:
 
 ```bash
 AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
 
-Weicht der Wert nach einem Batch ab: Warnung ins Audit-Log (`## Hinweise: Tree waehrend Audit veraendert`), den naechsten Batch auf den aktuellen Stand resetten (Scope-Erhebung dieses references-Dokuments erneut ausfuehren), `AUDIT_TREE_HASH` aktualisieren. Findings auf inzwischen ueberschriebenen Zeilen verwerfen (Halluzinations-Risiko).
+If the value deviates after a batch: warning into the audit log (`## Notes: Tree changed during audit`), reset the next batch to the current state (re-run this reference document's scope collection), update `AUDIT_TREE_HASH`. Discard findings on lines that have meanwhile been overwritten (hallucination risk).
 
-## Intent-Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
+## Intent Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
 
-Gleiche Ableitung wie /audit (`../audit/references/scope-and-pre-checks.md`, Abschnitt "Intent-Docs"): `docs/adr/`, `docs/adrs/`, `docs/decisions/`, `DESIGN.md`, `PRODUCT.md`, `CONTEXT.md` globben, Entscheide als max 15 Zeilen zusammenfassen, an alle Worker durchreichen. Dokumentierte Tradeoffs sind keine Findings; Code-Drift vom Entscheid ist ein docs_sync-Finding.
+Same derivation as /audit (`../audit/references/scope-and-pre-checks.md`, section "Intent-Docs"): glob `docs/adr/`, `docs/adrs/`, `docs/decisions/`, `DESIGN.md`, `PRODUCT.md`, `CONTEXT.md`, summarize decisions in max 15 lines, pass through to all workers. Documented tradeoffs are not findings; code drift from the decision is a docs_sync finding.

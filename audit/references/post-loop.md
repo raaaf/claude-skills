@@ -1,62 +1,62 @@
-# Post-Loop: Changelog, Linter, Tests, Testplan, Issues, Log-Display (Phase 3 Detail)
+# Post-Loop: Changelog, Linter, Tests, Test Plan, Issues, Log Display (Phase 3 Detail)
 
-Nach Loop-Ende, vor Pre-Push. Reihenfolge: 3a → 3b → 3c → 3d → 3e → 3f.
+After loop end, before pre-push. Order: 3a → 3b → 3c → 3d → 3e → 3f.
 
-## 3a. Changelog/Release-Notes
+## 3a. Changelog/Release Notes
 
-Pruefe selbst ob user-facing Changes einen Changelog-Eintrag brauchen. Kandidaten-Dateien: `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`.
+Check yourself whether user-facing changes need a changelog entry. Candidate files: `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`.
 
-Ignorieren: reine Test-Aenderungen, interne Services ohne UI, Refactorings ohne Verhaltensaenderung, Config, Migrations ohne neue Features.
+Ignore: pure test changes, internal services without UI, refactors without behavior change, config, migrations without new features.
 
-Existiert kein passender Eintrag → Eintrag draften, Format orientiert sich am bestehenden Stil der Datei, chronologisch oben einfuegen.
+No matching entry exists → draft an entry, format follows the file's existing style, insert chronologically at the top.
 
-## 3b. Linter & Static Analysis · 3c. Test-Suite
+## 3b. Linter & Static Analysis · 3c. Test Suite
 
-Erkennungstabellen und Befehle stehen in `linters-and-tests.md`. Reihenfolge: Formatter → Linter → Static Analysis → Tests. Bei Failures: fixen, erneut laufen lassen. Unfixbare Test-Failures als Critical aufnehmen.
+Detection tables and commands are in `linters-and-tests.md`. Order: Formatter → Linter → Static Analysis → Tests. On failures: fix, re-run. Add unfixable test failures as Critical.
 
-**Tests nur diff-scoped:** Nur Tests laufen lassen, die von den geaenderten Dateien betroffen sind (Mapping siehe `linters-and-tests.md`). NIEMALS `composer test` / `npm test` in `/audit` — die volle Suite laeuft in CI. Dieser Skill darf die Laufzeit nicht durch eine 2000+ Test-Suite explodieren lassen.
+**Tests diff-scoped only:** only run tests affected by the changed files (mapping in `linters-and-tests.md`). NEVER `composer test` / `npm test` in `/audit` — the full suite runs in CI. This skill must not let runtime explode via a 2000+ test suite.
 
-## 3d. Manueller Testplan erstellen
+## 3d. Create Manual Test Plan
 
-Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATEIEN nicht leer), Testplan nach `testplan.md` generieren: Template, URL-Ableitung pro Framework, Regeln. Max 10 Schritte, nur fuer tatsaechlich geaenderte Stellen. Ins Audit-Log unter `## Manueller Testplan` schreiben UND im Chat ausgeben.
+If visual files are in the diff (FRONTEND_DATEIEN or VISUELL_RELEVANTE_DATEIEN not empty), generate a test plan per `testplan.md`: template, URL derivation per framework, rules. Max 10 steps, only for actually changed spots. Write it into the audit log under `## Manual Test Plan` AND output it in chat.
 
-## 3e. Audit-Log im Chat anzeigen (PFLICHT — nach Testplan)
+## 3e. Display Audit Log in Chat (MANDATORY — after test plan)
 
-Nach Abschluss von 3a-3d den kompletten Inhalt des Log-Files (inkl. Testplan) via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben:
+After completing 3a-3d, load the complete content of the log file (including the test plan) via the Read tool and output it as a markdown code block in chat:
 
 ```
-Audit-Log: {LOGFILE}
+Audit log: {LOGFILE}
 
 ---
-{Inhalt des Log-Files}
+{content of the log file}
 ---
 ```
 
-So hat der User das vollstaendige Ergebnis inkl. Testplan auf einen Blick.
+This gives the user the complete result including the test plan at a glance.
 
-## 3f. Offene Punkte: User-Entscheid → fixen / Issue / verwerfen
+## 3f. Open Points: User Decision → Fix / Issue / Discard
 
-**Ziel:** Issues sind die Ausnahme, nicht der Default. Offene Punkte sind nur noch echte Entscheidungs-Punkte (Architektur-Tradeoffs, Verhaltens-Aenderungen) — alles Fixbare wurde im Loop gefixt, Unbestaetigtes verworfen. Minor-Findings bekommen NIE Issues (sie stehen im Audit-Log und tauchen beim naechsten Audit wieder auf, falls relevant).
+**Goal:** issues are the exception, not the default. Open points are only genuine decision points left (architecture tradeoffs, behavior changes) — everything fixable was fixed in the loop, unconfirmed items were discarded. Minor findings NEVER become issues (they stay in the audit log and resurface at the next audit if still relevant).
 
-**Wenn `## Offene Punkte` leer ist:** 3f komplett ueberspringen, `3f: n/a (keine offenen Punkte)` loggen.
+**If `## Open Points` is empty:** skip 3f entirely, log `3f: n/a (no open points)`.
 
-**Schritt 1 — User-Entscheid via AskUserQuestion:**
+**Step 1 — User decision via AskUserQuestion:**
 
-Alle Offenen Punkte kompakt auflisten (Dimension, datei:zeile, 1-Satz-Frage). Dann fragen — bei <= 4 Punkten eine Frage pro Punkt (multiSelect-faehig buendeln), bei mehr eine Sammel-Frage mit Optionen:
-- **Jetzt entscheiden + fixen** — User gibt pro Punkt die Richtung vor (1 Satz reicht), Orchestrator dispatcht Fix-Agents mit der Entscheidung als Kontext. Fix-Verifier prueft wie immer.
-- **Als Issue vertagen** — nur diese Punkte werden Issues (Schritt 2).
-- **Verwerfen** — Punkt wird verworfen + `patterns-store.sh dismissed`; bei wiederholtem Verwerfen schlaegt der Learning-Agent eine Suppression vor.
+List all open points compactly (dimension, file:line, 1-sentence question). Then ask — for <= 4 points, one question per point (bundled as multiSelect-capable), for more a collective question with options:
+- **Decide + fix now** — user gives the direction per point (1 sentence is enough), orchestrator dispatches fix agents with the decision as context. Fix-verifier checks as usual.
+- **Defer as issue** — only these points become issues (step 2).
+- **Discard** — point is discarded + `patterns-store.sh dismissed`; on repeated discards, the learning agent proposes a suppression.
 
-**Schritt 2 — Issues NUR fuer explizit Vertagtes:**
+**Step 2 — Issues ONLY for explicitly deferred points:**
 
 Precheck:
 ```bash
 gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — vertagte Punkte bleiben im Log"
 ```
 
-1. **Dedup gegen Issues:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — existiert schon ein Issue mit diesem `[Dimension] datei:zeile`, **skip**.
-1b. **Dedup gegen offene PRs:** `OPEN_PRS` aus Phase 0.2 pruefen (Fallback: `gh pr list --state open --search "{datei}"`) — adressiert ein offener PR dieselbe Stelle, **skip** + Hinweis im Log (`vertagt — wird von PR #{N} abgedeckt`).
-2. **Issue erstellen:**
+1. **Dedup against issues:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — if an issue with this `[Dimension] datei:zeile` already exists, **skip**.
+1b. **Dedup against open PRs:** check `OPEN_PRS` from Phase 0.2 (fallback: `gh pr list --state open --search "{datei}"`) — if an open PR already addresses this spot, **skip** + note in the log (`deferred — covered by PR #{N}`).
+2. **Create issue:**
    ```bash
    gh issue create \
      --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" \
@@ -67,7 +67,7 @@ gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q 
    **Quelle:** \`{LOGFILE}\` (Audit vom {DATUM}, Branch \`{BRANCH}\`, HEAD \`{SHORT_SHA}\`)" \
      --label "audit-finding"
    ```
-3. Label fehlt im Repo → `gh label create audit-finding --color FBCA04`, dann erneut.
-4. Ausgabe: `{N} Punkte gefixt, {M} vertagt als Issues: {urls}, {K} verworfen`.
+3. Label missing in repo → `gh label create audit-finding --color FBCA04`, then retry.
+4. Output: `{N} points fixed, {M} deferred as issues: {urls}, {K} discarded`.
 
-**Wichtig:** Fehler blockieren den Push NICHT. Bei `gh`-Fehler kurz melden und weiter mit Phase 4. In CI/Headless (`AUDIT_SKIP_LEARNING_CHECK=1` als Proxy fuer non-interactive): Schritt 1 ueberspringen, alle Offenen Punkte direkt als Issues vertagen (altes Verhalten).
+**Important:** errors do NOT block the push. On `gh` error, report briefly and continue with Phase 4. In CI/headless (`AUDIT_SKIP_LEARNING_CHECK=1` as a proxy for non-interactive): skip step 1, defer all open points directly as issues (old behavior).

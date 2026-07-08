@@ -1,25 +1,25 @@
-# Pre-Flight-Checks: Learning-Backlog + offene Issues/PRs
+# Pre-Flight Checks: Learning Backlog + Open Issues/PRs
 
-Wird von `audit/SKILL.md` Phase 0 geladen. Zwei Checks vor dem eigentlichen Audit.
+Loaded by `audit/SKILL.md` Phase 0. Two checks before the actual audit.
 
-## Learning-Backlog-Check (Phase 0)
+## Learning Backlog Check (Phase 0)
 
-Pruefe ob unverarbeitete Learning-Vorschlaege aus frueheren Audits offen sind:
+Check whether unprocessed learning suggestions from earlier audits are still open:
 
 ```bash
 LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
 [ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
 ```
 
-Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
+If `>= 1`: ask the user via `AskUserQuestion` with options:
 
-- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md`. **WICHTIG — ins Quell-Repo editieren:** `~/.claude/skills/*` kann ein Sync-Ziel sein (Symlink oder entpacktes `.skill`-Bundle), dessen Inhalt ueberschrieben wird. Vor dem ersten Edit Quelle aufloesen (`readlink` bzw. Skill-Quell-Repo finden, z.B. `~/Local Sites/claude-skills`) und DORT editieren — Edits in der entpackten Kopie gehen beim naechsten Sync verloren. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Audit weiter mit Phase 1.
-- **Spaeter, Audit jetzt** → Phase 1 starten, Vorschlaege bleiben offen.
-- **Nie wieder fragen fuer diese Audits** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
+- **Apply suggestions now** → list the suggestions, user picks which ones, orchestrator dispatches matching changes to `audit/guidelines/*.md` or `audit/agents/*.md`. **IMPORTANT — edit the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose contents get overwritten. Before the first edit, resolve the source (`readlink` or find the skill source repo, e.g. `~/Local Sites/claude-skills`) and edit THERE — edits in the unpacked copy are lost on the next sync. After applying: change `[ ]` to `[x]` in learning-log.md. Then continue the audit with Phase 1.
+- **Later, audit now** → start Phase 1, suggestions stay open.
+- **Never ask again for these audits** → append a `[skip]` marker to the affected lines, they no longer count.
 
-Wenn `0`: weiter ohne Frage.
+If `0`: continue without asking.
 
-## Offene Audit-Issues & PRs (Phase 0.2)
+## Open Audit Issues & PRs (Phase 0.2)
 
 ```bash
 if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com; then
@@ -28,12 +28,12 @@ if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep 
 fi
 ```
 
-**Offene `audit-finding`-Issues vorhanden?** → AskUserQuestion (Liste kompakt zeigen):
+**Open `audit-finding` issues present?** → AskUserQuestion (show the list compactly):
 
-- **Jetzt mitfixen** — ausgewaehlte Issues werden als verifizierte Findings in Runde 1 eingespeist (Fix-Agent + Fix-Verifier wie ueblich). Nach erfolgreichem Fix: `gh issue close {N} --comment "Fixed in audit {DATUM}, commit folgt im naechsten Push."`
-- **Offen lassen** — Issues bleiben, Audit laeuft normal.
+- **Fix along with this run** — selected issues are fed into round 1 as verified findings (fix agent + fix-verifier as usual). After a successful fix: `gh issue close {N} --comment "Fixed in audit {DATUM}, commit folgt im naechsten Push."`
+- **Leave open** — issues stay, audit runs normally.
 
-**`OPEN_PRS` nicht leer?** → Als Kontext merken (keine Frage):
+**`OPEN_PRS` not empty?** → note as context (no question):
 
-- In Phase 3f-Dedup: kein neues Issue fuer etwas, das ein offener PR bereits adressiert.
-- Wenn ein offener PR dieselben Dateien anfasst wie der aktuelle Diff: Hinweis im Audit-Log (`## Hinweise: PR-Ueberschneidung`) — Merge-Konflikt-Risiko.
+- In the Phase 3f dedup: no new issue for something an open PR already addresses.
+- If an open PR touches the same files as the current diff: note in the audit log (`## Notes: PR Overlap`) — merge conflict risk.

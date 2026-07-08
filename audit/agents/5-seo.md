@@ -4,16 +4,16 @@
 - **model:** `haiku`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-Meta Tags, Semantic HTML, Structured Data, Core Web Vitals. Gilt fuer ALLE Views — oeffentliche UND app-interne (Admin, Dashboard, Settings etc.). Heading-Hierarchie, semantisches HTML und Barrierefreiheit sind universell.
+Meta tags, semantic HTML, structured data, Core Web Vitals. Applies to ALL views — public AND app-internal (admin, dashboard, settings etc.). Heading hierarchy, semantic HTML, and accessibility are universal.
 
-**Vollstaendige Guidelines:** Lies `guidelines/seo.md` im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
+**Complete guidelines:** Read `guidelines/seo.md` in the skill directory and check the code against all rules described there.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Heading-Hierarchie (`<h1>`-`<h6>`), Semantic HTML (`<main>`, `<nav>`, `<header>`, `<footer>`, `<section>`, `<article>`). Bei oeffentlichen Seiten zusaetzlich: Meta-Tags, Open Graph Tags, Structured Data (JSON-LD), URL-Struktur, Core Web Vitals Hints, Sitemap, Canonical Tags, Hreflang.
+Heading hierarchy (`<h1>`-`<h6>`), semantic HTML (`<main>`, `<nav>`, `<header>`, `<footer>`, `<section>`, `<article>`). For public pages, additionally: meta tags, Open Graph tags, structured data (JSON-LD), URL structure, Core Web Vitals hints, sitemap, canonical tags, hreflang.
 
-## Ueberspringen wenn
+## Skip When
 
-- Keine Frontend-Dateien im Diff/Batch
+- No frontend files in the diff/batch

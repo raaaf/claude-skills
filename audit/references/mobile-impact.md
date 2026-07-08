@@ -1,16 +1,16 @@
-# Mobile-App Impact-Matrix
+# Mobile App Impact Matrix
 
-Nur relevant wenn `bin/detect-mobile.sh` eine Mobile-App im Repo erkennt.
+Only relevant when `bin/detect-mobile.sh` detects a mobile app in the repo.
 
-| Änderung | Mobile-Relevanz | Einstufung |
+| Change | Mobile Relevance | Rating |
 |----------|-----------------|------------|
-| API-Endpunkte geändert/entfernt | Breaking Change — App muss aktualisiert werden | Important |
-| API-Response-Format geändert | Breaking Change — App-Parsing bricht | Important |
-| Neue API-Felder hinzugefügt | Kein Breaking Change, aber App nutzt sie nicht ohne Update | Minor |
-| Auth-Flow geändert | Breaking Change — Login in App bricht | Important |
-| Push-Notification-Payload geändert | App empfängt falsche Daten | Important |
-| Deep-Link-Routen geändert | App-Navigation bricht | Important |
-| Shared Code geändert (Monorepo) | Direkt betroffen — prüfe ob App-Build noch funktioniert | Important |
-| Nur Frontend/Web geändert | Keine Mobile-Auswirkung (außer WebView/Capacitor) | — |
+| API endpoints changed/removed | Breaking change — app must be updated | Important |
+| API response format changed | Breaking change — app parsing breaks | Important |
+| New API fields added | Not a breaking change, but the app won't use them without an update | Minor |
+| Auth flow changed | Breaking change — login in the app breaks | Important |
+| Push notification payload changed | App receives wrong data | Important |
+| Deep link routes changed | App navigation breaks | Important |
+| Shared code changed (monorepo) | Directly affected — check whether the app build still works | Important |
+| Only frontend/web changed | No mobile impact (except WebView/Capacitor) | — |
 
-Findings als **Important** einstufen wenn Breaking Changes erkannt werden, als **Minor** wenn nur neue Felder/Endpunkte hinzukommen.
+Rate findings as **Important** when breaking changes are detected, as **Minor** when only new fields/endpoints are added.

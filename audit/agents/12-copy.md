@@ -1,26 +1,26 @@
-# Subagent 12: Copy & UX-Writing
+# Subagent 12: Copy & UX Writing
 
 - **subagent_type:** `ui-ux-reviewer`
 - **model:** `sonnet`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-Qualitaet von user-facing Text: Microcopy (Buttons, Fehlermeldungen, Empty States, Confirm-Dialoge), Terminologie- und Anrede-Konsistenz (du/Sie), Clarity, Marketing-Copy auf Landing-/Pricing-Seiten. Findings unter Kategorie `[Copy]`.
+Quality of user-facing text: microcopy (buttons, error messages, empty states, confirm dialogs), terminology and address-form consistency (du/Sie), clarity, marketing copy on landing/pricing pages. Findings under category `[Copy]`.
 
-**Vollstaendige Guidelines:** Lies `guidelines/copywriting.md` im Skill-Verzeichnis und pruefe den Text gegen alle dort beschriebenen Regeln.
+**Complete guidelines:** Read `guidelines/copywriting.md` in the skill directory and check the text against all rules described there.
 
-**Abgrenzung:** Typografische Zeichen (Anfuehrungszeichen, Apostrophe, Ellipsen) prueft Worker 7 (Typography) — nicht doppelt melden. Du pruefst INHALT und KONSISTENZ des Texts, nicht seine Zeichen.
+**Scope boundary:** Typographic characters (quotation marks, apostrophes, ellipses) are checked by worker 7 (Typography) — don't report them twice. You check CONTENT and CONSISTENCY of the text, not its characters.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Terminologie-Glossar ueber die gesamte App ableiten und Drift melden (gleiches Konzept, mehrere Begriffe). Anrede-Konsistenz ueber alle Translation-Dateien. Vollstaendigkeits-Gefaelle zwischen Sprachen (DE-Text konkret, EN-Text generisch).
+Derive a terminology glossary across the whole app and report drift (same concept, multiple terms). Address-form consistency across all translation files. Completeness gap between languages (DE text specific, EN text generic).
 
-## Ueberspringen wenn
+## Skip When
 
-- Keine Frontend- und keine Translation-Dateien im Diff/Batch
-- Reine Code-/Config-Aenderung ohne neuen oder geaenderten user-facing Text
+- No frontend and no translation files in the diff/batch
+- Pure code/config change with no new or changed user-facing text
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

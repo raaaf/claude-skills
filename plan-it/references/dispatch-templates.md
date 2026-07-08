@@ -1,13 +1,13 @@
 # Dispatch Templates
 
-Bash-Logik und Prompt-Templates fuer Phase 2.5 (Codebase-Kontext), Phase 3 (Challengen), Phase 3.5 (Evaluation).
+Bash logic and prompt templates for Phase 2.5 (codebase context), Phase 3 (challenging), Phase 3.5 (evaluation).
 
 ## Contents
-- Phase 2.5 — Codebase-Kontext sammeln (Framework-Detection, Source-Dirs)
-- Phase 3 — Plan-Challenger dispatchen (5 parallele Reviewer)
-- Phase 3.5 — Evaluation parsen (Konsens-Score, Aenderungs-Vorschlaege)
+- Phase 2.5 — Gather codebase context (framework detection, source dirs)
+- Phase 3 — Dispatch plan challengers (5 parallel reviewers)
+- Phase 3.5 — Parse evaluation (consensus score, change proposals)
 
-## Phase 2.5: Codebase-Kontext sammeln
+## Phase 2.5: Gather Codebase Context
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
@@ -33,87 +33,87 @@ fi
 find $SOURCE_DIRS -maxdepth 2 -type d 2>/dev/null | head -50
 ```
 
-ZENTRALE_PATTERNS ermitteln:
-- Lies CLAUDE.md und extrahiere Architektur-Konventionen (falls vorhanden)
-- Falls keine CLAUDE.md: Analysiere die Verzeichnisstruktur auf Patterns (Services, Repositories, Traits, Mixins, Composables)
-- Kompakt zusammenfassen in max 10 Zeilen
+Determine ZENTRALE_PATTERNS:
+- Read CLAUDE.md and extract architecture conventions (if present)
+- If no CLAUDE.md: analyze the directory structure for patterns (services, repositories, traits, mixins, composables)
+- Summarize compactly in max 10 lines
 
-## Phase 3: Challenge-Dispatch
+## Phase 3: Challenge Dispatch
 
-Subagents parallel — nur die in `CHALLENGE_DIMS` (Phase 0.5) enthaltenen Dimensionen (low=3, medium=4, high/xhigh=5).
+Subagents in parallel — only the dimensions included in `CHALLENGE_DIMS` (Phase 0.5) (low=3, medium=4, high/xhigh=5).
 
-`{PROJECT_GUIDELINES}` kommt aus Phase 0.7 (`.claude/plan-guidelines.md`); wenn leer, Block weglassen.
+`{PROJECT_GUIDELINES}` comes from Phase 0.7 (`.claude/plan-guidelines.md`); if empty, omit the block.
 
-**Product, Design, Simplicity** erhalten den Plan + Projekt-Guidelines:
+**Product, Design, Simplicity** receive the plan + project guidelines:
 ```
 Agent(
-  prompt: "Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
+  prompt: "Read agents/challenge-{dimension}.md and review this plan:
     {PLAN_INHALT}
 
-    PROJEKT-GUIDELINES (haben Vorrang vor generischen Best Practices):
+    PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}",
   subagent_type: general-purpose,
   model: haiku
 )
 ```
 
-**Architecture, Risk** erhalten zusaetzlich den Codebase-Kontext:
+**Architecture, Risk** additionally receive the codebase context:
 ```
 Agent(
-  prompt: "Lies agents/challenge-{dimension}.md und pruefe diesen Plan:
+  prompt: "Read agents/challenge-{dimension}.md and review this plan:
     {PLAN_INHALT}
 
-    PROJEKT-GUIDELINES (haben Vorrang vor generischen Best Practices):
+    PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}
 
-    Codebase-Kontext:
-    DATEISTRUKTUR: {DATEISTRUKTUR}
-    ZENTRALE_PATTERNS: {ZENTRALE_PATTERNS}
+    Codebase context:
+    FILE STRUCTURE: {DATEISTRUKTUR}
+    CORE PATTERNS: {ZENTRALE_PATTERNS}
     FRAMEWORK: {FRAMEWORK}",
   subagent_type: general-purpose,
   model: sonnet
 )
 ```
 
-| Agent | Datei | Perspektive |
+| Agent | File | Perspective |
 |---|---|---|
-| Product | `agents/challenge-product.md` | CEO/Founder — loest das wirklich das Problem? |
-| Architecture | `agents/challenge-architecture.md` | Senior Engineer — technisch solide? |
-| Design | `agents/challenge-design.md` | Designer — wie fuehlt sich das an? |
-| Risk | `agents/challenge-risk.md` | Skeptiker — was kann schiefgehen? |
-| Simplicity | `agents/challenge-simplicity.md` | Minimalist — was kann weg? |
+| Product | `agents/challenge-product.md` | CEO/founder — does this actually solve the problem? |
+| Architecture | `agents/challenge-architecture.md` | Senior engineer — technically sound? |
+| Design | `agents/challenge-design.md` | Designer — how does this feel? |
+| Risk | `agents/challenge-risk.md` | Skeptic — what could go wrong? |
+| Simplicity | `agents/challenge-simplicity.md` | Minimalist — what can be cut? |
 
-## Phase 3.5: Evaluation-Prompt
+## Phase 3.5: Evaluation Prompt
 
 ```
 Agent(
-  prompt: "Du bist ein erfahrener Tech Lead. Lies diesen Plan und bewerte ihn ehrlich.
+  prompt: "You are an experienced tech lead. Read this plan and evaluate it honestly.
 
     {PLAN_INHALT}
 
-    PROJEKT-GUIDELINES (haben Vorrang vor generischen Best Practices):
+    PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}
 
-    Codebase-Kontext:
-    DATEISTRUKTUR: {DATEISTRUKTUR}
-    ZENTRALE_PATTERNS: {ZENTRALE_PATTERNS}
+    Codebase context:
+    FILE STRUCTURE: {DATEISTRUKTUR}
+    CORE PATTERNS: {ZENTRALE_PATTERNS}
     FRAMEWORK: {FRAMEWORK}
 
-    Bewerte den Plan in diesen Dimensionen (je 1-2 Saetze, kein Filler):
+    Evaluate the plan on these dimensions (1-2 sentences each, no filler):
 
-    1. Vollstaendigkeit — Fehlen Schritte? Luecken zwischen 'was steht im Plan' und 'was muesste man tatsaechlich tun'?
-    2. Reihenfolge — Stimmt die Abfolge? Abhaengigkeiten falsch oder gar nicht beruecksichtigt?
-    3. Aufwand — Passt die Aufwand-Angabe im Plan zur Schritt-Liste? Fehlt sie, schaetze selbst und benenne den groessten Posten.
-    4. Risiken — Was ist das groesste Risiko das der Plan nicht adressiert?
-    5. Umsetzbarkeit — Kann ein Entwickler den Plan nehmen und direkt loslegen? Hat jeder Schritt ein pruefbares verify-Kriterium?
+    1. Completeness — Are steps missing? Gaps between 'what the plan says' and 'what actually needs to be done'?
+    2. Ordering — Is the sequence right? Dependencies wrong or not considered at all?
+    3. Effort — Does the effort estimate in the plan match the step list? If missing, estimate it yourself and name the biggest item.
+    4. Risks — What is the biggest risk the plan doesn't address?
+    5. Actionability — Can a developer take the plan and start right away? Does every step have a checkable verify criterion?
 
-    PFLICHT-Checkliste (knapp pruefen):
-    - Monitoring/Alerting-Blindspots: Failure-Modi die der Plan nicht observable macht?
-    - Bestehende Feature-Ueberlappungen: aehnliche Features in der Codebase die wiederverwendet werden sollten?
-    - Optimierungs-Hebel: Parallelisierung, Caching, Batch-Processing — wo laesst sich Aufwand reduzieren?
+    MANDATORY checklist (check briefly):
+    - Monitoring/alerting blind spots: failure modes the plan doesn't make observable?
+    - Existing feature overlap: similar features in the codebase that should be reused?
+    - Optimization levers: parallelization, caching, batch processing — where can effort be reduced?
 
-    Am Ende: Ein Gesamturteil in EINEM Satz.
-    Falls Aenderungen empfohlen: maximal 3 konkrete Vorschlaege.",
+    At the end: an overall verdict in ONE sentence.
+    If changes are recommended: at most 3 concrete suggestions.",
   subagent_type: general-purpose,
   model: sonnet
 )

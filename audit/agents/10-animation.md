@@ -4,28 +4,28 @@
 - **model:** `haiku`
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 
-Animationen, Transitions, Motion Design: fehlende Animationen (Page Transitions, Modals, Dropdowns, Listen, Skeleton), uebermaessige Animationen, CSS/Tailwind Transitions, Reduced Motion, Audio-Feedback.
+Animations, transitions, motion design: missing animations (page transitions, modals, dropdowns, lists, skeletons), excessive animations, CSS/Tailwind transitions, reduced motion, audio feedback.
 
-**Vollstaendige Guidelines:** Lies diese Dateien im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln:
-- `guidelines/ui-animation.md` — Entscheidungsframework, Timing, Easing, Reduced Motion
-- `guidelines/ui-audio.md` — nur relevant wenn das Projekt Audio-Feedback nutzt
+**Complete guidelines:** Read these files in the skill directory and check the code against all rules described there:
+- `guidelines/ui-animation.md` — decision framework, timing, easing, reduced motion
+- `guidelines/ui-audio.md` — only relevant when the project uses audio feedback
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Gesamtbild: Ist die App konsistent in ihrem Motion-Design — gleiche Easing-Funktionen, gleiche Timing-Stufen? Oder jede Seite anders?
+Overall picture: is the app consistent in its motion design — same easing functions, same timing steps? Or does every page differ?
 
-## Pflicht-Verifikation VOR dem Flaggen
+## Mandatory Verification BEFORE Flagging
 
-- **Reduced-Motion-Catch-All:** Vor jedem "fehlt `prefers-reduced-motion`"-Finding pruefen, ob ein globaler Catch-All dafuer existiert (globales CSS/`app.css`, Tailwind-Preset). Existiert er bereits, ist ein einzelnes Element ohne eigene `@media`-Regel KEIN Finding.
-- **Tailwind-Transition-Defaults:** Tailwind-Utilities wie `transition`/`transition-colors`/`transition-transform` haben eine Default-Duration von 150ms. "Fehlende Duration" ist daher KEIN Finding, solange keine explizit abweichende (zu lange/zu kurze) Duration noetig ist.
-- **Findings gegen neue Dependencies:** Vor einem Finding, das einer im Diff neu eingefuehrten Animations-Library ein Fehlverhalten unterstellt (z.B. "respektiert Reduced Motion nicht"), zuerst deren Defaults pruefen (README/Docs in `node_modules/{pkg}/`, z.B. `respectMotionPreference`). Viele Libraries erledigen das Unterstellte bereits per Default.
+- **Reduced-motion catch-all:** Before every "missing `prefers-reduced-motion`" finding, check whether a global catch-all exists for it (global CSS/`app.css`, Tailwind preset). If it already exists, a single element without its own `@media` rule is NOT a finding.
+- **Tailwind transition defaults:** Tailwind utilities like `transition`/`transition-colors`/`transition-transform` have a default duration of 150ms. "Missing duration" is therefore NOT a finding as long as no explicitly deviating (too long/too short) duration is needed.
+- **Findings against new dependencies:** Before a finding that attributes misbehavior to an animation library newly introduced in the diff (e.g. "doesn't respect reduced motion"), first check its defaults (README/docs in `node_modules/{pkg}/`, e.g. `respectMotionPreference`). Many libraries already handle the assumed behavior by default.
 
-## Ueberspringen wenn
+## Skip When
 
-- Keine Frontend-Dateien im Diff/Batch
+- No frontend files in the diff/batch
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

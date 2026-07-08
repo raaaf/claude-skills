@@ -321,69 +321,69 @@ if affected:
 
 Use database-level atomicity (atomic updates, transactions with proper isolation levels, advisory locks) for operations where concurrent access is possible. Optimistic locking with version columns is another effective pattern for update conflicts.
 
-## X. Scaling — Von 1 bis 1000+ gleichzeitige User
+## X. Scaling — From 1 to 1000+ Concurrent Users
 
-Performance-Anforderungen ändern sich fundamental mit der Anzahl gleichzeitiger User. Prüfe Code immer im Kontext der erwarteten Last.
+Performance requirements change fundamentally with the number of concurrent users. Always check code in the context of the expected load.
 
-### 1-10 User (Prototyp, internes Tool)
+### 1-10 users (prototype, internal tool)
 
-Hier reicht solider Code ohne spezielle Optimierung:
-- N+1-Queries vermeiden (immer)
-- Keine unbounded Data Structures (immer)
-- Synchrone Verarbeitung ist akzeptabel für kurze Tasks
-- SQLite oder einfache DB-Setups funktionieren
+Solid code without special optimization is enough here:
+- Avoid N+1 queries (always)
+- No unbounded data structures (always)
+- Synchronous processing is acceptable for short tasks
+- SQLite or simple DB setups work fine
 
-### 10-100 User (kleine SaaS, Kunden-App)
+### 10-100 users (small SaaS, customer app)
 
-- **Connection Pooling:** DB-Connections wiederverwenden statt pro Request neu aufbauen
-- **Queue/Background Jobs:** E-Mail, PDF, Webhooks MÜSSEN asynchron laufen
-- **Session-Handling:** File-basierte Sessions durch DB- oder Redis-Sessions ersetzen
-- **Rate Limiting:** API-Endpunkte und Login-Versuche begrenzen
-- **Caching:** Häufig gelesene, selten geschriebene Daten cachen (Config, Permissions, Feature-Flags)
+- **Connection pooling:** reuse DB connections instead of establishing a new one per request
+- **Queue/background jobs:** email, PDF, webhooks MUST run asynchronously
+- **Session handling:** replace file-based sessions with DB or Redis sessions
+- **Rate limiting:** limit API endpoints and login attempts
+- **Caching:** cache frequently read, rarely written data (config, permissions, feature flags)
 
-### 100-500 User (wachsende App)
+### 100-500 users (growing app)
 
-- **Read Replicas:** Lese-Queries auf Read-Replicas verteilen wenn DB zum Bottleneck wird
-- **Query-Analyse:** Slow-Query-Log aktivieren, alle Queries >50ms untersuchen
-- **Asset-CDN:** Statische Assets (CSS, JS, Bilder, Fonts) über CDN ausliefern
-- **HTTP-Caching:** `Cache-Control`, `ETag`, `Last-Modified` korrekt setzen
-- **Pagination:** ALLE Listen paginieren — keine unbegrenzten Ergebnismengen
-- **Eager Loading Audit:** Jede Seite auf N+1 prüfen — bei 100 Usern werden aus 10 Extra-Queries 1000
-- **Locks und Concurrency:** Optimistic Locking für parallele Schreibzugriffe (Bestell-Prozesse, Buchungen, Inventar)
+- **Read replicas:** distribute read queries across read replicas once the DB becomes the bottleneck
+- **Query analysis:** enable the slow-query log, investigate every query >50ms
+- **Asset CDN:** serve static assets (CSS, JS, images, fonts) via a CDN
+- **HTTP caching:** set `Cache-Control`, `ETag`, `Last-Modified` correctly
+- **Pagination:** paginate ALL lists — no unbounded result sets
+- **Eager loading audit:** check every page for N+1 — at 100 users, 10 extra queries become 1000
+- **Locks and concurrency:** optimistic locking for concurrent writes (order processes, bookings, inventory)
 
-### 500-1000+ User (Scale)
+### 500-1000+ users (scale)
 
-- **Horizontal Scaling:** App muss stateless sein — keine lokalen Sessions, kein lokaler File-Upload, keine In-Memory-Caches die pro Instance leben
-- **Redis/Memcached:** Für Sessions, Cache, Queues, Rate Limiting, Locks
-- **Database Indexes:** Jede WHERE-/ORDER BY-/JOIN-Spalte muss einen Index haben. Composite Indexes für häufige Query-Kombinationen
-- **Lazy Loading verbieten:** In Produktion Strict Mode aktivieren — jeder Lazy Load ist ein N+1 Kandidat der bei 1000 Usern die DB killt
-- **Queue Workers skalieren:** Nicht ein Worker für alles — getrennte Queues für kritische (Payment) und unkritische (E-Mail) Jobs
-- **Health Checks und Circuit Breaker:** Externe Services (Payment, Mail, API) mit Timeouts und Fallbacks absichern
-- **Database Connection Limits:** Bei 1000 gleichzeitigen Requests braucht die DB 1000 Connections — Connection Pooling ist Pflicht, nicht optional
-- **Bulk Operations:** Statt 1000 einzelne INSERT/UPDATE → Batch-Operationen verwenden
-- **WebSocket/SSE für Realtime:** Polling ist bei 1000 Usern eine DDoS auf die eigene App — Polling-Intervalle durch Push-basierte Updates ersetzen
+- **Horizontal scaling:** the app must be stateless — no local sessions, no local file uploads, no in-memory caches that live per instance
+- **Redis/Memcached:** for sessions, cache, queues, rate limiting, locks
+- **Database indexes:** every WHERE/ORDER BY/JOIN column must have an index. Composite indexes for common query combinations
+- **Forbid lazy loading:** enable strict mode in production — every lazy load is an N+1 candidate that kills the DB at 1000 users
+- **Scale queue workers:** not one worker for everything — separate queues for critical (payment) and non-critical (email) jobs
+- **Health checks and circuit breakers:** protect external services (payment, mail, API) with timeouts and fallbacks
+- **Database connection limits:** at 1000 concurrent requests, the DB needs 1000 connections — connection pooling is mandatory, not optional
+- **Bulk operations:** use batch operations instead of 1000 individual INSERT/UPDATE statements
+- **WebSocket/SSE for realtime:** polling at 1000 users is a self-inflicted DDoS — replace polling intervals with push-based updates
 
-### Anti-Patterns bei Scale
+### Anti-Patterns at Scale
 
-| Anti-Pattern | Warum tödlich ab Scale | Fix |
+| Anti-Pattern | Why it's deadly at scale | Fix |
 |-------------|----------------------|-----|
-| `User.all()` ohne Pagination | 100k User = OOM | Cursor-Pagination |
-| Synchrone E-Mail im Request | 1000 Requests = 1000 SMTP-Connections = Timeout | Queue |
-| File-Upload auf lokale Disk | Horizontales Scaling unmöglich | Object Storage (S3, MinIO) |
-| Session in File-System | Load Balancer verteilt auf andere Instance → Session weg | Redis/DB Sessions |
-| `sleep()` oder `usleep()` in Code | Blockiert Worker-Thread, bei 1000 Requests = Deadlock | Queue oder Event-basiert |
-| Globale Variablen/Singletons mit State | Nicht thread-safe, nicht multi-instance-safe | Dependency Injection, Redis |
-| Uncached Config-Reads pro Request | 1000 Requests = 1000 Filesystem-Reads | Config cachen |
-| Unbounded `SELECT` ohne LIMIT | Ein Bot-Crawl mit `?page=99999` killt die DB | Immer LIMIT, Cursor-Pagination |
+| `User.all()` without pagination | 100k users = OOM | Cursor pagination |
+| Synchronous email in the request | 1000 requests = 1000 SMTP connections = timeout | Queue |
+| File upload to local disk | Horizontal scaling impossible | Object storage (S3, MinIO) |
+| Session in the file system | Load balancer routes to another instance → session gone | Redis/DB sessions |
+| `sleep()` or `usleep()` in code | Blocks the worker thread, at 1000 requests = deadlock | Queue or event-based |
+| Global variables/singletons with state | Not thread-safe, not multi-instance-safe | Dependency injection, Redis |
+| Uncached config reads per request | 1000 requests = 1000 filesystem reads | Cache the config |
+| Unbounded `SELECT` without LIMIT | A bot crawl with `?page=99999` kills the DB | Always LIMIT, cursor pagination |
 
-### Checkliste für Code-Review
+### Code Review Checklist
 
-Bei jedem Performance-Audit diese Fragen stellen:
-1. **Was passiert wenn 100 User gleichzeitig diese Seite aufrufen?** — Queries linear? Cache vorhanden?
-2. **Was passiert wenn die Tabelle 1 Million Rows hat?** — Index vorhanden? Pagination?
-3. **Was passiert wenn der externe Service 5 Sekunden braucht?** — Timeout? Queue? Fallback?
-4. **Was passiert wenn zwei User gleichzeitig dasselbe Objekt ändern?** — Locking? Atomic Updates?
-5. **Wie viele DB-Queries feuert diese Seite?** — Zählen. >10 pro Pageload = verdächtig. >50 = kritisch.
+Ask these questions on every performance audit:
+1. **What happens if 100 users hit this page at once?** — Queries linear? Cache in place?
+2. **What happens if the table has 1 million rows?** — Index in place? Pagination?
+3. **What happens if the external service takes 5 seconds?** — Timeout? Queue? Fallback?
+4. **What happens if two users change the same object at once?** — Locking? Atomic updates?
+5. **How many DB queries does this page fire?** — Count them. >10 per page load = suspicious. >50 = critical.
 
 ## XI. Monitoring & Measurement
 

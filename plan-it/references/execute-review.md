@@ -1,76 +1,76 @@
 # Execute & Reconcile (Phase 5 Detail)
 
-Follow-through fuer geschriebene Plaene. Grundregel bleibt: Der Orchestrator editiert nie selbst Produktiv-Code — der Executor arbeitet in seinem Arbeitsbereich, der Orchestrator reviewt und faellt ein Verdict, wie ein Tech-Lead, der nicht selbst auf den Branch pusht. Konzept nach shadcn/improve (closing-the-loop), an unsere Skill-Konventionen angepasst.
+Follow-through for written plans. Core rule stays: the orchestrator never edits production code itself — the executor works in its own workspace, the orchestrator reviews and renders a verdict, like a tech lead who doesn't push to the branch themselves. Concept after shadcn/improve (closing-the-loop), adapted to our skill conventions.
 
-**Zwei Aufrufer, zwei Arbeitsbereiche:** `/plan-it execute` dispatcht IMMER in einen isolierten Worktree (`{WORKDIR}` = Worktree-Pfad, Executor committet dort). `/delegate` dispatcht per Default in den Working Tree (`{WORKDIR}` = Repo-Root, Executor committet NICHT — Review passiert vor jedem Commit; Worktree nur bei `--worktree`/Risiko, dann wie plan-it). Die mit `{WORKDIR}`/`{COMMIT_REGEL}` markierten Stellen unten entsprechend einsetzen.
+**Two callers, two workspaces:** `/plan-it execute` ALWAYS dispatches into an isolated worktree (`{WORKDIR}` = worktree path, executor commits there). `/delegate` dispatches into the working tree by default (`{WORKDIR}` = repo root, executor does NOT commit — review happens before every commit; worktree only with `--worktree`/risk, then like plan-it). Substitute the spots marked `{WORKDIR}`/`{COMMIT_RULE}` below accordingly.
 
-## `/plan-it execute <plan-datei>` — Executor dispatchen + reviewen
+## `/plan-it execute <plan-file>` — Dispatch + Review Executor
 
-### Vorbedingungen (alle pruefen, sonst stoppen und sagen warum)
+### Preconditions (check all, otherwise stop and say why)
 
-1. Repo ist ein git-Repository (Worktree-Isolation braucht das).
-2. Die Plan-Datei existiert unter `docs/plans/`.
-3. Drift-Check selbst laufen lassen: `git diff --stat {PLANNED_AT_SHA}..HEAD -- {betroffene Dateien}`. Bei Drift: erst den Plan aktualisieren (Ist-Zustand + SHA refreshen), keinen stalen Plan an einen Executor geben.
+1. Repo is a git repository (worktree isolation needs it).
+2. The plan file exists under `docs/plans/`.
+3. Run the drift check yourself: `git diff --stat {PLANNED_AT_SHA}..HEAD -- {affected files}`. On drift: update the plan first (current state + refresh SHA), never hand a stale plan to an executor.
 
 ### Dispatch
 
-EINEN Executor-Subagent starten: `subagent_type: general-purpose`, `isolation: worktree`, Modell `sonnet` (oder was der User nennt: `/plan-it execute {plan} haiku`).
+Start ONE executor subagent: `subagent_type: general-purpose`, `isolation: worktree`, model `sonnet` (or whatever the user names: `/plan-it execute {plan} haiku`).
 
-Der Prompt MUSS enthalten:
+The prompt MUST include:
 
-1. **Den kompletten Plan-Text/Spec inline.** Ein Worktree enthaelt nur committete Dateien — ein uncommitteter Plan ist dort nicht lesbar. Nie annehmen, immer inlinen (gilt fuer beide Aufrufer).
-2. Die Executor-Praeambel:
+1. **The complete plan text/spec inline.** A worktree only contains committed files — an uncommitted plan isn't readable there. Never assume, always inline it (applies to both callers).
+2. The executor preamble:
 
-> Du bist der Executor fuer den folgenden Plan. Folge ihm Schritt fuer Schritt.
-> Fuehre jedes verify-Kriterium aus und bestaetige das erwartete Ergebnis,
-> bevor du weitermachst. Fasse nur die Betroffene-Dateien-Liste an. Tritt eine
-> STOP-Bedingung ein: sofort stoppen und berichten, nicht improvisieren.
-> {COMMIT_REGEL: Worktree -> "Committe deine Arbeit im Worktree (Conventional
-> Commits)." | Working Tree (/delegate-Default) -> "Committe NICHT — die
-> Aenderungen bleiben uncommitted, das Review kommt vor jedem Commit."}
-> Pruefe vor dem Report jede Behauptung gegen ein echtes Tool-Ergebnis dieser
-> Session — fehlgeschlagene oder uebersprungene Verifikationen klar benennen.
-> Antworte exakt im Report-Format.
+> You are the executor for the following plan. Follow it step by step.
+> Run every verify criterion and confirm the expected result before
+> moving on. Touch only the affected-files list. If a STOP condition
+> occurs: stop immediately and report, do not improvise.
+> {COMMIT_RULE: Worktree -> "Commit your work in the worktree (Conventional
+> Commits)." | Working tree (/delegate default) -> "Do NOT commit — the
+> changes stay uncommitted, review happens before every commit."}
+> Before reporting, check every claim against a real tool result from this
+> session — clearly name any failed or skipped verifications.
+> Answer exactly in the report format.
 
-3. Das Report-Format:
+3. The report format:
 
 ```
 STATUS: COMPLETE | STOPPED
-STEPS: pro Schritt — done/skipped + verify-Ergebnis
-STOPPED BECAUSE: (nur bei STOPPED) welche STOP-Bedingung, was beobachtet
-FILES CHANGED: Liste
-NOTES: Abweichungen, Ueberraschungen, Judgment-Calls
+STEPS: per step — done/skipped + verify result
+STOPPED BECAUSE: (only if STOPPED) which STOP condition, what was observed
+FILES CHANGED: list
+NOTES: deviations, surprises, judgment calls
 ```
 
-Hinweis frische Worktrees (entfaellt im Working-Tree-Fall): git-History ja, `node_modules`/Build-Artefakte nein — der Executor muss zuerst Dependencies installieren. Das ist erwartbar, keine Abweichung.
+Note on fresh worktrees (not applicable in the working-tree case): git history yes, `node_modules`/build artifacts no — the executor must install dependencies first. That's expected, not a deviation.
 
-### Review (die eigentliche Orchestrator-Arbeit)
+### Review (the orchestrator's actual work)
 
-Dem Executor-Report NICHT trauen — selbst pruefen (alle Kommandos in `{WORKDIR}`; im Working-Tree-Fall ist das das Repo-Root ohne `-C`):
+Do NOT trust the executor's report — verify it yourself (all commands in `{WORKDIR}`; in the working-tree case that's the repo root without `-C`):
 
-1. **Jedes Done-Kriterium in `{WORKDIR}` re-runnen.**
-2. **Scope-Compliance:** `git -C {WORKDIR} diff --stat` gegen die Betroffene-Dateien-Liste. Jede Datei ausserhalb = Review-Fail.
-3. **Kompletten Diff lesen** und gegen "Problem"/"Ziel" des Plans und die Konventionen-Sektion judgen.
-4. **Neue Tests lesen:** Ein Test, der nichts Sinnvolles asserted, besteht `npm test` und beweist nichts — Executors gamen Kriterien.
+1. **Re-run every done criterion in `{WORKDIR}`.**
+2. **Scope compliance:** `git -C {WORKDIR} diff --stat` against the affected-files list. Any file outside it = review fail.
+3. **Read the complete diff** and judge it against the plan's "Problem"/"Goal" and the conventions section.
+4. **Read new tests:** A test that asserts nothing meaningful passes `npm test` and proves nothing — executors game criteria.
 
-**Dokumentierte Abweichungen nach Merit beurteilen, nicht reflexhaft blocken.** "Nicht improvisieren" verhindert stilles Driften; ein Executor, der ein echtes Hindernis minimal umschifft und es in NOTES erklaert, hat richtig gehandelt — approven, wenn es dem Plan-Ziel dient und im Scope bleibt. UNDOKUMENTIERTE Abweichungen sind Review-Fails.
+**Judge documented deviations on merit, don't block reflexively.** "Do not improvise" prevents silent drift; an executor that minimally works around a real obstacle and explains it in NOTES acted correctly — approve if it serves the plan's goal and stays in scope. UNDOCUMENTED deviations are review fails.
 
 ### Verdict
 
-| Verdict | Wann | Aktion |
+| Verdict | When | Action |
 |---|---|---|
-| APPROVE | Kriterien gruen, Scope sauber, Qualitaet passt | User praesentieren: Diff-Zusammenfassung, Arbeitsbereich (Worktree-Pfad + Branch bzw. Working-Tree-Status), NOTES. **Mergen/Committen ist User-Entscheidung — nie selbst mergen/pushen/committen.** |
-| REVISE | Behebbare Luecken | SendMessage an denselben Executor mit konkretem, umsetzbarem Feedback. Max 2 Revisions-Runden, dann BLOCK. |
-| BLOCK | STOP-Bedingung, Scope-Verletzung, Revisionen erschoepft | Plan mit dem Gelernten ueberarbeiten; User berichten, was passiert ist und was sich am Plan geaendert hat. |
+| APPROVE | Criteria green, scope clean, quality fits | Present to the user: diff summary, workspace (worktree path + branch, or working-tree status), NOTES. **Merging/committing is the user's decision — never merge/push/commit yourself.** |
+| REVISE | Fixable gaps | SendMessage to the same executor with concrete, actionable feedback. Max 2 revision rounds, then BLOCK. |
+| BLOCK | STOP condition, scope violation, revisions exhausted | Rework the plan with what was learned; report to the user what happened and what changed in the plan. |
 
-Verifikations-Kommandos in `{WORKDIR}` sind erlaubt — im Worktree sowieso (isoliert, wegwerfbar); im Working-Tree-Fall nur lesende/fluechtige Kommandos (Tests, Lint), nichts was Artefakte ausserhalb ignorierter Verzeichnisse schreibt.
+Verification commands in `{WORKDIR}` are allowed — in the worktree case regardless (isolated, disposable); in the working-tree case only read-only/transient commands (tests, lint), nothing that writes artifacts outside ignored directories.
 
-## `/plan-it reconcile` — Plan-Bestand pflegen
+## `/plan-it reconcile` — Maintain the Plan Backlog
 
-Verarbeitet, was seit der letzten Session passiert ist. `docs/plans/*.md` lesen (plus `.claude/plans/logs/` fuer Kontext), pro Plan:
+Processes what has happened since the last session. Read `docs/plans/*.md` (plus `.claude/plans/logs/` for context), per plan:
 
-- **Umgesetzt** (Done-Kriterien halten auf aktuellem HEAD, stichprobenartig die billigen): im Plan als umgesetzt markieren. Plan-Dateien nie loeschen — sie sind das Protokoll.
-- **Gedriftet** (Drift-Check schlaegt an): pruefen, ob das Problem ueberhaupt noch existiert (evtl. nebenbei gefixt). Existiert es: Ist-Zustand-Abschnitte + Planned-at-SHA refreshen. Existiert es nicht: als erledigt/hinfaellig markieren mit 1-Zeilen-Begruendung.
-- **Blockiert/liegengeblieben:** Hindernis im Code untersuchen; Plan drumherum umschreiben oder mit Begruendung verwerfen.
+- **Implemented** (done criteria hold on current HEAD, spot-check the cheap ones): mark as implemented in the plan. Never delete plan files — they are the record.
+- **Drifted** (drift check trips): check whether the problem still exists at all (may have been fixed incidentally). If it does: refresh the current-state sections + planned-at SHA. If it doesn't: mark as done/moot with a 1-line justification.
+- **Blocked/stalled:** investigate the obstacle in the code; rewrite the plan around it or discard it with a justification.
 
-Abschlussreport: was verifiziert umgesetzt ist, was refresht wurde, was verworfen, was JETZT ausfuehrbar ist.
+Closing report: what's verified as implemented, what was refreshed, what was discarded, what is executable NOW.

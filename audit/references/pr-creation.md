@@ -1,37 +1,37 @@
-# PR-Erstellung nach erfolgreichem Push
+# PR Creation After a Successful Push
 
-Nur ausführen wenn der Push erfolgreich war UND wir auf einem Feature-/Fix-Branch sind.
+Only run if the push succeeded AND we're on a feature/fix branch.
 
-## Schritt 1 — Prüfen ob PR sinnvoll
+## Step 1 — Check Whether a PR Makes Sense
 
 ```bash
 CURRENT_BRANCH=$(git branch --show-current)
 DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
 ```
 
-Abbrechen wenn:
-- `CURRENT_BRANCH` ist `main`, `master` oder `$DEFAULT_BRANCH`
-- `gh pr view` zeigt bereits einen offenen PR für diesen Branch
-- `gh auth status` schlägt fehl (nicht eingeloggt)
+Abort if:
+- `CURRENT_BRANCH` is `main`, `master`, or `$DEFAULT_BRANCH`
+- `gh pr view` already shows an open PR for this branch
+- `gh auth status` fails (not logged in)
 
-## Schritt 2 — Daten sammeln
+## Step 2 — Gather Data
 
 ```bash
-# Commits seit Base-Branch
+# Commits since base branch
 git log origin/$DEFAULT_BRANCH..HEAD --oneline
 
-# Geänderte Dateien
+# Changed files
 git diff origin/$DEFAULT_BRANCH...HEAD --stat
 
-# Plan-Doc suchen (falls vorhanden)
+# Look for a plan doc (if any)
 ls docs/plans/*.md 2>/dev/null
 ```
 
-Falls ein Plan-Doc existiert das zum aktuellen Feature passt (Datum oder Thema im Dateinamen), den Inhalt als Kontext für die PR-Description nutzen.
+If a plan doc exists that matches the current feature (date or topic in the filename), use its content as context for the PR description.
 
-## Schritt 3 — PR erstellen
+## Step 3 — Create the PR
 
-Titel: Conventional Commit Stil, abgeleitet aus den Commits. Beispiele:
+Title: Conventional Commit style, derived from the commits. Examples:
 - `feat: add time entry bulk export`
 - `fix: correct invoice calculation for partial hours`
 - `refactor: extract billing service from controller`
@@ -64,8 +64,8 @@ EOF
 )"
 ```
 
-Leere Sections weglassen — nicht mit „Keine" füllen. Keine Breaking Changes? Section weglassen.
+Omit empty sections — don't fill them with "None". No breaking changes? Omit the section.
 
-## Schritt 4 — PR-URL ausgeben
+## Step 4 — Output the PR URL
 
-PR erstellt? URL anzeigen. Fehler? Melden und weitermachen — ein fehlgeschlagener PR blockiert nicht den Push.
+PR created? Show the URL. Error? Report and continue — a failed PR does not block the push.

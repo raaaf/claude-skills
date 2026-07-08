@@ -22,21 +22,21 @@ hooks:
       hook: bash "${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/hooks/block-unsafe-push.sh"
 ---
 
-# Audit: Review aller offenen Änderungen
+# Audit: Review of all open changes
 
-**SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Phase 0 beginnen.**
+**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with Phase 0.**
 
-Anti-Patterns / häufige Fehler im Loop: `references/anti-patterns.md`.
+Anti-patterns / common mistakes in the loop: `references/anti-patterns.md`.
 
-## Phase 0: Pre-Flight-Checks (Learning-Backlog + offene Issues/PRs)
+## Phase 0: Pre-flight checks (learning backlog + open issues/PRs)
 
-Beide Checks (Learning-Backlog-Frage, offene `audit-finding`-Issues + PR-Dedup-Kontext) stehen in `references/pre-flight-checks.md` — lesen und ausfuehren. Ergebnis: ggf. Issues als Findings fuer Runde 1, `OPEN_PRS` als Dedup-Kontext fuer Phase 3f.
+Both checks (learning backlog question, open `audit-finding` issues + PR dedup context) are in `references/pre-flight-checks.md` — read and execute. Result: issues as findings for round 1 if applicable, `OPEN_PRS` as dedup context for Phase 3f.
 
-**Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs) — dann auch keine Issue-Frage.
+**Skip this phase if:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` is set (for CI/batch runs) — then also no issue question.
 
-## Phase 0.5: Effort Configuration
+## Phase 0.5: Effort configuration
 
-Skill skaliert Tiefe nach `${CLAUDE_EFFORT}`. Default `medium`.
+The skill scales depth by `${CLAUDE_EFFORT}`. Default `medium`.
 
 ```bash
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"
@@ -48,15 +48,15 @@ esac
 echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLearning=$SKIP_LEARNING | ConfidenceFloor=$CONFIDENCE_FLOOR"
 ```
 
-| Level | Runden | Fix Minor | Learning | Confidence-Floor |
+| Level | Rounds | Fix Minor | Learning | Confidence floor |
 |---|---|---|---|---|
-| low | 1 | nein | skip | high (nur sichere Fixes) |
-| medium (Default) | 2 | ja | ja | medium |
-| high | 3 | ja | ja | low (auch unsichere fixen, mit Warnung) |
+| low | 1 | no | skip | high (safe fixes only) |
+| medium (default) | 2 | yes | yes | medium |
+| high | 3 | yes | yes | low (also fix unsafe ones, with warning) |
 
-Im Folgenden bedeutet `{MAX_RUNDEN}` der hier gesetzte Wert.
+Below, `{MAX_RUNDEN}` means the value set here.
 
-## Phase 1: Pre-Flight & Scope
+## Phase 1: Pre-flight & scope
 
 ```bash
 AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
@@ -105,89 +105,89 @@ AUDIT_BASE_HEAD=$(git rev-parse HEAD)
 AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
 
-**WIP-/Stale-Snapshot-Scope-Check (vor Phase 2):** `git status --porcelain` + `git diff --stat` ansehen. Enthaelt der Working-Tree Dateien, die erkennbar NICHT zur gerade besprochenen Aufgabe gehoeren (vorbestehende WIP eines anderen Arbeitsstrangs, fremde uncommittete Edits, stale Snapshots)? Dann NICHT stillschweigend mitauditieren, sondern den User via `AskUserQuestion` nach dem Scope fragen: **nur die Session-/Aufgaben-Aenderungen** vs. **ganzer Working-Tree**. Heuristik fuer "gehoert nicht dazu": Dateien in ganz anderen Modulen als der Rest des Diffs, oder Dateien die schon vor Sessionbeginn `M` waren. Im Zweifel fragen — ein Audit auf fremdem WIP produziert Findings auf Code, den der User gerade gar nicht bearbeitet.
+**WIP/stale-snapshot scope check (before Phase 2):** look at `git status --porcelain` + `git diff --stat`. Does the working tree contain files that clearly do NOT belong to the task currently being discussed (pre-existing WIP from another line of work, foreign uncommitted edits, stale snapshots)? Then do NOT silently audit them along with the rest — ask the user via `AskUserQuestion` about the scope: **only the session/task changes** vs. **entire working tree**. Heuristic for "doesn't belong": files in completely different modules than the rest of the diff, or files that were already `M` before the session started. When in doubt, ask — an audit on someone else's WIP produces findings on code the user isn't even working on right now.
 
-Detail-Auswertung der Script-Outputs in `references/scope-and-pre-checks.md`:
-- Diff-Size-Gate-Tabelle (OK/LARGE/HUGE)
-- Pre-Check-Auswertung (Secrets, Lockfile, Binary-Artefakte)
-- Variable-Ableitung (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
-- Audit-Context-Check (PFLICHT bei fehlendem Context)
+Detailed evaluation of the script outputs in `references/scope-and-pre-checks.md`:
+- Diff size gate table (OK/LARGE/HUGE)
+- Pre-check evaluation (secrets, lockfile, binary artifacts)
+- Variable derivation (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
+- Audit context check (MANDATORY when context is missing)
 
-Übergib `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS`, `GUIDELINE_MATCHES` und `DECIDED_TRADEOFFS` (Intent-Docs/ADRs, Ableitung in `references/scope-and-pre-checks.md`) an alle Subagents. Den `UNIFIED_DIFF` bekommt nur der **Triage-Agent** zur Hotspot-Bestimmung — Workers bekommen statt des Diffs nur die ihnen zugeordneten Hotspots (siehe Phase 2 Schritt C).
+Pass `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS`, `GUIDELINE_MATCHES`, and `DECIDED_TRADEOFFS` (intent docs/ADRs, derivation in `references/scope-and-pre-checks.md`) to all subagents. Only the **triage agent** gets the `UNIFIED_DIFF` for hotspot determination — workers get only their assigned hotspots instead of the diff (see Phase 2 Step C).
 
 ---
 
-## Phase 2: Audit-Loop
+## Phase 2: Audit loop
 
-Maximal **{MAX_RUNDEN} Runden** (aus Phase 0.5). Convergence-Check: Wenn `Critical + Important` der aktuellen Runde NICHT sinkt UND `RUNDE >= 2`, Loop abbrechen mit `NO_CONVERGENCE`.
+Maximum **{MAX_RUNDEN} rounds** (from Phase 0.5). Convergence check: if `Critical + Important` of the current round does NOT decrease AND `RUNDE >= 2`, abort the loop with `NO_CONVERGENCE`.
 
-Initialisiere: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `FINDINGS_VORHERIGE_RUNDE = null`.
+Initialize: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `FINDINGS_VORHERIGE_RUNDE = null`.
 
-### Prozedur AUDIT_RUNDE
+### Procedure AUDIT_RUNDE
 
-**Schritt A — Ankündigung + Todos**
+**Step A — Announcement + todos**
 
-Ausgabe: `Audit-Runde {RUNDE}/{MAX_RUNDEN}`. TodoWrite: `Subagents dispatchen` (in_progress), `Findings fixen` (pending).
+Output: `Audit round {RUNDE}/{MAX_RUNDEN}`. TodoWrite: `Dispatch subagents` (in_progress), `Fix findings` (pending).
 
-**Schritt B — Scope aktualisieren (ab Runde 2)**
+**Step B — Update scope (from round 2)**
 
-`collect-scope.sh` erneut. `ALLE_DATEIEN` und `FRONTEND_DATEIEN` bleiben identisch. Diff geht erneut nur an Triage falls dieser nochmal laeuft (siehe C.0). Workers bekommen weiterhin nur Hotspots.
+`collect-scope.sh` again. `ALLE_DATEIEN` and `FRONTEND_DATEIEN` stay identical. The diff again goes only to triage if it runs again (see C.0). Workers continue to get only hotspots.
 
-**Schritt B.5 — Incremental-Cache**
+**Step B.5 — Incremental cache**
 
 ```bash
 echo "$ALLE_DATEIEN" | tr '\n' '\0' | xargs -0 bash "$AUDIT_BIN/cache-check.sh"
 ```
 
-`CACHED_FILES` werden aus dem Triage-Input entfernt. `CACHED_FINDINGS` werden uebernommen. Hilft primaer zwischen Audit-Laeufen.
+`CACHED_FILES` are removed from the triage input. `CACHED_FINDINGS` are carried over. Helps mainly between audit runs.
 
-**Schritt C.0 — Triage-Agent (nur Runde 1)**
+**Step C.0 — Triage agent (round 1 only)**
 
-Ab Runde 2 das `TRIAGE_RESULT` aus Runde 1 wiederverwenden — Fixes aendern die Routing-Entscheidung praktisch nie.
+From round 2 on, reuse the `TRIAGE_RESULT` from round 1 — fixes practically never change the routing decision.
 
 ```
 Agent(
   subagent_type: general-purpose,
   model: haiku,
-  prompt: "Lies agents/0-triage.md und fuehre die Triage durch.
+  prompt: "Read agents/0-triage.md and run the triage.
     UNIFIED_DIFF: {UNIFIED_DIFF}
     FRONTEND_DATEIEN: {FRONTEND_DATEIEN}
     TRANSLATION_DATEIEN: {TRANSLATION_DATEIEN}
     FRAMEWORK: {FRAMEWORK}
     PROJECT_CONTEXT: {PROJECT_CONTEXT}
     SUPPRESSIONS: {SUPPRESSIONS}
-    Gib NUR das JSON zurueck."
+    Return ONLY the JSON."
 )
 ```
 
-Ergebnis: `TRIAGE_RESULT` mit `relevance` pro Dimension. Speichern fuer Folgerunden.
+Result: `TRIAGE_RESULT` with `relevance` per dimension. Save for subsequent rounds.
 
-**Schritt C.0.5 — Sanity-Floor + Routing-Transparenz (deterministisch, JEDE Runde)**
+**Step C.0.5 — Sanity floor + routing transparency (deterministic, EVERY round)**
 
-Triage laeuft auf Haiku, dem billigsten Modell, und entscheidet was alle teuren Worker sehen. Verlasse dich nicht allein darauf:
+Triage runs on Haiku, the cheapest model, and decides what all the expensive workers see. Don't rely on it alone:
 
 ```bash
 printf '%s' '{TRIAGE_RESULT_JSON}' | bash "$AUDIT_BIN/check-skips.sh" "{FRAMEWORK}"
 ```
 
-Er leitet Datei-Signale selbst aus git ab und ueberschreibt offensichtliche Fehlskips (Frontend → `a11y`/`ui_design`/`ux`; Translation → `copy`/`typography`; Migration → `architecture`; Code → `code_quality`/`security`; Regeln im Script) und gibt `ROUTING_RUN` (Triage-run plus Floor), `ROUTING_SKIPPED`, `ROUTING_OVERRIDE` und eine `Routing:`-Zeile zurueck. **PFLICHT:** Die `Routing:`-Zeile jede Runde im Chat ausgeben und am Loop-Ende unter `## Routing` ins Audit-Log (eine Zeile pro Runde); Dispatch (Schritt C) nutzt `ROUTING_RUN`. Floor laeuft auch ab Runde 2 (billig), das Haiku-Triage wird ab Runde 2 wiederverwendet.
+It derives file signals itself from git and overrides obvious wrong skips (frontend → `a11y`/`ui_design`/`ux`; translation → `copy`/`typography`; migration → `architecture`; code → `code_quality`/`security`; rules in the script) and returns `ROUTING_RUN` (triage run plus floor), `ROUTING_SKIPPED`, `ROUTING_OVERRIDE`, and a `Routing:` line. **MANDATORY:** print the `Routing:` line in the chat every round and add it to the audit log under `## Routing` at the end of the loop (one line per round); dispatch (Step C) uses `ROUTING_RUN`. The floor also runs from round 2 on (cheap), the Haiku triage is reused from round 2 on.
 
-**Schritt C — Spezial-Subagents parallel dispatchen**
+**Step C — Dispatch specialized subagents in parallel**
 
-Nur Agents aus `ROUTING_RUN` (Schritt C.0.5: Triage-run plus deterministischer Floor) dispatchen. Security fast immer. Alle nicht-geskippten Agents in JEDER Runde.
+Dispatch only agents from `ROUTING_RUN` (Step C.0.5: triage run plus deterministic floor). Security almost always. All non-skipped agents in EVERY round.
 
-Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
-- `TRIAGE_SUMMARY` (1-2 Zeilen)
-- `HOTSPOTS` (markierte Stellen, exakte Datei:Zeile)
-- `DATEILISTE` + `GUIDELINE_MATCHES` (zur Orientierung; Worker laedt nur gelistete Guidelines, siehe prompt-template)
+Dispatch in **one message block** via the Agent tool. Pass ONLY:
+- `TRIAGE_SUMMARY` (1-2 lines)
+- `HOTSPOTS` (marked locations, exact file:line)
+- `DATEILISTE` + `GUIDELINE_MATCHES` (for orientation; the worker loads only the listed guidelines, see prompt-template)
 
-**KEIN UNIFIED_DIFF.** Workers lesen Code via Read-Tool wenn noetig (max 5 Files pro Agent pro Runde).
+**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round).
 
-**Model-Override bei Escalation:** Wenn `HEAVY_REASONING_OVERRIDE=opus` aus Phase 1 gesetzt ist (LARGE-Diff), Agent 1 (Architektur) und Agent 2 (Security) explizit auf Opus dispatchen. Andere Agents nutzen ihr `agents/*.md` Default.
+**Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Agent 1 (Architecture) and Agent 2 (Security) explicitly on Opus. Other agents use their `agents/*.md` default.
 
-| # | Agent | Kurzname |
+| # | Agent | Short name |
 |---|---|---|
-| 1 | `agents/1-architecture.md` | Architektur & Code Reuse |
+| 1 | `agents/1-architecture.md` | Architecture & Code Reuse |
 | 2 | `agents/2-security.md` | Security |
 | 3 | `agents/3-performance.md` | Performance |
 | 4 | `agents/4-code-quality.md` | Code Quality |
@@ -200,83 +200,83 @@ Dispatche in **einem Message-Block** via Agent-Tool. Uebergib NUR:
 | 11 | `agents/11-docs-sync.md` | Docs Sync & Style |
 | 12 | `agents/12-copy.md` | Copy & UX-Writing |
 
-Prompt-Template: `agents/prompt-template.md`, Abschnitt "Fuer /audit (Diff-basiert)".
+Prompt template: `agents/prompt-template.md`, section "For /audit (diff-based)".
 
-**Schritt D — Konsolidieren + Deduplizieren**
+**Step D — Consolidate + deduplicate**
 
-Gleiche Stelle von mehreren Subagents → ein Finding, strengste Einstufung gewinnt.
+Same location flagged by multiple subagents → one finding, strictest classification wins.
 
-Pruefe SELBST (nur Runde 1):
-- Oeffentliche Seiten / Changelog (siehe Phase 3a)
-- Tests: geaenderte Logik ohne Tests?
-- Mobile Apps: `bash bin/detect-mobile.sh` → bei Treffer Impact aus `references/mobile-impact.md`
+Check yourself (round 1 only):
+- Public pages / changelog (see Phase 3a)
+- Tests: changed logic without tests?
+- Mobile apps: `bash bin/detect-mobile.sh` → on match, impact from `references/mobile-impact.md`
 
-(Hinweis: Docs-Sync laeuft als Agent 11 — kein separater Orchestrator-Check noetig.)
+(Note: docs sync runs as Agent 11 — no separate orchestrator check needed.)
 
-Eigene Findings als Important einfuegen.
+Insert own findings as Important.
 
-Ausgabe-Format:
+Output format:
 ```
-## Audit Runde {RUNDE}/2 — X Dateien, Y Commits seit origin/{branch}
+## Audit Round {RUNDE}/2 — X files, Y commits since origin/{branch}
 
 ### Critical
-- [Dimension] datei:zeile — Beschreibung
+- [Dimension] file:line — Description
 
 ### Important / Minor / Sauber
-[gleiche Struktur]
+[same structure]
 ```
 
-**Schritt D.5 — Halluzinations-Validator (PFLICHT vor jedem Fix)**
+**Step D.5 — Hallucination validator (MANDATORY before every fix)**
 
 ```bash
 test -f "{datei}" || echo "HALLUCINATION: file missing"
 [ "$(wc -l < "{datei}")" -ge "{zeile}" ] || echo "HALLUCINATION: line out of range"
 ```
 
-Externe APIs/Libraries: `grep -r` im Projekt pruefen ob importiert. Halluzinierte Findings rausfiltern. Ausgabe: `Validator: X/Y verifiziert, Z halluziniert (verworfen)`.
+External APIs/libraries: check with `grep -r` in the project whether imported. Filter out hallucinated findings. Output: `Validator: X/Y verified, Z hallucinated (discarded)`.
 
-**Schritt E — Auto-Fix**
+**Step E — Auto-fix**
 
-Zaehle verifizierte Critical+Important. Speichere `FINDINGS_AKTUELLE_RUNDE`. Convergence-Check siehe oben.
+Count verified Critical+Important. Save `FINDINGS_AKTUELLE_RUNDE`. Convergence check see above.
 
-**0 Critical und 0 Important?** → `SAUBER`. Early-Exit (Minor blockiert nie Push).
+**0 Critical and 0 Important?** → `SAUBER`. Early exit (Minor never blocks push).
 
-**Sonst — Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.5):**
-- `floor=high` (low effort): nur `high` fixen, Rest bleibt im Log (keine Issues, kein Nachverifizieren — low effort ist der Schnell-Modus)
-- `floor=medium` (medium effort): `high`+`medium` fixen. `low` → **Nachverifikation** (siehe unten)
-- `floor=low` (high effort): alle fixen, `low`-Fixes mit Warn-Marker `(LOW CONFIDENCE FIX)`
+**Otherwise — confidence gate (scales with `CONFIDENCE_FLOOR` from Phase 0.5):**
+- `floor=high` (low effort): fix only `high`, the rest stays in the log (no issues, no re-verification — low effort is the fast mode)
+- `floor=medium` (medium effort): fix `high`+`medium`. `low` → **re-verification** (see below)
+- `floor=low` (high effort): fix all, `low` fixes get the warning marker `(LOW CONFIDENCE FIX)`
 
-**Nachverifikation fuer low-confidence (medium effort):** Orchestrator liest die betroffene Stelle gezielt (Read-Tool). Bestaetigt sich das Finding → wie `medium` behandeln (fixen). Nicht bestaetigbar → verwerfen + `patterns-store.sh dismissed` — ein unbestaetigtes Finding gehoert NICHT in den Issue-Tracker.
+**Re-verification for low-confidence (medium effort):** the orchestrator reads the affected location specifically (Read tool). Finding confirmed → treat like `medium` (fix). Not confirmable → discard + `patterns-store.sh dismissed` — an unconfirmed finding does NOT belong in the issue tracker.
 
-**Offene Punkte sind ab jetzt NUR noch:** echte Entscheidungs-Punkte (Architektur-Tradeoffs, Verhaltens-Aenderungen, Scope-Fragen), die ein Agent nicht entscheiden darf. Alles andere wird gefixt oder verworfen.
+**From here on, open points are ONLY:** genuine decision points (architecture tradeoffs, behavior changes, scope questions) that an agent is not allowed to decide. Everything else gets fixed or discarded.
 
-**Self-Regression vs. pre-existing (Priorisierung):** Liegt ein Finding auf einer Zeile, die im aktuellen Branch-Diff geaendert wurde (`git blame`/Diff-Abgleich), ist es eine **Self-Regression** — IMMER fixen, nie parken, auch wenn es ein Entscheidungs-Punkt zu sein scheint (der Branch hat das Problem eingefuehrt). Nur Findings auf unveraenderten, pre-existing Zeilen duerfen als Offener Punkt geparkt werden.
+**Self-regression vs. pre-existing (prioritization):** if a finding is on a line that was changed in the current branch diff (`git blame`/diff comparison), it's a **self-regression** — ALWAYS fix, never park, even if it looks like a decision point (the branch introduced the problem). Only findings on unchanged, pre-existing lines may be parked as an open point.
 
-**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Code-Fix geht via Fix-Agent (Sonnet). Edits vom Orchestrator auf Opus kosten ein Mehrfaches.
+**HARD RULE: the orchestrator NEVER edits code files itself.** Every code fix goes through a fix agent (Sonnet). Edits by the orchestrator on Opus cost a multiple.
 
-**Erlaubte Orchestrator-Edits:** `.claude/audits/*.md`, `CLAUDE.md` Audit-Context-Entwurf, `suppressions.json` (mit User-Zustimmung), Changelog-Dateien.
+**Allowed orchestrator edits:** `.claude/audits/*.md`, `CLAUDE.md` audit context draft, `suppressions.json` (with user consent), changelog files.
 
-**Verify-by-Measurement (Perf) — Baseline:** Enthaelt die Runde ein `[Performance]`-Finding und ist `PERF_MEASURE_CMD` gesetzt, VOR dem Fix-Agent-Dispatch einmal die Baseline messen: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_BASELINE="$PERF_METRIC"`. Details: `references/perf-measurement.md`.
+**Verify-by-measurement (perf) — baseline:** if the round contains a `[Performance]` finding and `PERF_MEASURE_CMD` is set, measure the baseline once BEFORE the fix agent dispatch: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_BASELINE="$PERF_METRIC"`. Details: `references/perf-measurement.md`.
 
-1. Findings nach Datei gruppieren
-2. Pro Datei einen `fix-agent.md`-Subagent (Sonnet) parallel dispatchen
-3. Mehrere Findings in derselben Datei: in einem Fix-Agent-Call bundeln
-3a. **Zentralisierungs-Findings (neue Shared-Utility):** Extrahiert ein Finding ein dupliziertes Pattern in ein neues `lib/*.js` / Helper / Trait, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent jede Fundstelle migriert (siehe `fix-agent.md` Sonderfall).
-3b. **Fix-Wave-Groesse begrenzen:** Ein Fix-Auftrag, der >2 Templates anfasst oder eine Partial-Extraktion enthaelt, wird auf mehrere Fix-Agents gesplittet (ausser Zentralisierungs-Fix nach 3a, der bewusst gebuendelt bleibt) ODER bekommt einen Report-Checkpoint: der Fix-Agent MUSS vor den letzten Edits einen Zwischenreport liefern. Grosse Auftraege ohne Report-Checkpoint brechen erfahrungsgemaess stillschweigend ab.
-4. Ergebnisse einsammeln: `FIX_RESULT=APPLIED` zaehlt als gefixt. **Fehlt der Agent-Report komplett** (Agent beendet ohne `FIX_RESULT`-Zeile), den Fix NICHT als verloren annehmen: `git diff` auf die Auftrags-Dateien pruefen — liegen Aenderungen vor, zaehlt der Fix als APPLIED und der Fix-Verifier-Lauf (E.5) ist fuer diese Dateien OBLIGATORISCH (kein stilles Entfallen).
-5. Minor: bei `FIX_MINOR=1` (medium + high effort) alle high/medium-confidence Minor fixen, sonst skippen. Nicht gefixte Minor bleiben NUR im Audit-Log — nie als Issue.
-6. Nicht fixbar weil Entscheidung noetig: als Offener Punkt mit Begruendung (siehe Definition oben). Nicht fixbar aus anderem Grund (z.B. externes System): verwerfen + `patterns-store.sh dismissed {pattern}`
-7. Gefixte Issues zu `BEREITS_GEFIXT` adden, via `patterns-store.sh add` ins Learning-Store
+1. Group findings by file
+2. Dispatch one `fix-agent.md` subagent (Sonnet) per file, in parallel
+3. Multiple findings in the same file: bundle into one fix-agent call
+3a. **Centralization findings (new shared utility):** if a finding extracts a duplicated pattern into a new `lib/*.js` / helper / trait, FIRST grep all occurrences (`grep -rn "{old_pattern}" src/`, adjust the glob to the project language) and pass ALL matching files to ONE fix agent (no parallel split, otherwise file collision). Mark as a centralization fix so the fix agent migrates every occurrence (see fix-agent.md special case).
+3b. **Limit fix-wave size:** a fix assignment that touches >2 templates or contains a partial extraction gets split across multiple fix agents (except the centralization fix from 3a, which stays deliberately bundled) OR gets a report checkpoint: the fix agent MUST deliver an interim report before the final edits. Large assignments without a report checkpoint tend to silently abort, based on experience.
+4. Collect results: `FIX_RESULT=APPLIED` counts as fixed. **If the agent report is missing entirely** (agent finishes without a `FIX_RESULT` line), do NOT assume the fix is lost: check `git diff` on the assignment's files — if changes are present, the fix counts as APPLIED and the fix-verifier run (E.5) is MANDATORY for these files (no silent skip).
+5. Minor: with `FIX_MINOR=1` (medium + high effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
+6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`
+7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`
 
-**Schritt E.5 — Fix-Verification (PFLICHT bei medium/high effort, SKIP bei low)**
+**Step E.5 — Fix verification (MANDATORY for medium/high effort, SKIP for low)**
 
-Fuer jeden `FIX_RESULT=APPLIED` einen Fix-Verifier-Subagent (sonnet) dispatchen:
+For every `FIX_RESULT=APPLIED`, dispatch a fix-verifier subagent (sonnet):
 
 ```
 Agent(
   subagent_type: code-reviewer,
   model: sonnet,
-  prompt: "Lies agents/fix-verifier.md und bewerte den folgenden Fix.
+  prompt: "Read agents/fix-verifier.md and evaluate the following fix.
     ORIGINAL_FINDING: {finding}
     FIX_DIFF: {diff_des_fix_agents}
     FIX_DATEI: {datei}
@@ -284,18 +284,18 @@ Agent(
 )
 ```
 
-Auswertung des `FIX_VERIFIER_RESULT`:
-- `RECOMMEND=keep` → Fix bleibt, weiter
-- `RECOMMEND=patch` → Fix bleibt, aber Finding bleibt in `FINDINGS_NAECHSTE_RUNDE` als "Fix needs improvement"
-- `RECOMMEND=revert` → `git checkout {FIX_DATEI}` (Fix rueckgaengig), Original-Finding zurueck in offene Liste
+Evaluation of `FIX_VERIFIER_RESULT`:
+- `RECOMMEND=keep` → fix stays, continue
+- `RECOMMEND=patch` → fix stays, but the finding stays in `FINDINGS_NAECHSTE_RUNDE` as "Fix needs improvement"
+- `RECOMMEND=revert` → `git checkout {FIX_DATEI}` (revert the fix), original finding goes back into the open list
 
-Parallelisierung: Alle Verifier in einem Message-Block, max 10 parallel. Latenz-Add: ~3-5s pro Runde.
+Parallelization: all verifiers in one message block, max 10 in parallel. Latency add: ~3-5s per round.
 
-**Token-Cost:** Verifier ist Sonnet, kostet ca. ein Drittel eines Workers. Bei N Fixes also +N*0.3 Worker-Kosten. Lohnt sich weil falsche Fixes spaeter teuer sind.
+**Token cost:** the verifier is Sonnet, costs about a third of a worker. For N fixes that's +N*0.3 worker cost. Worth it because wrong fixes are expensive later.
 
-**Performance-Fixes — Verify-by-Measurement (wenn `PERF_MEASURE_CMD` gesetzt und Baseline in Schritt E erhoben):** Nach allen Fixes der Runde re-messen: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_AFTER="$PERF_METRIC"`. Verdikt deterministisch: `AFTER <= BASELINE` → Perf-Fixes `keep` (Log: `Verifikation: measured {BASELINE}->{AFTER}`); `AFTER > BASELINE` → Regression, Perf-Fixes als Offenen Punkt + fix-verifier zur Eingrenzung; `NA` → Fallback fix-verifier. Korrektheit/Regression anderer Dimensionen prueft weiterhin der fix-verifier. Details: `references/perf-measurement.md`.
+**Performance fixes — verify-by-measurement (when `PERF_MEASURE_CMD` is set and a baseline was taken in Step E):** re-measure after all fixes of the round: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_AFTER="$PERF_METRIC"`. Deterministic verdict: `AFTER <= BASELINE` → perf fixes `keep` (log: `Verification: measured {BASELINE}->{AFTER}`); `AFTER > BASELINE` → regression, perf fixes as an open point + fix-verifier to narrow it down; `NA` → fallback to fix-verifier. Correctness/regression of other dimensions is still checked by the fix-verifier. Details: `references/perf-measurement.md`.
 
-**PFLICHT — Status-Zeile am Ende jeder Runde:**
+**MANDATORY — status line at the end of every round:**
 
 ```
 AUDIT_STATUS: SAUBER | RUNDE {RUNDE}/{MAX_RUNDEN}
@@ -303,20 +303,20 @@ AUDIT_STATUS: FIXES_APPLIED | RUNDE {RUNDE}/{MAX_RUNDEN}
 AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 ```
 
-### Nach jeder Runde
+### After each round
 
-| Ergebnis | Aktion |
+| Result | Action |
 |---|---|
-| `SAUBER` | Loop beendet → Phase 2.5 (falls Multi-File) → Phase 3 |
-| `FIXES_APPLIED` + RUNDE < {MAX_RUNDEN} | `RUNDE += 1`, Prozedur erneut. Kein User-Wait. |
-| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop beendet → Phase 2.5 (falls Multi-File) → Phase 3 |
-| `NO_CONVERGENCE` | Loop beendet → Phase 3. Warnung. |
+| `SAUBER` | Loop ends → Phase 2.5 (if multi-file) → Phase 3 |
+| `FIXES_APPLIED` + RUNDE < {MAX_RUNDEN} | `RUNDE += 1`, repeat procedure. No user wait. |
+| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop ends → Phase 2.5 (if multi-file) → Phase 3 |
+| `NO_CONVERGENCE` | Loop ends → Phase 3. Warning. |
 
 ---
 
-## Phase 2.5: Cross-Reference (Multi-File-Features)
+## Phase 2.5: Cross-reference (multi-file features)
 
-**Trigger:** Anzahl geaenderter Dateien >= 3 UND `CONFIDENCE_FLOOR != high` (skip auf low effort).
+**Trigger:** number of changed files >= 3 AND `CONFIDENCE_FLOOR != high` (skip on low effort).
 
 ```bash
 FILES_CHANGED_COUNT=$(echo "$ALLE_DATEIEN" | wc -l)
@@ -328,33 +328,33 @@ else
 fi
 ```
 
-Wenn `RUN_CROSS_REF=1`: einen Cross-Ref-Subagent (sonnet) dispatchen:
+If `RUN_CROSS_REF=1`: dispatch a cross-ref subagent (sonnet):
 
 ```
 Agent(
   subagent_type: code-reviewer,
   model: sonnet,
-  prompt: "Cross-Reference-Pruefung der geaenderten Dateien.
+  prompt: "Cross-reference check of the changed files.
     DATEILISTE: {ALLE_DATEIEN}
     BEREITS_GEFIXT: {BEREITS_GEFIXT}
     PROJECT_GUIDELINES: {PROJECT_GUIDELINES}
 
-    Pruefe NUR Cross-File-Probleme:
-    - Services <-> UI: falsch aufgerufen, Signaturen passen nicht
-    - Models <-> Traits/Mixins: falsch genutzt
-    - Controller <-> View: Mismatches (z.B. Variable im View nicht uebergeben)
-    - Konsistenz: gleiches Pattern projektweit (Auth-Checks, Cache-Keys, Error-Handling)
-    - Ein Fix in Datei A koennte Datei B brechen (z.B. Method-Rename)
+    Check ONLY cross-file problems:
+    - Services <-> UI: called incorrectly, signatures don't match
+    - Models <-> Traits/Mixins: used incorrectly
+    - Controller <-> View: mismatches (e.g. variable not passed to the view)
+    - Consistency: same pattern project-wide (auth checks, cache keys, error handling)
+    - A fix in file A could break file B (e.g. method rename)
 
-    Output-Format wie Worker-Findings. Max 50 Worte pro Finding."
+    Output format like worker findings. Max 50 words per finding."
 )
 ```
 
-Findings werden behandelt wie Critical/Important (gleiches Confidence-Gate). Auto-Fix nach gleichen Regeln (Fix-Agent).
+Findings are treated like Critical/Important (same confidence gate). Auto-fix follows the same rules (fix agent).
 
 ---
 
-### Audit-Log schreiben (nach Loop-Ende)
+### Write audit log (after loop ends)
 
 ```bash
 AUDIT_DIR="$(git rev-parse --show-toplevel)/.claude/audits"
@@ -362,36 +362,36 @@ mkdir -p "$AUDIT_DIR"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
 ```
 
-Format-Template: `references/audit-log-template.md`. Mehrere Audits am selben Tag/Branch werden so nicht ueberschrieben.
+Format template: `references/audit-log-template.md`. This way, multiple audits on the same day/branch don't overwrite each other.
 
-**Cache aktualisieren** (nach Loop-Ende):
+**Update cache** (after loop ends):
 ```bash
 echo '{"files": [...], "findings": [...]}' | bash "$AUDIT_BIN/cache-write.sh"
 ```
-Nur Dateien, die nach allen Fixes sauber sind. Dateien mit Offenen Punkten NICHT cachen.
+Only files that are clean after all fixes. Do NOT cache files with open points.
 
 ---
 
-## Phase 3: Post-Loop (Changelog, Tests, Testplan, Issues, Display)
+## Phase 3: Post-loop (changelog, tests, test plan, issues, display)
 
-**PFLICHT:** Lies jetzt `references/post-loop.md` und fuehre 3a-3f sequenziell aus. Keine dieser Subphasen ist optional. Wenn ein Schritt nicht anwendbar ist (z.B. keine visuellen Files fuer 3d), explizit "n/a" loggen statt skippen.
+**MANDATORY:** now read `references/post-loop.md` and run 3a-3f sequentially. None of these subphases are optional. If a step doesn't apply (e.g. no visual files for 3d), log "n/a" explicitly instead of skipping.
 
-| Subphase | Was | Skip-Bedingung |
+| Subphase | What | Skip condition |
 |---|---|---|
-| 3a | Changelog-Eintrag draften (wenn user-facing) | nur Doku/Test/Refactor ohne Verhaltensaenderung |
-| 3b | Linter + Static Analysis | nie |
-| 3c | Diff-scoped Tests | nie |
-| 3d | Manueller Testplan | wenn `VISUELL_RELEVANTE_DATEIEN` leer |
-| 3e | Audit-Log im Chat anzeigen (Markdown-Block) | nie |
-| 3f | **Offene Punkte: User-Entscheid → fixen / Issue / verwerfen** | wenn keine Offenen Punkte |
+| 3a | Draft changelog entry (if user-facing) | only docs/tests/refactor without behavior change |
+| 3b | Linter + static analysis | never |
+| 3c | Diff-scoped tests | never |
+| 3d | Manual test plan | when `VISUELL_RELEVANTE_DATEIEN` is empty |
+| 3e | Show audit log in chat (markdown block) | never |
+| 3f | **Open points: user decides → fix / issue / discard** | when there are no open points |
 
-**3f:** Offene Punkte (nur Entscheidungs-Punkte, siehe Phase 2 Schritt E) werden dem User via AskUserQuestion vorgelegt — pro Punkt: **Jetzt entscheiden + fixen** / **Als Issue vertagen** / **Verwerfen**. Issues entstehen NUR fuer explizit Vertagtes (mit Dedup). Minor-Findings bekommen NIE Issues. Details in `references/post-loop.md` Section 3f.
+**3f:** open points (decision points only, see Phase 2 Step E) are presented to the user via AskUserQuestion — per point: **decide + fix now** / **defer as issue** / **discard**. Issues are created ONLY for what's explicitly deferred (with dedup). Minor findings NEVER get issues. Details in `references/post-loop.md` Section 3f.
 
 ---
 
-## Phase 4: Pre-Push-Verhalten
+## Phase 4: Pre-push behavior
 
-**Working-Tree-Exklusivitaet pruefen (vor Marker):**
+**Check working-tree exclusivity (before marker):**
 
 ```bash
 # Drift-Check gegen Basis aus Phase 1. Eigene Audit-Fixes zaehlen nicht als
@@ -400,15 +400,15 @@ Nur Dateien, die nach allen Fixes sauber sind. Dateien mit Offenen Punkten NICHT
 [ "$(git rev-parse HEAD)" = "$AUDIT_BASE_HEAD" ] || echo "WARN: Fremd-Commit waehrend Audit, Diff-Basis instabil."
 ```
 
-Bei Abweichung: warnen (`Fremd-Commit/Index-Drift waehrend Audit, Diff-Basis instabil`), Scope via `collect-scope.sh` neu erheben und entscheiden, ob die Findings noch zur Diff-Basis passen. Kein automatischer Abbruch, aber Push nur nach bewusster Bestaetigung der neuen Basis.
+On deviation: warn (`Fremd-Commit/Index-Drift waehrend Audit, Diff-Basis instabil`), re-collect scope via `collect-scope.sh` and decide whether the findings still match the diff base. No automatic abort, but push only after deliberate confirmation of the new base.
 
-**Hard-Block (nie pushen):**
-- `SECRET_SCAN_RESULT=FINDINGS` → Push abbrechen, Secrets entfernen + History bereinigen (BFG / `git filter-repo`).
-- Unfixbare Critical/Important, Linter-Fehler, Tests rot → `BLOCKED: Push abgebrochen.` + Liste. KEINE Marker-Datei.
+**Hard block (never push):**
+- `SECRET_SCAN_RESULT=FINDINGS` → abort push, remove secrets + clean history (BFG / `git filter-repo`).
+- Unfixable Critical/Important, linter errors, tests red → `BLOCKED: Push aborted.` + list. NO marker file.
 
-**Alles gefixt, Tests gruen:**
+**Everything fixed, tests green:**
 
-**KRITISCH — Marker und Push NIEMALS im selben Bash-Befehl.** Pre-Push-Hook prueft Command-String auf `git push` und blockiert BEVOR der Marker geschrieben wird.
+**CRITICAL — marker and push NEVER in the same bash command.** The pre-push hook checks the command string for `git push` and blocks BEFORE the marker is written.
 
 ```bash
 # Schritt 1 — Marker (kein `git push` im Befehl):
@@ -422,24 +422,24 @@ git push
 # Multi-Repo: git -C /pfad push
 ```
 
-Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell). Hash kommt aus `cwd` des Tool-JSON. Multi-Repo: `git -C /pfad push`, niemals `cd /pfad && git push`.
+Marker: TTL 30 min, is not deleted (multiple hooks check sequentially). Hash comes from `cwd` of the tool JSON. Multi-repo: `git -C /pfad push`, never `cd /pfad && git push`.
 
-Danach: `Audit passed.` ausgeben, weiter mit Phase 5 + 6.
+Then: print `Audit passed.`, continue with Phase 5 + 6.
 
 ---
 
 ## Phase 5: Learning
 
-**Skip wenn `SKIP_LEARNING=1`** (low effort). Direkt zu Phase 6.
+**Skip if `SKIP_LEARNING=1`** (low effort). Go directly to Phase 6.
 
-Der Learning-Agent gibt einen **strukturierten Output** zurueck. **Subagents koennen nicht in `.claude/`-Pfade schreiben** (hardcoded Schutz, auch im Foreground und mit bypassPermissions). Der Orchestrator parst den Output und schreibt selbst — `.claude/audits/*.md` und `.claude/audits/suppressions.json` sind in den erlaubten Orchestrator-Edits.
+The learning agent returns a **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection, even in the foreground and with bypassPermissions). The orchestrator parses the output and writes it itself — `.claude/audits/*.md` and `.claude/audits/suppressions.json` are among the allowed orchestrator edits.
 
-**Schritt 1: Learning-Agent dispatchen**
+**Step 1: dispatch the learning agent**
 
 ```
 Agent(
   subagent_type: general-purpose,
-  prompt: "Lies agents/learning-agent.md und fuehre den Ablauf aus.
+  prompt: "Read agents/learning-agent.md and run the process.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
     AUDIT_TYPE=audit",
@@ -447,22 +447,22 @@ Agent(
 )
 ```
 
-Foreground (5-10s, nicht push-blockierend).
+Foreground (5-10s, not push-blocking).
 
-**Schritt 2: Output parsen**
+**Step 2: parse the output**
 
-Der Agent liefert zwischen `LEARNING_RESULT_START` und `LEARNING_RESULT_END` drei Bloecke: `SUPPRESSIONS_TO_ADD` (JSON-Array), `LEARNING_LOG_ENTRY` (Markdown bis `LEARNING_LOG_ENTRY_END`) und `TRENDS_BLOCK` (Markdown zwischen `TRENDS_BLOCK_START` und `TRENDS_BLOCK_END`). Die Vorschlaege fuer Guideline-/Agent-Aenderungen sind als `- [ ]`-Checkboxes im `Vorgeschlagene Verbesserungen`-Abschnitt des `LEARNING_LOG_ENTRY` enthalten.
+The agent returns three blocks between `LEARNING_RESULT_START` and `LEARNING_RESULT_END`: `SUPPRESSIONS_TO_ADD` (JSON array), `LEARNING_LOG_ENTRY` (markdown up to `LEARNING_LOG_ENTRY_END`), and `TRENDS_BLOCK` (markdown between `TRENDS_BLOCK_START` and `TRENDS_BLOCK_END`). The suggestions for guideline/agent changes are included as `- [ ]` checkboxes in the `Vorgeschlagene Verbesserungen` section of the `LEARNING_LOG_ENTRY`.
 
-**Schritt 3: Orchestrator schreibt**
+**Step 3: the orchestrator writes**
 
-- `LEARNING_LOG_ENTRY` an `.claude/audits/learning-log.md` anhaengen (oder neu anlegen falls erster Audit)
-- `TRENDS_BLOCK` am Anfang der `learning-log.md` einfuegen oder vorhandenen Block ersetzen (nicht anhaengen — soll Top-Snapshot bleiben)
-- `SUPPRESSIONS_TO_ADD` in `.claude/audits/suppressions.json` mergen. **Dedup-Regel:** Pattern jeder neuen Suppression durch `bash "$AUDIT_BIN/normalize-suppression.sh"` schicken, gleiche Normalisierung fuer bestehende Suppressions. Wenn beide den gleichen Key produzieren → existierende behalten, neue verwerfen. So werden "[Security] LIKE injection in scope" und "Like-wildcard injection (security)" als gleich erkannt.
-- Im Chat anzeigen: Anzahl neuer Suppressions und Anzahl neuer offener Backlog-Punkte. User weiss, dass beim naechsten `/audit` (oder `/full-audit`) gefragt wird.
+- append `LEARNING_LOG_ENTRY` to `.claude/audits/learning-log.md` (or create it if this is the first audit)
+- insert `TRENDS_BLOCK` at the top of `learning-log.md` or replace the existing block (do not append — it should stay a top snapshot)
+- merge `SUPPRESSIONS_TO_ADD` into `.claude/audits/suppressions.json`. **Dedup rule:** run the pattern of every new suppression through `bash "$AUDIT_BIN/normalize-suppression.sh"`, same normalization for existing suppressions. If both produce the same key → keep the existing one, discard the new one. This way "[Security] LIKE injection in scope" and "Like-wildcard injection (security)" are recognized as the same.
+- show in the chat: number of new suppressions and number of new open backlog points. The user knows they'll be asked at the next `/audit` (or `/full-audit`).
 
 ---
 
-## Phase 6: PR erstellen (nach Push)
+## Phase 6: Create PR (after push)
 
 ```bash
 # PreCompact-Marker entfernen — Audit abgeschlossen
@@ -470,4 +470,4 @@ CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
 ```
 
-Detail: `references/pr-creation.md`. Kurzfassung: Branch pruefen, Commits sammeln, optional Plan-Doc fuer Description, PR via `gh pr create`, URL ausgeben. Fehler blockieren nicht.
+Detail: `references/pr-creation.md`. Short version: check branch, collect commits, optional plan doc for the description, PR via `gh pr create`, print the URL. Errors don't block.

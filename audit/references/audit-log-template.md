@@ -1,33 +1,33 @@
-# Audit-Log Template
+# Audit Log Template
 
-Format fuer das Audit-Log unter `.claude/audits/{datum}_{zeit}-{branch}.md`.
+Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 
 ```markdown
-# Audit — {DATUM} — Branch: {BRANCH}
+# Audit — {DATE} — Branch: {BRANCH}
 
 ## Scope
-- Commits seit origin/{base}: N
-- Geänderte Dateien: Liste
-- HEAD beim Audit: {git rev-parse HEAD}
+- Commits since origin/{base}: N
+- Changed files: list
+- HEAD at audit time: {git rev-parse HEAD}
 
-## Ergebnis
-- Runden: N/2
-- Critical gefunden/gefixt: A/B
-- Important gefunden/gefixt: C/D
+## Result
+- Rounds: N/2
+- Critical found/fixed: A/B
+- Important found/fixed: C/D
 
-## Gefixte Issues
-- [Typ] datei:zeile — was gefixt wurde
+## Fixed Issues
+- [Type] file:line — what was fixed
 
-## Manueller Testplan
-- (Testplan-Schritte, falls visuelle Dateien geändert wurden)
+## Manual Test Plan
+- (test plan steps, if visual files were changed)
 
-## Offene Punkte
-- (falls vorhanden)
+## Open Points
+- (if any)
 
-## Sauber
+## Clean
 Dimension1, Dimension2
 ```
 
-## Folge-Audit-Logik
+## Follow-Up Audit Logic
 
-Beim naechsten Audit-Lauf: Wenn zwischen `{letzter-audit-HEAD}..HEAD` Commits auftauchen die **nicht** im Diff von `origin/$DEFAULT_BRANCH...HEAD` enthalten sind (weil inzwischen gepusht), `/full-audit` empfehlen — der `audit`-Skill sieht gepushte Commits nicht mehr.
+On the next audit run: if commits show up between `{letzter-audit-HEAD}..HEAD` that are **not** contained in the diff of `origin/$DEFAULT_BRANCH...HEAD` (because they were pushed in the meantime), recommend `/full-audit` — the `audit` skill no longer sees pushed commits.

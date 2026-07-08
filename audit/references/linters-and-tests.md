@@ -1,80 +1,80 @@
-# Linters, Formatters, Static Analysis & Test-Runner
+# Linters, Formatters, Static Analysis & Test Runner
 
-Erkennungsreihenfolge: **Formatter → Linter → Static Analysis → Tests**. Alles per Auto-Detection; unbekannte Stacks überspringen.
+Detection order: **Formatter → Linter → Static Analysis → Tests**. All via auto-detection; unknown stacks are skipped.
 
 ## PHP
 
-| Erkennungsmerkmal | Befehl | Scope (audit) |
+| Detection signal | Command | Scope (audit) | 
 |---|---|---|
-| `composer.json` mit `pint`-Dependency | `./vendor/bin/pint {GEÄNDERTE_PHP_DATEIEN}` | Geänderte Dateien |
-| `.php-cs-fixer.php` | `./vendor/bin/php-cs-fixer fix {GEÄNDERTE_PHP_DATEIEN}` | Geänderte Dateien |
-| `composer.json` mit `phpcs`-Script | `composer phpcs:fix` | Geänderte Dateien |
-| `phpstan.neon` | `./vendor/bin/phpstan analyse` | **Immer global** (Typsystem kennt keine Dateigrenze) |
+| `composer.json` with `pint` dependency | `./vendor/bin/pint {CHANGED_PHP_FILES}` | Changed files |
+| `.php-cs-fixer.php` | `./vendor/bin/php-cs-fixer fix {CHANGED_PHP_FILES}` | Changed files |
+| `composer.json` with `phpcs` script | `composer phpcs:fix` | Changed files |
+| `phpstan.neon` | `./vendor/bin/phpstan analyse` | **Always global** (type system doesn't respect file boundaries) |
 
-**PHPCS — pre-existierende Fehler:** IMMER alle PHPCS-Fehler beheben, auch in Dateien die wir nicht direkt geändert haben. CI prüft das gesamte Repo. Nur Warnings (nicht Errors) können mit `--runtime-set ignore_warnings_on_exit 1` ignoriert werden.
+**PHPCS — pre-existing errors:** ALWAYS fix all PHPCS errors, even in files we didn't directly change. CI checks the whole repo. Only warnings (not errors) can be ignored with `--runtime-set ignore_warnings_on_exit 1`.
 
 ## JavaScript / TypeScript / CSS
 
-| Erkennungsmerkmal | Befehl | Scope (audit) |
+| Detection signal | Command | Scope (audit) |
 |---|---|---|
-| `eslint.config.*` oder `.eslintrc*` | `npx eslint --fix {GEÄNDERTE_JS_DATEIEN}` | Geänderte Dateien |
-| `.prettierrc*` oder `prettier.config.*` | `npx prettier --write {GEÄNDERTE_JS_CSS_DATEIEN}` | Geänderte Dateien |
-| `.stylelintrc*` | `npx stylelint --fix {GEÄNDERTE_CSS_DATEIEN}` | Geänderte Dateien |
+| `eslint.config.*` or `.eslintrc*` | `npx eslint --fix {CHANGED_JS_FILES}` | Changed files |
+| `.prettierrc*` or `prettier.config.*` | `npx prettier --write {CHANGED_JS_CSS_FILES}` | Changed files |
+| `.stylelintrc*` | `npx stylelint --fix {CHANGED_CSS_FILES}` | Changed files |
 
 ## Native Mobile (iOS / Android / Flutter)
 
-| Erkennungsmerkmal | Befehl | Scope (audit) |
+| Detection signal | Command | Scope (audit) |
 |---|---|---|
-| `.swiftlint.yml` | `swiftlint --fix {GEÄNDERTE_SWIFT_DATEIEN}` dann `swiftlint lint {DATEIEN}` | Geänderte Dateien |
-| `.swiftformat` | `swiftformat {GEÄNDERTE_SWIFT_DATEIEN}` | Geänderte Dateien |
-| `.editorconfig` + `*.kt` ohne detekt | `ktlint -F {GEÄNDERTE_KT_DATEIEN}` (falls installiert) | Geänderte Dateien |
-| `detekt.yml` / `config/detekt` | `./gradlew detekt` | Global (Gradle-Task) |
-| `pubspec.yaml` (Flutter) | `dart format {GEÄNDERTE_DART_DATEIEN}` + `dart analyze` | format scoped, analyze global |
+| `.swiftlint.yml` | `swiftlint --fix {CHANGED_SWIFT_FILES}` then `swiftlint lint {FILES}` | Changed files |
+| `.swiftformat` | `swiftformat {CHANGED_SWIFT_FILES}` | Changed files |
+| `.editorconfig` + `*.kt` without detekt | `ktlint -F {CHANGED_KT_FILES}` (if installed) | Changed files |
+| `detekt.yml` / `config/detekt` | `./gradlew detekt` | Global (Gradle task) |
+| `pubspec.yaml` (Flutter) | `dart format {CHANGED_DART_FILES}` + `dart analyze` | format scoped, analyze global |
 
-Tool nicht installiert (`command -v` schlaegt fehl)? → ueberspringen mit Hinweis, NICHT via brew/gem installieren.
+Tool not installed (`command -v` fails)? → skip with a note, do NOT install via brew/gem.
 
-Für `/full-audit` werden alle Linter/Formatter global statt datei-scoped ausgeführt.
+For `/full-audit`, all linters/formatters run globally instead of file-scoped.
 
-Bei Static-Analysis-Fehlern: manuell fixen, erneut laufen lassen. Wiederholen bis sauber.
+On static analysis errors: fix manually, re-run. Repeat until clean.
 
-## Test-Runner
+## Test Runner
 
-**Grundprinzip fuer /audit: Nur relevante/betroffene Tests lokal ausfuehren. Die volle Suite laeuft in CI bei jedem Push.** Das ist explizit so vom User gewuenscht und spart massiv Zeit bei grossen Test-Suiten (2000+ Tests).
+**Core principle for /audit: only run relevant/affected tests locally. The full suite runs in CI on every push.** This is explicitly requested by the user and saves significant time on large test suites (2000+ tests).
 
-### Betroffene Tests ermitteln
+### Determining Affected Tests
 
-Pro geaenderter Code-Datei wird die zugehoerige Test-Datei gesucht:
+For each changed code file, the corresponding test file is looked up:
 
 | Framework | Mapping |
 |-----------|---------|
-| Laravel/PHPUnit | `app/Foo/Bar.php` → `tests/**/BarTest.php` (grep nach Klassennamen) |
-| Vitest/Jest | `src/foo/bar.ts` → `src/foo/bar.{test,spec}.{ts,tsx,js,jsx}` oder `__tests__/bar.test.*` |
-| Pytest | `src/foo/bar.py` → `tests/**/test_bar.py` oder `tests/**/bar_test.py` |
+| Laravel/PHPUnit | `app/Foo/Bar.php` → `tests/**/BarTest.php` (grep for class name) |
+| Vitest/Jest | `src/foo/bar.ts` → `src/foo/bar.{test,spec}.{ts,tsx,js,jsx}` or `__tests__/bar.test.*` |
+| Pytest | `src/foo/bar.py` → `tests/**/test_bar.py` or `tests/**/bar_test.py` |
 | XCTest/Swift Testing | `Sources/Foo/Bar.swift` → `Tests/**/BarTests.swift` |
 | JUnit (Android) | `app/src/main/**/Bar.kt` → `app/src/test/**/BarTest.kt` |
 | Flutter | `lib/foo/bar.dart` → `test/foo/bar_test.dart` |
 
-Zusaetzlich: direkt geaenderte Test-Dateien (`*Test.php`, `*.test.ts`, `test_*.py`) laufen immer mit.
+Additionally: directly changed test files (`*Test.php`, `*.test.ts`, `test_*.py`) always run.
 
-Keine betroffenen Tests gefunden? → Test-Step ueberspringen, Hinweis im Audit-Log: `Tests: uebersprungen (keine betroffenen Tests — CI deckt volle Suite ab)`.
+No affected tests found? → skip the test step, note in the audit log: `Tests: skipped (no affected tests — CI covers the full suite)`.
 
-### Runner-Aufrufe (nur betroffene Dateien)
+### Runner Invocations (affected files only)
 
-| Erkennungsmerkmal | Befehl (diff-scoped) |
+| Detection signal | Command (diff-scoped) |
 |---|---|
-| `phpunit.xml` + Laravel | `php artisan test {BETROFFENE_TEST_DATEIEN}` |
-| `phpunit.xml` (pur) | `./vendor/bin/phpunit {BETROFFENE_TEST_DATEIEN}` |
-| `vitest.config.*` | `npx vitest run {BETROFFENE_TEST_DATEIEN}` |
-| `jest.config.*` | `npx jest {BETROFFENE_TEST_DATEIEN}` |
-| `pytest.ini` oder `pyproject.toml` mit pytest | `pytest {BETROFFENE_TEST_DATEIEN}` |
-| `*.xcodeproj` / `Package.swift` | `xcodebuild test -only-testing:{TARGET}/{KLASSE}` bzw. `swift test --filter {KLASSE}` |
-| `build.gradle(.kts)` | `./gradlew test --tests "{KLASSE}"` |
-| `pubspec.yaml` (Flutter) | `flutter test {BETROFFENE_TEST_DATEIEN}` |
+| `phpunit.xml` + Laravel | `php artisan test {AFFECTED_TEST_FILES}` |
+| `phpunit.xml` (plain) | `./vendor/bin/phpunit {AFFECTED_TEST_FILES}` |
+| `vitest.config.*` | `npx vitest run {AFFECTED_TEST_FILES}` |
+| `jest.config.*` | `npx jest {AFFECTED_TEST_FILES}` |
+| `pytest.ini` or `pyproject.toml` with pytest | `pytest {AFFECTED_TEST_FILES}` |
+| `*.xcodeproj` / `Package.swift` | `xcodebuild test -only-testing:{TARGET}/{CLASS}` or `swift test --filter {CLASS}` |
+| `build.gradle(.kts)` | `./gradlew test --tests "{CLASS}"` |
+| `pubspec.yaml` (Flutter) | `flutter test {AFFECTED_TEST_FILES}` |
 
-**Nicht nutzen in /audit:** `composer test`, `npm test`, `npm run test` — diese fuehren typischerweise die volle Suite aus. Stattdessen Runner direkt mit Datei-Argumenten aufrufen.
+**Do not use in /audit:** `composer test`, `npm test`, `npm run test` — these typically run the full suite. Call the runner directly with file arguments instead.
 
-Bei Failures: fixen, erneut laufen lassen (nur die betroffenen Tests, nicht die volle Suite). Wiederholen bis gruen oder klar nicht automatisch fixbar. Unfixbare Failures als **Critical** aufnehmen.
+On failures: fix, re-run (only the affected tests, not the full suite). Repeat until green or clearly not auto-fixable. Add unfixable failures as **Critical**.
 
-### /full-audit: volle Suite
+### /full-audit: Full Suite
 
-Fuer `/full-audit` laeuft immer die komplette Test-Suite (`composer test` / `npm test` / `pytest` / etc.). Dort ist Vollstaendigkeit wichtiger als Laufzeit.
+For `/full-audit`, the complete test suite always runs (`composer test` / `npm test` / `pytest` / etc.). There, completeness matters more than runtime.

@@ -1,44 +1,44 @@
-# Manueller Testplan — Generierung
+# Manual Test Plan — Generation
 
-Wenn visuelle Dateien im Diff sind (FRONTEND_DATEIEN oder VISUELL_RELEVANTE_DATEIEN nicht leer), generiere einen konkreten Testplan, den der User lokal durchgehen kann.
+If visual files are in the diff (FRONTEND_DATEIEN or VISUELL_RELEVANTE_DATEIEN not empty), generate a concrete test plan the user can walk through locally.
 
 ## Template
 
 ```markdown
-## Manueller Testplan
+## Manual Test Plan
 
 **Branch:** {BRANCH}
-**Geänderte visuelle Dateien:** {Liste}
+**Changed visual files:** {list}
 
-### Schritte
+### Steps
 
-1. [ ] **{Seitenname}** — {URL oder Route}
-   - Prüfe: {was sich geändert hat, z.B. "neuer Button-Variant 'danger'"}
-   - Desktop + Mobile testen
-   - {Spezifischer Hinweis, z.B. "Dark Mode prüfen falls aktiv"}
+1. [ ] **{page name}** — {URL or route}
+   - Check: {what changed, e.g. "new button variant 'danger'"}
+   - Test desktop + mobile
+   - {specific note, e.g. "check dark mode if active"}
 
-2. [ ] **{Seitenname}** — {URL oder Route}
-   - Prüfe: {konkrete Änderung}
+2. [ ] **{page name}** — {URL or route}
+   - Check: {concrete change}
    ...
 
-### Worauf besonders achten
-- {Edge Cases aus dem Diff, z.B. "Leerer Zustand wenn keine Items vorhanden"}
-- {Responsive-Verhalten, z.B. "Tabelle bricht unter 768px auf Cards um"}
-- {A11y-relevant, z.B. "Neue Buttons müssen per Tastatur erreichbar sein"}
+### What to Watch For
+- {edge cases from the diff, e.g. "empty state when no items are present"}
+- {responsive behavior, e.g. "table collapses into cards below 768px"}
+- {a11y-relevant, e.g. "new buttons must be keyboard-reachable"}
 ```
 
-## Regeln
+## Rules
 
-- Nur Schritte für tatsächlich geänderte Stellen — kein generischer "prüfe alles"-Plan.
-- URLs/Routes aus dem Framework ableiten:
-  - Next.js: Dateipfad = URL
-  - Laravel: `routes/web.php` konsultieren
+- Only steps for actually changed spots — no generic "check everything" plan.
+- Derive URLs/routes from the framework:
+  - Next.js: file path = URL
+  - Laravel: consult `routes/web.php`
   - Nuxt: `pages/` = URL
-  - Inertia/Livewire: Controller-Routes prüfen
-- Max. 10 Schritte — priorisiert nach Sichtbarkeit und Risiko.
-- Rein textuell — keine externen Tools oder Server nötig.
+  - Inertia/Livewire: check controller routes
+- Max 10 steps — prioritized by visibility and risk.
+- Purely textual — no external tools or servers needed.
 
-## Wo der Testplan landet
+## Where the Test Plan Ends Up
 
-1. Ins Audit-Log unter `## Manueller Testplan` schreiben.
-2. Im Chat ausgeben (Teil der 3e-Ausgabe).
+1. Write it into the audit log under `## Manual Test Plan`.
+2. Output it in chat (part of the 3e output).

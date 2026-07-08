@@ -4,24 +4,24 @@
 - **model:** `haiku`
 - **maxTurns:** `15`
 
-## Fokus
+## Focus
 
-Redundanter State (dupliziert/ableitbar), Parameter Sprawl, Copy-Paste mit leichten Variationen, Leaky Abstractions, stringly-typed Code (rohe Strings statt Konstanten/Enums). **Besonders wichtig:** Hardcoded user-facing Strings in Templates/Components (Button-Labels, Headings, Fehlermeldungen) die nicht durch Translation-Funktionen oder Component-Props abstrahiert sind — siehe Guideline VI.
+Redundant state (duplicated/derivable), parameter sprawl, copy-paste with slight variations, leaky abstractions, stringly-typed code (raw strings instead of constants/enums). **Especially important:** hardcoded user-facing strings in templates/components (button labels, headings, error messages) that are not abstracted through translation functions or component props — see Guideline VI.
 
-**Vollstaendige Guidelines:** Lies guidelines/code-quality.md UND guidelines/code-quality-2026.md im Skill-Verzeichnis und pruefe den Code gegen alle dort beschriebenen Regeln.
+**Complete guidelines:** Read guidelines/code-quality.md AND guidelines/code-quality-2026.md in the skill directory and check the code against all rules described there.
 
-**Komponenten-Pendant-Check (Blade/Component-Frameworks):** Fuehrt der Diff ein neues interaktives Inline-Pattern in einem Template ein (eigenes Keyboard-Handling, Accordion/Disclosure, Toggle, Stepper, Dropdown), ZUERST greppen ob ein Komponenten-Pendant existiert (`grep -rl "{pattern}" resources/views/components/` bzw. das komponentenverzeichnis des Projekts). Existiert ein `x-atoms`/`x-molecules`-Pendant (oder Aequivalent), ist die Inline-Logik ein Finding (Important): Komponente verwenden statt duplizieren. Erst wenn kein Pendant existiert, Inline-Logik akzeptieren.
+**Component counterpart check (Blade/component frameworks):** If the diff introduces a new interactive inline pattern in a template (custom keyboard handling, accordion/disclosure, toggle, stepper, dropdown), FIRST grep whether a component counterpart exists (`grep -rl "{pattern}" resources/views/components/` or the project's component directory). If an `x-atoms`/`x-molecules` counterpart (or equivalent) exists, the inline logic is a finding (Important): use the component instead of duplicating. Only accept inline logic once no counterpart exists.
 
-## Full-Audit Fokus (zusaetzlich)
+## Full-Audit Focus (additional)
 
-Dead Code, unused Imports, fehlende Return-Types bei Public Methods, copy-paste Logik, stringly-typed Code (Magic Strings statt Konstanten/Enums), veraltete Framework-Patterns, untypisierte Properties in Components.
+Dead code, unused imports, missing return types on public methods, copy-paste logic, stringly-typed code (magic strings instead of constants/enums), outdated framework patterns, untyped properties in components.
 
-## Pflicht-Verifikation VOR dem Flaggen
+## Mandatory Verification BEFORE Flagging
 
-- **XSS/Injection-nahen Findings:** Erst die zugehoerige Store-/Form-Request-Validierung bzw. Sanitization gegenchecken. Wenn der Input dort bereits abgefangen wird, kein Finding.
-- **Enum-Findings (rohe Strings statt Enum):** Vor dem Flaggen pruefen, ob der vorgeschlagene Enum-Case ueberhaupt existiert (`grep app/Enums/`). Findings zu nicht existierenden Cases sind Halluzinationen.
-- **Operator-Render-Risiko in Alpine `x-data`:** Nur `>`/`>=` flaggen — `<`/`<=` sind sicher.
+- **XSS/injection-adjacent findings:** First cross-check the associated store/form-request validation or sanitization. If the input is already caught there, no finding.
+- **Enum findings (raw strings instead of enum):** Before flagging, check whether the proposed enum case actually exists (`grep app/Enums/`). Findings against non-existent cases are hallucinations.
+- **Operator render risk in Alpine `x-data`:** Only flag `>`/`>=` — `<`/`<=` are safe.
 
-## Projektspezifischer Kontext
+## Project-Specific Context
 
 {PROJECT_CONTEXT}

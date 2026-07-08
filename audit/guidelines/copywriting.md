@@ -1,101 +1,101 @@
-# Copywriting & UX-Writing Guidelines
+# Copywriting & UX Writing Guidelines
 
-Audit-Regeln fuer user-facing Text: Microcopy (Buttons, Errors, Empty States), Marketing-Copy (Landing Pages, CTAs) und Konsistenz. Sprache der Findings: Deutsch. Geprueft wird Text in Templates, Komponenten und Translation-Dateien.
+Audit rules for user-facing text: microcopy (buttons, errors, empty states), marketing copy (landing pages, CTAs), and consistency. Language of findings: German. Text is checked in templates, components, and translation files.
 
 ## Contents
 - I. Microcopy: Buttons & Actions
 - II. Error Messages
 - III. Empty States & Loading
 - IV. Confirmations & Destructive Actions
-- V. Konsistenz (Terminologie, Anrede, Ton)
+- V. Consistency (Terminology, Forms of Address, Tone)
 - VI. Clarity Rules
-- VII. Marketing-Copy (Elevated Direct Response)
-- VIII. Sprach-Spezifika (DE/EN)
-- IX. Anti-Patterns (immer melden)
+- VII. Marketing Copy (Elevated Direct Response)
+- VIII. Language Specifics (DE/EN)
+- IX. Anti-Patterns (always report)
 
 ## I. Microcopy: Buttons & Actions
 
-- **Verben, nicht Substantive.** "Speichern" statt "Speicherung". "Send invite" statt "Invitation".
-- **Spezifisch, nicht generisch.** "Event erstellen" schlaegt "OK" / "Absenden" / "Weiter" — der User soll VOR dem Klick wissen, was passiert.
-- **Ein Primary-CTA pro View.** Zwei gleichgewichtige Haupt-Buttons = Entscheidungslaehmung.
-- **Button-Label beschreibt das Ergebnis,** nicht den Mechanismus: "Platz buchen" statt "Formular absenden".
-- **Keine Ich-Perspektive auf Buttons** ohne bewusste Entscheidung ("Mein Konto loeschen" vs "Konto loeschen" — einheitlich halten).
+- **Verbs, not nouns.** "Speichern" instead of "Speicherung". "Send invite" instead of "Invitation".
+- **Specific, not generic.** "Event erstellen" beats "OK" / "Absenden" / "Weiter" — the user should know what happens BEFORE clicking.
+- **One primary CTA per view.** Two equally weighted main buttons = decision paralysis.
+- **Button label describes the outcome,** not the mechanism: "Platz buchen" instead of "Formular absenden".
+- **No first-person perspective on buttons** without a deliberate decision ("Mein Konto loeschen" vs "Konto loeschen" — keep it consistent).
 
 ## II. Error Messages
 
-Jede Fehlermeldung beantwortet DREI Fragen:
-1. **Was ist passiert?** (konkret, nicht "Ein Fehler ist aufgetreten")
-2. **Warum?** (wenn bekannt und fuer den User nuetzlich)
-3. **Was kann der User jetzt tun?** (naechster Schritt, immer)
+Every error message answers THREE questions:
+1. **What happened?** (concrete, not "Ein Fehler ist aufgetreten")
+2. **Why?** (if known and useful to the user)
+3. **What can the user do now?** (next step, always)
 
-| Schlecht | Gut |
+| Bad | Good |
 |---|---|
 | "Fehler beim Speichern." | "Speichern fehlgeschlagen — keine Internetverbindung. Deine Eingaben bleiben erhalten, versuch es gleich nochmal." |
 | "Ungueltige Eingabe." | "Das Datum liegt in der Vergangenheit. Waehle ein Datum ab heute." |
-| "Error 422" | Technische Codes nie als einzige Information zeigen. |
+| "Error 422" | Never show technical codes as the only information. |
 
-- **Kein Schuldzuweisungs-Ton.** "Das Passwort muss 8 Zeichen haben" statt "Du hast ein zu kurzes Passwort eingegeben".
-- **Kein Humor in Fehlermeldungen** bei Datenverlust, Zahlungen, Sicherheit.
-- **Validierungs-Fehler stehen am Feld,** nicht nur als Toast oben rechts.
+- **No blaming tone.** "Das Passwort muss 8 Zeichen haben" instead of "Du hast ein zu kurzes Passwort eingegeben".
+- **No humor in error messages** for data loss, payments, security.
+- **Validation errors appear at the field,** not only as a toast in the top right.
 
 ## III. Empty States & Loading
 
-- Empty State = Onboarding-Moment: **Was ist das hier + wie fange ich an** + CTA. Nie nur "Keine Daten vorhanden".
-- Unterscheide **leer (neu)** von **leer (gefiltert)**: "Noch keine Events" vs "Keine Events fuer diesen Filter — Filter zuruecksetzen?".
-- Loading-Texte konkret wenn > 2s erwartbar: "Gaesteliste wird geladen…" statt generisches "Laden…".
+- Empty state = onboarding moment: **what is this + how do I get started** + CTA. Never just "Keine Daten vorhanden".
+- Distinguish **empty (new)** from **empty (filtered)**: "Noch keine Events" vs "Keine Events fuer diesen Filter — Filter zuruecksetzen?".
+- Loading text should be concrete when > 2s is expected: "Gaesteliste wird geladen…" instead of the generic "Laden…".
 
 ## IV. Confirmations & Destructive Actions
 
-- Confirm-Dialog nennt das **konkrete Objekt**: "Event 'Sommerfest' loeschen?" statt "Wirklich loeschen?".
-- Folgen benennen: "13 Zusagen werden ebenfalls geloescht."
-- Buttons im Dialog wiederholen die Aktion: "Loeschen" / "Behalten" — nie "Ja" / "Nein" (Jakob: was war die Frage?).
-- Erfolgs-Feedback nach Aktionen: kurz, konkret, mit Undo wo moeglich ("Event geloescht — Rueckgaengig").
+- Confirm dialog names the **concrete object**: "Event 'Sommerfest' loeschen?" instead of "Wirklich loeschen?".
+- Name the consequences: "13 Zusagen werden ebenfalls geloescht."
+- Dialog buttons repeat the action: "Loeschen" / "Behalten" — never "Ja" / "Nein" (Jakob: what was the question?).
+- Success feedback after actions: short, concrete, with undo where possible ("Event geloescht — Rueckgaengig").
 
-## V. Konsistenz (Terminologie, Anrede, Ton)
+## V. Consistency (Terminology, Forms of Address, Tone)
 
-- **Ein Begriff pro Konzept, ueberall.** Nicht "Gast" / "Teilnehmer" / "Besucher" gemischt. Glossar-Check ueber Translation-Dateien.
-- **Anrede konsistent (DE):** du ODER Sie — nie gemischt innerhalb der App. Haeufigster Copy-Bug in deutschen Apps.
-- **Ton konsistent:** Eine App, die im Onboarding locker duzt und in Fehlermeldungen behoerdlich klingt, wirkt kaputt.
-- **Gleiche Aktion = gleiches Label:** Wenn der Speichern-Button auf Seite A "Speichern" heisst, heisst er auf Seite B nicht "Uebernehmen".
+- **One term per concept, everywhere.** Not "Gast" / "Teilnehmer" / "Besucher" mixed. Glossary check across translation files.
+- **Form of address consistent (DE):** du OR Sie — never mixed within the app. The most common copy bug in German apps.
+- **Tone consistent:** an app that's casual during onboarding and sounds bureaucratic in error messages feels broken.
+- **Same action = same label:** if the save button on page A is called "Speichern", it isn't called "Uebernehmen" on page B.
 
 ## VI. Clarity Rules
 
-- **Kein Jargon** den der User nicht kennt: "Slug", "Payload", "Token expired" gehoeren nicht in die UI.
-- **Aktiv statt Passiv:** "Wir senden dir eine E-Mail" statt "Eine E-Mail wird versendet".
-- **Kurz:** Microcopy unter 12 Worten wo moeglich. Erklaertexte max 2 Saetze, dann Link.
-- **Keine Filler:** "einfach", "eigentlich", "bitte beachten Sie, dass" — streichen.
-- **Zahlen konkret:** "3 von 10 Plaetzen frei" statt "Wenige Plaetze frei" (wenn die Zahl bekannt ist).
+- **No jargon** the user doesn't know: "Slug", "Payload", "Token expired" don't belong in the UI.
+- **Active instead of passive:** "Wir senden dir eine E-Mail" instead of "Eine E-Mail wird versendet".
+- **Short:** microcopy under 12 words where possible. Explanatory text max 2 sentences, then a link.
+- **No filler:** "einfach", "eigentlich", "bitte beachten Sie, dass" — cut it.
+- **Concrete numbers:** "3 von 10 Plaetzen frei" instead of "Wenige Plaetze frei" (when the number is known).
 
-## VII. Marketing-Copy (Elevated Direct Response)
+## VII. Marketing Copy (Elevated Direct Response)
 
-Fuer Landing Pages, Pricing, Onboarding — nicht fuer App-interne Microcopy:
+For landing pages, pricing, onboarding — not for in-app microcopy:
 
-- **Benefit vor Feature:** "Nie wieder Excel-Gaestelisten" schlaegt "CSV-Import-Funktion".
-- **Headline = staerkstes Argument,** nicht Firmenname oder Begruessung.
-- **Spezifitaet schlaegt Superlativ:** "In 2 Minuten zum fertigen Event" schlaegt "Das beste Event-Tool".
-- **Ein Gedanke pro Absatz.** Scanbar: Zwischenueberschriften alle 2-4 Absaetze.
-- **Social Proof konkret:** Zahl + Kontext ("400 Hosts nutzen es woechentlich") statt Logo-Wand ohne Aussage.
-- **Kein Sleaze:** Kuenstliche Verknappung ("Nur noch heute!") ohne reale Basis ist ein Finding, kein Stilmittel.
-- **CTA wiederholt den Nutzen:** "Kostenlos starten" schlaegt "Registrieren".
+- **Benefit before feature:** "Nie wieder Excel-Gaestelisten" beats "CSV-Import-Funktion".
+- **Headline = strongest argument,** not company name or greeting.
+- **Specificity beats superlative:** "In 2 Minuten zum fertigen Event" beats "Das beste Event-Tool".
+- **One idea per paragraph.** Scannable: subheadings every 2-4 paragraphs.
+- **Concrete social proof:** number + context ("400 Hosts nutzen es woechentlich") instead of a logo wall without a statement.
+- **No sleaze:** artificial scarcity ("Nur noch heute!") without a real basis is a finding, not a stylistic device.
+- **CTA repeats the benefit:** "Kostenlos starten" beats "Registrieren".
 
-## VIII. Sprach-Spezifika (DE/EN)
+## VIII. Language Specifics (DE/EN)
 
-- **DE:** Anrede-Konsistenz (V), zusammengesetzte Substantive nicht auseinanderreissen ("Event-Einstellungen" nicht "Event Einstellungen"), keine unnoetigen Anglizismen wenn ein gaengiges deutsches Wort existiert ("herunterladen" vs "downloaden" — Projekt-Konvention pruefen, dann Konsistenz).
-- **EN:** Sentence case fuer Buttons/Labels ("Save changes" nicht "Save Changes") — ausser Projekt nutzt durchgaengig Title Case, dann Konsistenz.
-- **Beide Sprachen gleich vollstaendig und gleich konkret:** Wenn die DE-Fehlermeldung 3 Saetze Kontext hat und die EN-Version nur "Error", ist das ein Finding.
-- Typografische Details (Anfuehrungszeichen, Apostrophe, Ellipsen) prueft der Typography-Worker — hier nicht doppelt melden.
+- **DE:** consistent form of address (V), don't split compound nouns apart ("Event-Einstellungen" not "Event Einstellungen"), no unnecessary anglicisms when a common German word exists ("herunterladen" vs "downloaden" — check project convention, then consistency).
+- **EN:** sentence case for buttons/labels ("Save changes" not "Save Changes") — unless the project uses Title Case throughout, then consistency.
+- **Both languages equally complete and equally concrete:** if the DE error message has 3 sentences of context and the EN version is just "Error", that's a finding.
+- Typographic details (quotation marks, apostrophes, ellipses) are checked by the typography worker — don't report them twice here.
 
-## IX. Anti-Patterns (immer melden)
+## IX. Anti-Patterns (always report)
 
-| Pattern | Schweregrad |
+| Pattern | Severity |
 |---|---|
-| Fehlermeldung ohne Handlungsanweisung | Important |
-| Gemischte Anrede du/Sie (DE) | Important |
-| Confirm-Dialog mit Ja/Nein-Buttons | Important |
-| "Ein Fehler ist aufgetreten" als einzige Info | Important |
-| Empty State ohne CTA/Anleitung | Minor |
-| Generischer CTA ("OK", "Absenden") auf Primary-Action | Minor |
-| Terminologie-Drift (gleiches Konzept, 2+ Begriffe) | Minor |
-| Jargon/technische Codes in der UI | Minor |
-| Passiv-Konstruktionen in Handlungs-Microcopy | Minor |
-| Kuenstliche Verknappung ohne reale Basis | Important |
+| Error message without a call to action | Important |
+| Mixed forms of address du/Sie (DE) | Important |
+| Confirm dialog with yes/no buttons | Important |
+| "Ein Fehler ist aufgetreten" as the only info | Important |
+| Empty state without CTA/guidance | Minor |
+| Generic CTA ("OK", "Absenden") on the primary action | Minor |
+| Terminology drift (same concept, 2+ terms) | Minor |
+| Jargon/technical codes in the UI | Minor |
+| Passive constructions in action microcopy | Minor |
+| Artificial scarcity without a real basis | Important |

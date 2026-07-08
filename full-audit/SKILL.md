@@ -20,15 +20,15 @@ allowed-tools:
 
 # Full Codebase Audit
 
-**SOFORT AUSFÜHREN — nicht erklären, nicht ankündigen. Direkt mit Phase 0 beginnen.**
+**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with Phase 0.**
 
-> **Architektur-Hinweis:** Dieser Skill hat KEINE eigenen Worker-Agents. Er nutzt die Definitionen aus `../audit/agents/*.md` (im Skill ueber `{AUDIT_AGENTS}` referenziert). Wenn du Worker-Konfiguration aendern willst, editiere dort. Das prompt-template.md hat zwei Sektionen ("Fuer /audit" und "Fuer /full-audit") — Workers dispatchen die passende Sektion je nach Skill.
+> **Architecture note:** This skill has NO worker agents of its own. It uses the definitions from `../audit/agents/*.md` (referenced in the skill via `{AUDIT_AGENTS}`). If you want to change worker configuration, edit there. prompt-template.md has two sections ("For /audit" and "For /full-audit (codebase-based)") — workers dispatch the matching section depending on the skill.
 
-Anti-Patterns (rote Flaggen) siehe `{AUDIT_REFS}/anti-patterns.md` (Pfad aus Phase 0) — Full-Audit fixt zusaetzlich ALLE Minor-Findings.
+Anti-patterns (red flags) see `{AUDIT_REFS}/anti-patterns.md` (path from Phase 0) — Full-Audit additionally fixes ALL Minor findings.
 
 ---
 
-## Phase 0: Pre-Flight — Audit-Pfade + Agent-Verifikation
+## Phase 0: Pre-Flight — Audit Paths + Agent Verification
 
 ```bash
 # Resolve audit skill root — try multiple known locations.
@@ -62,33 +62,33 @@ BATCH_DIR="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-batches"
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 ```
 
-**Resume-Check:** Existiert `$STATE_FILE` bereits → RESUME-Modus:
+**Resume check:** If `$STATE_FILE` already exists → RESUME mode:
 
 ```bash
 bash "$FULL_AUDIT_BIN/resume-check.sh" "$STATE_FILE"
 ```
 
-Jede `BATCH_DIRTY`-Zeile: Batch-Zeile auf `pending` zuruecksetzen (Runden `0/{max}`, C/I/M nullen, HEAD `-`). `running`-Zeilen ebenfalls auf `pending` (halb auditierte Batches werden neu auditiert, nie fortgesetzt). `mode`/`effort`/`dimensions` aus dem State-Header uebernehmen, Phasen 0.3-1.5 SKIPPEN, direkt zu Phase 2 ab dem ersten `pending`-Batch. Detail: `references/state-file.md`.
+Every `BATCH_DIRTY` line: reset the batch row to `pending` (Rounds `0/{max}`, zero C/I/M, HEAD `-`). `running` rows also reset to `pending` (half-audited batches are re-audited from scratch, never resumed mid-batch). Take over `mode`/`effort`/`dimensions` from the state header, SKIP phases 0.3-1.5, go directly to Phase 2 starting at the first `pending` batch. Detail: `references/state-file.md`.
 
 ---
 
-## Phase 0.3: Learning-Backlog-Check
+## Phase 0.3: Learning Backlog Check
 
-Identisch zu `/audit` Phase 0. Pruefe ob unverarbeitete Lerning-Vorschlaege aus frueheren Audits offen sind:
+Identical to `/audit` Phase 0. Check whether unprocessed learning suggestions from earlier audits are still open:
 
 ```bash
 LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
 [ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
 ```
 
-Wenn `>= 1`: User via `AskUserQuestion` fragen mit Optionen:
-- **Vorschlaege jetzt umsetzen** → Vorschlaege auflisten, User waehlt welche, Orchestrator dispatcht passende Aenderungen an `audit/guidelines/*.md` oder `audit/agents/*.md` (das sind die GLOBALEN Skill-Files, die alle Projekte betreffen). **WICHTIG — ins Quell-Repo editieren:** `~/.claude/skills/*` kann ein Sync-Ziel sein (Symlink oder entpacktes `.skill`-Bundle), dessen Inhalt ueberschrieben wird. Vor dem ersten Edit Quelle aufloesen: `readlink` pruefen bzw. das Skill-Quell-Repo finden (z.B. `~/Local Sites/claude-skills`) und DORT editieren. Edits in der entpackten Kopie gehen beim naechsten Sync verloren. Nach Umsetzung: `[ ]` zu `[x]` aendern in learning-log.md. Dann Full-Audit weiter mit Phase 0.5.
-- **Spaeter, Full-Audit jetzt** → Phase 0.5 starten, Vorschlaege bleiben offen.
-- **Nie wieder fragen fuer diese Punkte** → `[skip]`-Marker an betroffene Zeilen anhaengen, sie zaehlen nicht mehr.
+If `>= 1`: ask the user via `AskUserQuestion` with options:
+- **Implement suggestions now** → list the suggestions, user picks which ones, orchestrator dispatches matching changes to `audit/guidelines/*.md` or `audit/agents/*.md` (these are the GLOBAL skill files affecting all projects). **IMPORTANT — edit in the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose content gets overwritten. Before the first edit, resolve the source: check `readlink` or find the skill source repo (e.g. `~/Local Sites/claude-skills`) and edit THERE. Edits in the unpacked copy are lost on the next sync. After implementing: change `[ ]` to `[x]` in learning-log.md. Then continue Full-Audit with Phase 0.5.
+- **Later, run Full-Audit now** → start Phase 0.5, suggestions stay open.
+- **Never ask again for these items** → append a `[skip]` marker to the affected rows, they no longer count.
 
-Wenn `0`: weiter ohne Frage.
+If `0`: continue without asking.
 
-**Zusaetzlich — Offene Audit-Issues & PRs** (identisch zu `/audit` Phase 0.2):
+**Additionally — open audit issues & PRs** (identical to `/audit` Phase 0.2):
 
 ```bash
 if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com; then
@@ -97,15 +97,15 @@ if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep 
 fi
 ```
 
-Offene `audit-finding`-Issues → AskUserQuestion: **Jetzt mitfixen** (als verifizierte Findings in Batch 1 einspeisen, nach Fix `gh issue close` mit Kommentar) / **Offen lassen**. `OPEN_PRS` als Kontext: Phase-4-Dedup prueft dagegen, PR-Datei-Ueberschneidungen kommen als Hinweis ins Log.
+Open `audit-finding` issues → AskUserQuestion: **Fix now too** (feed in as verified findings in batch 1, after the fix `gh issue close` with a comment) / **Leave open**. `OPEN_PRS` as context: Phase 4 dedup checks against it, PR file overlaps go into the log as a note.
 
-**Skip dieser Phase wenn:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` ODER `FULL_AUDIT_SKIP_LEARNING_CHECK=1` gesetzt (fuer CI/Batch-Runs).
+**Skip this phase when:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` OR `FULL_AUDIT_SKIP_LEARNING_CHECK=1` is set (for CI/batch runs).
 
 ---
 
-## Phase 0.4: Test-Runner-Streak-Check
+## Phase 0.4: Test Runner Streak Check
 
-Hard-Check: Fehlt ein konfigurierter Test-Runner ueber mehrere Full-Audits hinweg, wird die Luecke zur Critical-Finding eskaliert (statt nur Gap-Note). Ohne Runner kann kein Fix-Agent Regressionen verifizieren.
+Hard check: if a configured test runner is missing across multiple full audits, the gap escalates to a Critical finding (instead of just a gap note). Without a runner, no fix agent can verify regressions.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
@@ -131,17 +131,17 @@ else
 fi
 ```
 
-`TEST_RUNNER_ESCALATE=1` → in Phase 3c die fehlende Test-Infrastruktur als **Critical** ins Audit-Log und als GitHub-Issue (Phase 4) aufnehmen, nicht als Gap-Note. `=0` → wie bisher Gap-Note.
+`TEST_RUNNER_ESCALATE=1` → in Phase 3c record the missing test infrastructure as **Critical** in the audit log and as a GitHub issue (Phase 4), not as a gap note. `=0` → gap note as before.
 
-**Skip wenn:** ENV `FULL_AUDIT_SKIP_TESTRUNNER_CHECK=1`.
+**Skip when:** ENV `FULL_AUDIT_SKIP_TESTRUNNER_CHECK=1`.
 
 ---
 
 ## Phase 0.5: Dimension Selection
 
-Bevor Scope gesammelt wird, klaeren welche Dimensionen geprueft werden sollen. Spart Tokens und Zeit wenn der User z.B. nur Security pruefen will.
+Before scope is collected, clarify which dimensions should be checked. Saves tokens and time when the user e.g. only wants Security checked.
 
-**Skip via ENV (fuer CI/Batch):**
+**Skip via ENV (for CI/batch):**
 
 ```bash
 if [ -n "${FULL_AUDIT_DIMENSIONS:-}" ]; then
@@ -153,28 +153,28 @@ if [ -n "${FULL_AUDIT_DIMENSIONS:-}" ]; then
 fi
 ```
 
-**Sonst via AskUserQuestion (1 oder 2 Fragen):**
+**Otherwise via AskUserQuestion (1 or 2 questions):**
 
-Frage 1 — Preset:
+Question 1 — preset:
 
-| Option | Dimensionen |
+| Option | Dimensions |
 |---|---|
-| Alles (Standard) | architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy |
-| Nur Backend | architecture, security, performance, code_quality, docs_sync |
-| Nur Frontend | seo, a11y, typography, ui_design, ux, animation, copy |
-| Custom | (loest Frage 2 aus) |
+| Everything (default) | architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy |
+| Backend only | architecture, security, performance, code_quality, docs_sync |
+| Frontend only | seo, a11y, typography, ui_design, ux, animation, copy |
+| Custom | (triggers question 2) |
 
-Frage 2 (nur bei Custom) — Multi-Select aller 12 Dimensionen. User waehlt beliebige Kombination.
+Question 2 (only for Custom) — multi-select across all 12 dimensions. User picks any combination.
 
-**Validierung:** `SELECTED_DIMENSIONS` muss min. 1 gueltige Dimension enthalten. Ungueltige Werte verwerfen.
+**Validation:** `SELECTED_DIMENSIONS` must contain at least 1 valid dimension. Discard invalid values.
 
-**Anzeige:** `Full-Audit Scope: {N}/12 Dimensionen — {Liste}`.
+**Display:** `Full-Audit Scope: {N}/12 dimensions — {list}`.
 
 ---
 
 ## Phase 0.7: Effort Configuration
 
-Skaliert Tiefe nach `${CLAUDE_EFFORT}`. Default `xhigh` (Full-Audit ist per Definition gruendlich, kein `medium`).
+Scales depth by `${CLAUDE_EFFORT}`. Default `xhigh` (Full-Audit is thorough by definition, no `medium`).
 
 ```bash
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-xhigh}"
@@ -196,27 +196,27 @@ esac
 echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN_PRO_BATCH | FixMinor=$FIX_MINOR | Cross-Ref=$([ $SKIP_CROSS_REF -eq 1 ] && echo skip || echo run)"
 ```
 
-| Level | Runden/Batch | Fix Minor | Cross-Ref | Learning | Confidence-Floor |
+| Level | Rounds/Batch | Fix Minor | Cross-Ref | Learning | Confidence Floor |
 |---|---|---|---|---|---|
-| low | 1 | nein | skip | skip | high |
-| medium | 2 | ja | nur BATCHED | ja | medium |
-| high / xhigh (Default) | 3 | ja | immer (auch SINGLE) | ja | low |
+| low | 1 | no | skip | skip | high |
+| medium | 2 | yes | BATCHED only | yes | medium |
+| high / xhigh (default) | 3 | yes | always (also SINGLE) | yes | low |
 
-Im Folgenden bedeutet `{MAX_RUNDEN_PRO_BATCH}` der hier gesetzte Wert.
+From here on, `{MAX_RUNDEN_PRO_BATCH}` refers to the value set here.
 
 ---
 
 ## Phase 1: Scope & Context
 
-Bash-Logik (Framework-Detection, ALLE_DATEIEN, FRONTEND-Liste, Translation-Liste, PROJECT_CONTEXT, SUPPRESSIONS, Intent-Docs/ADRs) und ARCHITEKTUR-NOTIZ-Erstellung in `references/scope-context-batching.md`. Resultierende Variablen: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `DECIDED_TRADEOFFS`, `ARCHITEKTUR-NOTIZ`. `DECIDED_TRADEOFFS` geht an alle Worker (prompt-template-Platzhalter).
+Bash logic (framework detection, ALLE_DATEIEN, frontend list, translation list, PROJECT_CONTEXT, SUPPRESSIONS, intent docs/ADRs) and ARCHITEKTUR-NOTIZ creation in `references/scope-context-batching.md`. Resulting variables: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `DECIDED_TRADEOFFS`, `ARCHITEKTUR-NOTIZ`. `DECIDED_TRADEOFFS` is passed to all workers (prompt-template placeholder).
 
-Optionale Pre-Checks (nur bei lokalem Diff): `pre-checks.sh` ausfuehren.
+Optional pre-checks (only with a local diff): run `pre-checks.sh`.
 
-**i18n-Vollstaendigkeit (deterministisch):** `bash "$AUDIT_BIN/check-i18n-keys.sh"` — bei `I18N_RESULT=MISSING` wird jede Zeile ein Important-Finding `[i18n]` (Full-Audit prueft die ganze Codebase, daher alle Gaps melden).
+**i18n completeness (deterministic):** `bash "$AUDIT_BIN/check-i18n-keys.sh"` — for `I18N_RESULT=MISSING` every line becomes an Important finding `[i18n]` (Full-Audit checks the entire codebase, so report all gaps).
 
-**Dependency-Health (deterministisch):** `bash "$AUDIT_BIN/check-outdated.sh"` (voller Modus) —
-- `DEP_SECURITY_RESULT=VULNS` → jede verwundbare Dependency ein **Critical**-Finding `[Security]`
-- `DEP_OUTDATED_RESULT=OUTDATED` → als **Minor**-Findings `[Dependencies]` sammeln (gruppiert, nicht pro Paket ein Issue); Major-Spruenge mit Breaking-Change-Risiko (z.B. `stripe-php 17 → 20`) als Offener Punkt statt Auto-Update — Dependency-Updates macht NIE der Fix-Agent automatisch
+**Dependency health (deterministic):** `bash "$AUDIT_BIN/check-outdated.sh"` (full mode) —
+- `DEP_SECURITY_RESULT=VULNS` → every vulnerable dependency becomes a **Critical** finding `[Security]`
+- `DEP_OUTDATED_RESULT=OUTDATED` → collect as **Minor** findings `[Dependencies]` (grouped, not one issue per package); major jumps with breaking-change risk (e.g. `stripe-php 17 → 20`) become an open point instead of an auto-update — dependency updates are NEVER done automatically by the fix agent
 
 **Project-Specific Guidelines:**
 
@@ -229,69 +229,67 @@ if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
 fi
 ```
 
-`PROJECT_GUIDELINES` an alle Workers durchreichen (siehe prompt-template).
+Pass `PROJECT_GUIDELINES` through to all workers (see prompt-template).
 
-**Concurrent-Tree-Check (Baseline):** `AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })` festhalten; nach JEDEM Batch erneut hashen. Abweichung → Warnung ins Audit-Log (`## Hinweise: Tree waehrend Audit veraendert`), Scope fuer den naechsten Batch neu erheben, Findings auf ueberschriebenen Zeilen verwerfen. Detail: `references/scope-context-batching.md`.
+**Concurrent tree check (baseline):** record `AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })`; re-hash after EVERY batch. Deviation → warning into the audit log (`## Notes: Tree changed during audit`), re-collect scope for the next batch, discard findings on overwritten lines. Detail: `references/scope-context-batching.md`.
 
 ---
 
-## Phase 1.5: Batching-Entscheidung
+## Phase 1.5: Batching Decision
 
-| TOTAL_FILES | Modus |
+| TOTAL_FILES | Mode |
 |---|---|
 | ≤ 80 | `SINGLE` |
 | > 80 | `BATCHED` |
 
-Batch-Regeln und Bash-Logik in `references/scope-context-batching.md`. Max ~30-40 Dateien pro Batch, zusammengehoeriges zusammen.
+Batch rules and bash logic in `references/scope-context-batching.md`. Max ~30-40 files per batch, related files together.
 
-**State-Datei anlegen (PFLICHT, vor Phase 2):** Batch-Dateilisten zusaetzlich nach `$BATCH_DIR/batch-NN.txt` kopieren (repo-root-relativ — /tmp ist fluechtig). Dann `$STATE_FILE` schreiben: Header (`mode`, `effort`, `dimensions`, `batch-dir`, `post-phases` alle pending, `started`) plus eine Tabellenzeile pro Batch mit Status `pending` (SINGLE-Modus = genau eine Zeile). Format: `references/state-file.md`.
+**Create state file (MANDATORY, before Phase 2):** additionally copy batch file lists to `$BATCH_DIR/batch-NN.txt` (repo-root-relative — /tmp is ephemeral). Then write `$STATE_FILE`: header (`mode`, `effort`, `dimensions`, `batch-dir`, `post-phases` all pending, `started`) plus one table row per batch with status `pending` (SINGLE mode = exactly one row). Format: `references/state-file.md`.
 
 ---
 
-## Phase 2: Audit-Loop
+## Phase 2: Audit Loop
 
-**Der Loop-Zustand lebt in `$STATE_FILE`, nicht im Kontext.** Runden-lokal bleiben nur `BEREITS_GEFIXT` und `FINDINGS_VORHERIGE_RUNDE` (pro Batch neu). **PFLICHT nach JEDER Runde:** die Batch-Zeile aktualisieren (Runden verbraucht, C/I/M kumuliert) — crash-safe, ein Session-Tod kostet maximal den laufenden Batch.
+**Loop state lives in `$STATE_FILE`, not in context.** Only `BEREITS_GEFIXT` and `FINDINGS_VORHERIGE_RUNDE` stay round-local (reset per batch). **MANDATORY after EVERY round:** update the batch row (rounds consumed, C/I/M accumulated) — crash-safe, a session death costs at most the batch in progress.
 
-**Nicht-Determinismus:** Findings sind LLM-Urteile, keine reproduzierbaren Tests. `clean` heisst "in diesem Lauf auditiert und gefixt", nie "re-verifizierbar gruen". Clean-Batches werden NIE zur Bestaetigung re-auditiert — Re-Audit ausschliesslich via `resume-check.sh` bei geaenderten Dateien.
+**Non-determinism:** findings are LLM judgments, not reproducible tests. `clean` means "audited and fixed in this run", never "re-verifiably green". Clean batches are NEVER re-audited for confirmation — re-audit only via `resume-check.sh` when files changed.
 
-**Convergence-Check:** Pro Batch nach jeder Runde. Wenn Critical+Important NICHT sinken UND RUNDE >= 2 → `NO_CONVERGENCE`, verbleibende Findings als Offene Punkte.
+**Convergence check:** per batch after every round. If Critical+Important do NOT decrease AND ROUND >= 2 → `NO_CONVERGENCE`, remaining findings become open points.
 
-### Loop (SINGLE = 1 Batch-Zeile, BATCHED = N Zeilen)
+### Loop (SINGLE = 1 batch row, BATCHED = N rows)
 
 ```
-while $STATE_FILE hat pending-Zeilen:
-    BATCH = erste pending-Zeile → Status running (State-Datei schreiben)
-    RUNDE = 1
-    while RUNDE <= {MAX_RUNDEN_PRO_BATCH} AND NOT SAUBER:
-        AUDIT_RUNDE mit DATEILISTE = $BATCH_DIR/batch-{ID}.txt
-        Batch-Zeile aktualisieren (Runden, C/I/M)
-        if not SAUBER: RUNDE += 1
-    SAUBER        → Zeile: clean + HEAD-Kurz-SHA
-    NO_CONVERGENCE → Zeile: blocked + Checkbox-Bullet unter "## Blocked / Needs review"
+while $STATE_FILE has pending rows:
+    BATCH = first pending row → status running (write state file)
+    ROUND = 1
+    while ROUND <= {MAX_RUNDEN_PRO_BATCH} AND NOT CLEAN:
+        AUDIT_RUNDE with DATEILISTE = $BATCH_DIR/batch-{ID}.txt
+        Update batch row (rounds, C/I/M)
+        if not CLEAN: ROUND += 1
+    CLEAN          → row: clean + HEAD short SHA
+    NO_CONVERGENCE → row: blocked + checkbox bullet under "## Blocked / Needs review"
 ```
 
-**Loop-Modus (optional, Detail `references/state-file.md`):** Bei `FULL_AUDIT_BATCHES_PER_TURN=N` (oder Betrieb via `/loop /full-audit`) nach N Batches die Status-Zeile ausgeben und den Turn beenden — /loop treibt weiter. Stop-Bedingungen: derselbe Batch 3 Turns in Folge blocked ohne Fortschritt (blocked lassen, naechster Batch) oder 50 Turns gesamt. Default ohne /loop: alle Batches in einem Lauf (heutiges Verhalten).
+### Procedure AUDIT_RUNDE
 
-### Prozedur AUDIT_RUNDE
+**Step A — Announcement**
 
-**Schritt A — Ankuendigung**
+BATCHED: `Full-Audit — Batch {AKTUELLER_BATCH}/{N} ({BATCH_VERZEICHNIS}) — {X} files — Round {RUNDE}/{MAX_RUNDEN_PRO_BATCH}`
+SINGLE: `Full-Audit Round {RUNDE}/{MAX_RUNDEN_PRO_BATCH} — {TOTAL_FILES} files`
 
-BATCHED: `Full-Audit — Batch {AKTUELLER_BATCH}/{N} ({BATCH_VERZEICHNIS}) — {X} Dateien — Runde {RUNDE}/{MAX_RUNDEN_PRO_BATCH}`
-SINGLE: `Full-Audit Runde {RUNDE}/{MAX_RUNDEN_PRO_BATCH} — {TOTAL_FILES} Dateien`
+TodoWrite: `Round {RUNDE} — dispatch subagents` (in_progress), `Round {RUNDE} — fix findings` (pending).
 
-TodoWrite: `Runde {RUNDE} — Subagents dispatchen` (in_progress), `Runde {RUNDE} — Findings fixen` (pending).
+**Step A — dispatch subagents in parallel**
 
-**Schritt A — Subagents parallel dispatchen**
+MANDATORY: dispatch ALL subagents contained in `SELECTED_DIMENSIONS` (from Phase 0.5) in EVERY round. Non-selected dimensions are skipped entirely — not caught up in later rounds either. Fixes can introduce issues in the selected dimensions.
 
-PFLICHT: ALLE in `SELECTED_DIMENSIONS` (aus Phase 0.5) enthaltenen Subagents in JEDER Runde dispatchen. Nicht-selektierte Dimensionen werden komplett uebersprungen — auch nicht in spaeteren Runden nachholen. Fixes koennen Issues in den ausgewaehlten Dimensionen einfuehren.
+Dispatch all in a single message block. Pass ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files**.
 
-Dispatche alle in einem Message-Block. Uebergib ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **nur die Batch-Dateien**.
+Agent definitions: `{AUDIT_AGENTS}/*.md`.
 
-Agent-Definitionen: `{AUDIT_AGENTS}/*.md`.
-
-| # | Agent | Kurzname |
+| # | Agent | Short name |
 |---|---|---|
-| 1 | `1-architecture.md` | Architektur & Code Reuse |
+| 1 | `1-architecture.md` | Architecture & Code Reuse |
 | 2 | `2-security.md` | Security |
 | 3 | `3-performance.md` | Performance |
 | 4 | `4-code-quality.md` | Code Quality |
@@ -304,151 +302,151 @@ Agent-Definitionen: `{AUDIT_AGENTS}/*.md`.
 | 11 | `11-docs-sync.md` | Docs Sync & Style |
 | 12 | `12-copy.md` | Copy & UX-Writing |
 
-Prompt-Template: `{AUDIT_AGENTS}/prompt-template.md` → Abschnitt "Fuer /full-audit".
+Prompt template: `{AUDIT_AGENTS}/prompt-template.md` → section "For /full-audit (codebase-based)".
 
-**Ueberspringen-Regeln:**
-- Dimension NICHT in `SELECTED_DIMENSIONS` → Agent gar nicht dispatchen
-- **5 (SEO): projektweit ueberspringen, wenn das Projekt gar kein Web-Frontend hat.** Einmal pro Full-Audit pruefen: `find . -path ./node_modules -prune -o \( -name '*.html' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' -o -name '*.astro' -o -name '*.blade.php' \) -print -quit` gibt nichts zurueck → reines natives/CLI/JSON-API-Projekt (z.B. nur Swift + bun-Backend), SEO hat keine Angriffsflaeche → Agent 5 nie dispatchen (kein Token verbrennen). Bei Treffer normal nach Batch-Inhalt entscheiden.
-- 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): keine Frontend-Dateien im Batch
-- 7 (Typography), 12 (Copy): weder Frontend- noch Translation-Dateien im Batch
-- 11 (Docs Sync): laeuft genau einmal pro Full-Audit (im ersten Batch oder als eigener finaler Pass nach Phase 2.5) — nicht pro Batch.
+**Skip rules:**
+- Dimension NOT in `SELECTED_DIMENSIONS` → don't dispatch the agent at all
+- **5 (SEO): skip project-wide if the project has no web frontend at all.** Check once per Full-Audit: `find . -path ./node_modules -prune -o \( -name '*.html' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' -o -name '*.astro' -o -name '*.blade.php' \) -print -quit` returns nothing → pure native/CLI/JSON-API project (e.g. only Swift + bun backend), SEO has no attack surface → never dispatch agent 5 (no wasted tokens). On a hit, decide normally per batch content.
+- 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): no frontend files in the batch
+- 7 (Typography), 12 (Copy): neither frontend nor translation files in the batch
+- 11 (Docs Sync): runs exactly once per Full-Audit (in the first batch or as its own final pass after Phase 2.5) — not per batch.
 
-Agents 5-10 laufen bei ALLEN Frontend-Dateien — auch app-interne Views.
+Agents 5-10 run for ALL frontend files — including app-internal views.
 
-**Schritt B — Konsolidieren**
+**Step B — consolidate**
 
-Deduplizierung: Gleiche Stelle von mehreren Subagents → ein Finding, strengste Einstufung.
+Deduplication: same spot flagged by multiple subagents → one finding, strictest rating.
 
-**Schritt B.5 — Hallucination Validator (PFLICHT)**
+**Step B.5 — hallucination validator (MANDATORY)**
 
-Vor jedem Fix:
-1. `test -f "{datei}"` — nein → verwerfen
-2. `wc -l "{datei}"` — Zeile > Dateilaenge → verwerfen
-3. Externe APIs/Libraries: via context7 oder Grep in `vendor/`/`node_modules/` verifizieren. Nicht verifizierbar → `low confidence`.
+Before every fix:
+1. `test -f "{datei}"` — no → discard
+2. `wc -l "{datei}"` — line > file length → discard
+3. External APIs/libraries: verify via context7 or grep in `vendor/`/`node_modules/`. Not verifiable → `low confidence`.
 
-Verworfene als `HALLUCINATED: ...` loggen, nicht fixen.
+Log discarded ones as `HALLUCINATED: ...`, do not fix.
 
-Pruefe SELBST (nur Runde 1, Batch 1):
-- Tests: wichtige Services/Commands ohne Tests?
-- Mobile Apps: `bash "$AUDIT_BIN/detect-mobile.sh"` — bei Treffer Impact-Matrix aus `{AUDIT_REFS}/mobile-impact.md`.
+Check YOURSELF (round 1, batch 1 only):
+- Tests: important services/commands without tests?
+- Mobile apps: `bash "$AUDIT_BIN/detect-mobile.sh"` — on a hit, impact matrix from `{AUDIT_REFS}/mobile-impact.md`.
 
-(Hinweis: Dokumentation laeuft als Agent 11 — eigener Pass, kein Orchestrator-Check.)
+(Note: documentation runs as agent 11 — its own pass, no orchestrator check.)
 
-Ausgabe:
+Output:
 ```
-## Full Audit — Batch {AKTUELLER_BATCH}/{N} Runde {RUNDE}/3 — X Critical, Y Important, Z Minor
+## Full Audit — Batch {AKTUELLER_BATCH}/{N} Round {RUNDE}/3 — X Critical, Y Important, Z Minor
 
-### Critical / Important / Minor / Sauber
-[gleiche Struktur]
+### Critical / Important / Minor / Clean
+[same structure]
 ```
 
-**Schritt C — Auto-Fix (ALLE Findings)**
+**Step C — auto-fix (ALL findings)**
 
-TodoWrite: `Runde {RUNDE} — Findings fixen` (in_progress).
+TodoWrite: `Round {RUNDE} — fix findings` (in_progress).
 
-**Grundregel:** Alles wird gefixt — ausser `low confidence`.
+**Base rule:** everything gets fixed — except `low confidence`.
 
-Confidence-Gate (skaliert mit `CONFIDENCE_FLOOR` aus Phase 0.7):
-- `floor=high` (low effort): nur `high` fixen, Rest bleibt im Log
-- `floor=medium` (medium effort): `high`+`medium` fixen. `low` → Nachverifikation: Stelle gezielt lesen; bestaetigt → fixen, sonst verwerfen (kein Offener Punkt, kein Issue)
-- `floor=low` (high/xhigh effort, Default): alle fixen, `low` mit Warn-Marker
+Confidence gate (scales with `CONFIDENCE_FLOOR` from Phase 0.7):
+- `floor=high` (low effort): fix only `high`, rest stays in the log
+- `floor=medium` (medium effort): fix `high`+`medium`. `low` → re-verification: read the spot specifically; confirmed → fix, otherwise discard (no open point, no issue)
+- `floor=low` (high/xhigh effort, default): fix everything, `low` gets a warning marker
 
-Minor-Findings fixen wenn `FIX_MINOR=1` (medium/high/xhigh). Nicht gefixte Minor bleiben NUR im Log.
+Fix Minor findings when `FIX_MINOR=1` (medium/high/xhigh). Unfixed Minor findings stay ONLY in the log.
 
-**Offene Punkte sind NUR echte Entscheidungs-Punkte** (Architektur-Tradeoffs, Verhaltens-Aenderungen) — alles andere wird gefixt oder verworfen.
+**Open points are ONLY genuine decision points** (architecture tradeoffs, behavior changes) — everything else gets fixed or discarded.
 
-**HARTE REGEL: Orchestrator editiert NIEMALS Code-Dateien selbst.** Jeder Fix, egal wie trivial, geht via paralleler Fix-Subagent (Sonnet). Orchestrator-Edits auf Opus kosten ein Mehrfaches.
+**HARD RULE: the orchestrator NEVER edits code files itself.** Every fix, no matter how trivial, goes via a parallel fix subagent (Sonnet). Orchestrator edits on Opus cost a multiple.
 
-**Erlaubte Orchestrator-Edits:** `.claude/audits/*.md` (Log + State-Datei), `.claude/audits/full-audit-batches/*.txt`, `CLAUDE.md`-Context-Entwurf, `suppressions.json`, Changelog-Dateien.
+**Allowed orchestrator edits:** `.claude/audits/*.md` (log + state file), `.claude/audits/full-audit-batches/*.txt`, `CLAUDE.md` context draft, `suppressions.json`, changelog files.
 
-- 0 Findings → `SAUBER`
-- Sonst: alle high/medium fixen via Fix-Subagent. Findings nach Datei gruppieren, mehrere Findings pro Datei in einem Fix-Agent-Call bundeln.
-- **Zentralisierungs-Findings (neue Shared-Utility / Helper / Trait):** Wenn ein Finding ein dupliziertes Pattern in eine neue `lib/*.js` (o.ae.) extrahiert, ZUERST alle Vorkommen greppen (`grep -rn "{altes_pattern}" src/`, Glob an Projektsprache anpassen) und ALLE Treffer-Dateien an EINEN einzigen Fix-Agent uebergeben (kein paralleler Split, sonst Datei-Kollision). Als Zentralisierungs-Fix markieren, damit der Fix-Agent die erweiterte Datei-Grenze (siehe `fix-agent.md` Sonderfall) anwendet und jede Fundstelle migriert.
-- Jeden Fix zu `BEREITS_GEFIXT`. C/I/M in der Batch-Zeile der State-Datei inkrementieren.
-- Unklarer Fix → kurz nachfragen. Keine "Offener Punkt" ohne explizite User-Zustimmung.
-- **Hook-blockierte Dateien** (z.B. `.env.example` durch einen Schreibschutz-Hook): kein reiner Offener Punkt. Fertigen Diff/Copy-Paste-Block im Chat praesentieren und aktiv anbieten, ihn per `!`-Befehl selbst einzuspielen — nicht nur auflisten.
-- Ergebnis: `FIXES_APPLIED`.
+- 0 findings → `CLEAN`
+- Otherwise: fix all high/medium via fix subagent. Group findings by file, bundle multiple findings per file into one fix-agent call.
+- **Centralization findings (new shared utility / helper / trait):** if a finding extracts a duplicated pattern into a new `lib/*.js` (or similar), FIRST grep all occurrences (`grep -rn "{altes_pattern}" src/`, adjust the glob to the project language) and hand ALL matching files to ONE single fix agent (no parallel split, or file collision results). Mark as a centralization fix so the fix agent applies the extended file boundary (see `fix-agent.md` special case) and migrates every occurrence.
+- Add each fix to `BEREITS_GEFIXT`. Increment C/I/M in the batch row of the state file.
+- Unclear fix → ask briefly. No "open point" without explicit user consent.
+- **Hook-blocked files** (e.g. `.env.example` blocked by a write-protection hook): not a plain open point. Present a ready diff/copy-paste block in the chat and actively offer to apply it yourself via `!` command, not just list it.
+- Result: `FIXES_APPLIED`.
 
-**Hinweis:** Full-Audit loopt intern (while-Schleife), NICHT ueber `audit-loop.sh` Stop-Hook. NIEMALS `AUDIT_STATUS:` ausgeben (Hook-Kollision) — die Full-Audit-Zeile heisst `FULL_AUDIT_STATUS`. **Jeder Turn endet mit:**
+**Note:** Full-Audit loops internally (while loop), NOT via the `audit-loop.sh` Stop hook. NEVER output `AUDIT_STATUS:` (hook collision) — the Full-Audit line is called `FULL_AUDIT_STATUS`. **Every turn ends with:**
 
 ```bash
 bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE"
 ```
 
-Zeile verbatim als letzte Zeile ausgeben. Completion entscheidet sich NUR an dieser Zeile des aktuellen Turns, nie aus dem Gedaechtnis.
+Output the line verbatim as the last line. Completion is decided ONLY from this line of the current turn, never from memory.
 
-### Nach jeder Runde (State-Zeile aktualisieren, dann:)
+### After every round (update the state row, then:)
 
-| Ergebnis | RUNDE | Aktion |
+| Result | ROUND | Action |
 |---|---|---|
-| `SAUBER` | — | Zeile → clean + HEAD; naechster pending-Batch (oder Phase 2.5) |
-| `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | Convergence-Check; sonst RUNDE+1 |
-| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | Zeile → clean + HEAD; naechster Batch (oder Phase 2.5) |
-| `NO_CONVERGENCE` | — | Zeile → blocked + Bullet; offene Findings als Offene Punkte |
+| `CLEAN` | — | row → clean + HEAD; next pending batch (or Phase 2.5) |
+| `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | convergence check; else ROUND+1 |
+| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | row → clean + HEAD; next batch (or Phase 2.5) |
+| `NO_CONVERGENCE` | — | row → blocked + bullet; open findings become open points |
 
 ---
 
-## Phase 2.5: Cross-Reference-Runde
+## Phase 2.5: Cross-Reference Round
 
-**Skip-Bedingungen** (in dieser Reihenfolge pruefen):
-- `SKIP_CROSS_REF=1` aus Phase 0.7 (low effort) → komplett skippen
-- Weder `architecture` noch `code_quality` in `SELECTED_DIMENSIONS` → skippen
-- SINGLE-Modus UND `FORCE_CROSS_REF_SINGLE` nicht gesetzt (medium effort) → skippen
+**Skip conditions** (check in this order):
+- `SKIP_CROSS_REF=1` from Phase 0.7 (low effort) → skip entirely
+- Neither `architecture` nor `code_quality` in `SELECTED_DIMENSIONS` → skip
+- SINGLE mode AND `FORCE_CROSS_REF_SINGLE` not set (medium effort) → skip
 
-Sonst nach allen Batches: 2 Subagents parallel:
+Otherwise after all batches: 2 subagents in parallel:
 
-| # | Fokus | Scope |
+| # | Focus | Scope |
 |---|---|---|
-| 1 | Cross-Module-Abhaengigkeiten | Services ↔ UI falsch aufgerufen, Models ↔ Traits/Mixins falsch genutzt, Controller-View-Mismatches |
-| 2 | Konsistenz | Gleiche Patterns einheitlich? (Auth-Checks, Cache-Keys, Error-Handling) |
+| 1 | Cross-module dependencies | Services ↔ UI called incorrectly, Models ↔ Traits/Mixins misused, controller-view mismatches |
+| 2 | Consistency | Same patterns applied uniformly? (auth checks, cache keys, error handling) |
 
-Input: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + Zusammenfassung aller Batch-Findings.
-Fixes wie Schritt C. Keine weiteren Runden.
+Input: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + summary of all batch findings.
+Fixes as in Step C. No further rounds.
 
-Danach (auch bei Skip): in `$STATE_FILE` `post-phases:` → `cross_ref=done` setzen.
+Afterward (even on skip): in `$STATE_FILE` set `post-phases:` → `cross_ref=done`.
 
 ---
 
-## Phase 3: Changelog, Linter, Tests, Testplan
+## Phase 3: Changelog, Linter, Tests, Test Plan
 
 ### 3a. Changelog
 
-Suche `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`. User-facing Fixes (UI, API, Routing, Translations) → Eintrag draften.
+Search for `CHANGELOG.md`, `changelog.md`, `release-notes/next.md`, `resources/changelog.md`, `CHANGES.md`. User-facing fixes (UI, API, routing, translations) → draft an entry.
 
 ### 3b. Linter & Static Analysis
 
-Siehe `{AUDIT_REFS}/linters-and-tests.md`. Im Full-Audit-Modus laufen alle Linter/Formatter global (nicht datei-scoped). Bei Fehlern: manuell fixen, erneut.
+See `{AUDIT_REFS}/linters-and-tests.md`. In Full-Audit mode all linters/formatters run globally (not file-scoped). On errors: fix manually, re-run.
 
 ### 3c. Tests
 
-Siehe `{AUDIT_REFS}/linters-and-tests.md` (Test-Runner-Tabelle). Alle erkannten Runner ausfuehren. Failures fixen. Unfixbare als Offener Punkt.
+See `{AUDIT_REFS}/linters-and-tests.md` (test runner table). Run all detected runners. Fix failures. Unfixable ones become an open point.
 
-**Kein Test-Runner konfiguriert:** Bei `TEST_RUNNER_ESCALATE=1` (Phase 0.4, Streak >= 3) die fehlende Test-Infrastruktur als **Critical** ins Audit-Log und als GitHub-Issue (Phase 4) aufnehmen. Sonst nur Gap-Note (`Tests: uebersprungen — kein Runner konfiguriert`).
+**No test runner configured:** with `TEST_RUNNER_ESCALATE=1` (Phase 0.4, streak >= 3) record the missing test infrastructure as **Critical** in the audit log and as a GitHub issue (Phase 4). Otherwise just a gap note (`Tests: skipped — no runner configured`).
 
-### 3d. Manueller Testplan
+### 3d. Manual test plan
 
-Wenn `VISUELL_RELEVANTE_DATEIEN` nicht leer: max. 15 Schritte (mehr als /audit, weil Full-Audit die gesamte Codebase umfasst). Format wie in /audit, siehe `{AUDIT_REFS}/testplan.md`.
+If `VISUELL_RELEVANTE_DATEIEN` is not empty: max 15 steps (more than /audit, because Full-Audit covers the entire codebase). Format as in /audit, see `{AUDIT_REFS}/testplan.md`.
 
 ---
 
-## Phase 4: Audit-Log + GitHub-Issues
+## Phase 4: Audit Log + GitHub Issues
 
-Detail in `references/audit-log-and-issues.md`. Kurz:
+Detail in `references/audit-log-and-issues.md`. Briefly:
 
-- Audit-Log nach `.claude/audits/{datum}-full-audit.md` schreiben (Format-Template in der reference). Im Header `SELECTED_DIMENSIONS` festhalten, damit spaetere Audits wissen welche Dimensionen nicht geprueft wurden.
-- **Open-Point-Aging:** Vor dem Vorlegen die offenen Punkte gegen die vorherigen `.claude/audits/*-full-audit.md` (chronologisch) abgleichen. Ein Punkt, der inhaltlich (gleiche Datei + gleiche Kernaussage) bereits in `>= 2` frueheren Audit-Logs als offen stand, bekommt im aktuellen Log einen **`AGED`**-Marker und erscheint als priorisierter Block ganz oben im Offene-Punkte-Abschnitt ("3x+ offen — Entscheidung ueberfaellig"). So versanden Tradeoff-Entscheidungen nicht audit-um-audit.
-- Log via Read-Tool laden und im Chat als Markdown-Codeblock anzeigen (PFLICHT). Danach `post-phases:` → `log=done`.
-- Offene Punkte dem User vorlegen (AskUserQuestion): **Jetzt entscheiden + fixen / Als Issue vertagen / Verwerfen**. `AGED`-Punkte zuerst vorlegen. Issues NUR fuer Vertagtes (Dedup pro Finding). Minor bekommt NIE Issues — bleibt im Log. Danach (auch wenn keine offenen Punkte) `post-phases:` → `issues=done`.
+- Write the audit log to `.claude/audits/{datum}-full-audit.md` (format template in the reference). Record `SELECTED_DIMENSIONS` in the header so later audits know which dimensions were not checked.
+- **Open-point aging:** before presenting them, compare the open points against previous `.claude/audits/*-full-audit.md` files (chronologically). A point that (same file + same core statement) already stood open in `>= 2` earlier audit logs gets an **`AGED`** marker in the current log and appears as a prioritized block at the very top of the open-points section ("open 3x+ — decision overdue"). This keeps tradeoff decisions from stalling audit after audit.
+- Load the log via the Read tool and display it in chat as a markdown code block (MANDATORY). Afterward `post-phases:` → `log=done`.
+- Present open points to the user (AskUserQuestion): **Decide + fix now / Defer as issue / Discard**. Present `AGED` points first. Issues ONLY for deferred items (dedup per finding). Minor never gets issues — stays in the log. Afterward (even with no open points) `post-phases:` → `issues=done`.
 
 ---
 
 ## Phase 5: Learning
 
-**Skip wenn `SKIP_LEARNING=1`** (low effort). Direkt zu Abschluss.
+**Skip when `SKIP_LEARNING=1`** (low effort). Go directly to wrap-up.
 
 ```
 Agent(
-  prompt: "Lies {AUDIT_AGENTS}/learning-agent.md und fuehre den Ablauf aus.
+  prompt: "Read {AUDIT_AGENTS}/learning-agent.md and execute the flow.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des Audit-Logs}
     AUDIT_TYPE=full-audit",
@@ -457,21 +455,21 @@ Agent(
 )
 ```
 
-**Foreground-Mode wichtig:** Background-Subagents koennen `.claude/audits/learning-log.md` nicht schreiben (hardcoded `.claude/`-Schutz, der auch bei `bypassPermissions` greift, und Background-Subagents koennen den User nicht prompten). Foreground umgeht das mit ~5-10s Mehrkosten am Ende.
+**Foreground mode matters:** background subagents cannot write `.claude/audits/learning-log.md` (hardcoded `.claude/` protection that also applies under `bypassPermissions`, and background subagents cannot prompt the user). Foreground works around this at a cost of ~5-10s extra at the end.
 
 ---
 
-## Abschluss
+## Wrap-up
 
-**Completion-Gate (Bash entscheidet, nicht das Gedaechtnis):**
+**Completion gate (Bash decides, not memory):**
 
 ```bash
 bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE"
 ```
 
-Zeigt die Zeile NICHT `pending=0 running=0` und `post_phases=done` → KEIN Marker: Zwischen-Digest + Status-Zeile ausgeben, Turn beenden (Resume oder /loop macht weiter). `blocked>0` blockt die Completion nicht (Punkte stehen in State-Sektion + Log).
+If the line does NOT show `pending=0 running=0` and `post_phases=done` → NO marker: output an interim digest + status line, end the turn (resume or /loop continues). `blocked>0` does not block completion (points live in the state section + log).
 
-**Sonst — Push-Marker schreiben (PFLICHT):**
+**Otherwise — write push marker (MANDATORY):**
 
 ```bash
 # Marker schreiben — KEIN git push im selben Bash-Aufruf!
@@ -483,15 +481,15 @@ CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
 ```
 
-Die State-Datei bleibt liegen (Historie + Dirty-Check-Basis fuer den naechsten Lauf). Frischer Neustart: State-Datei + `$BATCH_DIR` loeschen.
+The state file stays in place (history + dirty-check basis for the next run). Fresh restart: delete the state file + `$BATCH_DIR`.
 
-Marker: TTL 30 Min, wird nicht geloescht (mehrere Hooks pruefen sequenziell).
+Marker: TTL 30 min, is not deleted (multiple hooks check sequentially).
 
 ```
-Full Audit abgeschlossen.
-- Scope: {N}/12 Dimensionen — {SELECTED_DIMENSIONS}
-- Modus: {BATCH_MODUS} ({N} Batches, {RUNDEN_GESAMT} Runden)
-- {GESAMT_CRITICAL} Critical, {GESAMT_IMPORTANT} Important, {GESAMT_MINOR} Minor gefunden und gefixt
+Full Audit completed.
+- Scope: {N}/12 dimensions — {SELECTED_DIMENSIONS}
+- Mode: {BATCH_MODUS} ({N} batches, {RUNDEN_GESAMT} rounds)
+- {GESAMT_CRITICAL} Critical, {GESAMT_IMPORTANT} Important, {GESAMT_MINOR} Minor found and fixed
 - Log: .claude/audits/{DATUM}-full-audit.md
 - Learning: .claude/audits/learning-log.md
 ```

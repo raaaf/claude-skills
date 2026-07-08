@@ -1,51 +1,51 @@
 # Documentation Guidelines
 
-Standards fuer Projekt-Dokumentation: README, CLAUDE.md, .env.example, CHANGELOG, docs/. Inspiriert von Strunk's "Elements of Style" und dem Caveman-Stil (kurz, direkt, keine Filler).
+Standards for project documentation: README, CLAUDE.md, .env.example, CHANGELOG, docs/. Inspired by Strunk's "Elements of Style" and the caveman style (short, direct, no filler).
 
-## Grundprinzipien
+## Core Principles
 
-1. **Single Source of Truth.** Eine Info lebt an einer Stelle. Andere Dateien verweisen.
-2. **Content > Stil > Struktur.** Erst pruefen ob Inhalt stimmt, dann Stil, dann Struktur.
-3. **Doku ist Code.** Veraltete Doku ist schlimmer als keine — sie luegt.
-4. **Aktiv > Passiv.** "Run `npm test`" statt "Tests can be run with...".
-5. **Konkret > Abstrakt.** Beispiel-Befehl statt Beschreibung.
+1. **Single source of truth.** Each piece of information lives in one place. Other files reference it.
+2. **Content > style > structure.** Check content correctness first, then style, then structure.
+3. **Docs are code.** Outdated docs are worse than none — they lie.
+4. **Active > passive.** "Run `npm test`" instead of "Tests can be run with...".
+5. **Concrete > abstract.** Example command instead of description.
 
 ## README.md
 
-### Pflicht-Sektionen (in dieser Reihenfolge)
+### Required Sections (in this order)
 
 ```markdown
-# Projekt-Name
+# Project Name
 
-Ein-Satz-Beschreibung was es macht.
+One-sentence description of what it does.
 
 ## Stack
-[Sprache, Framework, Datenbank, Deploy-Target — als Tabelle oder Bullet-Liste]
+[Language, framework, database, deploy target — as a table or bullet list]
 
 ## Setup
-[Schritt-fuer-Schritt vom frischen Clone bis "laeuft lokal"]
+[Step by step from a fresh clone to "running locally"]
 
 ## Development
-[Wichtigste Daily-Commands]
+[Most important daily commands]
 
 ## Deployment
-[Wie und wohin deployed wird — optional wenn nicht relevant]
+[How and where it's deployed — optional if not relevant]
 
 ## License
-[Falls Open Source]
+[If open source]
 ```
 
-### Verbote
+### Forbidden
 
-- Kein "Welcome to ..." / "This project is ..." — Ein-Satz-Beschreibung direkt nach H1
-- Keine Roadmap, kein Status, keine TODOs im README (gehoeren ins Issue-Tracker)
-- Keine Screenshots ohne klaren Mehrwert (Wartungsaufwand vs. Nutzen)
-- Keine Filler-Floskeln ("Welcome!", "Thanks for using")
-- Keine Doppelung von CLAUDE.md-Inhalten
+- No "Welcome to ..." / "This project is ..." — one-sentence description directly after the H1
+- No roadmap, no status, no TODOs in the README (those belong in the issue tracker)
+- No screenshots without clear added value (maintenance effort vs. benefit)
+- No filler phrases ("Welcome!", "Thanks for using")
+- No duplication of CLAUDE.md content
 
-### Code-Bloecke
+### Code Blocks
 
-Alle Befehle in Code-Bloecken, nie inline beschrieben:
+All commands in code blocks, never described inline:
 ```bash
 # Schlecht:
 "You can run the tests with the npm test command."
@@ -56,46 +56,46 @@ npm test
 
 ## CLAUDE.md
 
-### Pflicht-Sektionen
+### Required Sections
 
 ```markdown
-# Projekt-Name
+# Project Name
 
 ## Stack
-[Versionen explizit: PHP 8.3, Laravel 11, Livewire 3.x — wenn relevant]
+[Explicit versions: PHP 8.3, Laravel 11, Livewire 3.x — where relevant]
 
 ## Architecture
-[2-5 Bullets zur Struktur: Layer-Modell, Wichtige Patterns, was wo liegt]
+[2-5 bullets on the structure: layer model, important patterns, what lives where]
 
 ## Commands
-[Tabelle: Befehl | Was er tut]
+[Table: command | what it does]
 
 ## Conventions
-[Projektspezifische Regeln: Branch-Naming, Test-Pflicht, Code-Style ueber globale Defaults hinaus]
+[Project-specific rules: branch naming, test requirements, code style beyond global defaults]
 
 ## Gotchas
-[Bekannte Stolperfallen, die ein Outsider nicht sieht]
+[Known pitfalls an outsider wouldn't see]
 ```
 
-### Verbote
+### Forbidden
 
-- Keine Doppelung von globalem `~/.claude/CLAUDE.md`
-- Keine Doppelung von README.md — wenn etwas im README steht, hier nur verweisen
-- Keine Best-Practice-Lectures ("always write clean code") — nur projektspezifische Regeln
-- Keine veralteten Hinweise (alte Branch-Strategie, abgeschaltete Services)
+- No duplication of the global `~/.claude/CLAUDE.md`
+- No duplication of README.md — if something is in the README, just reference it here
+- No best-practice lectures ("always write clean code") — only project-specific rules
+- No outdated notes (old branch strategy, decommissioned services)
 
-### Sync-Regeln
+### Sync Rules
 
-- Neue Top-Level-Dependency → Stack-Sektion pruefen
-- Neuer Wichtige Service/Pattern → Architecture-Sektion ergaenzen
-- Neuer Daily-Befehl → Commands-Tabelle ergaenzen
-- Geloeschte Feature/Service → entsprechende Sektion bereinigen
+- New top-level dependency → check the stack section
+- New important service/pattern → update the architecture section
+- New daily command → update the commands table
+- Deleted feature/service → clean up the corresponding section
 
 ## .env.example
 
-### Sync-Regel
+### Sync Rule
 
-Jede `env('FOO')`, `process.env.FOO`, `os.getenv('FOO')`, `import.meta.env.VITE_FOO` im Code MUSS in `.env.example` stehen — mit Platzhalter-Wert, nicht mit echtem Secret.
+Every `env('FOO')`, `process.env.FOO`, `os.getenv('FOO')`, `import.meta.env.VITE_FOO` in the code MUST be in `.env.example` — with a placeholder value, not a real secret.
 
 ### Format
 
@@ -107,17 +107,17 @@ KEY=placeholder_value
 API_BASE_URL=https://api.example.com
 ```
 
-### Verbote
+### Forbidden
 
-- Keine echten Credentials, API-Keys, Tokens — auch nicht in Beispiel-Werten
-- Keine Eintraege fuer Vars die nirgendwo im Code referenziert werden (toter Code)
-- Keine Default-Werte die in Production unbrauchbar sind, ohne `# CHANGE THIS` Kommentar
+- No real credentials, API keys, tokens — not even in example values
+- No entries for vars that aren't referenced anywhere in the code (dead code)
+- No default values that are unusable in production without a `# CHANGE THIS` comment
 
 ## CHANGELOG.md
 
 ### Format
 
-Keep-a-Changelog Standard:
+Keep a Changelog standard:
 ```markdown
 ## [Unreleased]
 ### Added
@@ -130,82 +130,82 @@ Keep-a-Changelog Standard:
 - Feature X
 ```
 
-### Sync-Regel
+### Sync Rule
 
-User-facing Aenderungen (UI, API, Routing, Translations, Behavior) → Eintrag in `[Unreleased]`. Reine Refactors, Tests, Doku: kein Eintrag.
+User-facing changes (UI, API, routing, translations, behavior) → entry in `[Unreleased]`. Pure refactors, tests, docs: no entry.
 
 ## docs/**
 
-### Regel
+### Rule
 
-- Jede Doku-Datei hat einen klaren Zweck-Satz oben
-- Tote Verweise (auf geloeschte Features) entfernen
-- Bei Strukturaenderungen: README darauf verweisen
+- Every doc file has a clear purpose statement at the top
+- Remove dead references (to deleted features)
+- On structural changes: reference this from the README
 
-## Stil-Regeln (alle Doc-Dateien)
+## Style Rules (all doc files)
 
 ### Strunk's Core Rules
 
 1. **Omit needless words.** "In order to" → "to". "Due to the fact that" → "because".
-2. **Use the active voice.** "The script generates X" statt "X is generated by the script".
-3. **Put statements in positive form.** "Tests pass on Node 20+" statt "Tests do not fail on Node 20 and newer".
-4. **Use definite, specific, concrete language.** "Run `make build`" statt "Build the project".
-5. **Keep related words together.** Subject und Verb nah beieinander.
+2. **Use the active voice.** "The script generates X" instead of "X is generated by the script".
+3. **Put statements in positive form.** "Tests pass on Node 20+" instead of "Tests do not fail on Node 20 and newer".
+4. **Use definite, specific, concrete language.** "Run `make build`" instead of "Build the project".
+5. **Keep related words together.** Subject and verb close together.
 
-### Caveman-Rules (Default-Mode)
+### Caveman Rules (Default Mode)
 
-**Verbotene Filler (EN):**
+**Forbidden filler (EN):**
 just, simply, basically, actually, really, essentially, literally, kind of, sort of, pretty much, in essence
 
-**Verbotene Filler (DE):**
+**Forbidden filler (DE):**
 einfach, halt, eben, eigentlich, im Grunde, im Prinzip, im Wesentlichen, praktisch, tatsaechlich, letztendlich, wirklich, irgendwie, mehr oder weniger, sozusagen, quasi
 
-**Verbotene Preambles (EN):**
+**Forbidden preambles (EN):**
 "In the following section", "We will now describe", "This document explains", "Welcome to", "Thanks for using"
 
-**Verbotene Preambles (DE):**
+**Forbidden preambles (DE):**
 "Im Folgenden", "Zunaechst beschreiben wir", "Dieses Dokument erklaert", "Willkommen bei", "Vielen Dank fuer"
 
-**Verbotene Hedges:**
-"perhaps", "maybe", "could be that", "vielleicht", "moeglicherweise", "koennte sein" — in Doku entweder eine klare Aussage oder gar nichts.
+**Forbidden hedges:**
+"perhaps", "maybe", "could be that", "vielleicht", "moeglicherweise", "koennte sein" — in docs, either a clear statement or nothing at all.
 
-### Struktur-Regeln
+### Structure Rules
 
-- Max 3 Saetze pro Absatz, dann Umbruch
-- Tabellen wenn 3+ Items mit gleicher Struktur
-- Code-Bloecke statt Beschreibungen von Code
-- Bullets statt Aufzaehlungen in Prosa
-- Headings hierarchisch: kein H3 ohne H2 davor
+- Max 3 sentences per paragraph, then break
+- Tables when there are 3+ items with the same structure
+- Code blocks instead of descriptions of code
+- Bullets instead of enumerations in prose
+- Headings hierarchical: no H3 without an H2 before it
 
-### Sprache
+### Language
 
-- README, CLAUDE.md, CHANGELOG: Englisch (Standard fuer Open-Source-/Team-Kollaboration), ausser Projekt ist explizit DE-only
-- `docs/**` folgt der Projekt-Sprache
-- Niemals gemischt in einer Datei
+- README, CLAUDE.md, CHANGELOG: English (standard for open-source/team collaboration), unless the project is explicitly DE-only
+- `docs/**` follows the project language
+- Never mixed within one file
 
-## Anti-Patterns (Findings die immer reported werden)
+## Anti-Patterns (findings that are always reported)
 
-| Pattern | Wo | Schweregrad |
+| Pattern | Where | Severity |
 |---|---|---|
-| `env()` im Code, fehlt in `.env.example` | Code/Config | Important |
-| README erwaehnt `npm run foo`, Skript existiert nicht | README | Important |
-| Veralteter Befehl in CLAUDE.md Commands-Tabelle | CLAUDE.md | Important |
-| Filler ("just", "einfach", "basically") in Doc-Datei | Alle | Minor |
-| Doppelung README ↔ CLAUDE.md | Beide | Minor |
-| `## TODO` / `## Roadmap` im README | README | Minor |
-| Echte Credentials in `.env.example` | .env.example | Critical |
-| Verwies auf nicht-existente Datei/URL | Alle | Important |
-| H3 ohne H2 davor | Alle | Minor |
-| Absatz > 3 Saetze ohne Umbruch | Alle | Minor |
+| `env()` in code, missing from `.env.example` | Code/Config | Important |
+| README mentions `npm run foo`, script doesn't exist | README | Important |
+| Outdated command in CLAUDE.md commands table | CLAUDE.md | Important |
+| Filler ("just", "einfach", "basically") in a doc file | All | Minor |
+| Duplication README ↔ CLAUDE.md | Both | Minor |
+| `## TODO` / `## Roadmap` in the README | README | Minor |
+| Real credentials in `.env.example` | .env.example | Critical |
+| Reference to a non-existent file/URL | All | Important |
+| H3 without an H2 before it | All | Minor |
+| Paragraph > 3 sentences without a break | All | Minor |
 
-## Audit-Prozedur
+## Audit Procedure
 
-1. Lies `README.md`, `CLAUDE.md`, `.env.example`, `CHANGELOG.md` (falls vorhanden) komplett.
-2. Sample `docs/**` falls vorhanden (max 10 Dateien).
-3. **Sync-Check:**
-   - `grep -rE "env\\(['\"]" {SOURCE_DIRS}` → alle ENV-Vars sammeln, gegen `.env.example` abgleichen
-   - `grep -rE "process\\.env\\.[A-Z_]+" {SOURCE_DIRS}` falls JS/TS
-   - Commands im README/CLAUDE.md → pruefen ob package.json/composer.json Scripts existieren
-4. **Struktur-Check:** Pflicht-Sektionen vorhanden? Reihenfolge ok?
-5. **Stil-Check:** Filler-Liste durchgehen (Grep), Absatzlaenge pruefen, Code-Bloecke statt Beschreibungen.
-6. Findings mit `[Docs]`-Praefix melden, max 50 Worte pro Finding.
+1. Read `README.md`, `CLAUDE.md`, `.env.example`, `CHANGELOG.md` (if present) in full.
+2. Sample `docs/**` if present (max 10 files).
+3. **Sync check:**
+   - `grep -rE "env\\(['\"]" {SOURCE_DIRS}` → collect all env vars, cross-check against `.env.example`
+   - `grep -rE "process\\.env\\.[A-Z_]+" {SOURCE_DIRS}` if JS/TS
+   - Commands in README/CLAUDE.md → check whether package.json/composer.json scripts exist
+4. **Structure check:** required sections present? Order OK?
+5. **Style check:** go through the filler list (grep), check paragraph length, code blocks instead of descriptions.
+6. Report findings with a `[Docs]` prefix, max 50 words per finding.

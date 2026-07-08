@@ -216,6 +216,7 @@ These skills live in this repo as architecture examples. They are wired to perso
 | | |
 |---|---|
 | Format | Markdown + YAML frontmatter |
+| Language | English throughout (skill bodies, agents, references, guidelines); German only in trigger phrases, runtime user-facing strings, and the personal skills |
 | Hooks | Bash scripts in `~/.claude/hooks/` (sync, audit-loop, format) |
 | Runtime | Claude Code 2.1.150+ (uses skill frontmatter `model`, `effort`, `allowed-tools`) |
 | Model resolution | `model: opus` alias (auto-resolves to latest Opus on Anthropic API) |

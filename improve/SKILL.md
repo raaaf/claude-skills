@@ -17,31 +17,31 @@ allowed-tools:
   - WebFetch
 ---
 
-# Improve: Produkt-Potenzial entdecken
+# Improve: Discover product potential
 
-**SOFORT AUSFUEHREN — nicht erklaeren, nicht ankuendigen. Direkt mit Schritt 1 beginnen.**
+**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with step 1.**
 
-## Abgrenzung zu /audit
+## Distinction from /audit
 
 | | /audit | /improve |
 |---|---|---|
-| **Fragt** | "Was ist kaputt oder schlecht am Code?" | "Was koennte die App als Produkt noch?" |
-| **Perspektive** | Code-Reviewer / QA / Tech Lead | Product Owner / Growth Lead / Strategist |
-| **Prueft** | Security, Performance, A11y, Code Quality, SEO, DX, Modernisierung | Feature Gaps, Growth, Marketing, Business, unfertige Features |
-| **Output** | Findings + Auto-Fix | Priorisierter Report mit Ideen |
-| **Fixt** | Ja, automatisch | Nein — User entscheidet |
+| **Asks** | "What's broken or bad about the code?" | "What could the app do as a product?" |
+| **Perspective** | Code reviewer / QA / tech lead | Product owner / growth lead / strategist |
+| **Checks** | Security, performance, a11y, code quality, SEO, DX, modernization | Feature gaps, growth, marketing, business, unfinished features |
+| **Output** | Findings + auto-fix | Prioritized report with ideas |
+| **Fixes** | Yes, automatically | No — user decides |
 
-**NICHT melden (das macht /audit):**
-- Code-Qualitaet, DRY, Naming, Architecture
-- Performance, N+1, Bundle Size, Caching
-- Security, fehlende Validierung
-- A11y, SEO (technisch), Typography, UI-Design, UX-Patterns
-- Veraltete Dependencies, Modernisierung
-- DX, Tooling, Tests, Docs, Setup
+**Do NOT report (that's /audit's job):**
+- Code quality, DRY, naming, architecture
+- Performance, N+1, bundle size, caching
+- Security, missing validation
+- A11y, SEO (technical), typography, UI design, UX patterns
+- Outdated dependencies, modernization
+- DX, tooling, tests, docs, setup
 
-## Ablauf
+## Flow
 
-### 1. Projekt-Kontext ermitteln
+### 1. Determine project context
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -85,72 +85,72 @@ for cfg in composer.json package.json requirements.txt Cargo.toml go.mod Gemfile
 done
 ```
 
-Erstelle:
-- **FRAMEWORK:** Erkanntes Framework
-- **SOURCE_DIRS:** Relevante Quellverzeichnisse
-- **PROJECT_CONTEXT:** Lade `## Audit Context` aus der CLAUDE.md des Projekts:
+Produce:
+- **FRAMEWORK:** detected framework
+- **SOURCE_DIRS:** relevant source directories
+- **PROJECT_CONTEXT:** load `## Audit Context` from the project's CLAUDE.md:
   ```bash
   PROJECT_CLAUDE_MD="$(git rev-parse --show-toplevel)/CLAUDE.md"
   if [ -f "$PROJECT_CLAUDE_MD" ]; then
     PROJECT_CONTEXT=$(awk '/^## Audit Context$/{found=1; next} /^## /{found=0} found' "$PROJECT_CLAUDE_MD")
   fi
   ```
-- **TECH_STACK:** Erkannte Technologien (DB, Cache, Queue, Frontend, CSS etc.)
+- **TECH_STACK:** detected technologies (DB, cache, queue, frontend, CSS etc.)
 
-### 2. Produkt-Analyse dispatchen
+### 2. Dispatch product analysis
 
-Dispatche **einen einzelnen Agent** via Agent-Tool.
+Dispatch **a single agent** via the Agent tool.
 
-Lies die Agent-Definition aus `agents/1-features.md` im Skill-Verzeichnis. Uebergib:
+Read the agent definition from `agents/1-features.md` in the skill directory. Pass along:
 - FRAMEWORK, SOURCE_DIRS, TECH_STACK
-- PROJECT_CONTEXT (falls vorhanden)
+- PROJECT_CONTEXT (if present)
 
-| Agent-Datei | Modell | Fragestellung |
+| Agent file | Model | Question |
 |-------------|--------|---------------|
-| `agents/1-features.md` | `opus` | "Was kann die App — und was koennte sie noch?" |
+| `agents/1-features.md` | `opus` | "What can the app do — and what could it do next?" |
 
-### 3. Report erstellen
+### 3. Produce the report
 
-Konsolidiere die Ergebnisse des Agents in folgender Struktur:
+Consolidate the agent's results into the following structure:
 
 ```
-## Improve Report — {FRAMEWORK} Projekt
+## Improve Report — {FRAMEWORK} Project
 
-### Was die App aktuell kann
-Kurze Zusammenfassung (Absatz). Was ist das Produkt, Kern-Features, User-Rollen.
+### What the app currently does
+Short summary (paragraph). What the product is, core features, user roles.
 
-### Quick Wins (< 1h Aufwand, hoher Impact)
-1. [Perspektive] Beschreibung — Warum + erwarteter Nutzen
+### Quick Wins (< 1h effort, high impact)
+1. [Perspective] Description — why + expected benefit
 2. ...
 
-### Empfohlene Features (1h-1d Aufwand)
-1. [Perspektive] Beschreibung — Warum + erwarteter Nutzen
+### Recommended Features (1h-1d effort)
+1. [Perspective] Description — why + expected benefit
 2. ...
 
-### Strategische Ideen (> 1d Aufwand)
-1. [Perspektive] Beschreibung — Warum + erwarteter Nutzen
+### Strategic Ideas (> 1d effort)
+1. [Perspective] Description — why + expected benefit
 2. ...
 
-### Unfertige Features
-- Feature X (Status: halb fertig) — Datei:Zeile
+### Unfinished Features
+- Feature X (status: half done) — file:line
 - ...
 
-### Bereits gut umgesetzt
-- Was das Projekt richtig macht
+### Already Well Implemented
+- What the project does right
 ```
 
-**Perspektive** ist jeweils: Produkt / Growth / Marketing / Business
+**Perspective** is one of: Product / Growth / Marketing / Business
 
-**Priorisierungs-Kriterien:**
-1. **Impact auf Endnutzer** > alles andere
-2. **Aufwand vs. Nutzen** — Quick Wins zuerst
-3. **Naheliegendes zuerst** — Features die zum bestehenden Produkt passen > neue Richtungen
+**Prioritization criteria:**
+1. **Impact on end users** > everything else
+2. **Effort vs. benefit** — quick wins first
+3. **Obvious next step first** — features that fit the existing product > new directions
 
-**Keine Findings erfinden.** Wenn ein Bereich stark ist, unter "Bereits gut umgesetzt" listen.
+**Do not invent findings.** If an area is strong, list it under "Already Well Implemented".
 
-### 4. Naechste Schritte anbieten
+### 4. Offer next steps
 
-Frage den User nach dem Report:
-> Soll ich eines dieser Findings direkt umsetzen? Du kannst mir auch eine Nummer nennen.
+Ask the user after the report:
+> Should I implement one of these findings directly? You can also just give me a number.
 
-**WICHTIG: Nicht automatisch anfangen umzusetzen. Der User entscheidet.**
+**IMPORTANT: Do not start implementing automatically. The user decides.**

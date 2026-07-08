@@ -54,7 +54,9 @@ Key invariants:
 - **SKILL.md under 500 lines.** If approaching, split into `references/*.md` (one level deep, never nested).
 - **Reference files >100 lines need a TOC** at top.
 - **YAML `name` is lowercase + hyphens**, no `claude`/`anthropic`. Description in third person, includes both *what* and *when*.
-- **No emojis. No em-dashes.** German prose uses real umlauts (ä, ö, ü, ß) only in user-facing content; agent definitions use ae/oe/ue/ss to avoid encoding edge cases.
+- **Everything is written in English** (since 2026-07-08, full migration): SKILL.md bodies, agents, references, guidelines. German ONLY for: `when_to_use` trigger phrases (they mirror the user's prompt language), runtime user-facing strings inside bash blocks, personal skills (rafael-writing-style, mockup, produktbild, produktvideo, live-audit), and deliberate German example content (copywriting guideline).
+- **Contract identifiers are never renamed casually.** `RUNDE`, `MAX_RUNDEN`, `BEREITS_GEFIXT`, `ALLE_DATEIEN`, `ARCHITEKTUR-NOTIZ`, `{DATEILISTE}` etc. are German-named cross-file/hook contracts: `audit-loop.sh` parses `AUDIT_STATUS: SAUBER|FIXES_APPLIED|NO_CONVERGENCE | RUNDE n/m` literally. Renaming needs a coordinated pass over every referencing file plus the hook.
+- **No emojis. No em-dashes in new English prose where avoidable.**
 - **Frontmatter for skills** sets `model: opus`, `effort: high|xhigh`, `allowed-tools: [...]`, optional `hooks: { PreToolUse: ... }`.
 - **Frontmatter for agents** sets `subagent_type`, `model`, `maxTurns`. No system instructions in frontmatter — those live in the body.
 - **Finding output cap** is 50 words, only `file:line` refs, no code snippets. Enforced in `audit/agents/prompt-template.md`.

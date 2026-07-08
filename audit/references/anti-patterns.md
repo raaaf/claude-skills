@@ -1,26 +1,26 @@
-# Audit: Anti-Patterns (Rote Flaggen)
+# Audit: Anti-Patterns (Red Flags)
 
-Lies diese Datei wenn dir die Regeln im Haupt-Skill nicht präsent sind. Jede Zeile markiert einen Denkfehler, der den Audit-Loop kaputtmacht.
+Read this file when the rules in the main skill aren't top of mind. Each line marks a thinking error that breaks the audit loop.
 
-## Loop-Steuerung
+## Loop Control
 
-- **"Ich warte auf Bestätigung vom User bevor ich die nächste Runde starte"** → FALSCH. Der Loop läuft autonom. Kein User-Input zwischen Runden.
-- **"Eine Runde reicht"** → FALSCH. Erst bei `AUDIT_STATUS: SAUBER` ist der Loop beendet. `FIXES_APPLIED` + `RUNDE < 3` → sofort nächste Runde.
-- **"Ich erkläre jetzt den Plan"** → FALSCH. Direkt ausführen.
-- **"Findings sind gleich geblieben, ich probiere noch eine Runde"** → FALSCH. Bei `NO_CONVERGENCE` (Runde ≥ 2 und Findings sinken nicht): Loop sofort beenden.
+- **"I'm waiting for user confirmation before starting the next round"** → WRONG. The loop runs autonomously. No user input between rounds.
+- **"One round is enough"** → WRONG. The loop only ends at `AUDIT_STATUS: CLEAN`. `FIXES_APPLIED` + `ROUND < 3` → immediately start the next round.
+- **"Let me explain the plan now"** → WRONG. Execute directly.
+- **"Findings stayed the same, I'll try one more round"** → WRONG. On `NO_CONVERGENCE` (round ≥ 2 and findings aren't decreasing): end the loop immediately.
 
-## Subagent-Disziplin
+## Subagent Discipline
 
-- **"In Runde 2 reichen nur Architecture und Code Quality"** → FALSCH. In JEDER Runde werden ALLE vom Triage als relevant markierten Subagents dispatcht. Ein Security-Fix kann ein Performance-Problem einführen. Ein Architecture-Refactor kann A11y brechen.
-- **"Der Validator ist übertrieben, ich trust den Subagents"** → FALSCH. LLM-Findings halluzinieren Dateipfade, Zeilennummern und API-Signaturen. Schritt D.5 ist Pflicht.
-- **"Das Finding sieht komisch aus, ich fixe es einfach mal"** → FALSCH. Erst Halluzinations-Validator. Wenn Datei/Zeile nicht existiert: Finding verwerfen.
+- **"In round 2, Architecture and Code Quality are enough"** → WRONG. In EVERY round, ALL subagents marked relevant by triage are dispatched. A security fix can introduce a performance problem. An architecture refactor can break a11y.
+- **"The validator is overkill, I trust the subagents"** → WRONG. LLM findings hallucinate file paths, line numbers, and API signatures. Step D.5 is mandatory.
+- **"This finding looks off, I'll just fix it anyway"** → WRONG. Hallucination validator first. If the file/line doesn't exist: discard the finding.
 
-## Testplan
+## Test Plan
 
-- **"Testplan kann ich ueberspringen weil keine visuellen Aenderungen da sind"** → Pruefe `FRONTEND_DATEIEN` / `VISUELL_RELEVANTE_DATEIEN`. Wenn leer: korrekt, kein Testplan noetig. Wenn nicht leer: Testplan ist Pflicht.
-- **"Ich generiere einen generischen Testplan"** → FALSCH. Der Testplan muss konkrete Seiten, Routes und Aenderungen aus dem Diff referenzieren. Max 10 Schritte, priorisiert nach Risiko.
+- **"I can skip the test plan because there are no visual changes"** → Check `FRONTEND_DATEIEN` / `VISUELL_RELEVANTE_DATEIEN`. If empty: correct, no test plan needed. If not empty: a test plan is mandatory.
+- **"I'll generate a generic test plan"** → WRONG. The test plan must reference concrete pages, routes, and changes from the diff. Max 10 steps, prioritized by risk.
 
-## Full-Audit-spezifisch
+## Full-Audit-Specific
 
-- **"Das Finding ist Minor, das überspringe ich"** → FALSCH. Full-Audit fixt ALLES — Critical, Important und Minor.
-- **"Convergence-Check kann ich überspringen"** → FALSCH. Ohne Convergence-Check landet man in Fix-Schleifen.
+- **"This finding is Minor, I'll skip it"** → WRONG. Full-audit fixes EVERYTHING — Critical, Important, and Minor.
+- **"I can skip the convergence check"** → WRONG. Without a convergence check you end up in fix loops.

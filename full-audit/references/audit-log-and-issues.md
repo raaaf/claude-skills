@@ -1,8 +1,8 @@
-# Audit-Log + GitHub-Issues (Phase 4 Detail)
+# Audit Log + GitHub Issues (Phase 4 Detail)
 
-Detail fuer Phase 4 (Audit-Log schreiben und GitHub-Issues anlegen).
+Detail for Phase 4 (write audit log and create GitHub issues).
 
-## Audit-Log-Format
+## Audit Log Format
 
 ```bash
 AUDIT_DIR="$(git rev-parse --show-toplevel)/.claude/audits"
@@ -16,58 +16,58 @@ Format:
 # Full Audit — {DATUM}
 
 ## Scope
-- Dimensionen: {N}/12 — {SELECTED_DIMENSIONS}
-- Modus: SINGLE | BATCHED ({N} Batches)
-- Backend-Dateien: X
-- Frontend-Dateien: Y
-- Runden gesamt: Z
+- Dimensions: {N}/12 — {SELECTED_DIMENSIONS}
+- Mode: SINGLE | BATCHED ({N} batches)
+- Backend files: X
+- Frontend files: Y
+- Rounds total: Z
 
-## Ergebnis
-- Critical gefunden/gefixt: A/B
-- Important gefunden/gefixt: C/D
-- Minor gefunden/gefixt: E/F
+## Result
+- Critical found/fixed: A/B
+- Important found/fixed: C/D
+- Minor found/fixed: E/F
 
-## Gefixte Issues
-- [Security] app/Foo.php:42 — XSS via {!! !!} → durch {{ }} ersetzt
+## Fixed Issues
+- [Security] app/Foo.php:42 — XSS via {!! !!} → replaced with {{ }}
 
-## Manueller Testplan
-- (Testplan-Schritte, falls visuelle Dateien vorhanden)
+## Manual Test Plan
+- (test plan steps, if visual files present)
 
-## Offene Punkte
-- [Code Quality] app/Baz.php — Refactoring noetig (nicht auto-fixbar)
+## Open Points
+- [Code Quality] app/Baz.php — refactor needed (not auto-fixable)
 
-## Sauber
+## Clean
 Performance, SEO
 ```
 
-## Audit-Log im Chat anzeigen (PFLICHT)
+## Display Audit Log in Chat (MANDATORY)
 
-Den kompletten Inhalt des Log-Files (inkl. Testplan) via Read-Tool laden und als Markdown-Codeblock im Chat ausgeben:
+Load the full content of the log file (incl. test plan) via the Read tool and output it as a markdown code block in the chat:
 
 ```
-Audit-Log: {LOGFILE}
+Audit Log: {LOGFILE}
 
 ---
-{Inhalt des Log-Files}
+{Content of the log file}
 ---
 ```
 
-## Offene Punkte: User-Entscheid → fixen / Issue / verwerfen
+## Open Points: User Decision → Fix / Issue / Discard
 
-Issues sind die Ausnahme, nicht der Default. Offene Punkte sind nur noch echte Entscheidungs-Punkte — Fixbares wurde im Loop gefixt, Unbestaetigtes verworfen. **Minor-Findings bekommen NIE Issues** (stehen im Log).
+Issues are the exception, not the default. Open points are only genuine decision points now — fixable items were fixed in the loop, unconfirmed ones were discarded. **Minor findings NEVER get issues** (they stay in the log).
 
-**Schritt 1 — User-Entscheid (AskUserQuestion), PFLICHT wenn Offene Punkte existieren:**
+**Step 1 — user decision (AskUserQuestion), MANDATORY when open points exist:**
 
-Punkte kompakt auflisten (Dimension, datei:zeile, 1-Satz-Frage), dann pro Punkt oder gesammelt:
-- **Jetzt entscheiden + fixen** — User gibt die Richtung vor (1 Satz), Fix-Agents setzen um, Fix-Verifier prueft
-- **Als Issue vertagen** — nur diese werden Issues (Schritt 2)
-- **Verwerfen** — verwerfen + ins Dismissed-Pattern-Store; wiederholtes Verwerfen → Learning-Agent schlaegt Suppression vor
+List the points compactly (dimension, file:line, 1-sentence question), then per point or in aggregate:
+- **Decide + fix now** — user gives the direction (1 sentence), fix agents implement, fix verifier checks
+- **Defer as issue** — only these become issues (step 2)
+- **Discard** — discard + add to the dismissed-pattern store; repeated discarding → learning agent proposes a suppression
 
-**Schritt 2 — Issues NUR fuer explizit Vertagtes:**
+**Step 2 — issues ONLY for explicitly deferred items:**
 
-1. **Precheck:** `gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com` — sonst bleiben vertagte Punkte im Log.
-2. **Dedup pro Finding:** `gh issue list --state open --search "[audit] {Dimension} {datei}" --json number` — bereits existierendes Issue → skip. Zusaetzlich gegen `OPEN_PRS` (Phase 0.3) pruefen — adressiert ein offener PR dieselbe Stelle → skip + Log-Hinweis.
-3. **Erstellen:**
+1. **Precheck:** `gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com` — otherwise deferred points stay in the log.
+2. **Dedup per finding:** `gh issue list --state open --search "[audit] {Dimension} {datei}" --json number` — an issue that already exists → skip. Also check against `OPEN_PRS` (Phase 0.3) — if an open PR already addresses the same spot → skip + log note.
+3. **Create:**
    ```bash
    gh issue create \
      --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" \
@@ -78,7 +78,7 @@ Punkte kompakt auflisten (Dimension, datei:zeile, 1-Satz-Frage), dann pro Punkt 
    **Quelle:** {LOGFILE}" \
      --label "audit-finding"
    ```
-   Label via `gh label create audit-finding --color FBCA04` bei Bedarf anlegen.
-4. **Ausgabe:** `{N} gefixt, {M} vertagt als Issues: {urls}, {K} verworfen`.
-5. `gh`-Fehler blockieren NICHT — kurz warnen und weiter.
-6. CI/Headless (non-interactive): Schritt 1 ueberspringen, alle Offenen Punkte direkt als Issues vertagen.
+   Create the label via `gh label create audit-finding --color FBCA04` if needed.
+4. **Output:** `{N} fixed, {M} deferred as issues: {urls}, {K} discarded`.
+5. `gh` errors do NOT block — warn briefly and continue.
+6. CI/headless (non-interactive): skip step 1, defer all open points directly as issues.

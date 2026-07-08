@@ -1,121 +1,121 @@
 # Plan + Log Templates
 
-Templates fuer Phase 2 (Plan-Datei) und Phase 4 (Plan-Log).
+Templates for Phase 2 (plan file) and Phase 4 (plan log).
 
-Inhalt: Plan-Format (executor-grade, mit Drift-Check/STOP/Done-Kriterien) · Plan-Log-Format · Runden-Heuristik
+Content: plan format (executor-grade, with drift check/STOP/done criteria) · plan log format · round heuristic
 
-## Plan-Format (Phase 2)
+## Plan Format (Phase 2)
 
-Datei: `docs/plans/{YYYY-MM-DD}-{slug}.md`
+File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
-**Executor-Regel:** Der Plan wird fuer einen Executor OHNE Session-Kontext geschrieben (anderes Modell, andere Session, oder ein Mensch). Alles Noetige steht in der Datei: exakte Pfade, Ist-Zustand, Konventionen mit Exemplar-Datei, Befehle. "Wie besprochen" ist ein Bruch.
+**Executor rule:** The plan is written for an executor WITHOUT session context (a different model, a different session, or a human). Everything needed is in the file: exact paths, current state, conventions with an exemplar file, commands. "As discussed" is a violation.
 
 ```markdown
-# {Titel}
+# {Title}
 
-> **Executor-Anweisung:** Schritt fuer Schritt folgen, jedes verify-Kriterium
-> pruefen bevor es weitergeht. Tritt eine STOP-Bedingung ein: stoppen und
-> berichten, nicht improvisieren.
+> **Executor instruction:** Follow step by step, check each verify
+> criterion before moving on. If a STOP condition occurs: stop and
+> report, do not improvise.
 >
-> **Drift-Check (zuerst):** `git diff --stat {PLANNED_AT_SHA}..HEAD -- {in-scope Pfade}`
-> Hat sich eine In-Scope-Datei seit Plan-Erstellung geaendert: Ist-Zustand
-> gegen den Live-Code abgleichen; bei Abweichung ist das eine STOP-Bedingung.
+> **Drift check (first):** `git diff --stat {PLANNED_AT_SHA}..HEAD -- {in-scope paths}`
+> If an in-scope file has changed since the plan was created: reconcile the
+> current state against the live code; on a mismatch, that is a STOP condition.
 
 ## Meta
-- Planned at: commit `{git rev-parse --short HEAD}`, {DATUM}
+- Planned at: commit `{git rev-parse --short HEAD}`, {DATE}
 
 ## Problem
-{Was ist das Problem — in 1-3 Saetzen. Das PROBLEM, nicht die Loesung.}
+{What is the problem — in 1-3 sentences. The PROBLEM, not the solution.}
 
-## Ziel
-{Woran erkennt man dass es geloest ist? Messbar wenn moeglich.}
+## Goal
+{How do you know it's solved? Measurable if possible.}
 
-## Nicht-Ziele
-{Was ist explizit NICHT Teil davon.}
+## Non-Goals
+{What is explicitly NOT part of this.}
 
-## Out of Scope (Dateien)
-{Dateien/Bereiche, die verwandt aussehen, aber NICHT angefasst werden duerfen — mit 1-Satz-Grund (z.B. "legacy-api.ts: deprecated, v1-Clients haengen dran").}
+## Out of Scope (Files)
+{Files/areas that look related but must NOT be touched — with a 1-sentence reason (e.g. "legacy-api.ts: deprecated, v1 clients still depend on it").}
 
-## Loesung
+## Solution
 
-### Ansatz
-{Beschreibung des Loesungswegs — warum dieser Weg und nicht ein anderer.}
+### Approach
+{Description of the solution approach — why this way and not another.}
 
-### Schritte
-1. {Konkret — welche Datei, welche Komponente, was aendert sich} → verify: {pruefbares Kriterium, z.B. "Test X gruen", "Route Y liefert 200", "Grep nach Z leer"}
+### Steps
+1. {Concrete — which file, which component, what changes} → verify: {checkable criterion, e.g. "Test X green", "Route Y returns 200", "Grep for Z empty"}
 2. ... → verify: ...
 
-Jeder Schritt bekommt ein verify-Kriterium. Ein Schritt ohne pruefbares Ergebnis ist kein Schritt, sondern eine Absicht.
+Every step gets a verify criterion. A step without a checkable outcome is not a step, it's an intention.
 
-### Aufwand
-{Grobe Einschaetzung: S (<0,5 Tag) / M (0,5-2 Tage) / L (3-5 Tage) / XL (>1 Woche) — plus der groesste Einzelposten in 1 Satz.}
+### Effort
+{Rough estimate: S (<0.5 day) / M (0.5-2 days) / L (3-5 days) / XL (>1 week) — plus the single biggest item in 1 sentence.}
 
-### Betroffene Dateien
-- `pfad/zur/datei` — {was sich aendert}
+### Affected Files
+- `path/to/file` — {what changes}
 
-### Konventionen
-{Welche Repo-Patterns gelten, mit einer Exemplar-Datei: "Error-Handling folgt dem Result-Pattern — siehe src/lib/result.ts und dessen Nutzung in src/users/api.ts:40-60. Genau so."}
+### Conventions
+{Which repo patterns apply, with an exemplar file: "Error handling follows the Result pattern — see src/lib/result.ts and its usage in src/users/api.ts:40-60. Exactly like that."}
 
 ## Edge Cases
 - {Case}: {Handling}
 
-## Done-Kriterien
-Maschinell pruefbar, ALLE muessen gelten — Befehle mit erwartetem Ergebnis, keine Prosa wie "funktioniert korrekt":
-- [ ] `{test-befehl}` → exit 0, inkl. {N} neuer Tests
-- [ ] `{lint/typecheck-befehl}` → exit 0
-- [ ] `grep -rn "{altes_pattern}" src/` → keine Treffer
-- [ ] Keine Dateien ausserhalb der Betroffene-Dateien-Liste geaendert (`git status`)
+## Done Criteria
+Machine-checkable, ALL must hold — commands with expected result, no prose like "works correctly":
+- [ ] `{test command}` → exit 0, incl. {N} new tests
+- [ ] `{lint/typecheck command}` → exit 0
+- [ ] `grep -rn "{old pattern}" src/` → no matches
+- [ ] No files outside the affected-files list changed (`git status`)
 
-## STOP-Bedingungen
-Stoppen und berichten (nicht improvisieren) wenn:
-- Der Ist-Zustand an den genannten Stellen nicht den Beschreibungen entspricht (Codebase ist gedriftet).
-- Ein verify-Kriterium nach einem ernsthaften Fix-Versuch zweimal fehlschlaegt.
-- Der Fix eine Out-of-Scope-Datei anfassen muesste.
-- {plan-spezifische Kernannahme} sich als falsch herausstellt.
+## STOP Conditions
+Stop and report (do not improvise) when:
+- The current state at the named locations does not match the descriptions (codebase has drifted).
+- A verify criterion fails twice after a serious fix attempt.
+- The fix would need to touch an out-of-scope file.
+- {plan-specific core assumption} turns out to be false.
 
-## Maintenance-Notizen
-{Was kuenftige Aenderungen mit diesem Code zu tun haben werden; was ein Reviewer im PR pruefen sollte; explizit Vertagtes mit Grund.}
+## Maintenance Notes
+{What future changes to this code will need to consider; what a reviewer should check in the PR; explicitly deferred items with a reason.}
 
-## Offene Fragen
-- {Falls noch welche — sonst weglassen}
+## Open Questions
+- {If any remain — otherwise omit}
 ```
 
-**Optionale Abschnitte** (nur wenn sie Wert bringen):
-- Datenfluss-Diagramm (ASCII oder Mermaid)
-- Migrationsstrategie
-- Rollback-Plan
+**Optional sections** (only when they add value):
+- Data flow diagram (ASCII or Mermaid)
+- Migration strategy
+- Rollback plan
 
-## Plan-Log-Format (Phase 4)
+## Plan Log Format (Phase 4)
 
-Datei: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
+File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
 
 ```markdown
-# Plan-Log — {Titel}
+# Plan Log — {Title}
 
 ## Meta
-- Datum: {DATUM}
-- Runden Phase 1 (Verstehen): {N}
-- Plan-Datei: docs/plans/{datum}-{slug}.md
+- Date: {DATE}
+- Rounds Phase 1 (understanding): {N}
+- Plan file: docs/plans/{date}-{slug}.md
 
-## Fragen & Antworten
-- {Frage} → {User-Antwort oder "Einschaetzung bestaetigt"}
+## Questions & Answers
+- {Question} → {user's answer or "assessment confirmed"}
 
-## Challenge-Ergebnis
-- Concerns gesamt: {N}
-- Eingearbeitet: {X}
-- Akzeptiert: {Y}
-- Abgelehnt: {Z}
+## Challenge Result
+- Concerns total: {N}
+- Incorporated: {X}
+- Accepted: {Y}
+- Rejected: {Z}
 
-## Bemerkenswert
-- {Pattern oder Ueberraschung, z.B. "User hat alle Design-Concerns abgelehnt"}
+## Notable
+- {Pattern or surprise, e.g. "user rejected all design concerns"}
 ```
 
-## Runden-Heuristik (Empfehlung, kein Hard-Limit)
+## Round Heuristic (Recommendation, Not a Hard Limit)
 
-| Komplexitaet | Runden | Wann |
+| Complexity | Rounds | When |
 |---|---|---|
-| Einfach | 2 | Klare Anforderung, isoliertes Feature, kein Datenmodell-Umbau |
-| Mittel | 3 | Datenmodell-Umbau, Multi-Channel-Feature, komplexe Policy-Frage |
-| Hoch | 4+ | Framing-Klaerung notwendig, initialer Pivot (z.B. "Sollen wir X?" → eigentlich Y) |
+| Simple | 2 | Clear requirement, isolated feature, no data model overhaul |
+| Medium | 3 | Data model overhaul, multi-channel feature, complex policy question |
+| High | 4+ | Framing needs clarification, initial pivot (e.g. "Should we do X?" → actually Y) |
 
-Belegt durch Learning-Log (8 Plaene, Ø 2,86 Runden): Plan 1 (2 Runden, einfach), Plan 7 (4 Runden, Pivot). Bei Datenmodell-Umbauten lohnt der dritte Durchgang fast immer.
+Backed by the learning log (8 plans, avg. 2.86 rounds): Plan 1 (2 rounds, simple), Plan 7 (4 rounds, pivot). For data model overhauls, the third pass almost always pays off.

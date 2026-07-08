@@ -6,7 +6,7 @@ batch-dir: .claude/audits/full-audit-batches
 post-phases: cross_ref=done log=pending issues=pending
 started: 2026-07-07
 
-| ID | Verzeichnis | Dateien | Runden | C | I | M | Status | HEAD |
+| ID | Directory | Files | Rounds | C | I | M | Status | HEAD |
 |---|---|---|---|---|---|---|---|---|
 | 01 | app/Services | 34 | 2/3 | 1 | 3 | 5 | clean | a1b2c3d |
 | 02 | resources/views | 38 | 1/3 | 0 | 0 | 0 | running | - |
