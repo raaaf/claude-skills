@@ -410,6 +410,15 @@ INP measures the worst input delay across the page lifetime, not just first inte
 - **Use `requestIdleCallback`** for non-critical work
 - **CSS containment** (`contain: layout style paint`) on independent components to limit reflow scope
 
+### CSS containment visual gotcha
+
+`contain: paint` (also via `layout style paint`) and `content-visibility: auto` clip everything a child paints OUTSIDE the container box — including box-shadow, outline and focus/hover rings that extend past the border edge. Symptoms: a hover ring or elevation shadow that silently disappears, but only on cards inside the contained ancestor.
+
+Checklist before flagging or changing container-driven hover effects:
+- Grep ancestors of the affected component for `contain:` and `content-visibility` before assuming the ring/shadow CSS is wrong.
+- Fixes that keep containment: render the ring inside the box (`outline-offset` negative, inset ring), or move the effect to the contained element itself instead of a child.
+- Removing containment is a performance regression — treat as last resort and flag the trade-off.
+
 ### Speculation Rules API
 
 Pre-render or pre-fetch next-page navigation. Chromium-only today, but high-leverage on link-heavy pages:

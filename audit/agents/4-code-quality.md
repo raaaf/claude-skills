@@ -8,6 +8,8 @@
 
 Redundant state (duplicated/derivable), parameter sprawl, copy-paste with slight variations, leaky abstractions, stringly-typed code (raw strings instead of constants/enums). **Especially important:** hardcoded user-facing strings in templates/components (button labels, headings, error messages) that are not abstracted through translation functions or component props — see Guideline VI.
 
+**Same-diff duplication:** If the CURRENT diff introduces two or more nearly identical method bodies (same structure, only identifiers/literals differ — typically parallel Livewire actions or wizard flows), flag as Important: extract the shared logic before merge. Duplication born in one PR is the cheapest moment to remove it.
+
 **Complete guidelines:** Read guidelines/code-quality.md AND guidelines/code-quality-2026.md in the skill directory and check the code against all rules described there.
 
 **Component counterpart check (Blade/component frameworks):** If the diff introduces a new interactive inline pattern in a template (custom keyboard handling, accordion/disclosure, toggle, stepper, dropdown), FIRST grep whether a component counterpart exists (`grep -rl "{pattern}" resources/views/components/` or the project's component directory). If an `x-atoms`/`x-molecules` counterpart (or equivalent) exists, the inline logic is a finding (Important): use the component instead of duplicating. Only accept inline logic once no counterpart exists.

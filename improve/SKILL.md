@@ -46,7 +46,7 @@ allowed-tools:
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
-# Framework erkennen
+# Detect framework
 if [ -f "$PROJECT_ROOT/artisan" ]; then
   FRAMEWORK="laravel"
   SOURCE_DIRS="app/ resources/ database/ routes/ config/"
@@ -76,7 +76,7 @@ echo "Dateistruktur (Top-Level):"
 ls -1 "$PROJECT_ROOT" | head -30
 echo "---"
 
-# Config/Dependency-Infos
+# Config/dependency info
 for cfg in composer.json package.json requirements.txt Cargo.toml go.mod Gemfile pyproject.toml; do
   if [ -f "$PROJECT_ROOT/$cfg" ]; then
     echo "=== $cfg ==="

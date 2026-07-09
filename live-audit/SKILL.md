@@ -2,7 +2,9 @@
 name: live-audit
 description: "Scheduled live-audit pipeline for rafaelalex.de, events.rafaelalex.de, zeit.rafaelalex.de. Runs weekly via Scheduled Tasks MCP. Audits via PageSpeed Insights API (Performance, SEO, A11y, Core Web Vitals) + SSL check. New findings become GitHub Issues in the respective repo. Learns via suppress-label. Also triggered manually via /live-audit."
 when_to_use: "/live-audit, run live audit, check sites, scheduled audit"
-disable-model-invocation: true
+# NO disable-model-invocation here: as of Claude Code v2.1.196 that flag also blocks
+# scheduled-task invocations, and this skill runs weekly via the Scheduled Tasks MCP.
+# Auto-trigger risk is acceptable: narrow when_to_use, idempotent audit with issue dedup.
 model: sonnet
 effort: medium
 allowed-tools:

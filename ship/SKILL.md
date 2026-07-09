@@ -5,7 +5,8 @@ description: |
   Full commit-audit-push-deploy pipeline in one command. Stages tracked changes, generates
   a conventional commit message (or uses the provided one), enforces audit before push,
   deploys via project-specific method, and verifies the deploy. Use when ready to ship
-  completed work. Never pushes without a clean audit marker.
+  completed work. Push requires a fresh audit marker; bypassing the audit is only
+  possible as an explicit, logged user decision, never silently.
 when_to_use: "/ship, ready to ship, commit and deploy, commit push deploy, ship this, release this"
 argument-hint: "[optional: commit message]"
 arguments: [message]

@@ -59,13 +59,13 @@ Skip via env var `PLAN_SKIP_LEARNING_CHECK=1`.
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-xhigh}"
 case "$CLAUDE_EFFORT" in
   low)
-    CHALLENGE_DIMS="product,architecture,risk"  # 3 statt 5
+    CHALLENGE_DIMS="product,architecture,risk"  # 3 of 5
     SKIP_EVALUATION=1
     SKIP_LEARNING=1
-    SKIP_CODEBASE_SCAN=1   # Phase 1 Schritt B uebersprungen
+    SKIP_CODEBASE_SCAN=1   # Phase 1 step B skipped
     ;;
   medium)
-    CHALLENGE_DIMS="product,architecture,risk,simplicity"  # 4 statt 5
+    CHALLENGE_DIMS="product,architecture,risk,simplicity"  # 4 of 5
     SKIP_EVALUATION=1
     SKIP_LEARNING=0
     SKIP_CODEBASE_SCAN=0
@@ -226,7 +226,7 @@ Documented in the learning log: Plan 7 had 11 raw → 9 after dedup. Convergent 
 
 Merge in the incorporated concerns. Note accepted concerns as a comment in the plan. Save the plan file.
 
-TodoWrite: `Challenge plan — 5 dimensions` (completed)
+TodoWrite: `Challenge plan — {N} dimensions` (completed), same `{N}` as at Phase 3 start
 
 ---
 

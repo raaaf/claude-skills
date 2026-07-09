@@ -158,5 +158,5 @@ Accepted deviations:    {N} (see log)
 Spec updates needed:    {N}
 ```
 
-Write results to `.claude/reviews/{date}-{branch}.md` if the directory exists,
-otherwise print only.
+Write results to `.claude/reviews/{date}-{branch}.md` (`mkdir -p .claude/reviews` first,
+same convention as audit's `.claude/audits/`).

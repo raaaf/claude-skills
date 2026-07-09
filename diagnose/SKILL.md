@@ -17,7 +17,6 @@ allowed-tools:
   - Bash
   - Grep
   - Glob
-  - Agent
 ---
 
 # Diagnose

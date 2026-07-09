@@ -20,18 +20,20 @@ Do NOT add a subagent for sequential single-purpose work that is small. Direct e
 - **model:** `haiku`                        # haiku | sonnet | opus
 - **maxTurns:** `10`
 
-## Fokus
+## Focus
 [One paragraph: what this worker checks]
 
-## Vollstaendige Guidelines
+## Full Guidelines
 [Optional: link to guidelines/X.md]
 
-## Pruef-Checkliste
+## Checklist
 [Optional: short bullet list of what to check]
 
-## Skip wenn
+## Skip When
 [Optional: when this worker should be skipped]
 ```
+
+Section headers are English (matches the migrated audit/plan-it agents: Focus, Skip When, Project-Specific Context). The literal reply sentinel "Keine Findings." is a cross-file contract and stays as-is.
 
 ## Triage pattern
 

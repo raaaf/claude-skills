@@ -41,28 +41,29 @@ Body via HEREDOC:
 ```bash
 gh pr create --title "$TITLE" --body "$(cat <<'EOF'
 ## Summary
-- Was wurde gemacht
-- Warum
-- Wichtige Details (optional)
+- What was done
+- Why
+- Key details (optional)
 
 ## Changes
-- **Added:** Neue Features/Dateien
-- **Changed:** Geänderte Funktionalität
-- **Fixed:** Behobene Bugs
+- **Added:** new features/files
+- **Changed:** changed behaviour
+- **Fixed:** fixed bugs
 
 ## Test Plan
-- [ ] Relevante Testschritte
-- [ ] Edge Cases
+- [ ] Relevant test steps
+- [ ] Edge cases
 
 ## Breaking Changes
-Beschreibung falls vorhanden
+Description if any
 
 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+Write the PR body in the repo's language (public repos: English). Do not hardcode a model name
+into the body — the commit trailer already carries the Co-Authored-By line.
 
 Omit empty sections — don't fill them with "None". No breaking changes? Omit the section.
 

@@ -349,6 +349,8 @@ Animations that users cannot control are a barrier — they cause discomfort for
 </div>
 ```
 
+**Before adding a new live region, check existing announcement channels.** If a success toast (`role="status"`) or error container (`role="alert"`) already announces the same event, a second `aria-live` wrapper double-announces it in screen readers. Wire the message into the existing channel instead; add a new `aria-live` region only when no existing channel carries the information.
+
 ## X. Tables
 
 Data tables need structural markup so screen readers can navigate cells and understand their relationship to headers.

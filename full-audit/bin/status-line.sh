@@ -8,7 +8,7 @@
 # only). If you fix a parser bug here, check the feature-audit twin as well.
 #
 # State file schema (pipe-delimited; cells must not contain a raw "|", escape as "\|"):
-#   | ID | Verzeichnis | Dateien | Runden | C | I | M | Status | HEAD |
+#   | ID | Directory | Files | Rounds | C | I | M | Status | HEAD |   (legacy German headers Verzeichnis/Dateien/Runden still parsed)
 # Status values: pending | running | clean | blocked
 # Header keys: post-phases: cross_ref=<pending|done> log=<pending|done> issues=<pending|done>
 # Section "## Blocked / Needs review": bullets count as blocked items ("- none" does not).

@@ -16,7 +16,6 @@ effort: medium
 allowed-tools:
   - Read
   - Bash
-  - Agent
 ---
 
 # Triage

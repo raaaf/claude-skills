@@ -415,6 +415,10 @@ managerEmail = employee.getManagerEmail()
 
 **`match()` over `switch()` for type-mapping logic.** When mapping values to outcomes (e.g., enum to label, type to sanitizer), `match()` is stricter (no fallthrough, throws on unmatched), more concise, and returns a value directly.
 
+## Blade Template Whitespace
+
+**Whitespace inside `@if`/`@endif` bodies is rendered.** Blade strips the directives but keeps every character between them, including indentation and newlines. Whitespace inside a conditional is therefore never automatically "insignificant": inside `<pre>`, inline-flex gaps, `:empty` selectors, or space-sensitive inline contexts it changes rendering. Do not flag "redundant whitespace" in Blade conditionals as cleanup, and when adding conditionals into space-sensitive markup, keep the body flush.
+
 ---
 
-Fortsetzung: Abschnitte XVI (2026 Type-Safety Patterns) und XVII (Deprecated APIs) stehen in code-quality-2026.md.
+Continued: sections XVI (2026 Type-Safety Patterns) and XVII (Deprecated APIs) live in code-quality-2026.md.

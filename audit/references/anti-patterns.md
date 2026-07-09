@@ -5,7 +5,7 @@ Read this file when the rules in the main skill aren't top of mind. Each line ma
 ## Loop Control
 
 - **"I'm waiting for user confirmation before starting the next round"** → WRONG. The loop runs autonomously. No user input between rounds.
-- **"One round is enough"** → WRONG. The loop only ends at `AUDIT_STATUS: CLEAN`. `FIXES_APPLIED` + `ROUND < 3` → immediately start the next round.
+- **"One round is enough"** → WRONG. The loop only ends at `AUDIT_STATUS: SAUBER`. `FIXES_APPLIED` + `RUNDE < {MAX_RUNDEN}` → immediately start the next round.
 - **"Let me explain the plan now"** → WRONG. Execute directly.
 - **"Findings stayed the same, I'll try one more round"** → WRONG. On `NO_CONVERGENCE` (round ≥ 2 and findings aren't decreasing): end the loop immediately.
 

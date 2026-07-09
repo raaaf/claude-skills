@@ -24,10 +24,12 @@ the fix-verifier (peer review) as before. In the log, `Verification: review` ins
 
 1. **Baseline (Step E, before the fix agent):** If the round contains a `[Performance]` finding
    and `PERF_MEASURE_CMD` is set, measure once per round:
-   `PERF_BASELINE=$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")`
+   `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_BASELINE="$PERF_METRIC"`
+   (the script prints `PERF_METRIC=<n>`; eval + reassign extracts the bare number — a plain
+   `$( ... )` capture would store the whole string and break the numeric comparison below)
 2. Fix agents run as usual.
 3. **Re-measure (Step E.5, after all fixes of the round):**
-   `PERF_AFTER=$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")`
+   `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_AFTER="$PERF_METRIC"`
 4. **Verdict (deterministic, no LLM):** compare the `PERF_METRIC` numbers.
    - `AFTER <= BASELINE` (improved or held) -> performance fixes `keep`,
      log: `Verification: measured {BASELINE}->{AFTER}`.

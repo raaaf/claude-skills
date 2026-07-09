@@ -11,7 +11,7 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 - HEAD at audit time: {git rev-parse HEAD}
 
 ## Result
-- Rounds: N/2
+- Rounds: N/{MAX_RUNDEN}
 - Critical found/fixed: A/B
 - Important found/fixed: C/D
 

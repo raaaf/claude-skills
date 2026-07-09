@@ -10,10 +10,10 @@ Content: Phase 1 scope bash · context building · optional pre-checks · Phase 
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT"
 
-# Framework-Erkennung (shared mit /audit) — Output als eval einlesen
+# Framework detection (shared with /audit) — read output via eval
 eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 
-# PROJECT_CONTEXT aus CLAUDE.md laden (awk statt sed — portabler)
+# Load PROJECT_CONTEXT from CLAUDE.md (awk instead of sed — more portable)
 PROJECT_CLAUDE_MD="$PROJECT_ROOT/CLAUDE.md"
 if [ -f "$PROJECT_CLAUDE_MD" ]; then
   PROJECT_CONTEXT=$(awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f' "$PROJECT_CLAUDE_MD")
@@ -22,7 +22,7 @@ else
   PROJECT_CONTEXT="Kein projektspezifischer Kontext."
 fi
 
-# SUPPRESSIONS laden (shared pattern mit /audit)
+# Load SUPPRESSIONS (shared pattern with /audit)
 SUPPRESSIONS_FILE="$PROJECT_ROOT/.claude/audits/suppressions.json"
 if [ -f "$SUPPRESSIONS_FILE" ]; then
   SUPPRESSIONS=$(jq -r '[.suppressions[].pattern] | join(", ")' "$SUPPRESSIONS_FILE" 2>/dev/null || echo "Keine Suppressions")
@@ -30,23 +30,23 @@ else
   SUPPRESSIONS="Keine Suppressions"
 fi
 
-# Alle auditrelevanten Dateien — Build-Output, Vendor und Cache ausschliessen
+# All audit-relevant files — exclude build output, vendor and cache
 EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/*'
 # shellcheck disable=SC2086
 find $SOURCE_DIRS \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
-# Prompt-Template-Dateien — LLM-Prompt-Templates (*.md unter prompt[s]/) sind Security-Targets
-# (Untrusted-Placeholder-Isolation, siehe guidelines/security.md Section XII), werden aber von
-# den Standard-Globs nicht erfasst. Mit aufnehmen, damit Template-Dateien nie uebersehen werden.
+# Prompt template files — LLM prompt templates (*.md under prompt[s]/) are security targets
+# (untrusted-placeholder isolation, see guidelines/security.md section XII) but are not caught
+# by the standard globs. Include them so template files are never missed.
 # shellcheck disable=SC2086
 find $SOURCE_DIRS \( -path "*/prompts/*" -o -path "*/prompt/*" \) -name "*.md" $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt
 sort -u -o /tmp/full-audit-files.txt /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
-# Frontend-Dateien
+# Frontend files
 # shellcheck disable=SC2086
 find $SOURCE_DIRS \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
 
-# Translation-Dateien
+# Translation files
 # shellcheck disable=SC2086
 find $SOURCE_DIRS \( -path "*/lang/*" -o -path "*/locales/*" -o -path "*/locale/*" -o -path "*/translations/*" -o -path "*/messages/*" -o -path "*/i18n/*" \) \( -name "*.php" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.po" -o -name "*.pot" -o -name "*.ts" -o -name "*.js" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-translations.txt
 ```

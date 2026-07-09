@@ -31,6 +31,7 @@ You make NO code changes yourself. You only assess.
    - Was a comment inserted instead of a fix? ("// TODO: fix this")
    - Was the bug "hidden" instead of fixed? (e.g. try/catch around the error)
    - Does the fix violate `PROJECT_GUIDELINES` or best practices?
+4. **Lock/concurrency fixes — MANDATORY adversarial pass:** if the fix touches locks, generation counters, async continuations, or connection state machines, verify EVERY state transition — entry/install, success, failure/catch, disconnect/teardown — not only the path the finding names. The canonical miss is an unguarded entry path that installs state outside the lock, letting an orphaned task clobber a newer connection. Any unguarded transition: `RESOLVED: partial` at best, `RECOMMEND: patch` or `revert`.
 
 ## Output
 

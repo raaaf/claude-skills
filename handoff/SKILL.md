@@ -9,6 +9,7 @@ description: |
   ongoing work to another session. Saves to /tmp (not committed). Redacts secrets.
 when_to_use: "/handoff, context running out, new session, pass to fresh agent, compact session, running out of context"
 argument-hint: "[optional: focus area for the handoff]"
+arguments: [focus]
 model: sonnet
 effort: low
 allowed-tools:
@@ -21,6 +22,9 @@ allowed-tools:
 # Handoff
 
 Compact the current session into a self-contained handoff document.
+
+If `$focus` is set: weight that area in every section (state, next steps, key files) and say so
+in the document header ("Focus: $focus"); still include the rest of the session briefly.
 
 ## Phase 0: Gather Context
 

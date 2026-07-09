@@ -48,9 +48,13 @@ Inspired by Matt Pocock's [write-a-skill](https://github.com/mattpocock/skills/b
 ```md
 ---
 name: skill-name
+disable-model-invocation: true   # repo default; omit ONLY for intentional auto-trigger
+                                 # (rafael-writing-style, find-skills, delegate) and NEVER
+                                 # set it on scheduled-task skills (blocks the schedule >= v2.1.196)
 description: "What it does. Use when [specific user triggers]. NOT when [adjacent skill territory]."
 when_to_use: "/slash-command, natural language phrase 1, phrase 2"
-argument-hint: "[optional context]"
+argument-hint: "[optional: what the argument means]"
+arguments: [name]        # named positional args; body uses $name (never positional {N})
 model: opus   # or sonnet, haiku
 effort: high             # low, medium, high, xhigh
 allowed-tools:

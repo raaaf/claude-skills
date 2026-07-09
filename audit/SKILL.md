@@ -209,7 +209,7 @@ Same location flagged by multiple subagents → one finding, strictest classific
 Check yourself (round 1 only):
 - Public pages / changelog (see Phase 3a)
 - Tests: changed logic without tests?
-- Mobile apps: `bash bin/detect-mobile.sh` → on match, impact from `references/mobile-impact.md`
+- Mobile apps: `bash "$AUDIT_BIN/detect-mobile.sh"` → on match, impact from `references/mobile-impact.md`
 
 (Note: docs sync runs as Agent 11 — no separate orchestrator check needed.)
 
@@ -457,7 +457,7 @@ The agent returns three blocks between `LEARNING_RESULT_START` and `LEARNING_RES
 
 - append `LEARNING_LOG_ENTRY` to `.claude/audits/learning-log.md` (or create it if this is the first audit)
 - insert `TRENDS_BLOCK` at the top of `learning-log.md` or replace the existing block (do not append — it should stay a top snapshot)
-- merge `SUPPRESSIONS_TO_ADD` into `.claude/audits/suppressions.json`. **Dedup rule:** run the pattern of every new suppression through `bash "$AUDIT_BIN/normalize-suppression.sh"`, same normalization for existing suppressions. If both produce the same key → keep the existing one, discard the new one. This way "[Security] LIKE injection in scope" and "Like-wildcard injection (security)" are recognized as the same.
+- merge `SUPPRESSIONS_TO_ADD` into `.claude/audits/suppressions.json`. **If the file does not exist, create it first** (`{"suppressions": []}`) — any audit run, log, or finding that references a suppression MUST leave a valid `suppressions.json` behind; a dangling reference without the file is an orchestrator bug. **Dedup rule:** run the pattern of every new suppression through `bash "$AUDIT_BIN/normalize-suppression.sh"`, same normalization for existing suppressions. If both produce the same key → keep the existing one, discard the new one. This way "[Security] LIKE injection in scope" and "Like-wildcard injection (security)" are recognized as the same.
 - show in the chat: number of new suppressions and number of new open backlog points. The user knows they'll be asked at the next `/audit` (or `/full-audit`).
 
 ---

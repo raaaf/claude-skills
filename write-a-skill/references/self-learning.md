@@ -32,37 +32,37 @@ The skill blocks for ~30s while learning runs. Worth it for the persistent impro
 - **model:** `sonnet`
 - **maxTurns:** `15`
 
-## Aufgabe
+## Task
 
-Liest die letzten N Run-Logs aus `.claude/{skill}/` und sucht nach:
-1. Recurring False Positives (3+ runs with same finding the user dismissed)
-2. Persistent Issues (3+ runs with same finding that recurred)
-3. User Overrides (patterns where user kept correcting in the same direction)
+Read the last N run logs from `.claude/{skill}/` and look for:
+1. Recurring false positives (3+ runs with the same finding the user dismissed)
+2. Persistent issues (3+ runs with the same finding that recurred)
+3. User overrides (patterns where the user kept correcting in the same direction)
 
 ## Output
 
-Schreibe Vorschlaege nach `.claude/{skill}/learning-log.md`:
+Write suggestions to `.claude/{skill}/learning-log.md`:
 
-### Suppression-Vorschlag
+### Suppression suggestion
 - Pattern: ...
 - Recurrences: 4
-- Vorschlag: zu suppressions hinzufuegen
+- Suggestion: add to suppressions
 
-### Guideline-Update-Vorschlag
+### Guideline-update suggestion
 - Issue: ...
 - Recurrences: 3
-- Vorschlag: neue Regel in references/X.md
+- Suggestion: new rule in references/X.md
 
-### Prompt-Tweak-Vorschlag
+### Prompt-tweak suggestion
 - Worker: 2-security
-- Beobachtung: hallucniert oft Y
-- Vorschlag: Prompt um "..." ergaenzen
+- Observation: often hallucinates Y
+- Suggestion: extend the prompt with "..."
 
-## Verbote
+## Prohibitions
 
-- Nicht selber Files aendern (nur learning-log.md schreiben)
-- Nichts auto-applien
-- Keine Aenderungen am skill selbst
+- Never edit files yourself (only write learning-log.md)
+- Never auto-apply anything
+- No changes to the skill itself
 ```
 
 ## learning-log.md location

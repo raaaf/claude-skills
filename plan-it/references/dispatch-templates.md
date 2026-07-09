@@ -12,7 +12,7 @@ Bash logic and prompt templates for Phase 2.5 (codebase context), Phase 3 (chall
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 
-# Framework und Source-Dirs erkennen
+# Detect framework and source dirs
 if [ -f "$PROJECT_ROOT/artisan" ]; then
   FRAMEWORK="laravel"
   SOURCE_DIRS="$PROJECT_ROOT/app/ $PROJECT_ROOT/resources/ $PROJECT_ROOT/database/ $PROJECT_ROOT/routes/ $PROJECT_ROOT/config/"

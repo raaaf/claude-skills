@@ -163,6 +163,10 @@ AUDIT_STATUS total=<N> with_story=<N> tested=<N> passing=<N> failing=<N> needs_r
 Always run `run-tests.sh` in the current turn before printing. Never hand-edit the counts: if they
 look wrong, the table is wrong, fix the table.
 
+**Format is load-bearing:** the line MUST stay `AUDIT_STATUS total=...` with NO colon after
+`AUDIT_STATUS`. The /audit Stop hook (`~/.claude/hooks/audit-loop.sh`) greps for `AUDIT_STATUS:`
+(with colon) — adding a colon here would hand this skill's turns to the /audit loop controller.
+
 ## Completion
 
 Achieved ONLY when, **in the current turn**:

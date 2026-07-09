@@ -111,9 +111,9 @@ Hard check: if a configured test runner is missing across multiple full audits, 
 ROOT=$(git rev-parse --show-toplevel)
 STREAK_FILE="$ROOT/.claude/audits/no-test-runner-streak"
 HAS_RUNNER=0
-# JS/TS-Runner in package.json oder Config-Dateien
+# JS/TS runner in package.json or config files
 if [ -f "$ROOT/package.json" ] && grep -Eq '"(vitest|jest|mocha)"|node:test|node --test' "$ROOT/package.json" 2>/dev/null; then HAS_RUNNER=1; fi
-# find statt Glob — zsh bricht bei nicht-matchenden Globs ab
+# find instead of glob — zsh aborts on non-matching globs
 [ -n "$(find "$ROOT" -maxdepth 1 \( -name 'vitest.config.*' -o -name 'jest.config.*' \) 2>/dev/null)" ] && HAS_RUNNER=1
 # PHP / Python
 { [ -f "$ROOT/phpunit.xml" ] || [ -f "$ROOT/phpunit.xml.dist" ]; } && HAS_RUNNER=1
@@ -263,7 +263,7 @@ while $STATE_FILE has pending rows:
     BATCH = first pending row → status running (write state file)
     ROUND = 1
     while ROUND <= {MAX_RUNDEN_PRO_BATCH} AND NOT CLEAN:
-        AUDIT_RUNDE with DATEILISTE = $BATCH_DIR/batch-{ID}.txt
+        AUDIT_RUNDE with {BATCH_DATEILISTE} = content of $BATCH_DIR/batch-{ID}.txt (fills the prompt-template full-audit section)
         Update batch row (rounds, C/I/M)
         if not CLEAN: ROUND += 1
     CLEAN          → row: clean + HEAD short SHA
@@ -472,11 +472,11 @@ If the line does NOT show `pending=0 running=0` and `post_phases=done` → NO ma
 **Otherwise — write push marker (MANDATORY):**
 
 ```bash
-# Marker schreiben — KEIN git push im selben Bash-Aufruf!
+# Write marker — NO git push in the same bash call!
 hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-passed-$hash"
 
-# PreCompact-Marker entfernen — Full Audit abgeschlossen
+# Remove PreCompact marker — full audit finished
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
 ```
@@ -488,8 +488,8 @@ Marker: TTL 30 min, is not deleted (multiple hooks check sequentially).
 ```
 Full Audit completed.
 - Scope: {N}/12 dimensions — {SELECTED_DIMENSIONS}
-- Mode: {BATCH_MODUS} ({N} batches, {RUNDEN_GESAMT} rounds)
-- {GESAMT_CRITICAL} Critical, {GESAMT_IMPORTANT} Important, {GESAMT_MINOR} Minor found and fixed
+- Mode: {BATCH_MODE} ({N} batches, {TOTAL_ROUNDS} rounds)
+- {TOTAL_CRITICAL} Critical, {TOTAL_IMPORTANT} Important, {TOTAL_MINOR} Minor found and fixed
 - Log: .claude/audits/{DATUM}-full-audit.md
 - Learning: .claude/audits/learning-log.md
 ```

@@ -3,6 +3,10 @@
 # FEATURE_AUDIT.md table + the "Needs human review" section, NOT from the model's
 # memory. test_exit is passed in from run-tests.sh (the real process exit code).
 #
+# CONTRACT: the output must stay "AUDIT_STATUS total=..." WITHOUT a colon after
+# AUDIT_STATUS. The /audit Stop hook (~/.claude/hooks/audit-loop.sh) greps for
+# "AUDIT_STATUS:" (with colon); adding one would trigger that hook on feature-audit turns.
+#
 # Table schema (pipe-delimited; cells must not contain a raw "|", escape as "\|"):
 #   | ID | Feature | User story | Expected behaviour | Status | Test | Notes |
 # Status values: todo | tested | passing | failing

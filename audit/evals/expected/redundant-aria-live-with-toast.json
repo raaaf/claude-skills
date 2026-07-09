@@ -1,0 +1,21 @@
+{
+  "fixture": "a11y/redundant-aria-live-with-toast.blade.php",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 11,
+      "matches": ["aria-live", "toast", "role=\"status\"", "double", "announce", "redundant", "existing channel"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup with translated strings, no user input"
+    },
+    {
+      "dimension": "performance",
+      "reason": "single toggle component, no perf concern"
+    }
+  ]
+}

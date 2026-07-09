@@ -170,6 +170,23 @@ grep -n "@props" resources/views/components/{component}.blade.php
 
 Blade silently ignores unknown props (they end up quietly in the `$attributes` bag or vanish) — a misspelled or outdated prop name throws no error, the functionality simply doesn't happen. Every prop set in the fix MUST exist in the target file's `@props`. Remaining unknown props are an incomplete fix.
 
+## Special case: "Mirror/analog to existing X" findings
+
+If the finding asks to make code behave like an existing implementation ("mirror X", "same as in Y", "analog to Z"): extract a shared helper that both call sites use instead of copying the logic over. A copied block is a failed fix — the duplicate is exactly what the next audit flags again. If the extraction needs a design decision you cannot make: `FIX_RESULT=FAILED` with that reason.
+
+## Special case: Swift fixes
+
+Pitfall checklist before reporting APPLIED:
+
+1. `@ScaledMetric` must be declared with a default value (`@ScaledMetric var spacing = 12.0`) — assigning it in `init` does not compile.
+2. Never mix expression-style and statement-style `switch` within one change; follow the file's existing style.
+3. CFString constants (e.g. `kSecClass`) do not work in `switch` case patterns — compare with `==`/`if-else` chains instead.
+4. Compile the target yourself after the fix (`xcodebuild build`, narrowest scheme available) instead of leaving compile verification to the orchestrator. `FIX_RESULT=APPLIED` implies it compiles.
+
+## Special case: CLI argv construction
+
+If the fix changes how CLI arguments are built (argv arrays, `Process` arguments, command strings): grep the test suite for exact-argv assertions (`grep -rn "arguments\|argv" {test dirs}`) and update matching tests in the same fix. An argv change that leaves stale exact-match tests behind is an incomplete fix.
+
 ## Output
 
 Exactly one of these lines:

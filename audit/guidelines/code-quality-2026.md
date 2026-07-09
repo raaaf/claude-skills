@@ -1,6 +1,6 @@
 # Code Quality: 2026 Additions
 
-Fortsetzung von code-quality.md (Abschnitte XVI-XVII). Immer zusammen mit code-quality.md lesen.
+Continuation of code-quality.md (sections XVI-XVII). Always read together with code-quality.md.
 
 
 ## XVI. 2026 Type-Safety Patterns

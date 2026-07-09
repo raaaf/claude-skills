@@ -1,0 +1,21 @@
+{
+  "fixture": "quality/lock-race-entry-clobber.swift",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 29,
+      "matches": ["entry", "install", "unguarded", "outside the lock", "race", "clobber", "generation"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "no UI markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}
