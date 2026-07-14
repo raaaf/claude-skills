@@ -451,6 +451,7 @@ Agent(
     AKTUELLES_LOG={Inhalt des Audit-Logs}
     AUDIT_TYPE=full-audit",
   subagent_type: general-purpose,
+  model: sonnet,
   mode: bypassPermissions
 )
 ```

@@ -439,6 +439,7 @@ The learning agent returns a **structured output**. **Subagents cannot write to 
 ```
 Agent(
   subagent_type: general-purpose,
+  model: sonnet,
   prompt: "Read agents/learning-agent.md and run the process.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}

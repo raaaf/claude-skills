@@ -278,6 +278,7 @@ Agent(
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={content of the plan log just written}",
   subagent_type: general-purpose,
+  model: sonnet,
   mode: bypassPermissions
 )
 ```
