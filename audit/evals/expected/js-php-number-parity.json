@@ -1,0 +1,34 @@
+{
+  "fixture": "correctness/js-php-number-parity.js",
+  "notes": "2026-07-14 zeit app: JS parseGermanNumber diverged from the canonical PHP FormattingHelper::parseGermanNumber in three branches. Round-1 workers (incl. security+architecture on opus) missed it; only the phase-2.5 cross-reference agent caught it. Client-side computed amounts differed from server-persisted values.",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 27,
+      "matches": ["replace(',', '.')", "first comma", "multiple commas", "1,234,567", "parity", "thousands"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "code_quality",
+      "line": 23,
+      "matches": ["rightmost", "separator order", "US format", "1,234.56"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "code_quality",
+      "line": 30,
+      "matches": ["multiple dots", "1.2.3", "fallback", "grouping"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "parseFloat gate, no injection surface"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "JS module, no markup"
+    }
+  ]
+}
