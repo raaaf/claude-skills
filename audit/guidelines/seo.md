@@ -72,6 +72,20 @@ When your pages are shared on social media, messaging apps, or Slack, Open Graph
 
 **OG image dimensions:** 1200x630 pixels is the universal safe size. Always use absolute URLs for images. Test previews with the sharing debuggers provided by each platform.
 
+### Metadata coherence (2026)
+
+Metadata bugs are usually disagreements, not omissions. Check as a set:
+
+| Rule | Finding pattern |
+|---|---|
+| One source of truth per page | Two systems emitting meta (framework metadata API + manual `<head>` + react-helmet) → duplicate `title`/`description`/`canonical`/`robots` tags |
+| `og:url` == canonical | The two pointing at different URLs splits share/link equity |
+| Title/description/canonical/OG agree | Description says X, OG description says Y, canonical points at Z |
+| Deterministic values | No random/build-time-varying strings in meta (cache busters in og:image break preview caches) |
+| Staging is noindex | Preview/staging deployments without `noindex` leak into the index |
+| JSON-LD reflects rendered content | Never invent ratings, review counts, prices, or org details that the page does not actually display |
+| Dynamic strings escaped | User-generated content interpolated into meta tags must be escaped/sanitized |
+
 ## III. Heading Hierarchy
 
 Headings communicate document structure to both search engines and assistive technologies. A broken hierarchy tells crawlers that your content is disorganized.

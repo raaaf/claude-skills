@@ -10,6 +10,8 @@ Visual design quality and consistency: spacing scale, component consistency (but
 
 **Complete guidelines:** Read `guidelines/ui-visual-design.md` in the skill directory and check the code against all rules described there.
 
+**Color system:** Additionally `guidelines/color.md` when the diff touches CSS/styles — OKLCH palette consistency, hue drift, P3 fallbacks, hex in Tailwind v4 `@theme`. Mind its "What NOT to Flag" section: existing hex/rgb/hsl is not a finding by itself.
+
 **Atomic design / tokens:** Additionally `guidelines/atomic-design.md` — raw values (color/spacing/font/radius/shadow) instead of existing design tokens, variant sprawl of the same UI function, component consistency. Before every token finding, actually verify the token (mandatory verification in the guideline).
 
 **For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section IV — HIG/Material conventions, system components before custom-built ones, safe areas/insets, semantic colors for dark mode.

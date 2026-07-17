@@ -35,6 +35,24 @@ Takes a single verified finding and applies the fix. The main skill dispatches m
 5. **Briefly verify**: re-read the file, fix is in, syntax crash unlikely.
 6. Return the result.
 
+## Styling-system rule (all UI fixes)
+
+Express every style fix in the styling system the file already uses: Tailwind utilities in a Tailwind project, plain declarations in CSS/SCSS files, the CSS-in-JS API in styled-components/StyleX code. Never introduce a second styling approach just to apply a fix (no inline `style=` in a Tailwind codebase, no utility classes dropped into a CSS-modules component). If the correct expression is unclear, mimic the nearest existing component.
+
+## Special case: Animation/motion findings (remedial hierarchy)
+
+When fixing a motion finding, prefer earlier moves over later ones — do not polish an animation that should not exist:
+
+1. **Delete** the animation (high-frequency element, keyboard-triggered, no purpose)
+2. **Reduce** it — shorter duration, smaller transform, fewer animated properties
+3. **Fix the easing** — `ease-in` → `ease-out`/custom curve
+4. **Fix origin/physicality** — correct `transform-origin`; `scale(0)` → `scale(0.95)` + opacity
+5. **Make it interruptible** — keyframes → transitions, or spring for gesture-driven motion
+6. **Move it to the GPU** — layout props → `transform`/`opacity`
+7. **Polish** — stagger, blur-masking, `@starting-style`
+
+If the finding prescribes step 7 but the element qualifies for step 1 (see `guidelines/ui-animation.md` §1 frequency table), apply step 1 and note the deviation in the output line.
+
 ## PHP/Pint trap (HARD, deterministic)
 
 For PHP files, Pint (hook) runs automatically after every edit. Pint removes imports that are not yet used at the time of the edit.
@@ -186,6 +204,11 @@ Pitfall checklist before reporting APPLIED:
 ## Special case: CLI argv construction
 
 If the fix changes how CLI arguments are built (argv arrays, `Process` arguments, command strings): grep the test suite for exact-argv assertions (`grep -rn "arguments\|argv" {test dirs}`) and update matching tests in the same fix. An argv change that leaves stale exact-match tests behind is an incomplete fix.
+
+## Completion self-checks before reporting APPLIED
+
+1. **Same-diff duplication grep (deterministic, GENERAL form):** before finishing, check the full diff-changed file set (`git diff -- {assigned files}` plus the orchestrator's file list) for the general pattern "the same method/logic sequence appears at >= 2 places, and especially >= 3 places" — same parse/lookup/error-mapping/validation flow where only names or parameters differ. The check is structural, NOT name-based: do not look for any specific known method name from past audits; compare bodies (statement sequence, branching shape, error handling). If found, extract the shared logic (or delegate the copies to one implementation) as part of the fix instead of finishing. This class of duplication has repeatedly survived guideline text and only been caught one audit round late; the check is mandatory, not advisory.
+2. **UI fixes:** if the fix touched markup or styles, re-check exactly the lines you changed against WCAG contrast, ARIA semantics, and geometry (hit-target size, overflow/clipping) BEFORE reporting APPLIED. Three consecutive audits needed an extra round for a11y regressions introduced by fixes themselves.
 
 ## Output
 

@@ -135,6 +135,10 @@ Short summary (paragraph). What the product is, core features, user roles.
 - Feature X (status: half done) — file:line
 - ...
 
+### Considered and Rejected
+- Idea Y — rejected: {one-line reason, e.g. "conflicts with core use case", "effort far exceeds plausible benefit", "duplicates existing feature Z"}
+- ... (2-5 entries, REQUIRED)
+
 ### Already Well Implemented
 - What the project does right
 ```
@@ -147,6 +151,8 @@ Short summary (paragraph). What the product is, core features, user roles.
 3. **Obvious next step first** — features that fit the existing product > new directions
 
 **Do not invent findings.** If an area is strong, list it under "Already Well Implemented".
+
+**The Rejected section is mandatory** — it is what separates a judgment call from a wishlist. Every idea that made it into the report must have survived an implicit gate: who needs this, how often, and is the effort proportionate? Ideas that fail the gate go under "Considered and Rejected" with the killing reason. An empty ideas list with a strong Rejected section is a valid result.
 
 ### 4. Offer next steps
 

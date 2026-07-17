@@ -114,6 +114,15 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 - Balanced params: `stiffness: 500, damping: 30` — avoid `stiffness: 1000, damping: 5` (too bouncy)
 - System-initiated state changes use easing, **not** springs
 
+### Apple parametrization (damping ratio + response)
+
+Think in two designer parameters instead of the physics triplet: **damping ratio** (1.0 = critically damped, no overshoot; < 1.0 = bounce) and **response** (seconds to approach target; lower = snappier).
+
+- Default UI: damping `1.0`, response `0.3-0.4` — no overshoot
+- **Bounce only when the gesture itself carried momentum** (flick, throw, drag release: damping ~`0.8`). Overshoot on a menu that just faded in is a finding; overshoot on a card the user flicked is correct
+- Apple's shipped values: move/reposition `1.0/0.4`, rotation `0.8/0.4`, drawer/sheet `0.8/0.3`
+- Motion's `bounce` + `duration` API maps to this: `{ type: "spring", bounce: 0, duration: 0.4 }` = critically damped
+
 ## 6. Exit Animations (AnimatePresence)
 
 - Conditional motion elements **must** be wrapped in `<AnimatePresence>`
@@ -127,6 +136,7 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 - Avoid mode `"sync"` — use `"popLayout"` for list animations
 - Nested AnimatePresence: use `propagate` prop on both levels
 - Parent exit duration must be >= child exit duration
+- `initial={false}` on AnimatePresence for default-state elements (icon swaps, toggles, tabs): no enter animation on page load, only on state changes. Do NOT apply where the component relies on `initial` for a deliberate first-run entrance (staggered hero) — that would skip the whole entrance
 
 ## 7. Container Animation
 
@@ -162,8 +172,22 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 
 ## 10. Gesture & Drag
 
+- **Respond on pointer-down, not release**: press feedback fires the instant the pointer goes down; waiting for `click`/touch-up feels dead. During a drag, the UI tracks the pointer 1:1 the whole way — never animate only at gesture end
+- **Respect the grab offset**: the element follows from where it was grabbed; snapping its center to the pointer breaks the illusion
 - **Momentum dismissal**: calculate velocity (`distance / time`), dismiss if > ~0.11 regardless of distance
-- **Damping at boundaries**: reduce movement the further past the boundary the user drags
+- **Momentum projection**: pick the snap target from where the gesture is *going*, not from the release position. Apple's exponential-decay projection (not the textbook `v²/2a`):
+  ```js
+  // decelerationRate 0.998 = normal scroll feel, 0.99 = snappier
+  const project = (v, rate = 0.998) => (v / 1000) * rate / (1 - rate);
+  const target = nearestSnapPoint(current + project(releaseVelocity));
+  ```
+- **Velocity handoff**: the spring after release starts at the finger's exact velocity — no seam between drag and animation. APIs wanting relative velocity: `gestureVelocity / (target - current)`; Motion takes raw px/s via `velocity`
+- **Interrupt from the presentation value**: on retarget, read the live on-screen transform and start there — starting from the logical target value causes a visible jump. Blend velocity through the retarget instead of hard-cutting it ("brick wall")
+- **Decompose 2D motion into separate X and Y springs**: a single spring on the 2D distance desyncs when the axes have different velocities
+- **Damping at boundaries / rubber-band**: reduce movement the further past the boundary the user drags:
+  ```js
+  const rubberband = (over, dim, c = 0.55) => (over * dim * c) / (dim + c * Math.abs(over));
+  ```
 - **Pointer capture**: set on drag start so dragging continues outside element bounds
 - **Multi-touch protection**: ignore additional touch points after drag begins
 - **Friction over hard stops**: allow over-drag with increasing resistance instead of invisible walls
@@ -177,6 +201,13 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 | Framer Motion `x`/`y`/`scale` are NOT GPU-accelerated | Use `transform: "translateX(100px)"` for hardware acceleration |
 | CSS animations beat JS under load | CSS runs off main thread; Framer Motion uses rAF (drops frames when busy) |
 | Use WAAPI for programmatic + performant | `element.animate([...], { duration, fill, easing })` — hardware-accelerated, interruptible, no library |
+| `will-change` only for compositor props | `transform`, `opacity`, `filter`, `clip-path` — properties the GPU can composite. `will-change: all` or on layout/paint props is a finding |
+| `will-change` only around active animation | Not preemptively on every animated element (each promoted layer costs memory). Add when first-frame stutter is observed; Safari benefits most |
+| Batch layout reads before writes | Interleaving `getBoundingClientRect` and style writes in one frame = layout thrashing. Measure once, then animate via transform (FLIP pattern) |
+| No scroll listeners driving animation | Prefer Scroll/View Timelines (`animation-timeline: view()`/`scroll()`); fall back to IntersectionObserver. Polling `scrollY` per frame is a finding |
+| Pause off-screen loops | Looping animations (marquee, pulse, spinner in hidden tab) must pause when not visible — IntersectionObserver or `animation-play-state` |
+| No rAF loop without stop condition | Every `requestAnimationFrame` loop needs a documented exit (flag or cancellation), otherwise it burns CPU forever |
+| Animated blur <= 8px, never continuous | Blur transitions stay small and one-shot. Continuous blur animation or animated blur on large surfaces is a finding (crossfade-masking blur of 2px from §8 is fine) |
 
 ## 12. Reduced Motion
 
@@ -214,6 +245,10 @@ Resources: [easing.dev](https://easing.dev/) / [easings.co](https://easings.co/)
 | Context menu with entrance animation | Remove entrance, keep exit only |
 | No dimmed backdrop on modal/dialog | Add `background: var(--black-a6)` overlay |
 | Linear ramp for decay (audio/visual) | Use exponential ramp |
+| `will-change: all` or on layout props | Restrict to transform/opacity/filter/clip-path, only around active animation |
+| Scroll listener drives animation | Scroll/View Timelines or IntersectionObserver |
+| Looping animation runs off-screen | Pause via IntersectionObserver / `animation-play-state` |
+| Layout read+write interleaved per frame | Batch reads, then writes (FLIP) |
 
 ## 14. Debugging
 

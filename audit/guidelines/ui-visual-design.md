@@ -9,6 +9,7 @@
 | Parent must be `position: relative` | Required when pseudo-element uses `position: absolute` |
 | Z-index layering | Use `z-index: -1` on pseudo-element to layer behind parent content; parent needs `z-index: 1` |
 | Hit target expansion | `inset: -8px -12px` on pseudo-element expands clickable area without wrapper markup |
+| Hit-area collision | Expanded hit areas of two interactive elements must never overlap — shrink the pseudo-element until they don't, keeping it as large as possible |
 
 **Native pseudo-element selectors — use instead of JS/DOM workarounds:**
 
@@ -25,6 +26,8 @@
 ## View Transitions API
 
 Prefer native View Transitions over JS animation libraries (e.g. `motion/react` `layoutId`).
+
+**Scope boundary:** View Transitions are for navigation-level changes (route/page/view swaps). For interaction-heavy UI (toggles, drags, rapidly-triggered state) they are the wrong tool — they cannot be smoothly interrupted or cancelled, and size changes may trigger layout. Use CSS transitions/springs there instead.
 
 | Rule | Detail |
 |------|--------|
@@ -123,6 +126,43 @@ const more = { lines: [
 
 Anti-pattern: same `border-radius` on both parent and child.
 
+**Exception:** if the padding between the layers exceeds ~24px, treat them as separate surfaces and pick each radius independently — strict concentric math is only for tightly nested elements.
+
+---
+
+## Optical Alignment
+
+When geometric centering looks off, align optically. Geometric center and visual center differ for asymmetric shapes.
+
+| Case | Fix |
+|---|---|
+| Button with trailing icon | Icon-side padding = text-side padding - 2px (e.g. `pl-4 pr-3.5`) |
+| Play-button triangle | Shift the SVG ~2px toward the pointed side (`margin-left: 2px`) |
+| Asymmetric icons (stars, arrows, carets) | Best: fix the viewBox/path in the SVG itself so no per-usage margin is needed. Fallback: `ml-px` style nudges |
+
+Anti-pattern to flag: `justify-center`/`items-center` on an icon button whose icon is visibly asymmetric, with no optical correction anywhere.
+
+---
+
+## Image Outlines
+
+Images get a subtle 1px outline so they read as intentional surfaces on any background:
+
+```css
+img.card-media {
+  outline: 1px solid oklch(0 0 0 / 0.1);   /* light mode: pure black */
+  outline-offset: -1px;                     /* inset, no layout shift */
+}
+.dark img.card-media {
+  outline-color: oklch(1 0 0 / 0.1);        /* dark mode: pure white */
+}
+```
+
+Rules:
+- Pure black/white with low alpha only. Tinted neutrals (slate-900, zinc-900, `#111827`) pick up the surface color and read as dirt on the image edge — flag them.
+- Never the accent or brand color; the outline is a neutral separator.
+- `outline` + negative offset instead of `border`: no added width/height.
+
 ---
 
 ## Shadows
@@ -148,6 +188,18 @@ Never use a single flat `box-shadow`. Layer 3+ shadows with increasing blur and 
 | Neutral colors | Use deep neutrals like `rgba(17, 24, 39, 0.08)`, not pure black `rgba(0,0,0,...)` |
 | Elevation scale | Larger blur+offset = higher elevation. Define `--shadow-1/2/3` tokens |
 | Animate via pseudo-element | Never `transition: box-shadow`. Use `::after` with `opacity` transition instead |
+| Dark mode | Layered depth shadows are invisible on dark backgrounds. Simplify to a single ring: `0 0 0 1px oklch(1 0 0 / 0.08)` (hover: `/ 0.13`) |
+
+### Shadows vs. borders — decision table
+
+"Shadows over borders" applies to depth/elevation only. Do NOT flag these as shadow candidates:
+
+| Use shadows | Keep borders |
+|---|---|
+| Cards, containers with depth | Dividers between list items (`border-b`, `border-t`) |
+| Buttons with bordered styles | Table cell boundaries |
+| Elevated surfaces (dropdowns, modals) | Form input outlines (accessibility) |
+| Elements on varied/image backgrounds | Hairline separators in dense UI |
 
 ### Elevation scale
 
@@ -226,6 +278,68 @@ Use semi-transparent borders — they adapt to any background.
 ```
 
 Anti-pattern: hardcoded hex like `border: 1px solid #e5e5e5`.
+
+---
+
+## Dark Mode Contrast
+
+| Rule | Threshold |
+|---|---|
+| Card surface vs. page background | >= 1.4:1 contrast ratio, otherwise the card reads as flat/invisible in dark mode |
+| Hairlines/borders against adjacent surface | >= 3:1 (WCAG 1.4.11 non-text contrast) |
+| Check computed colors, not token names | Resolve the actual dark-mode values behind semantic tokens and compute the ratio; never trust names like `card`/`background` |
+
+Computation: relative luminance L = 0.2126R + 0.7152G + 0.0722B on linearized sRGB; ratio = (L_lighter + 0.05) / (L_darker + 0.05).
+
+---
+
+## Materials & Translucency (2026)
+
+Translucent surfaces (`backdrop-filter: blur()` + semi-transparent background) act as a floating functional layer that conveys hierarchy without stealing focus.
+
+| Rule | Detail |
+|---|---|
+| Chrome as material | Sticky nav/toolbars/sheets: translucent layer with content scrolling underneath, not an opaque bar consuming a fixed strip |
+| Material weight = hierarchy | Heavier/darker materials separate structural regions (sidebars); lighter materials for interactive elements |
+| Never stack light-on-light | Two light translucent surfaces on top of each other collapse legibility — flag it |
+| Bigger = thicker | Large surfaces get stronger blur + deeper shadow than small chips |
+| Vibrancy for text on blur | No flat gray text over translucent surfaces: higher contrast, slightly heavier weight, small letter-spacing bump. Color belongs on a solid layer, not the translucent foreground |
+| Scroll edge over hard divider | Where content meets floating chrome, prefer a small fade/blur mask to a 1px border under the sticky header |
+| Modal vs. panel | Modal task = surface + dimming scrim. Parallel non-blocking panel = translucency + offset WITHOUT scrim |
+| Materialize, don't fade | Glass surfaces animate blur radius and scale together on enter/exit, not plain opacity |
+
+```css
+.toolbar {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.4); /* light catching the top edge */
+}
+```
+
+Every translucent surface needs `prefers-reduced-transparency` handling (see accessibility guideline).
+
+---
+
+## Layout Robustness (2026)
+
+| Rule | Finding pattern |
+|---|---|
+| `h-dvh` over `h-screen` | `h-screen`/`100vh` on full-height layouts breaks under mobile browser chrome — use `100dvh`/`h-dvh` |
+| Safe areas | `position: fixed` bars/FABs without `env(safe-area-inset-*)` padding clip under notches and home indicators |
+| Fixed z-index scale | Arbitrary values (`z-[9999]`, `z-50` next to `z-40` next to `z-junk`) instead of a defined scale (`--z-dropdown`, `--z-modal`, `--z-toast`) — layering bugs are guaranteed once two ad-hoc values collide |
+
+---
+
+## Generated-UI Slop Heuristics (2026)
+
+Patterns that mark an interface as generic AI output. Each is a Minor finding unless the project's design language explicitly calls for it:
+
+- Purple or multicolor gradients as default decoration; gradients nobody asked for
+- Glow effects as the primary affordance (glowing borders/buttons instead of real states)
+- More than one accent color per view
+- New one-off colors when theme/Tailwind tokens exist
+- Empty states without exactly one clear next action
+- Decorative blur orbs / floating gradient blobs in the background
 
 ---
 

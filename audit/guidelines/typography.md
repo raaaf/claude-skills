@@ -25,6 +25,8 @@ Fonts that have a tall x-height look larger at the same point size and may need 
 
 The fastest, most visible upgrade is replacing a default font with a professional one. A well-designed font embeds the expertise of a type designer into every document.
 
+**Audit guard: a typography review never requires a new typeface.** The font-family row above informs new projects; it is NOT an audit finding. Use the product's existing type system, never propose swapping in a paid or different face to satisfy this guideline. Rendering details (smoothing, wrapping, tabular numbers) do not override the project's chosen family.
+
 When mixing fonts, give each a consistent role (e.g., one for body, one for headings; or one for content center, one for UI periphery). You CAN pair serif+serif or sans+sans — the myth that you must mix serif with sans is false. What matters is that the two fonts are identifiably different. Lower contrast between paired fonts can actually be more effective than high contrast. Look at newspapers: serif body + different serif headlines is the norm.
 
 ## III. Emphasis & Formatting
@@ -201,3 +203,34 @@ a {
   letter-spacing: 0.05em;
   /* Already mentioned in Section III, reinforced here with CSS */
 }
+```
+
+## XI. Properties Over Raw Feature Tags (2026)
+
+When a dedicated CSS property exists, use it instead of the raw OpenType tag or variation axis. Properties keep working when a non-variable fallback font renders; raw tags silently do nothing on fallbacks.
+
+| Raw tag (finding) | Property (fix) |
+|---|---|
+| `font-variation-settings: "wght" 650` | `font-weight: 650` |
+| `font-variation-settings: "opsz" auto` | `font-optical-sizing: auto` |
+| `font-feature-settings: "tnum" 1` | `font-variant-numeric: tabular-nums` |
+| `font-feature-settings: "zero" 1` | `font-variant-numeric: slashed-zero` |
+| `font-feature-settings: "smcp" 1` | `font-variant-caps: small-caps` |
+
+Reserve `font-feature-settings` for tags with no property of their own (stylistic sets `ss01`-`ss20`, character variants `cv01`-`cv99`) and `font-variation-settings` for custom axes (`"GRAD" 80`). Section VIII's `ss02` usage is therefore correct; a `"tnum"` usage is not.
+
+Web font format: `.ttf`/`.otf` served on the web is a finding; use `.woff2`.
+
+## XII. Mobile Inputs and Text Scaling (2026)
+
+**iOS input zoom:** focusing an input with text below `16px` zooms the whole page in iOS Safari. Inputs need `16px` on mobile viewports (`text-base sm:text-sm` in Tailwind). The `maximum-scale=1` viewport meta is NOT a fix: Safari ignores it for pinch zoom but every other browser honors it and blocks zooming, which fails WCAG 1.4.4 — flag `maximum-scale=1` as Important wherever it appears.
+
+**Layout must scale with text.** Users change text size (browser setting, Dynamic Type). Spacing that must track text (line boxes, gaps inside text components, max-width of text columns) belongs in `rem`/`em`, not fixed px, so a larger base font does not break the layout.
+
+## XIII. Structure, Direction, Truncation (2026)
+
+**Heading sizes descend with level.** Compare computed sizes across the page: an `h3` rendering larger than an `h2` on the same page is a finding. Deep levels may share a size if weight or letter-spacing keeps them distinct. Pick the tag from the document outline, control size with CSS — never choose a lower level because it "looks right" (heading-level semantics themselves are covered in the accessibility guideline).
+
+**Logical properties for direction.** In any codebase with RTL ambitions (i18n present, `dir` attribute anywhere): `margin-left`/`padding-right`/`text-align: left` are findings; use `margin-inline-start`, `padding-inline-end`, `text-align: start`. Set `lang` so browsers pick correct quotes and hyphenation.
+
+**Truncation must not destroy content.** `truncate`/`line-clamp` on values that matter (names, IDs, amounts) needs the full value reachable somewhere — tooltip, title attribute, or expanded view. Truncation with no escape hatch is a finding.
