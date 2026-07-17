@@ -6,6 +6,8 @@ This template is passed to every subagent. Placeholders are replaced by the audi
 
 Audit the following changes for {DIMENSIONEN}.
 
+Diff base (wave HEAD): {WAVE_HEAD} — run `git rev-parse HEAD` FIRST. If it differs, return `WORKER_RESULT=HEAD_DRIFT` immediately instead of findings (the diff base moved, your hotspots may no longer exist).
+
 Triage summary: {TRIAGE_SUMMARY}
 
 Your specific hotspots (marked by the triage agent — FOCUS EXCLUSIVELY HERE):

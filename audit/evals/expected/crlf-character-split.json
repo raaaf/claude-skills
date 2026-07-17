@@ -1,0 +1,21 @@
+{
+  "fixture": "quality/crlf-character-split.swift",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 24,
+      "matches": ["CRLF", "\\r\\n", "grapheme", "Character", "one line", "collapses", "UTF-8 view", "byte"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "no UI markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

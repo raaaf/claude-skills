@@ -15,8 +15,13 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 - Critical found/fixed: A/B
 - Important found/fixed: C/D
 
+## Findings per Round
+- Runde 1: [Critical][Dimension] file:line — description
+- Runde 1: [Important][Dimension] file:line — description
+- Runde 2: ...
+
 ## Fixed Issues
-- [Type] file:line — what was fixed
+- [Critical|Important|Minor][Dimension] file:line — what was fixed
 
 ## Manual Test Plan
 - (test plan steps, if visual files were changed)
@@ -27,6 +32,10 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 ## Clean
 Dimension1, Dimension2
 ```
+
+## Mandatory Tagging Convention
+
+Every finding line — in the round-1 chat output AND in the log — carries BOTH tags: severity (`[Critical]` / `[Important]` / `[Minor]`) and dimension (`[Security]`, `[Architecture]`, ...). A domain tag alone is not enough; trend metrics in the learning log count by severity and turn into estimates when the severity tag is missing.
 
 ## Follow-Up Audit Logic
 

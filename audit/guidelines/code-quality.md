@@ -422,3 +422,7 @@ managerEmail = employee.getManagerEmail()
 ---
 
 Continued: sections XVI (2026 Type-Safety Patterns) and XVII (Deprecated APIs) live in code-quality-2026.md.
+
+## Text-Parser Line-Ending Discipline
+
+**Every hand-written text parser MUST have a CRLF fixture in its tests.** Swift's `split(separator: "\n")` on `String` operates on Characters, and `\r\n` is a single grapheme cluster — a Character-level split finds ZERO separators in CRLF text and silently collapses the whole file into one unparseable line (this shipped twice before being caught, learning log 2026-07-09). Parse file formats on the UTF-8 view or raw bytes, strip a trailing `\r` explicitly, and assert LF/CRLF parity in tests. A parser with only LF-terminated test fixtures is untested for real-world input.

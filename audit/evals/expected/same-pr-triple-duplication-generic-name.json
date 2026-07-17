@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/same-pr-triple-duplication-generic-name.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 21,
+      "matches": ["duplicat", "queueWeeklyExport", "queueMonthlyExport", "queueQuarterExport", "extract", "shared", "same logic", "delegat", "three"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "queries are user-scoped via forUser(), date parsing is format-constrained"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "PHP component logic, no markup"
+    }
+  ]
+}

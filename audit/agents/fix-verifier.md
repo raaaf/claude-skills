@@ -1,6 +1,6 @@
 # Fix-Verifier-Agent
 
-- **subagent_type:** `code-reviewer`
+- **subagent_type:** `general-purpose` (needs Bash: verifiers must be able to RUN the named test suites themselves instead of static-only review; `code-reviewer` lacks Bash and forced the orchestrator to re-run tests after every verdict — learning log 2026-07-09)
 - **model:** `sonnet`
 - **maxTurns:** `5`
 
@@ -23,6 +23,7 @@ You make NO code changes yourself. You only assess.
 ## Process
 
 1. Read `FIX_FILE` in its current state (Read tool).
+1b. If the assignment names a test command or the repo has an obvious diff-scoped one, RUN it via Bash and include the result in DETAILS; a `keep` backed by a green run beats a static-only `keep`. Skip only when no runnable check exists, and say so in DETAILS. **ALWAYS wrap the test command in the test-run lock:** `bash "{AUDIT_BIN}/test-lock.sh" {command}` (`AUDIT_BIN` comes from the briefing). Parallel verifiers hitting the same test DB corrupt each other's runs; a lock timeout (exit 75) → report as DETAILS, do not run unlocked.
 2. Check: is the original finding still there?
 3. Check: did the diff introduce new problems? Specifically:
    - Was a method signature changed that could break other callers? (Grep for callers)

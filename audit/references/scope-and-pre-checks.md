@@ -12,6 +12,8 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 **Two-axis HUGE evaluation:** if only the file axis exceeds the threshold (>50 files) but the line count is under 20% of the line threshold (<1000), the script itself downgrades to `LARGE` and emits `DIFF_SIZE_NOTE=...`. Output the note in chat (warning: many small, logically separate changes) and continue normally — no manual override needed.
 
+**Delta-scope carve-out at HUGE (official pattern):** a HUGE diff does not have to hard-block when part of it is already covered. A previously audited slice may be excluded from scope if ALL of these hold: (1) the slice was audited clean the SAME day and its audit log under `.claude/audits/` is referenced, (2) the remaining diff contains NO changes to any file of that slice since its audit (verify via `git diff --stat {slice_audit_head}..HEAD -- {slice files}` → empty), (3) the exclusion is documented in the new audit log under `## Scope` (slice name, log reference, file count). If any condition fails, the hard block stands. This keeps "audit in slices, then push everything" workable without silently re-trusting stale results.
+
 **Why only two dimensions escalate:** Architecture (code reasoning across multiple modules) and Security (subtle attack vectors) benefit measurably from Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation are predominantly rule- or pattern-based — Sonnet is sufficient. Triage and fix agents stay on Haiku.
 
 ## Output of collect-scope.sh

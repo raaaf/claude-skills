@@ -73,6 +73,10 @@ grep -n "{snippet_aus_dem_hotspot}" {datei}
 ```
 The line-number value returned by `grep -n` is the source-file line. Only that value may appear in `hotspots`.
 
+## Fallback when triage yields nothing
+
+If the triage agent goes idle without returning the JSON (after the orchestrator's single idle re-prompt), the orchestrator does NOT keep retrying and does NOT block the run: the deterministic floor routing (`bin/check-skips.sh`, which derives run/skip from git file signals alone) IS the official fallback. The orchestrator dispatches `ROUTING_RUN` from the floor result and logs `TRIAGE=FALLBACK_FLOOR` in the routing line so the log shows the triage never contributed.
+
 ## Prohibited
 
 - Creating findings — that is the job of the specialized agents

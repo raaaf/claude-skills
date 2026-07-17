@@ -30,6 +30,12 @@ The prompt MUST include:
 > changes stay uncommitted, review happens before every commit."}
 > Before reporting, check every claim against a real tool result from this
 > session — clearly name any failed or skipped verifications.
+> Before reporting, run the same-diff duplication self-check on your own
+> diff, at BLOCK level: if the same method/logic sequence OR the same
+> guard/resolver/error-mapping block appears at >= 2 places you touched
+> (even inside two otherwise different method bodies), extract or delegate
+> the shared logic as part of the task instead of finishing. The check is
+> structural (statement sequence, branching shape), not name-based.
 > Answer exactly in the report format.
 
 3. The report format:

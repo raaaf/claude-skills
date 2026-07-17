@@ -1,0 +1,10 @@
+{
+  "fixture": "security/hash-verified-earlier-in-file.php",
+  "must_find": [],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "pending_guest_token is written as a SHA-256 hash computed earlier in the same file; flagging plaintext storage here reproduces the 2026-07-09 false positive — check the whole file, not just the write line"
+    }
+  ]
+}

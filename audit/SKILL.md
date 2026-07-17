@@ -141,6 +141,15 @@ echo "$ALLE_DATEIEN" | tr '\n' '\0' | xargs -0 bash "$AUDIT_BIN/cache-check.sh"
 
 `CACHED_FILES` are removed from the triage input. `CACHED_FINDINGS` are carried over. Helps mainly between audit runs.
 
+**Step B.6 — Wave HEAD pinning (EVERY round, before dispatch)**
+
+```bash
+WAVE_HEAD=$(git rev-parse HEAD)
+[ "$WAVE_HEAD" = "$AUDIT_BASE_HEAD" ] || echo "WARN: HEAD drift before wave (base $AUDIT_BASE_HEAD, now $WAVE_HEAD)"
+```
+
+On drift: re-run `collect-scope.sh` and confirm the new base BEFORE dispatching — do not wait for the Phase 4 drift check (a parallel session committing mid-audit otherwise invalidates worker findings silently). Pass `WAVE_HEAD` into every worker briefing (placeholder in `agents/prompt-template.md`); workers compare it against their own `git rev-parse HEAD` first and return `WORKER_RESULT=HEAD_DRIFT` instead of findings when it differs. A `HEAD_DRIFT` response → treat like the drift warning above: re-pin, re-collect scope, re-dispatch that wave once.
+
 **Step C.0 — Triage agent (round 1 only)**
 
 From round 2 on, reuse the `TRIAGE_RESULT` from round 1 — fixes practically never change the routing decision.
@@ -182,6 +191,8 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 - `DATEILISTE` + `GUIDELINE_MATCHES` (for orientation; the worker loads only the listed guidelines, see prompt-template)
 
 **NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round).
+
+**Idle watchdog (applies to ALL dispatched agents — triage, workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT/JSON message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **triage** → deterministic floor routing is the official fallback (see `agents/0-triage.md`, log `TRIAGE=FALLBACK_FLOOR`); **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
 
 **Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Agent 1 (Architecture) and Agent 2 (Security) explicitly on Opus. Other agents use their `agents/*.md` default.
 

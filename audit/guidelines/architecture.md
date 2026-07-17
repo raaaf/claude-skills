@@ -333,3 +333,8 @@ $page->save();
 ```
 
 `array_replace_recursive($defaults, $existing)` keeps every admin-edited value and only fills keys the row lacks. Re-runnable, deploy-safe. Pairs with the CMS-fallback rule in ui-ux-patterns.md (a stale key plus a `??` fallback is the exact combo that ships an empty heading).
+
+## XVII. Shared Utilities & Constants — Grep First, Roll Out Fully
+
+- Before writing a new handler for audio/share/navigation glue in a view: grep for an existing shared utility first (e.g. `WordAudioShare.swift`); duplication across sibling views of the same feature pair is a recurring failure mode.
+- When a change introduces a new shared constant/utility or centralizes a pattern: immediately `grep -rn` the OLD pattern across the ENTIRE repo — including `scripts/`, `tests/`, seeders, and tooling, not just the main source directory — and migrate every occurrence in the same change. Partial rollouts resurface as duplicate findings in later audit rounds.

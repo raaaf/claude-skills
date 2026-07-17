@@ -77,7 +77,7 @@ Agent(
 )
 ```
 
-Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, respect STOP conditions instead of improvising, check every report claim against a real tool result, exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
+Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, respect STOP conditions instead of improvising, check every report claim against a real tool result, same-diff duplication self-check at block level before reporting (identical guard/resolver/logic blocks in two places of the executor's own diff → extract, even inside otherwise different method bodies — the audit-side check cannot catch executor duplicates early), exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 
 Resolve the reference (same candidate logic as full-audit → audit):
 

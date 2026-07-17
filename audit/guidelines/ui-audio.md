@@ -22,6 +22,12 @@
 - Provide independent volume control (not tied to system volume)
 - Default volume must be subtle (around 0.3), never 1.0
 
+## Speech Synthesis / TTS
+
+- Audio previews (voice samples, pronunciation playback, auto-play on selection) MUST NOT play while a screen reader is announcing: gate playback behind ONE central guard (service-level check such as `UIAccessibility.isVoiceOverRunning`), never per-call-site checks.
+- Route every preview/auto-play through one shared service method (pattern: `TTSService.speakVoicePreview`) so the guard exists exactly once; flag any view that talks to the synthesizer directly.
+- Stop ongoing speech on view disappear and when screen-reader focus moves.
+
 ## Sound Design Rules
 
 - No sound on high-frequency interactions (typing, scrolling, hovering, keyboard nav)

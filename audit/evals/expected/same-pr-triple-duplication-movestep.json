@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/same-pr-triple-duplication-movestep.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 20,
+      "matches": ["duplicat", "moveStep", "moveJourneyStep", "extract", "shared", "same logic", "delegat"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "queries are user-scoped via forUser(), date parsing is format-constrained"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "PHP component logic, no markup"
+    }
+  ]
+}

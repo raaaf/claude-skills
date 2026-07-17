@@ -14,6 +14,7 @@ Read this file when the rules in the main skill aren't top of mind. Each line ma
 - **"In round 2, Architecture and Code Quality are enough"** → WRONG. In EVERY round, ALL subagents marked relevant by triage are dispatched. A security fix can introduce a performance problem. An architecture refactor can break a11y.
 - **"The validator is overkill, I trust the subagents"** → WRONG. LLM findings hallucinate file paths, line numbers, and API signatures. Step D.5 is mandatory.
 - **"This finding looks off, I'll just fix it anyway"** → WRONG. Hallucination validator first. If the file/line doesn't exist: discard the finding.
+- **"An agent went idle without a report, I'll wait / keep nudging it"** → WRONG. The official recovery path is: exactly ONE re-prompt via SendMessage, then the per-agent-type failure path from SKILL.md Step C (triage → floor routing, worker → skip dimension, fix agent → check `git diff` then re-dispatch once, verifier → `RECOMMEND=patch`). Prevention (REPORT_DELIVERY block in the prompt template) demonstrably does not catch every case — recovery is part of the loop, not an exception.
 
 ## Test Plan
 

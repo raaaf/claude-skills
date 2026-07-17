@@ -73,6 +73,8 @@ No affected tests found? → skip the test step, note in the audit log: `Tests: 
 
 **Do not use in /audit:** `composer test`, `npm test`, `npm run test` — these typically run the full suite. Call the runner directly with file arguments instead.
 
+**Test-run lock (MANDATORY for every test invocation — orchestrator, fix agents, verifiers):** wrap every runner call in `bash "$AUDIT_BIN/test-lock.sh" {command}` (e.g. `bash "$AUDIT_BIN/test-lock.sh" php artisan test {AFFECTED_TEST_FILES}`). Two agents running tests concurrently against the same DB corrupt each other's fixtures; the lock is a per-repo semaphore (mkdir spinlock, 15 min TTL, 10 min wait timeout), not a convention. Pass the absolute `AUDIT_BIN` path into every agent briefing that may run tests.
+
 On failures: fix, re-run (only the affected tests, not the full suite). Repeat until green or clearly not auto-fixable. Add unfixable failures as **Critical**.
 
 ### /full-audit: Full Suite

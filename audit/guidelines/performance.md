@@ -502,3 +502,12 @@ Use sparingly — too many `preconnect` hints (>4) compete for bandwidth.
 - **Animating layout properties** (`top`, `left`, `width`) instead of `transform` + `opacity` — still happens, still costs
 - **Unbounded `useEffect` deps arrays** — every render triggers refetch
 - **Heavy useState in App-level component** — every state change re-renders the whole tree; lift state down or use Zustand/Jotai
+
+### Swift Hot-Path Pitfalls
+
+Observed repeatedly in native-macOS audits (learning log 2026-07-09):
+
+- **Character-based String APIs on byte-oriented data.** `split(separator: "\n")`, `trimmingCharacters`, and friends operate on grapheme clusters, allocate per line, and mis-handle CRLF (`\r\n` is ONE Character). For file formats (G-code, STL, CSV) parse on the UTF-8 view or raw bytes.
+- **`Data.firstIndex(of:)` in scan loops.** The generic Collection scan is ~25x slower than a `withUnsafeBytes` + `memchr` scan (measured). For chunked parsers, translate raw-buffer offsets back to slice-relative indices carefully — `Data` slices keep non-zero `startIndex`.
+- **Dictionary copy-on-write on accumulate.** `var bucket = dict[key] ?? default; bucket.x.append(...); dict[key] = bucket` copies the whole accumulated value per iteration (refcount 2 at append time) — O(n²) per bucket. Use `dict[key, default: ...].x.append(...)` (`_modify` accessor, in place).
+- **Per-iteration array literals in hot loops.** `for v in [a, b, c]` heap-allocates each pass; unroll or use tuples in million-iteration loops.

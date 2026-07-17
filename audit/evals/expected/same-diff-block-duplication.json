@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/same-diff-block-duplication.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 23,
+      "matches": ["duplicat", "resolver", "guard", "extract", "shared", "same block", "private method"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "resolver is user-scoped via forUser(), no injection surface"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "PHP component logic, no markup"
+    }
+  ]
+}

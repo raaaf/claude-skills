@@ -23,6 +23,7 @@ XSS (unescaped output), missing auth checks in actions/endpoints, SQL injection,
 - **XSS/injection findings:** First cross-check the associated store/form-request validation or sanitization (request class, `SanitizesInput` trait, validation rules). If the input is already validated/sanitized there, no finding.
 - **Enum findings:** Before flagging, check whether the referenced enum case actually exists (`grep app/Enums/`). Findings against non-existent cases are hallucinations.
 - **Operator render risk in Alpine `x-data`:** Only flag `>`/`>=` — `<`/`<=` are safe (gotcha #7 in project memory).
+- **Plaintext-storage findings:** Before flagging "value stored in plaintext", grep the ENTIRE file for `hash(`, `sha256`, `Hash::` applied to the same variable. A write that looks plaintext at line N often stores a value hashed earlier in the same file (same-file variant of the source-of-truth check; 2026-07-09 false positive: `pending_guest_token` hashed at ResolveEventAccess.php:153/208, write at :227 looked plaintext).
 
 ## Project-Specific Context
 
