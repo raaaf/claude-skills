@@ -2,11 +2,12 @@
 name: ship
 disable-model-invocation: true
 description: |
-  Full commit-audit-push-deploy pipeline in one command. Stages tracked changes, generates
-  a conventional commit message (or uses the provided one), enforces audit before push,
-  deploys via project-specific method, and verifies the deploy. Use when ready to ship
-  completed work. Push requires a fresh audit marker; bypassing the audit is only
-  possible as an explicit, logged user decision, never silently.
+  Full commit-audit-test-push-deploy pipeline in one command. Stages tracked changes, generates
+  a conventional commit message (or uses the provided one), enforces audit and (where the project
+  configures one) the full test suite before push, deploys via project-specific method, and
+  verifies the deploy. Use when ready to ship completed work. Push requires a fresh audit marker
+  and a green suite; bypassing either is only possible as an explicit, logged user decision,
+  never silently.
 when_to_use: "/ship, ready to ship, commit and deploy, commit push deploy, ship this, release this"
 argument-hint: "[optional: commit message]"
 arguments: [message]
@@ -22,7 +23,8 @@ allowed-tools:
 
 # Ship
 
-Commit -> Audit -> Push -> Deploy -> Verify. In that order. No skipping.
+Commit -> Audit -> Tests -> Push -> Deploy -> Verify. In that order. No skipping.
+(The test phase runs only when the project sets `test-command:` in `.claude/ship.md`.)
 
 ## Phase 0: Pre-flight
 
@@ -40,9 +42,10 @@ If no tracked changes and no staged files: report and stop. Nothing to ship.
 Detect deploy method and health check URL (check in priority order):
 
 ```bash
-# 1. Project config wins — read both values if present
+# 1. Project config wins — read the values if present
 DEPLOY_COMMAND=$(grep '^deploy-command:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
 HEALTH_URL=$(grep '^health-check:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
+TEST_COMMAND=$(grep '^test-command:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
 
 # 2. Detect deploy method from known files
 if [ -z "$DEPLOY_COMMAND" ]; then
@@ -221,6 +224,25 @@ If marker missing or stale: AskUserQuestion:
 - "Push without audit (risky)" → log the bypass and continue with a warning in the output
 
 Never silently skip the audit. The bypass must be an explicit user choice.
+
+## Phase 2b: Test Gate
+
+Only when `TEST_COMMAND` is set (`test-command:` in `.claude/ship.md`). Skip silently otherwise.
+
+```bash
+eval "$TEST_COMMAND"
+```
+
+Green → continue to push. Red → STOP. Report the failing tests and do not push. Fixing them is
+new work: the user commits the fixes, then re-runs `/ship` (which re-audits and re-tests).
+
+Why this phase exists: `/audit` deliberately runs only the *affected* tests, on the assumption
+that CI runs the full suite on every push. That assumption does not hold for repos whose CI only
+runs on pull requests while work is pushed straight to `main` — there, nothing would ever run the
+full suite before production. `TEST_COMMAND` closes that hole.
+
+Never silently skip a red suite. A bypass must be an explicit user choice, logged like the audit
+bypass.
 
 ## Phase 3: Push
 
