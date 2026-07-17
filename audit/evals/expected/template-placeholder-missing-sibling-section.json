@@ -1,0 +1,21 @@
+{
+  "fixture": "architecture/template-placeholder-missing-sibling-section.md",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 30,
+      "matches": ["placeholder", "sibling", "DECIDED_TRADEOFFS", "missing", "both sections", "batch", "incomplete"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "markdown template, no executable surface"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "no markup, no UI"
+    }
+  ]
+}

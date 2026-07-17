@@ -231,10 +231,10 @@ Output format:
 ## Audit Round {RUNDE}/2 — X files, Y commits since origin/{branch}
 
 ### Critical
-- [Dimension] file:line — Description
+- [Critical][Dimension] file:line — Description
 
 ### Important / Minor / Sauber
-[same structure]
+[same structure, tag matching the header]
 ```
 
 **Step D.5 — Hallucination validator (MANDATORY before every fix)**

@@ -21,6 +21,8 @@ oklch(L C H / alpha)  /* alpha via slash, never comma */
 | Hue drift threshold | > 10 degrees spread across palette steps = visible drift |
 | Contrast fix | Adjust L only. Chroma has negligible effect on contrast |
 
+These L-thresholds are heuristics for picking a starting point, not proof of pass/fail. Before emitting or fixing a contrast finding, compute the actual ratio (WCAG) or Lc (APCA), especially for high-chroma colors near L 0.6, where perceived contrast can diverge from the L value alone.
+
 ## II. Contrast: WCAG Is the Gate, APCA Is the Advisor
 
 WCAG 2.x ratios remain the blocking criterion (legal conformance, see accessibility guideline). APCA (Accessible Perceptual Contrast Algorithm) is more perceptually accurate and pairs naturally with OKLCH; use it as a secondary signal, severity Minor at most.

@@ -48,6 +48,7 @@ Key invariants:
 | `bash full-audit/bin/resume-check.sh FILE` | Dirty-check every clean batch against the HEAD recorded at completion, emit `BATCH_DIRTY\|BATCH_CLEAN` per batch |
 | `echo '<triage-json>' \| bash audit/bin/check-skips.sh [framework]` | Deterministic sanity-floor over the haiku triage routing: derive file signals from git, force obvious wrong skips back on, emit the `Routing:` line |
 | `bash audit/bin/match-guidelines.sh <guidelines-dir>` | Per-file guideline selection: which guidelines' `applies_to` ERE matches the diff (emit `name<TAB>priority<TAB>scoped\|always`); no-frontmatter guidelines are always applicable |
+| `bash audit/bin/test-lock.sh <cmd...>` | Serialize test runs across parallel fix-verifiers (mkdir spinlock, per-repo, 15min TTL; exit 75 on lock timeout) |
 
 ## Conventions
 
@@ -107,7 +108,7 @@ Projects can override globals by adding files to their own `.claude/`:
 
 ## Gotchas
 
-- **Per-file guideline selection (`applies_to` + `priority`).** A guideline may declare `applies_to: <ERE>` (matched against the diff's changed file paths) and `priority: non_negotiable|mandatory|recommended` in YAML frontmatter. `match-guidelines.sh` (SKILL.md Phase 1) emits which guidelines match the diff; workers load only the listed ones (prompt-template.md "Guideline-Scope" rule) and use `priority` as a severity anchor (non_negotiable→Critical, mandatory→Important, recommended→Minor). **Backward compatible:** a guideline without `applies_to` is always applicable, so migration is incremental and never silently drops a guideline. Migrated so far: `atomic-design`, `color`, `data-migrations`, `native-mobile`, `seo`, `typography`, `ui-animation`; project-level (`theme-fork`) and global (`security`, `code-quality`, …) stay always-on. Concept borrowed from mcp-context-toolkit (`query_rules_for_file`); single ERE per file, no YAML-list parser. bash 3.2 safe.
+- **Per-file guideline selection (`applies_to` + `priority`).** A guideline may declare `applies_to: <ERE>` (matched against the diff's changed file paths) and `priority: non_negotiable|mandatory|recommended` in YAML frontmatter. `match-guidelines.sh` (SKILL.md Phase 1) emits which guidelines match the diff; workers load only the listed ones (prompt-template.md "Guideline-Scope" rule) and use `priority` as a severity anchor (non_negotiable→Critical, mandatory→Important, recommended→Minor). **Backward compatible:** a guideline without `applies_to` is always applicable, so migration is incremental and never silently drops a guideline. Migrated so far: `atomic-design`, `color`, `data-migrations`, `docs-sync`, `native-mobile`, `seo`, `typography`, `ui-animation`; project-level (`theme-fork`) and global (`security`, `code-quality`, …) stay always-on. Concept borrowed from mcp-context-toolkit (`query_rules_for_file`); single ERE per file, no YAML-list parser. bash 3.2 safe.
 - **Triage routing has a deterministic floor + is now visible.** The triage agent (haiku) decides which workers run; haiku is the cheapest model gating the whole audit, so `audit/bin/check-skips.sh` (SKILL.md Schritt C.0.5) derives file-type signals from git and forces obvious wrong skips back on (frontend files present but a11y/ui/ux off, etc.) before dispatch. It also emits a `Routing:` line printed every round and written to the audit log under `## Routing`, so every skip is visible with a reason. The floor only forces dims with a clear file signal (a11y/ui/ux/copy/typography/architecture/code_quality/security); perf/seo/animation/docs_sync stay with the triage to avoid false floors. Fails open (all dims run) if jq is missing or the JSON is unparseable. bash 3.2 safe.
 - **Verify-by-measurement is opt-in and deterministic.** Performance fixes are only measured (baseline before / re-measure after / verdict from the delta) when `PERF_MEASURE_CMD` or a `perf-measure:` line in `.claude/audit-guidelines.md` is set; the command must print exactly one `PERF_METRIC=<number>` line (lower = better). The before/after comparison is plain Bash in `audit/SKILL.md` Schritt E/E.5, not an LLM judgment — by design (Bash decides branching). No command set → unchanged fix-verifier peer-review. `--detect` emits a `printf %q`-quoted assignment so `eval` reconstructs commands with spaces; don't "simplify" it back to a bare `echo`. Full flow + honest limits (per-round aggregate, not per-finding): `audit/references/perf-measurement.md`. Inspired by AvdLee's Xcode-Build-Optimization skill.
 - **`.claude/` write block applies in foreground too.** Earlier learning agents tried `mode: bypassPermissions` and still failed. The fix is always: subagent returns structured output, orchestrator parses + writes.
@@ -142,6 +143,16 @@ Use `/write-a-skill` if available, or follow this minimum:
 ## Adding a 2026 best-practice section to an existing guideline
 
 Edit `audit/guidelines/{name}.md`. Append a new Roman-numeral section (e.g. `## XVI. New Topic (2026)`). Keep the file under 500 lines — if it would go over, split into a continuation file (`{name}-2026.md`, see `code-quality-2026.md`) and reference both in the worker's agent file. Don't rewrite existing content — additive only unless something is genuinely wrong.
+
+## Audit Context
+
+- Markdown + Bash skills repo, no runtime, no dependencies. Findings about missing package manifests, test frameworks, or CI configs for the skills themselves are noise.
+- **Public repo on GitHub.** Secrets/keys/tokens anywhere in the diff are always Critical. Audit logs under `.claude/audits/` are local-only (gitignored) and reference `file:line` instead of reproducing content.
+- `audit/bin/*.sh` and every hook must stay **bash 3.2 compatible** (macOS default): no `declare -A`, no `readarray`, no `${var,,}`. Exception: `audit/evals/run-evals.sh` (dev-only, requires bash 4+).
+- German-named contract identifiers (`RUNDE`, `SAUBER`, `BEREITS_GEFIXT`, `{DATEILISTE}`, ...) are deliberate cross-file contracts, NOT English-migration violations (see Conventions).
+- Eval fixtures under `audit/evals/fixtures/` deliberately contain bugs, vulnerabilities, and anti-patterns — they are test data, never findings. Same for `evals/expected/*.json`.
+- Skill bodies/agents/references/guidelines are English; German appears only in `when_to_use` triggers, runtime user-facing strings, and personal skills.
+- Deliberate decision: orchestrator writes, subagents return (subagents cannot write under `.claude/`); `exit 2` blocking in the audit Stop hook is intentional, `additionalContext` would not block.
 
 ## Release process
 

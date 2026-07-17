@@ -159,7 +159,7 @@ img.card-media {
 ```
 
 Rules:
-- Pure black/white with low alpha only. Tinted neutrals (slate-900, zinc-900, `#111827`) pick up the surface color and read as dirt on the image edge — flag them.
+- Pure black/white with low alpha only. Tinted neutrals (slate-900, zinc-900, `#111827`) pick up the surface color and read as dirt on the image edge — flag them. Scope: this 1px outline only. `box-shadow` color follows the Shadows section's deep-neutral rule below — the two rules do not conflict.
 - Never the accent or brand color; the outline is a neutral separator.
 - `outline` + negative offset instead of `border`: no added width/height.
 
@@ -174,9 +174,9 @@ Never use a single flat `box-shadow`. Layer 3+ shadows with increasing blur and 
 ```css
 .card {
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 4px 8px rgba(0, 0, 0, 0.04),
-    0 12px 24px rgba(0, 0, 0, 0.03);
+    0 1px 2px rgba(17, 24, 39, 0.06),
+    0 4px 8px rgba(17, 24, 39, 0.04),
+    0 12px 24px rgba(17, 24, 39, 0.03);
 }
 ```
 
@@ -205,9 +205,9 @@ Never use a single flat `box-shadow`. Layer 3+ shadows with increasing blur and 
 
 ```css
 :root {
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);   /* card */
-  --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.08);   /* dropdown */
-  --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.12);  /* modal */
+  --shadow-1: 0 1px 2px rgba(17, 24, 39, 0.05);   /* card */
+  --shadow-2: 0 2px 8px rgba(17, 24, 39, 0.08);   /* dropdown */
+  --shadow-3: 0 8px 24px rgba(17, 24, 39, 0.12);  /* modal */
 }
 ```
 
@@ -230,11 +230,11 @@ Never use a single flat `box-shadow`. Layer 3+ shadows with increasing blur and 
 
 A polished button uses 6 layered techniques:
 
-1. **Outer cut shadow** — `0 0 0 0.5px rgba(0,0,0,0.3)` cuts button into surface
+1. **Outer cut shadow** — `0 0 0 0.5px rgba(17,24,39,0.3)` cuts button into surface
 2. **Inner ambient highlight** — `inset 0 0 0 1px rgba(255,255,255,0.04)` environmental light
 3. **Inner top highlight** — `inset 0 1px 0 rgba(255,255,255,0.07)` primary light from above
 4. **Layered depth shadows** — 3+ external shadows for natural lighting
-5. **Text drop-shadow** — `text-shadow: 0 1px 1px rgba(0,0,0,0.15)` on text/icons
+5. **Text drop-shadow** — `text-shadow: 0 1px 1px rgba(17,24,39,0.15)` on text/icons
 6. **Subtle gradient background** — If you can tell there's a gradient, it's too much
 
 ```css
@@ -242,13 +242,13 @@ A polished button uses 6 layered techniques:
   background: linear-gradient(to bottom,
     color-mix(in srgb, var(--gray-12) 100%, white 4%), var(--gray-12));
   box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.3),
+    0 0 0 0.5px rgba(17, 24, 39, 0.3),
     inset 0 0 0 1px rgba(255, 255, 255, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 1px 2px rgba(0, 0, 0, 0.1),
-    0 2px 4px rgba(0, 0, 0, 0.06),
-    0 4px 8px rgba(0, 0, 0, 0.03);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+    0 1px 2px rgba(17, 24, 39, 0.1),
+    0 2px 4px rgba(17, 24, 39, 0.06),
+    0 4px 8px rgba(17, 24, 39, 0.03);
+  text-shadow: 0 1px 1px rgba(17, 24, 39, 0.15);
 }
 ```
 

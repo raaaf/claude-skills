@@ -143,10 +143,11 @@ runs the project-specific deploy command, and verifies with a health check.
 1. Phase 0: Pre-flight (git status, detect deploy method from `fly.toml`/`vapor.yml`/`deploy.sh`/`.vercel`/CI, or save to `.claude/ship.md` on first run)
 2. Phase 1: Commit (diff summary, generate conventional commit message, AskUserQuestion to confirm or edit, `git add -u`, sensitive-file check, `git commit`)
 3. Phase 2: Audit gate (marker fresh < 30 min? skip. Stale or missing? AskUserQuestion: run `/audit` now or bypass explicitly)
-4. Phase 3: Push (`git push`, auto-handles no-upstream and diverged branches)
-5. Phase 4: Deploy (run detected command; skip if CI/CD deploys on push)
-6. Phase 5: Verify (`gh run list` + health check if URL configured)
-7. Phase 6: Failure handling (last 20 lines of output + `/diagnose` pointer)
+4. Phase 2b: Test gate (runs `test-command:` from `.claude/ship.md` if set, skipped silently otherwise; red suite stops the push)
+5. Phase 3: Push (`git push`, auto-handles no-upstream and diverged branches)
+6. Phase 4: Deploy (run detected command; skip if CI/CD deploys on push)
+7. Phase 5: Verify (`gh run list` + health check if URL configured)
+8. Phase 6: Failure handling (last 20 lines of output + `/diagnose` pointer)
 
 **Arguments:**
 ```bash
@@ -158,6 +159,7 @@ runs the project-specific deploy command, and verifies with a health check.
 ```
 deploy-command: fly deploy
 health-check: https://myapp.fly.dev/health
+test-command: php artisan test   # optional, enables Phase 2b Test gate
 ```
 
 ### `/plan-it` — Iterative Plan Builder
@@ -334,9 +336,9 @@ Every skill dispatches a learning agent (Sonnet) after each run.
 bash ~/.claude/skills/audit/evals/run-evals.sh
 ```
 
-Fixtures live under `audit/evals/fixtures/{security,a11y,performance}/`, expected findings under `audit/evals/expected/`. Three example fixtures (Laravel SQLi, missing-aria Blade, Eloquent N+1) ship with the repo. Add a new fixture every time the audit misses a real-world bug — over time the eval becomes a real benchmark.
+Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. Currently 29 fixtures across 8 categories (a11y, architecture, correctness, performance, quality, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug — over time the eval becomes a real benchmark.
 
-Status: scaffold. Three fixtures are a smoke test, not a benchmark.
+Status: growing eval suite, not yet a stable benchmark.
 
 ## Development
 

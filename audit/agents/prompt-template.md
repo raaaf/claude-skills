@@ -54,6 +54,8 @@ Format (every finding MUST have a confidence label):
 **Important:** [file:line] (confidence: high|medium|low) problem + recommendation
 **Minor:** [file:line] (confidence: high|medium|low) suggestion
 
+The severity tag (Critical/Important/Minor) is MANDATORY on every finding — also for small or UI-only diffs. Trend metrics are computed from these tags; a finding without a severity tag is discarded by the orchestrator.
+
 Confidence rules:
 - `high` — problem verified directly in the code read, fix obvious
 - `medium` — problem clear, but fix needs project-specific judgment

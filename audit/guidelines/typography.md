@@ -223,7 +223,7 @@ Web font format: `.ttf`/`.otf` served on the web is a finding; use `.woff2`.
 
 ## XII. Mobile Inputs and Text Scaling (2026)
 
-**iOS input zoom:** focusing an input with text below `16px` zooms the whole page in iOS Safari. Inputs need `16px` on mobile viewports (`text-base sm:text-sm` in Tailwind). The `maximum-scale=1` viewport meta is NOT a fix: Safari ignores it for pinch zoom but every other browser honors it and blocks zooming, which fails WCAG 1.4.4 — flag `maximum-scale=1` as Important wherever it appears.
+**iOS input zoom:** focusing an input with text below `16px` zooms the whole page in iOS Safari. Inputs need `16px` on mobile viewports (`text-base sm:text-sm` in Tailwind). The `maximum-scale=1` viewport meta is NOT a reliable fix either way: Safari and modern Chrome/Firefox mostly ignore it for pinch zoom, but some browsers and WebViews still honor it and block zooming, which fails WCAG 1.4.4 wherever it is honored — flag `maximum-scale=1` as Important wherever it appears.
 
 **Layout must scale with text.** Users change text size (browser setting, Dynamic Type). Spacing that must track text (line boxes, gaps inside text components, max-width of text columns) belongs in `rem`/`em`, not fixed px, so a larger base font does not break the layout.
 

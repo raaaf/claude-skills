@@ -349,6 +349,22 @@ Animations that users cannot control are a barrier — they cause discomfort for
 </div>
 ```
 
+**Live regions must stay in the DOM — never `hidden`/`display:none`.** Screen readers only announce changes inside a region that is already present and rendered when the change happens. A region that is toggled into existence (or unhidden) together with its message announces nothing.
+
+```html
+<!-- BEFORE (broken): region enters the DOM with the message — no announcement -->
+@if ($saved)
+    <div aria-live="polite">Gespeichert.</div>
+@endif
+
+<!-- AFTER (correct): region is always rendered, only the content changes -->
+<div aria-live="polite">
+    @if ($saved) Gespeichert. @endif
+</div>
+```
+
+The same applies to `x-show`/`hidden` on the region itself: hide or empty the *content*, never the live region container. (Recurring bug class: aria-live regions rendered conditionally, 2026-06-14.)
+
 **Before adding a new live region, check existing announcement channels.** If a success toast (`role="status"`) or error container (`role="alert"`) already announces the same event, a second `aria-live` wrapper double-announces it in screen readers. Wire the message into the existing channel instead; add a new `aria-live` region only when no existing channel carries the information.
 
 ## X. Tables

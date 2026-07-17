@@ -10,6 +10,8 @@ Keep project documentation current and consistent in style. Check `README.md`, `
 
 **Complete guidelines:** Read `guidelines/documentation.md` in the skill directory and check against all rules described there (structure standards for README/CLAUDE.md, sync rules for .env.example, style rules per Strunk/Caveman).
 
+**Wizard/config/schema diffs:** If `guidelines/docs-sync.md` appears in GUIDELINE_MATCHES, read it and run its checklist (wizard steps, config keys, migrations, routes → which docs must be checked for drift).
+
 ## What to Check (Short Version)
 
 **Sync against code (MANDATORY):**
@@ -18,6 +20,7 @@ Keep project documentation current and consistent in style. Check `README.md`, `
 - New top-level dependencies in `package.json`/`composer.json`/`pyproject.toml` → stack section in CLAUDE.md current?
 - Do install/run commands in the README still work (no outdated `npm run dev` if the script was deleted)?
 - Do referenced paths/files still exist?
+- Skill roster or skill descriptions in the diff (SKILL.md frontmatter, new/removed skills)? → check `.claude-plugin/plugin.json` and `marketplace.json` for the same skill list/descriptions; a roster change that skips the plugin manifests is a `[Docs]` finding.
 
 **Test-count drift (UNCONDITIONAL, every run):**
 Regardless of whether the diff touches tests: determine the real test count and diff it against the numbers stated in docs. Test-count drift is a 5x repeat offender.
