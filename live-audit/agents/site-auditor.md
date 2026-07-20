@@ -57,36 +57,106 @@ Wenn neue Suppressions: `suppressions.json` updaten (Schritt 8).
 
 ### Schritt 3: PSI API abrufen
 
-Für jede Strategy in `PSI_STRATEGY`, sequenziell mit 2s Delay:
+**NIEMALS `WebFetch` fuer PSI benutzen.** WebFetch expandiert keine Shell-Variablen (der Key ginge als Literal `$GOOGLE_PSI_API_KEY` an die API) und liefert eine LLM-Zusammenfassung statt rohem JSON. Beides fuehrt dazu, dass keine echten Messwerte ankommen.
 
+Fuer jede Strategy in `PSI_STRATEGY`, sequenziell mit 2s Delay, **per Bash**:
+
+```bash
+PSI_KEY="${GOOGLE_PSI_API_KEY:-$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/settings.json')))['env'].get('GOOGLE_PSI_API_KEY',''))" 2>/dev/null)}"
+[ -n "$PSI_KEY" ] || { echo "PSI_ERROR=true reason=no-key"; exit 0; }
+
+# curl MUSS direkt nach python3 gepipet werden. Der Umweg ueber eine Variable
+# (RAW=$(curl ...); echo "$RAW" | ...) zerstoert die Backslash-Escapes im JSON
+# und macht die Antwort unparsebar.
+for STRATEGY in {PSI_STRATEGY als space-separierte Liste, z.B. mobile desktop}; do
+  curl -s --max-time 120 \
+    "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{SITE_URL}&strategy=$STRATEGY&category=performance&category=accessibility&category=seo&key=$PSI_KEY" \
+  | STRATEGY="$STRATEGY" python3 -c '
+import json,os,sys
+s=os.environ["STRATEGY"]
+try: d=json.loads(sys.stdin.read())
+except Exception: print("PSI_ERROR=true strategy=%s reason=unparseable"%s); sys.exit()
+if "error" in d:
+    msg=d["error"].get("message","")
+    code=d["error"].get("code","")
+    print("PSI_429=true strategy=%s"%s if code==429 or "Quota" in msg else "PSI_ERROR=true strategy=%s reason=%s"%(s,msg[:60]))
+    sys.exit()
+lr=d["lighthouseResult"]
+def cat(c):
+    v=lr["categories"].get(c,{}).get("score")
+    return "NA" if v is None else round(v*100)
+def num(a,div=1):
+    v=lr["audits"].get(a,{}).get("numericValue")
+    return "NA" if v is None else round(v/div,2)
+print("PSI_OK strategy=%s finalUrl=%s perf=%s a11y=%s seo=%s lcp=%s fcp=%s cls=%s"%(
+    s, lr.get("finalUrl","?"), cat("performance"), cat("accessibility"), cat("seo"),
+    num("largest-contentful-paint",1000), num("first-contentful-paint",1000),
+    num("cumulative-layout-shift")))
+'
+  sleep 2
+done
 ```
-WebFetch: https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{SITE_URL}&strategy={strategy}&category=performance&category=accessibility&category=seo&key=$GOOGLE_PSI_API_KEY
-```
 
-`$GOOGLE_PSI_API_KEY` kommt aus der Umgebung (gesetzt in `~/.claude/settings.json` env). Ohne Key antwortet die PSI API mit 429 (Quota 0 fuer anonyme Aufrufe).
+Uebernimm **ausschliesslich** die Werte aus den `PSI_OK`-Zeilen dieser Ausgabe.
 
-Bei HTTP 429: Strategy skippen, `PSI_429=true` setzen, weitermachen.
-Bei Timeout/Fehler: `PSI_ERROR=true` setzen.
+Bei `PSI_429=true`: Strategy skippen, weitermachen.
+Bei `PSI_ERROR=true`: Strategy skippen, Flag setzen.
 
-Aus dem JSON extrahieren:
-- `lighthouseResult.categories.performance.score` × 100 → Performance Score
-- `lighthouseResult.categories.accessibility.score` × 100 → Accessibility Score
-- `lighthouseResult.categories.seo.score` × 100 → SEO Score
-- `lighthouseResult.audits.largest-contentful-paint.numericValue` / 1000 → LCP in Sekunden
-- `lighthouseResult.audits.cumulative-layout-shift.numericValue` → CLS
-- `lighthouseResult.audits.first-contentful-paint.numericValue` / 1000 → FCP in Sekunden
+**Harte Regel, Messwerte werden nie erfunden.** Wenn fuer eine Strategy keine `PSI_OK`-Zeile vorliegt, gibt es fuer diese Strategy keine Werte: keine Schaetzung, keine Uebernahme aus einem frueheren Run, keine Uebernahme von einer anderen Site. Betroffene Metriken im Report als `n/a` melden und `PSI_429`/`PSI_ERROR` in `WARNINGS` ausgeben. Ein Finding darf ohne Messwert weder erstellt noch als behoben verbucht werden. Ein bestehender `pending_findings`-Eintrag bleibt in dem Fall unveraendert stehen.
+
+(Am 2026-07-20 hat ein Site-Auditor die Werte einer anderen Site gemeldet und dadurch eine echte Performance-Regression faelschlich als "behoben" nach `state.json` geschrieben. Genau das verhindert diese Regel.)
 
 ### Schritt 4: SSL prüfen
 
+**Auch hier kein `WebFetch`.** WebFetch kann kein HEAD absetzen und keine Zertifikatsdaten lesen. Der Check laeuft per Bash:
+
+```bash
+HOST="{SITE_URL}"   # ohne Schema
+
+# 1. TLS-Validitaet: curl prueft Kette, Ablauf und Hostname-Match in einem Schritt.
+CURL_ERR=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "https://$HOST" 2>&1); RC=$?
+HTTP=$(printf '%s' "$CURL_ERR" | tr -dc '0-9' | tail -c 3)
+
+# 2. Ablaufdatum separat aus dem Zertifikat lesen (fuer die 14-Tage-Warnung).
+NOT_AFTER=$(echo | openssl s_client -servername "$HOST" -connect "$HOST":443 2>/dev/null \
+            | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+
+RC="$RC" HTTP="$HTTP" HOST="$HOST" NOT_AFTER="$NOT_AFTER" ERRTXT="$CURL_ERR" python3 -c '
+import os,datetime,re
+rc=int(os.environ["RC"]); host=os.environ["HOST"]; http=os.environ["HTTP"]
+na=os.environ["NOT_AFTER"].strip(); err=os.environ["ERRTXT"]
+days=None
+if na:
+    try:
+        exp=datetime.datetime.strptime(na,"%b %d %H:%M:%S %Y %Z").replace(tzinfo=datetime.timezone.utc)
+        days=(exp-datetime.datetime.now(datetime.timezone.utc)).days
+    except Exception: pass
+if rc==60:
+    kind="ssl-expired" if "expired" in err.lower() else "ssl-invalid"
+    print("SSL_FAIL=%s host=%s reason=%s days_left=%s"%(kind,host,re.sub(r"\s+"," ",err)[:90],days))
+elif rc!=0:
+    print("SITE_UNREACHABLE=true host=%s curl_rc=%d reason=%s"%(host,rc,re.sub(r"\s+"," ",err)[:90]))
+elif http and not http.startswith(("2","3")):
+    print("SITE_UNREACHABLE=true host=%s http=%s"%(host,http))
+else:
+    state="ssl-expiring" if days is not None and days<14 else "ok"
+    print("SSL_OK host=%s http=%s days_left=%s state=%s notAfter=%s"%(host,http,days,state,na or "unknown"))
+'
 ```
-WebFetch HEAD: https://{SITE_URL}
-```
 
-Prüfe den Response-Header `Date` vs. heutigem Datum. Für SSL-Ablaufdatum: extrahiere aus Redirect-Chain falls vorhanden oder nutze den Status-Code als Proxy (HTTPS 200 = SSL ok, Fehler = Problem).
+Auswertung, ausschliesslich anhand dieser Ausgabe:
 
-Vereinfacht: Wenn WebFetch HEAD auf `https://{SITE_URL}` einen 200er zurückgibt, ist SSL aktiv. Wenn es fehlschlägt → `ssl-expired` Critical.
+| Ausgabe | Finding | Severity | Toleranz-Band |
+|---|---|---|---|
+| `SSL_OK ... state=ok` | keins | | |
+| `SSL_OK ... state=ssl-expiring` | `ssl-expiring` | important | ja |
+| `SSL_FAIL=ssl-expired` | `ssl-expired` | critical | nein, sofort |
+| `SSL_FAIL=ssl-invalid` | `ssl-invalid` | critical | nein, sofort |
+| `SITE_UNREACHABLE=true` | `site-unreachable` | critical | nein, sofort |
 
-Für Ablauf-Warnung < 14 Tage: Das lässt sich aus WebFetch nicht direkt lesen. In diesem Fall `ssl-expiring` nur dann setzen, wenn der Response-Header `Strict-Transport-Security` fehlt (einfache Heuristik) oder wenn ein Cert-Fehler im Response-Body sichtbar ist.
+Bei `SSL_FAIL` oder `SITE_UNREACHABLE`: PSI-Schritte fuer diese Site ueberspringen.
+
+**Ein vorhandenes Zertifikat heisst nicht, dass es zu dieser Site gehoert.** Ein falsch konfigurierter vhost liefert das Default-Zertifikat des Hosters aus (bei `nonexistent-xyz.rafaelalex.de` z.B. `CN=*.webspaceconfig.de`). Deshalb entscheidet der curl-Exit-Code ueber die Gueltigkeit, nicht die blosse Existenz eines Zertifikats. `openssl` liefert hier nur das Ablaufdatum.
 
 ### Schritt 5: Findings gegen Thresholds prüfen
 

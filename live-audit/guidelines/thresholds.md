@@ -25,6 +25,7 @@ Fingerprint-IDs sind deterministisch und enthalten keinen Messwert. Der Messwert
 |---|---|---|
 | `ssl-expiring` | Zertifikat läuft in < 14 Tagen ab | Important |
 | `ssl-expired` | Zertifikat abgelaufen | Critical |
+| `ssl-invalid` | Zertifikat ungültig, aber nicht abgelaufen (Hostname passt nicht, self-signed, unvollständige Kette) | Critical |
 
 ## Site-Erreichbarkeit
 
@@ -48,7 +49,7 @@ Ein Finding wird erst nach **2 aufeinanderfolgenden Runs** als Issue erstellt.
 - Run N+1: Finding erscheint wieder → Issue erstellen
 - Run N+1: Finding erscheint nicht mehr → aus `pending_findings` entfernen
 
-Ausnahme: `site-unreachable` und `ssl-expired` werden sofort (ohne Toleranz-Band) als Issue erstellt.
+Ausnahme: `site-unreachable`, `ssl-expired` und `ssl-invalid` werden sofort (ohne Toleranz-Band) als Issue erstellt.
 
 ## Suppression-Logik
 
