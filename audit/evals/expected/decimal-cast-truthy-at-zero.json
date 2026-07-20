@@ -1,0 +1,21 @@
+{
+  "fixture": "quality/decimal-cast-truthy-at-zero.php",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 20,
+      "matches": ["decimal", "string", "truthy", "0.00", "> 0", "cast"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "service class, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "backend service, not a public page"
+    }
+  ]
+}
