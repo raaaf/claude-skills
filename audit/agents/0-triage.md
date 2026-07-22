@@ -73,11 +73,18 @@ grep -n "{snippet_aus_dem_hotspot}" {datei}
 ```
 The line-number value returned by `grep -n` is the source-file line. Only that value may appear in `hotspots`.
 
-## Fallback when triage yields nothing
+## Routing is deterministic. This agent is optional.
 
-If the triage agent goes idle without returning the JSON (after the orchestrator's single idle re-prompt), the orchestrator does NOT keep retrying and does NOT block the run: the deterministic floor routing (`bin/check-skips.sh`, which derives run/skip from git file signals alone) IS the official fallback. The orchestrator dispatches `ROUTING_RUN` from the floor result and logs `TRIAGE=FALLBACK_FLOOR` in the routing line so the log shows the triage never contributed.
+**Status since 2026-07-22 (escalation policy executed after the 6th confirmed idle incident):** deterministic floor routing via `bin/check-skips.sh` is the PRIMARY path. It derives run/skip purely from git file signals, cannot go idle, and produced zero audit failures across all six incidents. The orchestrator routes from it unconditionally.
 
-**Escalation policy (decided 2026-07-20 after 5 confirmed idle incidents with zero audit failures under floor routing):** on the NEXT idle incident (the 6th), promote deterministic floor routing to the DEFAULT for triage — i.e. skip the LLM triage dispatch entirely and always route via `bin/check-skips.sh` — instead of patching idle-detection/re-prompt mechanics further. The LLM triage's only added value is hotspot extraction; workers can locate hotspots themselves from the file list.
+This LLM triage is therefore **not dispatched by default**. Its only added value over the floor was hotspot extraction, and workers locate hotspots themselves from the file list well enough that six audits ran without them.
+
+Dispatch it only when a run explicitly opts in (very large diffs where hotspot targeting saves real worker tokens). When it does run:
+
+- a returned JSON refines `ROUTING_RUN` and supplies hotspots — log `TRIAGE=REFINED`
+- silence, idle, or malformed JSON changes nothing, because the floor result already stands — log `TRIAGE=FLOOR_ONLY` and continue without a re-prompt
+
+The inversion matters: a working triage response is the exception that adds detail, not the precondition the run waits for.
 
 ## Prohibited
 

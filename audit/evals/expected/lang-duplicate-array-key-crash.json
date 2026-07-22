@@ -1,0 +1,27 @@
+{
+  "fixture": "correctness/lang-duplicate-array-key-crash.php",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 25,
+      "matches": ["duplicate", "queue", "overwrite", "last", "shadow", "silently"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "code_quality",
+      "line": 21,
+      "reason": "'queue' inside the nested 'stats' array is a different nesting level, not a duplicate"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "translation file, no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "translation file, not a public page"
+    }
+  ],
+  "notes": "Regression fixture for the duplicate-array-key incident. php -l passes, static review missed it, and the crash only fired once a code path read the shadowed key. Covered deterministically by bin/check-duplicate-array-keys.sh; this fixture keeps the LLM path honest too."
+}

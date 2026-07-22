@@ -205,6 +205,10 @@ Pitfall checklist before reporting APPLIED:
 
 If the fix changes how CLI arguments are built (argv arrays, `Process` arguments, command strings): grep the test suite for exact-argv assertions (`grep -rn "arguments\|argv" {test dirs}`) and update matching tests in the same fix. An argv change that leaves stale exact-match tests behind is an incomplete fix.
 
+## Special case: editing inside x-data / Alpine directive attributes (Blade)
+
+Any edit that adds or changes text INSIDE a double-quoted directive attribute (`x-data="..."`, `x-on:*="..."`, `x-bind:*="..."`) — including pure `//` comments — must not contain a literal `"`: it closes the HTML attribute early, truncates the Alpine object, and every expression of the component throws "not defined" (real incident 2026-07-20, caught only by a browser test). Use single quotes inside such attributes. After the edit, MANDATORY deterministic check on each touched blade file: re-read the changed attribute block and verify no added line contains an unescaped `"` before the attribute's real closing quote. A violation is a broken fix, not a style nit.
+
 ## Completion self-checks before reporting APPLIED
 
 1. **Same-diff duplication grep (deterministic, GENERAL form):** before finishing, check the full diff-changed file set (`git diff -- {assigned files}` plus the orchestrator's file list) for the general pattern "the same method/logic sequence appears at >= 2 places, and especially >= 3 places" — same parse/lookup/error-mapping/validation flow where only names or parameters differ. The check is structural, NOT name-based: do not look for any specific known method name from past audits; compare bodies (statement sequence, branching shape, error handling). If found, extract the shared logic (or delegate the copies to one implementation) as part of the fix instead of finishing. This class of duplication has repeatedly survived guideline text and only been caught one audit round late; the check is mandatory, not advisory.
@@ -223,8 +227,11 @@ FIX_RESULT=FAILED | {file}:{line} | {reason}
 
 ## Prohibited
 
+- **No working-tree-wide git commands. Ever.** Specifically forbidden: `git stash`, `git stash pop`, `git stash apply`, `git checkout -- <path>`, `git restore`, `git reset` (any mode), `git clean`, `git revert`. Fix agents run in PARALLEL in ONE shared working tree that holds every sibling agent's uncommitted work. On 2026-07-22 a fix agent ran `git stash` + `git stash pop`, silently erased another agent's entire fix (the run's only Critical), and still reported `FIX_RESULT=APPLIED`. Read-only git is fine: `git diff`, `git status`, `git show HEAD:<path>`, `git log`. To see the pre-fix version of your file, use `git show HEAD:<path>` — never a stash or a checkout.
+- No touching files outside your assignment, by any means. If a fix needs a file another agent owns, do not edit it: report it as blocked and let the orchestrator sequence it.
 - No scope creep: fix only the one finding. **Exception:** findings explicitly marked as a centralization fix (see special case above) — there the task covers the complete file list provided by the orchestrator.
 - No writing tests (that happens after the loop)
+- No running test suites (`composer test`, `composer test:parallel`, `php artisan test`, etc.) — test execution belongs exclusively to the orchestrator. Parallel runs share the test database and corrupt each other's state.
 - No reformatting of unchanged lines
 - No commits — file changes only
 - No follow-up questions to the user — if it's not clear: `FIX_RESULT=FAILED`

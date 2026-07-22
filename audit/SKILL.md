@@ -83,6 +83,20 @@ fi
 
 # i18n-Vollstaendigkeit (deterministisch, kein LLM)
 bash "$AUDIT_BIN/check-i18n-keys.sh"
+
+# Doppelte Array-Keys in Lang-Files (deterministisch, php -l faengt das NICHT)
+bash "$AUDIT_BIN/check-duplicate-array-keys.sh"
+# DUPKEY_RESULT=DUPLICATES → jede Zeile "DUPLICATE {file}:{line} key ..." wird
+# ein Critical-Finding [Correctness], sofern die Datei im Diff liegt. PHP behaelt
+# beim Duplikat den LETZTEN Wert, der erste ist stumm weg — der Crash kommt erst,
+# wenn ein Code-Pfad den beschatteten Key liest. Ausserhalb des Diffs: als Hinweis
+# ausgeben, nicht als Finding. OK/SKIP → nichts tun.
+
+# number_format() ohne Locale-Argumente in Views (deterministisch)
+bash "$AUDIT_BIN/check-number-format-locale.sh"
+# NUMFMT_RESULT=MISSING_LOCALE → jede Zeile wird ein Important-Finding
+# [Correctness], sofern die Datei im Diff liegt; sonst Hinweis. Laeuft nur bei
+# vorhandenem lang/de. OK/SKIP → nichts tun.
 # I18N_RESULT=MISSING → jede Zeile "MISSING {locale}: {key}" wird ein
 # Important-Finding [i18n] (Schritt D), sofern die betroffenen Keys/Files
 # im Diff liegen. Bei /audit ausserhalb des Diffs: als Hinweis ausgeben,
@@ -150,9 +164,11 @@ WAVE_HEAD=$(git rev-parse HEAD)
 
 On drift: re-run `collect-scope.sh` and confirm the new base BEFORE dispatching — do not wait for the Phase 4 drift check (a parallel session committing mid-audit otherwise invalidates worker findings silently). Pass `WAVE_HEAD` into every worker briefing (placeholder in `agents/prompt-template.md`); workers compare it against their own `git rev-parse HEAD` first and return `WORKER_RESULT=HEAD_DRIFT` instead of findings when it differs. A `HEAD_DRIFT` response → treat like the drift warning above: re-pin, re-collect scope, re-dispatch that wave once.
 
-**Step C.0 — Triage agent (round 1 only)**
+**Step C.0 — Triage agent (opt-in only, NOT the default)**
 
-From round 2 on, reuse the `TRIAGE_RESULT` from round 1 — fixes practically never change the routing decision.
+Routing comes from the deterministic floor in Step C.0.5. The LLM triage is **not dispatched** unless the run explicitly opts in (very large diffs where hotspot targeting saves real worker tokens). Reason: six recorded idle incidents, zero audit failures under floor routing — see `agents/0-triage.md`, "Routing is deterministic".
+
+When opted in (round 1 only; from round 2 reuse `TRIAGE_RESULT`):
 
 ```
 Agent(
@@ -169,21 +185,21 @@ Agent(
 )
 ```
 
-Result: `TRIAGE_RESULT` with `relevance` per dimension. Save for subsequent rounds.
+A JSON result refines the floor and adds hotspots (log `TRIAGE=REFINED`). Idle or malformed output changes nothing and gets NO re-prompt — the floor result already stands (log `TRIAGE=FLOOR_ONLY`).
 
-**Step C.0.5 — Sanity floor + routing transparency (deterministic, EVERY round)**
+**Step C.0.5 — Deterministic routing floor + transparency (EVERY round)**
 
-Triage runs on Haiku, the cheapest model, and decides what all the expensive workers see. Don't rely on it alone:
+This is the primary routing decision, not a safety net. It derives run/skip from git file signals alone:
 
 ```bash
 printf '%s' '{TRIAGE_RESULT_JSON}' | bash "$AUDIT_BIN/check-skips.sh" "{FRAMEWORK}"
 ```
 
-It derives file signals itself from git and overrides obvious wrong skips (frontend → `a11y`/`ui_design`/`ux`; translation → `copy`/`typography`; migration → `architecture`; code → `code_quality`/`security`; rules in the script) and returns `ROUTING_RUN` (triage run plus floor), `ROUTING_SKIPPED`, `ROUTING_OVERRIDE`, and a `Routing:` line. **MANDATORY:** print the `Routing:` line in the chat every round and add it to the audit log under `## Routing` at the end of the loop (one line per round); dispatch (Step C) uses `ROUTING_RUN`. The floor also runs from round 2 on (cheap), the Haiku triage is reused from round 2 on.
+It derives file signals itself from git and overrides obvious wrong skips (frontend → `a11y`/`ui_design`/`ux`; translation → `copy`/`typography`; migration → `architecture`; code → `code_quality`/`security`; rules in the script) and returns `ROUTING_RUN` (the floor, plus triage additions when triage was opted into), `ROUTING_SKIPPED`, `ROUTING_OVERRIDE`, and a `Routing:` line. **MANDATORY:** print the `Routing:` line in the chat every round and add it to the audit log under `## Routing` at the end of the loop (one line per round); dispatch (Step C) uses `ROUTING_RUN`. The floor runs in EVERY round (cheap and deterministic).
 
 **Step C — Dispatch specialized subagents in parallel**
 
-Dispatch only agents from `ROUTING_RUN` (Step C.0.5: triage run plus deterministic floor). Security almost always. All non-skipped agents in EVERY round.
+Dispatch only agents from `ROUTING_RUN` (Step C.0.5: the deterministic floor, refined by triage only if it was opted into). Security almost always. All non-skipped agents in EVERY round.
 
 Dispatch in **one message block** via the Agent tool. Pass ONLY:
 - `TRIAGE_SUMMARY` (1-2 lines)
@@ -192,7 +208,9 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 
 **NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round).
 
-**Idle watchdog (applies to ALL dispatched agents — triage, workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT/JSON message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **triage** → deterministic floor routing is the official fallback (see `agents/0-triage.md`, log `TRIAGE=FALLBACK_FLOOR`); **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
+**Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
+
+The triage agent is deliberately NOT in this list: it is opt-in, gets no re-prompt, and its silence is a non-event because the deterministic floor already decided the routing (log `TRIAGE=FLOOR_ONLY`).
 
 **Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Agent 1 (Architecture) and Agent 2 (Security) explicitly on Opus. Other agents use their `agents/*.md` default.
 
@@ -275,6 +293,18 @@ Count verified Critical+Important. Save `FINDINGS_AKTUELLE_RUNDE`. Convergence c
 3a. **Centralization findings (new shared utility):** if a finding extracts a duplicated pattern into a new `lib/*.js` / helper / trait, FIRST grep all occurrences (`grep -rn "{old_pattern}" src/`, adjust the glob to the project language) and pass ALL matching files to ONE fix agent (no parallel split, otherwise file collision). Mark as a centralization fix so the fix agent migrates every occurrence (see fix-agent.md special case).
 3b. **Limit fix-wave size:** a fix assignment that touches >2 templates or contains a partial extraction gets split across multiple fix agents (except the centralization fix from 3a, which stays deliberately bundled) OR gets a report checkpoint: the fix agent MUST deliver an interim report before the final edits. Large assignments without a report checkpoint tend to silently abort, based on experience.
 4. Collect results: `FIX_RESULT=APPLIED` counts as fixed. **If the agent report is missing entirely** (agent finishes without a `FIX_RESULT` line), do NOT assume the fix is lost: check `git diff` on the assignment's files — if changes are present, the fix counts as APPLIED and the fix-verifier run (E.5) is MANDATORY for these files (no silent skip).
+
+4a. **Working-tree cross-check after EVERY parallel fix wave (MANDATORY, deterministic).** Do not trust `FIX_RESULT=APPLIED`. Build the set of files you assigned across all fix agents of this wave, then compare against reality:
+
+```bash
+git status --porcelain | awk '{print $2}' | sort > /tmp/audit-wave-actual.txt
+# expected = every file assigned in this wave, plus files already modified before it
+comm -13 /tmp/audit-wave-actual.txt /tmp/audit-wave-expected.txt   # assigned but NOT modified -> fix lost
+```
+
+Any assigned file that is NOT modified means the fix never landed or was destroyed by a sibling agent, regardless of what that agent reported. Re-dispatch it ALONE, with no other agent running, and state in its briefing that the previous attempt was destroyed.
+
+Rationale (2026-07-22): a fix agent ran `git stash` + `git stash pop`, wiped a sibling's fix for the run's only Critical, and reported `APPLIED`. Only this cross-check surfaced it. Agent reports are a claim; `git status` is the evidence.
 5. Minor: with `FIX_MINOR=1` (medium + high effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
 6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`
 7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`
