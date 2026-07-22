@@ -12,6 +12,7 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 
 ## Result
 - Rounds: N/{MAX_RUNDEN}
+- Findings fixed: Critical N / Important N / Minor N
 - Critical found/fixed: A/B
 - Important found/fixed: C/D
 
@@ -32,6 +33,10 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 ## Clean
 Dimension1, Dimension2
 ```
+
+## Mandatory Field: Findings Fixed
+
+The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EVERY audit log, including `/full-audit` batch runs. Trend computation in the learning log reads this line; when a batch run omits it, the trend silently mixes counted and estimated runs and stops being comparable across audit types. Write `0` explicitly rather than leaving a category out.
 
 ## Mandatory Tagging Convention
 

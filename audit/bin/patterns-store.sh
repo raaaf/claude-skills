@@ -11,13 +11,19 @@
 #   bash patterns-store.sh list                    # show all learned patterns
 #   bash patterns-store.sh dismissed {pattern}     # increment dismiss counter
 #   bash patterns-store.sh should-suggest {pattern} # exit 0 if >=3 dismissals
+#   bash patterns-store.sh recur {pattern}         # count this finding pattern, echoes new count
+#   bash patterns-store.sh recurrences             # list patterns seen >=2 times, most frequent first
 set -euo pipefail
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
 STORE_DIR="$PROJECT_ROOT/.claude/audits"
 STORE="$STORE_DIR/patterns.json"
 mkdir -p "$STORE_DIR"
-[ -f "$STORE" ] || echo '{"version":1,"fix_patterns":[],"dismissals":{}}' > "$STORE"
+[ -f "$STORE" ] || echo '{"version":1,"fix_patterns":[],"dismissals":{},"recurrences":{}}' > "$STORE"
+# Migrate stores written before the recurrence counter existed.
+jq -e '.recurrences' "$STORE" >/dev/null 2>&1 || {
+  jq '.recurrences = {}' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
+}
 
 command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 
@@ -38,6 +44,17 @@ case "$CMD" in
     PATTERN="${2:-}"
     [ -z "$PATTERN" ] && { echo "pattern required"; exit 1; }
     jq --arg p "$PATTERN" '.dismissals[$p] = ((.dismissals[$p] // 0) + 1)' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
+    ;;
+  recur)
+    PATTERN="${2:-}"
+    [ -z "$PATTERN" ] && { echo "pattern required"; exit 1; }
+    jq --arg p "$PATTERN" '.recurrences[$p] = ((.recurrences[$p] // 0) + 1)' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
+    jq -r --arg p "$PATTERN" '.recurrences[$p]' "$STORE"
+    ;;
+  recurrences)
+    # Nur was mindestens zweimal auftrat, haeufigste zuerst. Einmalige Findings
+    # sind Rauschen; ab zwei wird es ein Muster, das eine Guideline verdient.
+    jq -r '.recurrences | to_entries | map(select(.value >= 2)) | sort_by(-.value) | .[] | "\(.value)x \(.key)"' "$STORE" 2>/dev/null || true
     ;;
   should-suggest)
     PATTERN="${2:-}"

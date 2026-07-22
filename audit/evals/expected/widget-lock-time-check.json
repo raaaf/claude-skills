@@ -1,0 +1,30 @@
+{
+  "fixture": "security/widget-lock-time-check.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 52,
+      "matches": [
+        "lock",
+        "once",
+        "build time",
+        "deadline",
+        "future entry",
+        "timeline",
+        "stale",
+        "leak"
+      ],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "LockBridge.isLocked itself is correct for a point-in-time question; the defect is the caller baking it into a long-lived timeline"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

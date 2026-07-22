@@ -33,6 +33,19 @@ Extract from past audit log files (`.claude/audits/*-*.md`) and have the orchest
 - Average findings/audit (last 5)
 - "Repeat offenders": findings that appear in >= 3 audits (candidate for a guideline update)
 
+**Use the counter, do not eyeball the logs.** Recurrence is tracked persistently, so it survives log rotation and stays consistent between `/audit` and `/full-audit`:
+
+```bash
+# Einmal pro Finding dieses Laufs, mit normalisiertem Muster (kurz, ohne
+# Datei/Zeile, damit dasselbe Problem an anderer Stelle zusammenfaellt):
+bash "$AUDIT_BIN/patterns-store.sh" recur "widget reads lock state only once"
+
+# Fuer den Trends-Block:
+bash "$AUDIT_BIN/patterns-store.sh" recurrences   # "4x widget reads lock state only once"
+```
+
+Normalize the pattern the same way `normalize-suppression.sh` does, otherwise "Widget-Lock nur punktuell geprueft" and "widget reads lock state only once" count as two different things and the counter never reaches the threshold. A pattern at >= 3 belongs in the improvement list with its count named explicitly ("4th audit in a row"), not as a fresh suggestion.
+
 Format of the metrics block:
 
 ```markdown
@@ -46,8 +59,8 @@ Format of the metrics block:
 | Top category (last 5) | {Category} ({M}x) |
 | Avg findings/audit | {X} |
 
-**Repeat offenders (>=3 audits):**
-- {Pattern} -- candidate for guideline update
+**Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
+- {N}x {Pattern} -- candidate for guideline update
 ```
 
 ### 3. Pattern detection
@@ -97,7 +110,7 @@ LEARNING_LOG_ENTRY:
 ## Retro — {DATE} — {BRANCH} ({AUDIT_TYPE})
 
 ### Statistics
-- Total audits in the project: {N}
+- Total audits in the project: {N}  <!-- deterministic: `ls .claude/audits/*.md | grep -v learning-log | grep -v open-points | grep -v suppressions | wc -l` — NEVER carry the number forward from the previous trends block (drift bug 202 vs 196) -->
 - Most frequent finding category: {Category} ({M}x)
 - Average findings per audit: {X}
 
@@ -132,8 +145,8 @@ TRENDS_BLOCK_START
 | Top category (last 5) | {Category} ({M}x) |
 | Avg findings/audit | {X} |
 
-**Repeat offenders (>=3 audits):**
-- {Pattern} -- candidate for guideline update
+**Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
+- {N}x {Pattern} -- candidate for guideline update
 TRENDS_BLOCK_END
 
 LEARNING_RESULT_END

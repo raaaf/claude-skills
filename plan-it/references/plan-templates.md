@@ -73,6 +73,11 @@ Stop and report (do not improvise) when:
 - The fix would need to touch an out-of-scope file.
 - {plan-specific core assumption} turns out to be false.
 
+## Validation of the Bet
+{MANDATORY whenever the plan changes product identity (core loop, main surface, positioning) rather than just adding a feature. Two criteria, both concrete and dated:}
+- **Works when:** {observable signal that the bet is paying off, with a deadline — "after 3 weeks, at least 10 days with an entry", not "feels better"}
+- **Rollback when:** {observable signal that it failed, plus what exactly gets reverted}
+
 ## Maintenance Notes
 {What future changes to this code will need to consider; what a reviewer should check in the PR; explicitly deferred items with a reason.}
 

@@ -159,3 +159,25 @@ Every SwiftUI view that loads data asynchronously (`.task`, `await` fetch) needs
 - **Empty state:** an empty result (0 items) shows a message (+ a next-step/CTA if applicable), never an unexplained blank area.
 
 Confidence: any of the three states demonstrably missing in an async view -> Important.
+
+## XII. Lock State on Secondary Surfaces (Widget, Notification, Watch)
+
+Recurring finding across three audits (2026-05-16, 2026-06-11, 2026-06-23): a widget, notification or watch surface reads the app-lock state ONCE, at build or render time, and then keeps showing protected content after the lock has since engaged.
+
+The lock is time-based (a deadline after backgrounding), so a point-in-time read is structurally wrong. These processes never see the foreground lock event.
+
+- A timeline/snapshot provider must evaluate the lock against the **entry's own date**, not against "now at build time", and it must emit an additional future entry at the lock deadline so the system swaps to the hidden state on its own.
+- A notification whose body carries protected content must be re-evaluated or redacted when scheduled far ahead.
+- The read-only bridge (`AppLockBridge` pattern) is the only correct source in extension contexts; a copy of the lock logic in the extension drifts.
+
+Confidence: a secondary surface that renders protected content and reads the lock state only once -> Important. Same surface with no lock check at all -> Critical.
+
+## XIII. Cancellation Before Persisting Side Effects (Swift Concurrency)
+
+Recurring finding (two audits): inside a cancellable `Task`, a persisting side effect (`context.insert`, `context.save`, a file write, a network POST) runs after an `await` without checking whether the task was cancelled in the meantime. The user has long since navigated away, changed the setting, or triggered a newer run, and a stale value still lands in the store.
+
+- Before every `insert` / `save` / persisting side effect that sits behind an `await` in a cancellable task: `try Task.checkCancellation()` or an equivalent guard.
+- The deliberate exception is the case where the write MUST survive the view (e.g. persisting a generated result the user already waited for). Then the write goes BEFORE the cancellation check and a comment says why. Everything after that check is view-bound afterplay only.
+- Watch for a task that is replaced by a newer one (`task?.cancel(); task = Task { ... }`): the old one keeps running to its next suspension point.
+
+Confidence: persisting write behind an `await` in a cancellable task without a guard and without a justifying comment -> Important.

@@ -13,6 +13,8 @@ What to scan, depending on the topic:
 | New feature | Grep for similar features (naming search), existing patterns for lifecycle/permission/UI |
 | Refactoring / renaming | Caller list via grep, check test coverage, doc mentions |
 | Performance / caching | Find existing cache keys, invalidation pattern, N+1 hotspots |
+| Legal / tax question ("can the app do X for country Y") | Codebase scan is not enough. Websearch the rule **before** the plan is written, especially the triggering event (payment received vs. invoice issued). Never answer from intuition. |
+| Field extension / new model attribute | Grep **every** form variant that writes the model, not just the one named in the request (e.g. invoice + quote + recurring). One missed variant is a silent data gap. |
 
 **Output format:** Short codebase map (3-8 bullet points) as a factual basis before the questions:
 
@@ -36,6 +38,19 @@ Examples:
 - "Who is the user here? → My assessment: Admin — because the route sits behind auth and no onboarding flow exists."
 - "How should errors be handled? → My assessment: Toast notification, since that's the existing pattern in the app."
 - "Do we need a migration? → My assessment: No — the new field is optional and has a default."
+
+## Mandatory Questions (Red Flags)
+
+Two questions get skipped or deferred over and over, and both cost a whole extra round later. Ask them in round 1 or 2, never later.
+
+**Onboarding.** Whenever a plan touches a user-facing flow, permission, or setting: does this need an onboarding step, or does it work via toggle plus settings? Ask it directly, do not write "onboarding TBD" into the plan. Red flag: if onboarding first comes up in round 3+, the interview went wrong.
+
+**Scope split.** Before proposing any MVP cut or phase split, answer for yourself: is this a real saving in complexity or differentiation, or does it tear apart something the user sees as one coherent feature? Only propose the split in the first case. When in doubt, ask in exactly those terms:
+
+```
+Split this into phase 1 / phase 2, or in one go?
+→ My assessment: {one go | split}, because {real complexity saving | it's one coherent surface}
+```
 
 ## Detecting Dependencies
 

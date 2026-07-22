@@ -1,0 +1,25 @@
+{
+  "fixture": "security/dataexport-duplicate-uuid.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 45,
+      "matches": ["uniqueKeysWithValues", "duplicate", "crash", "trap", "untrusted", "uniquingKeysWith", "sibling"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "the existingQuestions dictionary a few lines above already uses uniquingKeysWith and is correct: flagging it is a false positive"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "no UI markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}
