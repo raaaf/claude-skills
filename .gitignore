@@ -7,3 +7,4 @@ node_modules/
 .claude/plans/logs/
 .claude/audits/full-audit-state.md
 .claude/audits/full-audit-batches/
+audit/evals/results/

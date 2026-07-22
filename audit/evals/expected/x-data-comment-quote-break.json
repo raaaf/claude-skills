@@ -1,0 +1,22 @@
+{
+  "fixture": "quality/x-data-comment-quote-break.blade.php",
+  "note": "Regression eval from audit 2026-07-20: a fix agent added // comments containing literal double quotes inside a double-quoted x-data attribute; the attribute closed early, truncating the Alpine object so every expression on the component threw 'not defined'. The fix-verifier's semantic review missed it — only an independent browser test caught it. The audit must treat a quote inside a directive attribute as a hard break.",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 12,
+      "matches": ["x-data", "attribute", "quote", "Anführungszeichen", "truncat", "abgeschnitten", "closes"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup, no user input processing"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

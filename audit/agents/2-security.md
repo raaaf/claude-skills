@@ -10,6 +10,8 @@ Secrets, injection, OWASP Top 10, dependencies.
 
 **Complete guidelines:** Read `guidelines/security.md` in the skill directory and check the code against all rules described there.
 
+**Sibling-field guard check:** when a field gains a sanitization/security guard in the diff (accessor guard, leak protection, validation), check whether structurally identical sibling fields (`first_name`/`last_name`/`name`, `email`/`phone`, address parts) need the same guard. A guard added to one of several parallel fields while the siblings stay exposed is an Important finding (2026-07-14: `last_name` lacked the email-leak guard `first_name`/`name` had received months earlier).
+
 **For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section II — Keychain/Keystore instead of UserDefaults, ATS/cleartext, deep-link validation, privacy manifest, permission descriptions. XSS/CSP rules do not apply there.
 
 ## Full-Audit Focus (additional)

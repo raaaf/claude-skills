@@ -1,0 +1,17 @@
+{
+  "fixture": "security/sibling-field-accessor-gap.php",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 40,
+      "matches": ["last_name", "sibling", "guard", "email", "leak", "first_name"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "getFirstNameAttribute and getNameAttribute carry the guard — flagging them is a false positive"
+    }
+  ]
+}

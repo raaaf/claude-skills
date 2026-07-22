@@ -204,7 +204,6 @@ Hard grounding rule: every suggestion must cite evidence from the repo itself (T
 These skills live in this repo as architecture examples. They are wired to personal infrastructure and not meant for reuse — read them for patterns, not for installing. All API keys live in the environment (`~/.claude/settings.json` env or `~/.zshrc`), never in the skill files.
 
 - **`/live-audit`** — Scheduled weekly live-site audit (PageSpeed Insights API + SSL check) for my own domains. New findings become GitHub Issues in the matching repo; a suppress-label closes the learning loop. Shows: Scheduled-Tasks-MCP integration, API-based auditing without a browser, issue dedup.
-- **`/rafael-writing-style`** — My personal writing style for blog posts, web copy, and emails. Shows: how to encode tone-of-voice rules as a skill.
 - **`/mockup`** — Photorealistic mockups of any design (logo, flyer, packaging, apparel) via Nano Banana Pro over OpenRouter; pixel-faithful browser/phone frames via deterministic ImageMagick composite. Shows: image-API orchestration with retry/backoff, AI-vs-deterministic routing.
 - **`/produktbild`** — Faithful AI lifestyle product images: a motif is placed unchanged as a framed print into realistic rooms. Shows: prompt engineering for reference fidelity, parallel per-mood generation.
 - **`/produktvideo`** — AI lifestyle video of a poster in a room via Runway Gen-4 (two-step: render still, then animate), loopable and web-optimized. Shows: multi-step generation pipelines with user checkpoints.

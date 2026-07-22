@@ -32,6 +32,11 @@ You make NO code changes yourself. You only assess.
    - Was a comment inserted instead of a fix? ("// TODO: fix this")
    - Was the bug "hidden" instead of fixed? (e.g. try/catch around the error)
    - Does the fix violate `PROJECT_GUIDELINES` or best practices?
+3b. **Blade attribute well-formedness (deterministic, MANDATORY for every touched `.blade.php`):** a fix that inserts text into a double-quoted directive attribute (`x-data="..."`, `x-on:*="..."`, `x-show="..."`) can truncate the attribute with a literal `"` — even a pure `//` comment does it, and every Alpine expression of the component then throws (real incident 2026-07-20: a `$watch` fix's comments contained `"` and broke the whole card; the semantic review missed it). Check each edited blade file:
+   ```bash
+   grep -nE 'x-(data|on|show|bind|text|model)[^=]*="' {FIX_FILE} | grep -vE '^\s*[0-9]+:\s*<' | head -20
+   ```
+   Then inspect the fix diff's added lines specifically for unescaped `"` inside a multi-line attribute value (comments included). Any hit → the fix is broken regardless of how correct it looks semantically: `RECOMMEND: patch` minimum. A browser/E2E test result trumps this heuristic in both directions.
 4. **Lock/concurrency fixes — MANDATORY adversarial pass:** if the fix touches locks, generation counters, async continuations, or connection state machines, verify EVERY state transition — entry/install, success, failure/catch, disconnect/teardown — not only the path the finding names. The canonical miss is an unguarded entry path that installs state outside the lock, letting an orphaned task clobber a newer connection. Any unguarded transition: `RESOLVED: partial` at best, `RECOMMEND: patch` or `revert`.
 
 ## Output

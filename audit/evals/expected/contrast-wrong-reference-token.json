@@ -1,0 +1,22 @@
+{
+  "fixture": "a11y/contrast-wrong-reference-token.blade.php",
+  "note": "Regression eval from audit 2026-07-20: a round-1 fix computed the dark-mode focus-ring ratio against the wrong reference token (effectively Tailwind's default gray-900) and shipped a borderline 2.97:1 claim; only the fix-verifier's round-2 recompute against the project's real achromatic OKLCH tokens caught it. The finding is only correct when the ratio is resolved from the @theme override in the file, and the finding must state which resolved values it used.",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 20,
+      "matches": ["focus", "ring", "3:1", "oklch", "token", "@theme"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup, no user input processing"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup, no perf concern"
+    }
+  ]
+}

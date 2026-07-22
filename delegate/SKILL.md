@@ -40,6 +40,7 @@ Classify the task before any work happens:
 - Targeted codebase scan: read affected files, **grep every identifier to be changed repo-wide** (parallel implementations, wizard duplicates — never assume there's only one spot).
 - Identify conventions + an exemplar file (components instead of raw HTML, error pattern, test style).
 - Determine the repo's verification commands (test runner, linter, typecheck) — do NOT guess, read from package.json/composer.json/CI. Only diff-scoped tests, never the full suite.
+- **Test authority:** exactly ONE instance runs tests at a time. When the orchestrator runs tests itself, executor subagents must NOT start their own test runs (especially `composer test`/`composer test:parallel` — shared test databases corrupt each other). Decide up front who tests, and say so in the executor briefing.
 - List assumptions explicitly.
 
 ## Phase 2: Clarifying questions (only genuine ambiguities)

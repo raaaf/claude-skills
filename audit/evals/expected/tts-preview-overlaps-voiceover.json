@@ -1,0 +1,21 @@
+{
+  "fixture": "a11y/tts-preview-overlaps-voiceover.swift",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 18,
+      "matches": ["preview", "announcement", "overlap", "VoiceOver", "guard", "duck", "parallel"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input crossing a trust boundary, no auth logic"
+    },
+    {
+      "dimension": "performance",
+      "reason": "single row view, no loops or heavy work"
+    }
+  ]
+}

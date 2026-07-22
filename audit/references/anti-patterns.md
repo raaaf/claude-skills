@@ -16,6 +16,13 @@ Read this file when the rules in the main skill aren't top of mind. Each line ma
 - **"This finding looks off, I'll just fix it anyway"** → WRONG. Hallucination validator first. If the file/line doesn't exist: discard the finding.
 - **"An agent went idle without a report, I'll wait / keep nudging it"** → WRONG. The official recovery path is: exactly ONE re-prompt via SendMessage, then the per-agent-type failure path from SKILL.md Step C (triage → floor routing, worker → skip dimension, fix agent → check `git diff` then re-dispatch once, verifier → `RECOMMEND=patch`). Prevention (REPORT_DELIVERY block in the prompt template) demonstrably does not catch every case — recovery is part of the loop, not an exception.
 
+## Stale-Diff Artifact (named repeat offender)
+
+Findings produced against a diff base that no longer matches the working tree. Three distinct incidents so far: 07-09 (parallel-session commit mid-audit), 07-14 status-badge (stale snapshot), 07-14 quote-workflow (index drift). Countermeasures already in the loop: `AUDIT_BASE_HEAD` pinning (Phase 1), wave HEAD pinning + `WORKER_RESULT=HEAD_DRIFT` (Step B.6), Phase 4 drift check.
+
+- **"The diff looked fine at dispatch, findings are still valid"** → WRONG. On any HEAD/status drift: re-pin, re-collect scope, re-dispatch the wave. Findings from a stale base are hallucinations with extra steps.
+- **Escalation rule:** on the NEXT distinct stale-diff mechanism (4th incident) or a 2nd HEAD-drift-from-shared-checkout incident, ASK the user whether audits should default to an isolated worktree. Never decide this silently — it conflicts with the standing "no worktrees" preference (feedback_no_worktrees); the user reconciles, not the orchestrator.
+
 ## Test Plan
 
 - **"I can skip the test plan because there are no visual changes"** → Check `FRONTEND_DATEIEN` / `VISUELL_RELEVANTE_DATEIEN`. If empty: correct, no test plan needed. If not empty: a test plan is mandatory.

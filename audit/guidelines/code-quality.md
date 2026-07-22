@@ -426,3 +426,13 @@ Continued: sections XVI (2026 Type-Safety Patterns) and XVII (Deprecated APIs) l
 ## Text-Parser Line-Ending Discipline
 
 **Every hand-written text parser MUST have a CRLF fixture in its tests.** Swift's `split(separator: "\n")` on `String` operates on Characters, and `\r\n` is a single grapheme cluster — a Character-level split finds ZERO separators in CRLF text and silently collapses the whole file into one unparseable line (this shipped twice before being caught, learning log 2026-07-09). Parse file formats on the UTF-8 view or raw bytes, strip a trailing `\r` explicitly, and assert LF/CRLF parity in tests. A parser with only LF-terminated test fixtures is untested for real-world input.
+
+## Paired Resource Calls (acquire/release, lock/unlock, subscribe/unsubscribe)
+
+**The key/handle of a paired call MUST be computed exactly once.** When code acquires something keyed (an idempotency lock, a mutex, a subscription) and later releases it in the same request, re-typing the key expression at both call sites is a latent bug: a one-sided edit silently turns the release into a no-op (3 audits in a row hit this on the same trait, learning log 2026-07-17). Preference order:
+
+1. The abstraction remembers the key itself — release takes no arguments (e.g. `releaseHeldSubmitLock()` after `acquireSubmitLock(...)` stored the key internally). Structurally drift-free.
+2. A single hoisted local (or per-flow helper method) passed to both calls.
+3. Never: the same multi-part expression written twice.
+
+Cross-request releases (delete flow frees a lock the create flow acquired) are the exception — there the key must be re-derived from the persisted row, and the fingerprint contract "derived from what gets stored" must hold on both sides.
