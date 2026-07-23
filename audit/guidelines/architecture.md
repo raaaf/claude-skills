@@ -205,6 +205,20 @@ Silent failures are the most expensive bugs — they go undetected until they ca
 - **Log with context:** `log.error('Payment failed', { orderId: id, amount: amount })` — not just `log.error('Payment failed')`.
 - **Distinguish recoverable from fatal:** A missing optional config value is recoverable. A missing database connection is fatal. Handle them differently.
 
+## XI.a Status Codes Are a Contract With Every Caller
+
+A service that answers "why did this fail" with a string code owns that code set, but it does not own the messages. Each caller maps codes to user-facing text, so adding or renaming one silently degrades every caller that has not been updated: the new code falls through to a generic "something went wrong" while the service is being precise.
+
+**When a shared method gains or renames a status/blocker/result code:**
+
+1. Grep for the method name across the project to find every caller.
+2. In each, find the map from code to message (a `match`, an array literal, a ternary chain) and add the new code.
+3. Codes that stay unmapped on purpose need a comment saying so, otherwise the next reader cannot tell an omission from a decision.
+
+A ternary on one code (`$result === 'ok' ? … : …`) is the shape that hides this best: it looks total but silently lumps every failure together. Prefer an explicit map so a missing arm is visible.
+
+**Smell:** the service defines four codes, the caller's map has three keys, and nothing fails.
+
 ## XII. Component Reuse — No Raw HTML
 
 Before writing a raw HTML element (`<button>`, `<a>`, `<input>`, `<div class="card">`, `<div class="alert">`, etc.), check whether a matching component already exists in the project.

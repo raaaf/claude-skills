@@ -93,6 +93,7 @@ bash "$AUDIT_BIN/check-duplicate-array-keys.sh"
 # ausgeben, nicht als Finding. OK/SKIP → nichts tun.
 
 # number_format() ohne Locale-Argumente in Views (deterministisch)
+# Neue Checks nach references/writing-deterministic-checks.md bauen.
 bash "$AUDIT_BIN/check-number-format-locale.sh"
 # NUMFMT_RESULT=MISSING_LOCALE → jede Zeile wird ein Important-Finding
 # [Correctness], sofern die Datei im Diff liegt; sonst Hinweis. Laeuft nur bei
