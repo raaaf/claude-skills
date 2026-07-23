@@ -58,24 +58,7 @@ Below, `{MAX_RUNDEN}` means the value set here.
 
 ## Phase 0.6: Dimension scoping via argument (optional partial audit)
 
-The skill argument may select dimensions explicitly. Parse it BEFORE Phase 1:
-
-| Argument | Meaning |
-|---|---|
-| (empty) | Full audit as usual: triage + floor route automatically, push gate active |
-| Dimension list, comma/space separated | e.g. `security` or `performance,a11y` — keys: `architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy` |
-| `backend` | `architecture,security,performance,code_quality,docs_sync` |
-| `frontend` | `seo,a11y,typography,ui_design,ux,animation,copy` |
-| `design` | `typography,ui_design,ux,animation` (diff-scoped design check; for the full-surface elevation pass use /design-audit) |
-| `?` | AskUserQuestion multi-select over all 12 dimensions, then continue as partial audit |
-| Anything else (paths, prose) | Not a dimension selection — treat as free-text scope hint, `PARTIAL_AUDIT=0` |
-
-If dimensions were selected: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}`. Effects (everything else runs unchanged — pre-checks, fix-loop, verifiers, learning):
-
-- **Skip triage (C.0) and floor (C.0.5) entirely** — routing IS the user's explicit choice. `ROUTING_RUN = SELECTED_DIMENSIONS`, log line: `Routing: user-scoped [{list}]`.
-- **Orchestrator extra checks in Step D (tests/mobile/public pages) only run when a related dimension is selected.**
-- **Phase 4 NEVER writes the push marker.** A partial audit is not a push gate. Final output must state: `Teilaudit ({list}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` The `AUDIT_STATUS:` round contract stays unchanged (Stop hook).
-- Secret scan and the other Phase 1 pre-checks ALWAYS run — a partial audit still refuses to bless found secrets (report as Critical, but since no marker is written the push stays blocked anyway).
+The skill argument may select dimensions explicitly (`/audit security`, `/audit performance,a11y`, group aliases `backend`/`frontend`/`design`, `?` for a multi-select prompt). If it does: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}` — read `references/partial-audit.md` and apply it (skip triage+floor, `Routing: user-scoped`, Step-D extras only for related dimensions, Phase 4 writes NO push marker, pre-checks always run). Non-dimension arguments stay a free-text scope hint (`PARTIAL_AUDIT=0`).
 
 ## Phase 1: Pre-flight & scope
 
