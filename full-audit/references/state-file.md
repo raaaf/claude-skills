@@ -34,7 +34,8 @@ started: 2026-07-07
 
 Rules:
 
-- **Status values:** `pending` (not yet audited) | `running` (batch in progress) | `clean` (audited + fixed) | `blocked` (NO_CONVERGENCE or decision points).
+- **Status values:** `pending` (not yet audited) | `running` (batch in progress) | `clean` (audited + fixed, and the final round's regression pass came back empty or was fixed) | `blocked` (NO_CONVERGENCE, unresolved regression-pass findings, or decision points).
+- **The final round's regression pass is not a round.** It does not increment `Rounds` and does not extend the maximum. Its findings count into `C`/`I`/`M` like any other, because a regression the audit introduced is a finding about this codebase, not bookkeeping about the audit.
 - **Rounds** = `used/max` (e.g. `2/3`). **C/I/M** = accumulated findings of the batch across all rounds. **HEAD** = short SHA on batch completion (`git rev-parse --short HEAD`), else `-`.
 - **Header keys machine-readable** (`key: value`, one line): `mode`, `effort`, `dimensions`, `batch-dir`, `post-phases`, `started`. Resume reads mode/effort/dimensions from here instead of asking the user again.
 - **Cells must not contain a raw `|`** (breaks the awk parser) — escape as `\|` or rephrase.

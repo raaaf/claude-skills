@@ -231,7 +231,23 @@ fi
 
 Pass `PROJECT_GUIDELINES` through to all workers (see prompt-template).
 
-**Concurrent tree check (baseline):** record `AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })`; re-hash after EVERY batch. Deviation → warning into the audit log (`## Notes: Tree changed during audit`), re-collect scope for the next batch, discard findings on overwritten lines. Detail: `references/scope-context-batching.md`.
+**Project context (MANDATORY, check `CONTEXT_FALLBACK`):** `references/scope-context-batching.md` sets `CONTEXT_FALLBACK` to `NONE`, `WHOLE_FILE` or `NO_FILE`. Act on it before the first dispatch:
+
+- `WHOLE_FILE` (a `CLAUDE.md` exists but has no `## Audit Context` heading) → pass the whole file as `PROJECT_CONTEXT` **and** instruct every worker and every fix agent to read `CLAUDE.md` in full themselves. Do NOT ask the user; the rules already exist, they just live under other headings.
+- `NO_FILE` → ask via `AskUserQuestion` exactly as `/audit` does, marker `.claude/audit-no-context.flag` included.
+
+The failure this prevents: on a project whose headings are `## Sprache` and `## Design`, the literal-heading match returns nothing, `PROJECT_CONTEXT` silently becomes "no project-specific context", and every subagent runs blind to the file's bans. Most `CLAUDE.md` files in the wild do not use the heading.
+
+**Concurrent tree check (baseline):** two things move independently, so pin both:
+
+```bash
+AUDIT_BASE_HEAD=$(git rev-parse HEAD)
+AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
+```
+
+Re-check BOTH after EVERY batch. The hash alone is not enough: if a parallel session commits exactly the dirty tree, `git diff HEAD` goes empty against the *new* HEAD and the hash can match the old baseline while the diff base has moved underneath the audit. `/audit` already pins `AUDIT_BASE_HEAD` for this reason (`../audit/SKILL.md`).
+
+Deviation in either → warning into the audit log (`## Notes: Tree changed during audit`, naming the foreign commits), re-collect scope for the next batch, re-pin both values, discard findings on overwritten lines. Detail: `references/scope-context-batching.md`.
 
 ---
 
@@ -381,7 +397,21 @@ Output the line verbatim as the last line. Completion is decided ONLY from this 
 |---|---|---|
 | `CLEAN` | — | row → clean + HEAD; next pending batch (or Phase 2.5) |
 | `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | convergence check; else ROUND+1 |
-| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | row → clean + HEAD; next batch (or Phase 2.5) |
+| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | **regression pass first** (below), then row → clean + HEAD; next batch (or Phase 2.5) |
+
+### Regression pass after the final round (MANDATORY)
+
+The last round applies fixes and no round is left to look at them. Every other round is checked by the one after it; this one would ship unchecked.
+
+Dispatch ONE worker, scoped to the files the final round's fix agents actually touched (`git diff --name-only` against the round's starting state), not a full dimension sweep. Its brief is the seam, not the dimension:
+
+- Fixes applied by parallel agents that could not see each other's edits: contradictions, half-applied changes, a comment that now describes something else, an import that no longer matches.
+- State a fix forgot to reset, a lifecycle a fix left half-torn-down, a check a fix moved but did not re-verify from the other side.
+- Anything the round's own fix reports flagged as "skipped" or "outside my boundary".
+
+Findings from this pass are fixed like any other. It does NOT open a new round and does not extend `{MAX_RUNDEN_PRO_BATCH}`; on findings it cannot resolve, the row goes `blocked` rather than `clean`.
+
+Why this is not optional: in the run that produced this rule, two of six Critical findings were regressions introduced by the audit's own fixes, and both were caught only because the orchestrator improvised exactly this pass. Parallel fix agents with disjoint file boundaries are fast and blind to each other; something has to look at the seam.
 | `NO_CONVERGENCE` | — | row → blocked + bullet; open findings become open points |
 
 ---

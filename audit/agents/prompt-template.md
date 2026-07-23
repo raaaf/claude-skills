@@ -84,6 +84,8 @@ DOCUMENTED TRADEOFFS (from ADRs/DESIGN.md/PRODUCT.md — deliberate decisions, d
 Files you MUST check (read EVERY single file):
 {BATCH_DATEILISTE}
 
+IMPORTANT: If the project has a `CLAUDE.md`, read it IN FULL before your first finding, even when its content is already quoted above. It is the only place the project's own bans live, and a ban is invisible until you are about to break one. The headings will not be the ones you expect: rules that decide findings sit under names like `## Sprache`, `## Design` or `## Swift 6`, not under `## Audit Context`.
+
 IMPORTANT: Read EVERY file in the list. Skip none. Start with the most likely problem candidates, but work through the complete list.
 Report only real, concrete problems. No theoretical findings.
 Do NOT report issues that are in the suppressions -- these were deliberately accepted.

@@ -122,6 +122,42 @@ if (user.role === Role.SuperAdmin) { ... }
 - Use config for environment-dependent values
 - The only acceptable "magic" numbers are `0`, `1`, and `-1` in obvious contexts (array indices, increments)
 
+### Drifted config copies in tests, scripts and fixtures (FLAG)
+
+A test, spike or measurement script that declares its **own copy** of a production
+constant instead of importing it. Prompt templates, category and keyword lists,
+model ids, chunk sizes, timing constants, feature-flag defaults.
+
+This is not ordinary duplication, and the usual "extract it" reasoning understates
+it. The copy does not merely repeat the production value: it **replaces** it inside
+the only thing that was supposed to check it. The test stays green while validating
+a configuration that never ships, and the greener it looks the longer nobody looks.
+
+Three shapes, all seen in one audit of one repository:
+
+- The adversarial battery that is the sole test of a safety stage carries its own
+  system prompt, which has since diverged from the shipped one. Every case passes
+  against text no user ever receives.
+- Two latency scripts carry their own copy of a prompt and their own copy of the
+  synthesis call, and the copy skips a normalisation step the real path performs.
+  The numbers they produce are quoted in the README as measured behaviour.
+- A unit test re-declares a keyword list **directly beneath a comment claiming the
+  live list is imported rather than duplicated**. A keyword added in production is
+  never covered, and the comment actively discourages checking.
+
+How to catch it: when a diff touches a production constant, grep the constant's
+value (not only its name) across `tests/`, `scripts/`, `spec/`, `fixtures/`. A
+second literal copy is the finding.
+
+Severity: **important** when the copy sits in something whose output is trusted as
+evidence (a safety battery, a benchmark quoted in docs, the only test of a stage),
+because the failure mode is a false green rather than a broken build. **minor** when
+the copy only affects the fixture's own convenience.
+
+A comment asserting that no duplication exists is not evidence. Verify it against
+the source file before accepting it, and treat a false claim as part of the finding:
+it is what stopped the last reader from checking.
+
 ## VI. Hardcoded Strings — User-Facing Text
 
 User-facing text hardcoded directly in templates, components, or controllers is a maintenance problem. Even if the project is not multilingual today, hardcoded strings scattered across hundreds of files make text changes painful and inconsistent.

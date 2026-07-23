@@ -14,13 +14,27 @@ cd "$PROJECT_ROOT"
 eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 
 # Load PROJECT_CONTEXT from CLAUDE.md (awk instead of sed — more portable)
+#
+# Three outcomes, and the middle one is the one that used to fail silently:
+#
+#   heading present   -> use that section, as /audit does
+#   file but no       -> CONTEXT_FALLBACK=WHOLE_FILE. The project has rules, they
+#   heading              just do not live under this exact heading. Passing
+#                        "no context" here is a lie about a file full of context.
+#   no file           -> genuinely nothing
 PROJECT_CLAUDE_MD="$PROJECT_ROOT/CLAUDE.md"
+CONTEXT_FALLBACK=NONE
 if [ -f "$PROJECT_CLAUDE_MD" ]; then
   PROJECT_CONTEXT=$(awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f' "$PROJECT_CLAUDE_MD")
-  [ -z "$PROJECT_CONTEXT" ] && PROJECT_CONTEXT="Kein projektspezifischer Kontext."
+  if [ -z "$PROJECT_CONTEXT" ]; then
+    CONTEXT_FALLBACK=WHOLE_FILE
+    PROJECT_CONTEXT=$(cat "$PROJECT_CLAUDE_MD")
+  fi
 else
+  CONTEXT_FALLBACK=NO_FILE
   PROJECT_CONTEXT="Kein projektspezifischer Kontext."
 fi
+echo "CONTEXT_FALLBACK=$CONTEXT_FALLBACK ($(printf '%s' "$PROJECT_CONTEXT" | wc -l) Zeilen Kontext)"
 
 # Load SUPPRESSIONS (shared pattern with /audit)
 SUPPRESSIONS_FILE="$PROJECT_ROOT/.claude/audits/suppressions.json"
@@ -55,7 +69,29 @@ Variables from the outputs:
 - **ALLE_DATEIEN:** `/tmp/full-audit-files.txt`
 - **VISUELL_RELEVANTE_DATEIEN:** `/tmp/full-audit-frontend.txt`
 - **TRANSLATION_DATEIEN:** `/tmp/full-audit-translations.txt`
-- **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**
+- **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**, **CONTEXT_FALLBACK**
+
+## Project Context: the heading is not the contract
+
+`/audit` asks the user to draft an `## Audit Context` section when it finds none
+(`../audit/references/scope-and-pre-checks.md`, "Audit Context Check"). Port that
+question, but only for `CONTEXT_FALLBACK=NO_FILE`. Asking "shall I draft a context
+section?" at a `CLAUDE.md` that already holds two hundred lines of project rules is
+the wrong question, and answering it wastes the rules that are already there.
+
+| CONTEXT_FALLBACK | What to do |
+|---|---|
+| `NONE` (heading found) | Pass that section as `PROJECT_CONTEXT`, as before |
+| `WHOLE_FILE` | Pass the entire file, and additionally instruct EVERY worker and EVERY fix agent to read `CLAUDE.md` in full themselves before their first edit. Do not ask the user anything |
+| `NO_FILE` | Ask via `AskUserQuestion` exactly as `/audit` does, including the `.claude/audit-no-context.flag` marker check |
+
+Why the explicit read-it-yourself instruction on top of passing the text: a full
+`CLAUDE.md` is long, it competes with the file list for attention, and the rules it
+carries are often bans ("never `.ultraThinMaterial`", "real umlauts, never ae/oe/ue")
+that are invisible until an agent is about to break one. A run where this was skipped
+produced fix agents writing fake-umlaut German comments into a repo whose `CLAUDE.md`
+forbids it twice, on a project whose headings are `## Sprache` and `## Design`, so the
+literal `## Audit Context` heading never matched and every agent ran blind.
 
 ## Context Building (one-time)
 
@@ -103,10 +139,21 @@ Output batch overview: `Batch N: directory (X files)`.
 A full audit runs for minutes across many batches. If the user (or another process) changes the working tree in the meantime, later batches audit a stale state. So record the baseline in Phase 1 and compare again after every batch:
 
 ```bash
+AUDIT_BASE_HEAD=$(git rev-parse HEAD)
 AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
 
-If the value deviates after a batch: warning into the audit log (`## Notes: Tree changed during audit`), reset the next batch to the current state (re-run this reference document's scope collection), update `AUDIT_TREE_HASH`. Discard findings on lines that have meanwhile been overwritten (hallucination risk).
+Both, not just the hash. They fail in different ways, and the interesting case defeats the hash alone: a parallel session commits **exactly** the current dirty tree, so `git diff HEAD` returns empty against the new HEAD, the hash matches a clean baseline again, and the check stays quiet while the diff base has moved. `/audit` pins `AUDIT_BASE_HEAD` for this reason (`../audit/SKILL.md`); this skill did not, and a run where the user committed four times mid-audit passed the check silently every time.
+
+After every batch, compare both:
+
+```bash
+[ "$(git rev-parse HEAD)" = "$AUDIT_BASE_HEAD" ] || echo "WARN: Fremd-Commit waehrend Audit"
+```
+
+On a deviation in either: warning into the audit log (`## Notes: Tree changed during audit`), naming the foreign commits (`git log --oneline $AUDIT_BASE_HEAD..HEAD`) so the log says what moved rather than only that something did. Then reset the next batch to the current state (re-run this document's scope collection), re-pin BOTH values, and discard findings on lines that have meanwhile been overwritten (hallucination risk).
+
+A foreign commit is not automatically a problem, and the audit does not stop for one. What it must not do is keep reporting against a base that no longer exists. Two things deserve a second look: code the audit never saw because it arrived after that batch's scope collection, and the audit's own fixes swept into someone else's commit.
 
 ## Intent Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
 
