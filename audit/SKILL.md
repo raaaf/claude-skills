@@ -58,7 +58,7 @@ Below, `{MAX_RUNDEN}` means the value set here.
 
 ## Phase 0.6: Dimension scoping via argument (optional partial audit)
 
-The skill argument may select dimensions explicitly (`/audit security`, `/audit performance,a11y`, group aliases `backend`/`frontend`/`design`, `?` for a multi-select prompt). If it does: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}` — read `references/partial-audit.md` and apply it (skip triage+floor, `Routing: user-scoped`, Step-D extras only for related dimensions, Phase 4 writes NO push marker, pre-checks always run). Non-dimension arguments stay a free-text scope hint (`PARTIAL_AUDIT=0`).
+The skill argument may select dimensions explicitly (`/audit security`, `/audit performance,a11y`, group aliases `backend`/`frontend`/`design`, `?` for a multi-select prompt). If it does: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}` — read `references/partial-audit.md` and apply it (skip triage+floor, user-scoped `Routing:` line, Step-D extras only for governing dimensions, Phase 4 writes NO push marker, pre-checks always run). Non-dimension arguments stay a free-text scope hint (`PARTIAL_AUDIT=0`).
 
 ## Phase 1: Pre-flight & scope
 
@@ -194,7 +194,7 @@ A JSON result refines the floor and adds hotspots (log `TRIAGE=REFINED`). Idle o
 
 **Step C.0.5 — Deterministic routing floor + transparency (EVERY round)**
 
-**`PARTIAL_AUDIT=1` (Phase 0.6): skip C.0 AND C.0.5 entirely** — `ROUTING_RUN = SELECTED_DIMENSIONS`, print `Routing: user-scoped [{list}]` instead. The user's explicit selection is the routing; the floor must not force skipped dimensions back on.
+**`PARTIAL_AUDIT=1` (Phase 0.6): skip C.0 AND C.0.5 entirely** — `ROUTING_RUN = SELECTED_DIMENSIONS`, print `Routing: lief [{list}]; uebersprungen [alle uebrigen: user-scoped]` instead. The user's explicit selection is the routing; the floor must not force skipped dimensions back on.
 
 This is the primary routing decision, not a safety net. It derives run/skip from git file signals alone:
 
@@ -242,7 +242,7 @@ Prompt template: `agents/prompt-template.md`, section "For /audit (diff-based)".
 
 Same location flagged by multiple subagents → one finding, strictest classification wins.
 
-Check yourself (round 1 only):
+Check yourself (round 1 only; in `PARTIAL_AUDIT=1` only the checks whose governing dimension is selected — mapping in `references/partial-audit.md`):
 - Public pages / changelog (see Phase 3a)
 - Tests: changed logic without tests?
 - Mobile apps: `bash "$AUDIT_BIN/detect-mobile.sh"` → on match, impact from `references/mobile-impact.md`

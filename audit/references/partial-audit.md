@@ -20,8 +20,8 @@ Unknown dimension keys in a list: report them, continue with the valid remainder
 
 Everything else runs unchanged — Phase 1 pre-checks, fix-loop, fix-verifiers, learning:
 
-- **Skip triage (C.0) and floor (C.0.5) entirely.** Routing IS the user's explicit choice: `ROUTING_RUN = SELECTED_DIMENSIONS`, log line `Routing: user-scoped [{list}]` (chat every round + audit log `## Routing`). The floor must not force deselected dimensions back on.
-- **Orchestrator extra checks in Step D** (tests, mobile impact, public pages/changelog) run only when a related dimension is selected.
+- **Skip triage (C.0) and floor (C.0.5) entirely.** Routing IS the user's explicit choice: `ROUTING_RUN = SELECTED_DIMENSIONS`, log line `Routing: lief [{list}]; uebersprungen [alle uebrigen: user-scoped]` (same shape as the floor's line; chat every round + audit log `## Routing`). The floor must not force deselected dimensions back on.
+- **Orchestrator extra checks in Step D** run only when a governing dimension is selected: public pages/changelog check → `seo`/`copy`/`docs_sync`; tests-for-changed-logic check → `code_quality`/`architecture`; mobile impact → `ui_design`/`ux`/`a11y`.
 - **Phase 4 NEVER writes the push marker.** A partial audit is not a push gate. Final output must state: `Teilaudit ({list}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` The `AUDIT_STATUS:` round contract stays unchanged (Stop hook).
 - **Secret scan and all other Phase 1 pre-checks ALWAYS run** — found secrets are reported as Critical regardless of scope; since no marker is written, the push stays blocked anyway.
 - Audit log header notes the scope: `Scope: partial ({list})`.
