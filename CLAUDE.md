@@ -69,6 +69,7 @@ Key invariants:
 |---|---|---|
 | `/audit` | opus | Pre-push diff audit, 12 dimensions, fix-loop |
 | `/full-audit` | opus | Full codebase audit, batched |
+| `/design-audit` | opus | 100% visual dissection of the whole frontend: defects + gated elevation opportunities, optional Mobbin grounding, report first, fixes only on selection |
 | `/feature-audit` | opus | Goal-loop: FEATURE_AUDIT.md matrix, one test per feature, drive to all-green |
 | `/ship` | sonnet | Commit + audit gate + push + deploy + verify |
 | `/diagnose` | sonnet | Reproduce-first bug diagnosis, regression test |

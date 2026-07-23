@@ -54,6 +54,12 @@ Runs as a persistent goal-loop: batch progress lives in `.claude/audits/full-aud
 
 Same 12 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
 
+### `/design-audit` — Design Pass Over the Whole Frontend
+
+Sweeps the entire frontend surface (or a path scope: `/design-audit resources/views/checkout`) — **100% visual, full dissection**: every file in scope is read and taken apart, view by view. Five visual dimensions: typography, UI visual design incl. the OKLCH color system, visual UX patterns, animation, and the visual slice of a11y (contrast, focus visibility, target sizes — no ARIA/semantics, no copy, no SEO; those belong to /audit). Two strictly separated finding classes: **Defects** (guideline violations, cross-view inconsistencies, ranked worst views) and **Elevation opportunities** (max 3-7 by effort, each gated by purpose + frequency + existing-styling-system fit, with a mandatory "Considered and Rejected" list so it never becomes a wishlist). Optional fail-open reference grounding: the Mobbin MCP (real-product flows for the same screen types) informs Elevation suggestions, and available Anthropic design skills can second-opinion the ranking. Goal: make the existing UI more consistent, more crafted, more distinctive — explicitly including the removal of generic AI-slop patterns.
+
+**Report first, fixes only on selection:** nothing touches product files until the user picks items from the report (fix now / defer as issue / skip). Selected items run through the same fix-agent + fix-verifier machinery as `/audit`. Not a push gate — no marker is written; `/audit` still guards the push afterwards. Reuses `audit/agents/*.md` and `audit/guidelines/*.md` (single source of truth).
+
 ### `/feature-audit` — Feature Test Matrix (Goal-Loop)
 
 Builds and maintains `FEATURE_AUDIT.md`: a canonical table of every user-facing feature, route,
@@ -233,6 +239,7 @@ git clone https://github.com/raaaf/claude-skills ~/.claude/skills/claude-skills
 # Symlink each skill (or use sync-skills.sh if you cloned alongside another location)
 ln -s ~/.claude/skills/claude-skills/audit         ~/.claude/skills/audit
 ln -s ~/.claude/skills/claude-skills/full-audit    ~/.claude/skills/full-audit
+ln -s ~/.claude/skills/claude-skills/design-audit  ~/.claude/skills/design-audit
 ln -s ~/.claude/skills/claude-skills/feature-audit ~/.claude/skills/feature-audit
 ln -s ~/.claude/skills/claude-skills/ship          ~/.claude/skills/ship
 ln -s ~/.claude/skills/claude-skills/diagnose      ~/.claude/skills/diagnose
@@ -243,7 +250,7 @@ ln -s ~/.claude/skills/claude-skills/plan-it       ~/.claude/skills/plan-it
 ln -s ~/.claude/skills/claude-skills/write-a-skill ~/.claude/skills/write-a-skill
 ```
 
-`audit` and `full-audit` must be installed together — `full-audit` references agent definitions from `audit/agents/`. Path is auto-resolved (sibling directory, `~/.claude/skills/audit/`, or mono-repo layout).
+`audit`, `full-audit`, and `design-audit` must be installed together — the latter two reference agent definitions from `audit/agents/`. Path is auto-resolved (sibling directory, `~/.claude/skills/audit/`, or mono-repo layout).
 
 ## Project-specific configuration
 
