@@ -129,10 +129,16 @@ score_fixture() {
     line=$(jq -r ".must_find[$i].line" "$expected_file")
     matches_csv=$(jq -r ".must_find[$i].matches | join(\"|\")" "$expected_file")
 
-    # Dimension tags in logs vary in separator/casing ([UI-Design] vs ui_design):
-    # normalize expected dim into a separator-tolerant pattern.
+    # Dimension tags in logs vary in separator/casing ([UI-Design] vs ui_design)
+    # AND in naming (sessions tag quality findings as [correctness]): normalize
+    # into a separator-tolerant pattern and add known synonyms.
     local dim_pat
     dim_pat=$(printf '%s' "$dim" | sed 's/[^a-zA-Z0-9]/[-_ ]?/g')
+    case "$dim" in
+      code_quality|correctness|quality) dim_pat="code[-_ ]?quality|correctness|quality" ;;
+      a11y) dim_pat="a11y|accessibility" ;;
+      ui_design) dim_pat="ui[-_ ]?design|ui" ;;
+    esac
 
     # Line numbers drift by a few lines between model judgment and fixture
     # ground truth (observed off-by-one on sqli-laravel): accept +/-3.
@@ -158,7 +164,10 @@ score_fixture() {
   while [ "$j" -lt "$fp_count" ]; do
     local bad_dim
     bad_dim=$(jq -r ".must_not_find[$j].dimension" "$expected_file")
-    if echo "$log" | grep -iE "\\[$bad_dim\\]" >/dev/null 2>&1; then
+    # Only real finding lines count as FPs: they carry a severity tag. A
+    # [Clean][Security] line explaining why something is NOT a finding, or a
+    # routing/summary mention of the dimension, must not score as FP.
+    if echo "$log" | grep -iE "\\[(critical|important|minor)\\]" | grep -ivE "\\[clean\\]" | grep -iE "\\[$bad_dim\\]" >/dev/null 2>&1; then
       fp=$((fp + 1))
     fi
     j=$((j + 1))
