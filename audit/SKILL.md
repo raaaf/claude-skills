@@ -1,9 +1,9 @@
 ---
 name: audit
 disable-model-invocation: true
-description: "Pre-push code audit. Triage routes the diff to relevant subagents (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Routes the diff to relevant subagents (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. An argument scopes to selected dimensions ('/audit security', '/audit frontend', '/audit ?' for a multi-select prompt) — partial audits fix as usual but never write the push marker. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
-argument-hint: "[optional: scope hint]"
+argument-hint: "[optional: dimensions (security | performance,a11y | backend | frontend | design | ?) or scope hint]"
 model: opus
 effort: high
 allowed-tools:
@@ -55,6 +55,27 @@ echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLea
 | high | 3 | yes | yes | low (also fix unsafe ones, with warning) |
 
 Below, `{MAX_RUNDEN}` means the value set here.
+
+## Phase 0.6: Dimension scoping via argument (optional partial audit)
+
+The skill argument may select dimensions explicitly. Parse it BEFORE Phase 1:
+
+| Argument | Meaning |
+|---|---|
+| (empty) | Full audit as usual: triage + floor route automatically, push gate active |
+| Dimension list, comma/space separated | e.g. `security` or `performance,a11y` — keys: `architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy` |
+| `backend` | `architecture,security,performance,code_quality,docs_sync` |
+| `frontend` | `seo,a11y,typography,ui_design,ux,animation,copy` |
+| `design` | `typography,ui_design,ux,animation` (diff-scoped design check; for the full-surface elevation pass use /design-audit) |
+| `?` | AskUserQuestion multi-select over all 12 dimensions, then continue as partial audit |
+| Anything else (paths, prose) | Not a dimension selection — treat as free-text scope hint, `PARTIAL_AUDIT=0` |
+
+If dimensions were selected: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}`. Effects (everything else runs unchanged — pre-checks, fix-loop, verifiers, learning):
+
+- **Skip triage (C.0) and floor (C.0.5) entirely** — routing IS the user's explicit choice. `ROUTING_RUN = SELECTED_DIMENSIONS`, log line: `Routing: user-scoped [{list}]`.
+- **Orchestrator extra checks in Step D (tests/mobile/public pages) only run when a related dimension is selected.**
+- **Phase 4 NEVER writes the push marker.** A partial audit is not a push gate. Final output must state: `Teilaudit ({list}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` The `AUDIT_STATUS:` round contract stays unchanged (Stop hook).
+- Secret scan and the other Phase 1 pre-checks ALWAYS run — a partial audit still refuses to bless found secrets (report as Critical, but since no marker is written the push stays blocked anyway).
 
 ## Phase 1: Pre-flight & scope
 
@@ -189,6 +210,8 @@ Agent(
 A JSON result refines the floor and adds hotspots (log `TRIAGE=REFINED`). Idle or malformed output changes nothing and gets NO re-prompt — the floor result already stands (log `TRIAGE=FLOOR_ONLY`).
 
 **Step C.0.5 — Deterministic routing floor + transparency (EVERY round)**
+
+**`PARTIAL_AUDIT=1` (Phase 0.6): skip C.0 AND C.0.5 entirely** — `ROUTING_RUN = SELECTED_DIMENSIONS`, print `Routing: user-scoped [{list}]` instead. The user's explicit selection is the routing; the floor must not force skipped dimensions back on.
 
 This is the primary routing decision, not a safety net. It derives run/skip from git file signals alone:
 
@@ -447,6 +470,8 @@ On deviation: warn (`Fremd-Commit/Index-Drift waehrend Audit, Diff-Basis instabi
 **Hard block (never push):**
 - `SECRET_SCAN_RESULT=FINDINGS` → abort push, remove secrets + clean history (BFG / `git filter-repo`).
 - Unfixable Critical/Important, linter errors, tests red → `BLOCKED: Push aborted.` + list. NO marker file.
+
+**`PARTIAL_AUDIT=1`: STOP here — no marker, no push.** Print: `Teilaudit ({SELECTED_DIMENSIONS}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` Then continue with Phase 5 (learning runs normally).
 
 **Everything fixed, tests green:**
 

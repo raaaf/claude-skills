@@ -67,7 +67,7 @@ Key invariants:
 
 | Skill | Model | Purpose |
 |---|---|---|
-| `/audit` | opus | Pre-push diff audit, 12 dimensions, fix-loop |
+| `/audit` | opus | Pre-push diff audit, 12 dimensions, fix-loop; argument scopes to selected dimensions (partial audit, no push marker) |
 | `/full-audit` | opus | Full codebase audit, batched |
 | `/design-audit` | opus | 100% visual dissection of the whole frontend: defects + gated elevation opportunities, optional Mobbin grounding, report first, fixes only on selection |
 | `/feature-audit` | opus | Goal-loop: FEATURE_AUDIT.md matrix, one test per feature, drive to all-green |

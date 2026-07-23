@@ -46,6 +46,8 @@ Triage routes the diff to relevant workers only; workers receive triage-marked h
 
 **Per-finding output cap:** 50 words, no code snippets, only `file:line` refs.
 
+**Dimension scoping:** `/audit` alone runs the full gate with automatic routing. An argument turns it into a **partial audit**: `/audit security`, `/audit performance,a11y`, group aliases `backend` / `frontend` / `design`, or `/audit ?` for a multi-select prompt over all 12 dimensions. Partial audits run only the selected workers (no triage/floor), fix and verify as usual, but **never write the push marker** — only the unscoped `/audit` gates a push.
+
 ### `/full-audit` — Full Codebase Audit
 
 Comprehensive one-time audit of an entire codebase. Auto-detects framework, batches large codebases (>80 files), runs Phase 0 backlog check, Phase 0.5 dimension selection (Alles / Nur Backend / Nur Frontend / Custom multi-select), Phase 0.7 effort configuration. Cross-Reference pass after all batches (xhigh runs it even in SINGLE mode).
