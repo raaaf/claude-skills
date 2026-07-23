@@ -133,6 +133,18 @@ A shared loop must reproduce EVERY label variant that existed before. If one bra
 
 REQUIRED: report as an explicit output line, e.g. `ARIA-CHECK: before 2 label variants (view {color}, view {n}), after both preserved`. If one is missing: fix the edit before reporting `APPLIED`.
 
+## Special case: never degrade visible information to hover-only
+
+A fix must never move information that was VISIBLE into a hover-only affordance (`title=`, `.help()`, tooltip, popover on hover). Keyboard users, VoiceOver/screen-reader users and touch devices never reach it — the information is gone for them, and no syntax error warns you. This counts as a fix regression, not a style choice (real incident 2026-07-22: a fix moved a history row's visible failure reason into a hover tooltip).
+
+Applies to failure reasons, error messages, status text, disabled-state explanations, counts, units, truncated labels.
+
+1. Before the edit: note every string the user can currently READ in the touched block.
+2. After the edit: every one of those strings is still rendered as text (or as an always-visible icon + accessible label). A tooltip may ADD context, never REPLACE text.
+3. If space is the reason for the move: truncate with a visible remainder (`…` + full text reachable via focusable control), don't hide it behind hover.
+
+REQUIRED output line when the fix touched user-visible text: `VISIBILITY-CHECK: {n} visible strings before, {n} after, none hover-only`. If one became hover-only: repair the edit before reporting `APPLIED`.
+
 ## Special case: Alpine.data extraction
 
 After every extraction or change of an `Alpine.data()` registration, MANDATORY check of the init order:

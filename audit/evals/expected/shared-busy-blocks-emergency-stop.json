@@ -1,0 +1,21 @@
+{
+  "fixture": "ux/shared-busy-blocks-emergency-stop.swift",
+  "must_find": [
+    {
+      "dimension": "ux",
+      "line": 49,
+      "matches": ["shared busy", "controlBusy", "emergency", "stop", "abort", "own busy flag", "blocked", "disabled"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "local network control calls only, no auth or trust-boundary logic in this file"
+    },
+    {
+      "dimension": "performance",
+      "reason": "three buttons and three async calls, no hot path"
+    }
+  ]
+}

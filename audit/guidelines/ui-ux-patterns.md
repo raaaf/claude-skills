@@ -83,6 +83,34 @@ const { elementRef } = useForesight({
 - **Use:** Data-heavy dashboards, multi-page apps with slow APIs, e-commerce product pages
 - **Skip:** Static sites with instant navigation, SPAs with all data preloaded
 
+## Emergency / Abort Actions Need Their Own Busy State
+
+Stop, Cancel, Abort, Emergency-Stop, Disconnect: actions whose whole purpose is to end a bad situation. They must NEVER share a busy/disabled flag with routine actions (pause, resume, refresh, save, submit).
+
+The failure mode is second-order and easy to miss in review: a routine request hangs, the shared flag stays `true` for the full network timeout, and the user cannot stop the machine for 15 seconds (real incident 2026-07-22, `controlBusy` shared between Pause and Stop).
+
+```swift
+// BAD — one flag gates everything
+@Published var controlBusy = false
+Button("Pause") { ... }.disabled(controlBusy)
+Button("Stop")  { ... }.disabled(controlBusy)   // hanging pause blocks the stop
+
+// GOOD — abort has its own flag, only its own request gates it
+@Published var routineBusy = false
+@Published var stopBusy = false
+Button("Pause") { ... }.disabled(routineBusy)
+Button("Stop")  { ... }.disabled(stopBusy)
+```
+
+Rules:
+
+1. One busy flag per abort action, set only by that action's own in-flight request.
+2. An abort action stays enabled while routine requests are in flight — issuing it should CANCEL them, not queue behind them.
+3. Timeouts on abort requests are short (a few seconds), not the app's default.
+4. Same rule for spinners/overlays: a modal "please wait" that covers the stop button is the same bug in visual form.
+
+**Audit signal:** one `isBusy`/`isLoading`/`controlBusy` flag read by >= 2 controls where at least one is a stop/cancel/abort → flag as Important (Critical if the abort controls physical hardware, payments, or data deletion).
+
 ## CMS / Settings Field with View Fallback
 
 An editable CMS/settings field that also has a default has **three consistency points** that must all carry the same text:
