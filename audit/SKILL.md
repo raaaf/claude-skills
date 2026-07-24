@@ -104,6 +104,15 @@ bash "$AUDIT_BIN/check-number-format-locale.sh"
 # NUMFMT_RESULT=MISSING_LOCALE → jede Zeile wird ein Important-Finding
 # [Correctness], sofern die Datei im Diff liegt; sonst Hinweis. Laeuft nur bei
 # vorhandenem lang/de. OK/SKIP → nichts tun.
+
+# Test-Zahl-Claims in README/CLAUDE.md vs. tatsaechliche Suites (deterministisch)
+bash "$AUDIT_BIN/check-test-count-drift.sh"
+# TESTCOUNT_RESULT=MISMATCH → KEIN Auto-Finding: Source-Zaehlung ist bei
+# parametrisierten Tests (test.each, @Test arguments:) nur eine Naeherung.
+# Stattdessen in Phase 3c die Claims gegen die ECHTE Testlauf-Ausgabe halten;
+# erst eine Laufzeit-Abweichung wird ein Important-Finding [Docs]. Nach der
+# letzten Fix-Welle erneut ausfuehren — Fix-Agents fuegen Tests hinzu und
+# genau dann veralten die Zahlen still (3 Audits in Folge). OK/SKIP → nichts.
 # I18N_RESULT=MISSING → jede Zeile "MISSING {locale}: {key}" wird ein
 # Important-Finding [i18n] (Schritt D), sofern die betroffenen Keys/Files
 # im Diff liegen. Bei /audit ausserhalb des Diffs: als Hinweis ausgeben,

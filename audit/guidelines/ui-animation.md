@@ -213,6 +213,8 @@ Think in two designer parameters instead of the physics triplet: **damping ratio
 
 - Wrap hover animations in `@media (hover: hover) and (pointer: fine)`
 
+**Named check — new animated/scrollable component gates on reduced motion:** any NEW component the diff introduces that animates on its own (auto-playing, looping, parallax, marquee/auto-scroll, decorative motion) must gate on the platform's reduced-motion signal before shipping — `prefers-reduced-motion` (web), `accessibilityReduceMotion` / `UIAccessibility.isReduceMotionEnabled` (iOS), `Settings.Global.ANIMATOR_DURATION_SCALE` (Android). Missing gate on a new self-animating component → Important [Animation]. Two audits in a row shipped one without it. The global-catch-all exception below still applies on web; native platforms have no catch-all, so there the per-component check is always required.
+
 **Before flagging "missing `prefers-reduced-motion`":** check whether a global catch-all already exists (e.g. a `@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; ... } }` block in the base/app CSS). If it does, an individual animated element without its own reduced-motion rule is already covered — not a finding.
 
 **Before flagging "missing duration" on a Tailwind `transition*` utility:** Tailwind's `transition`, `transition-colors`, `transition-transform`, etc. ship a default duration of 150ms. A bare utility class without an explicit `duration-*` is not a finding unless the default 150ms is demonstrably wrong for that interaction.

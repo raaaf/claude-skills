@@ -1,0 +1,18 @@
+{
+  "fixture": "docs/test-count-drift/",
+  "must_find": [
+    {
+      "dimension": "docs",
+      "line": 8,
+      "matches": ["3 Tests", "5", "count", "stale", "drift", "README"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "code_quality",
+      "reason": "the test file itself is fine; the defect is the stale doc claim"
+    }
+  ],
+  "notes": "Regression fixture for test-count drift: fix waves add tests within the same audit run and numeric claims in README/CLAUDE.md go silently stale — three audits in a row. Covered deterministically by bin/check-test-count-drift.sh (source count 5 vs claim 3); the runtime comparison in Phase 3c confirms it."
+}

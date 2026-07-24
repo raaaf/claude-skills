@@ -38,6 +38,8 @@ Dimension1, Dimension2
 
 The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EVERY audit log, including `/full-audit` batch runs. Trend computation in the learning log reads this line; when a batch run omits it, the trend silently mixes counted and estimated runs and stops being comparable across audit types. Write `0` explicitly rather than leaving a category out.
 
+**Recompute, never hand-tally:** derive every found/fixed number by counting the itemized finding bullets in the log itself (e.g. `grep -c '^\- .*\[Important\]'` per section), immediately before writing the summary. A hand-carried tally goes stale the moment a round adds or discards findings — one run reported 11 Important while its own list held 13.
+
 ## Mandatory Tagging Convention
 
 Every finding line — in the round-1 chat output AND in the log — carries BOTH tags: severity (`[Critical]` / `[Important]` / `[Minor]`) and dimension (`[Security]`, `[Architecture]`, ...). A domain tag alone is not enough; trend metrics in the learning log count by severity and turn into estimates when the severity tag is missing.

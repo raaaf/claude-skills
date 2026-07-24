@@ -15,6 +15,7 @@ When a diff touches wizard steps, config files, or the DB schema, the surroundin
 | Config key (new, renamed, removed, default changed) | `.env.example` (matching env var), `CLAUDE.md` (documented defaults), `README.md` (setup section) |
 | Schema / migration (column, table, enum, index) | `CLAUDE.md` (schema notes, CSV/export column contracts), `FEATURE_AUDIT.md` (field inventory), seeders/factories that reference the column |
 | Route or page added/removed | `docs/manual-test-plan.md` (affected flows), sitemap/footer navigation, feature tests that enumerate routes |
+| Tests added/removed (incl. by fix agents mid-audit) | Every numeric "N Tests" claim in `README.md`/`CLAUDE.md` — `bin/check-test-count-drift.sh` flags candidates; confirm against the actual test-run output, not the source count |
 
 ## Rules
 
