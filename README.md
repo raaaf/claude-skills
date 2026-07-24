@@ -207,6 +207,14 @@ Discovers what the app could do better from a product-owner perspective: feature
 
 Hard grounding rule: every suggestion must cite evidence from the repo itself (TODO clusters, stated-but-undelivered README promises, surface asymmetries like export-without-import, capabilities the architecture makes cheap, friction users visibly work around). Generic idea-slop ("add dark mode") is not a finding.
 
+### `/app-baseline` — Production Baseline Onboarding
+
+Onboards a new or existing app (web or mobile) onto a 12-dimension production standard (`app-baseline/guidelines/baseline-spec.md`): positioning charter (three keywords, value prop, target user), design foundation, a11y process, quality gates, security posture, automated + reversible deployment, dependency currency, backups with tested restore, observability, legal, docs, environments. Interviews for the charter, writes `BASELINE.md`, scaffolds missing infra (CI gate, `.env.example`, deploy stub, backup skeleton) on selection.
+
+### `/baseline-check` — Baseline Compliance Check
+
+Checks an existing app against the same spec: deterministic scan first (`app-baseline/bin/baseline-scan.sh`, one PASS/FAIL/UNVERIFIED line per check), LLM evidence pass second, report grouped by severity with an explicit UNVERIFIED section (nothing unverifiable is silently passed). `BASELINE.md`'s "Decided tradeoffs" section suppresses findings. Code-level dimensions (a11y in markup, security in code, UI, performance, docs drift) are delegated to `/full-audit`, never duplicated. Not a push gate — no marker is written.
+
 ## Personal skills
 
 These skills live in this repo as architecture examples. They are wired to personal infrastructure and not meant for reuse — read them for patterns, not for installing. All API keys live in the environment (`~/.claude/settings.json` env or `~/.zshrc`), never in the skill files.
@@ -374,6 +382,16 @@ Follow the canonical structure: orchestrator (under 500 lines, references kept o
 - [Grill Me Skill](https://www.aihero.dev/my-grill-me-skill-has-gone-viral) — recommended-answer-per-question technique used in `/plan-it`
 - [Matt Pocock's write-a-skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md) — description discipline, body-size discipline
 - [shadcn/improve](https://github.com/shadcn/improve) — executor-grade plan template (drift check, STOP conditions, machine-checkable done criteria), worktree execute-and-review loop, prompt-injection and secret-handling hard rules for audit workers, evidence-grounded direction findings
+
+## Hi, I'm Rafael
+
+<img src="docs/avatar.png" alt="Rafael Alex" width="88" align="left">
+
+I design and build websites, apps and AI tools. Alone, from Fürth, Germany. These skills are how I actually work, published as they evolve.
+
+More at [rafaelalex.de](https://rafaelalex.de).
+
+<br clear="left">
 
 ## License
 

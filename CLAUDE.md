@@ -49,6 +49,7 @@ Key invariants:
 | `echo '<triage-json>' \| bash audit/bin/check-skips.sh [framework]` | Deterministic sanity-floor over the haiku triage routing: derive file signals from git, force obvious wrong skips back on, emit the `Routing:` line |
 | `bash audit/bin/match-guidelines.sh <guidelines-dir>` | Per-file guideline selection: which guidelines' `applies_to` ERE matches the diff (emit `name<TAB>priority<TAB>scoped\|always`); no-frontmatter guidelines are always applicable |
 | `bash audit/bin/test-lock.sh <cmd...>` | Serialize test runs across parallel fix-verifiers (mkdir spinlock, per-repo, 15min TTL; exit 75 on lock timeout) |
+| `bash app-baseline/bin/baseline-scan.sh [root]` | Deterministic baseline scan: one `D<n>\|check\|PASS\|FAIL\|UNVERIFIED\|evidence` line per check (shared by /app-baseline and /baseline-check) |
 
 ## Conventions
 
@@ -81,6 +82,8 @@ Key invariants:
 | `/delegate` | (erbt Session-Modell) | Default-Implementierungs-Flow: teures Modell analysiert/reviewt, Sonnet setzt um |
 | `/live-audit` | sonnet | Scheduled live-site audit (personal) |
 | `/improve` | sonnet | Product-perspective analysis: feature gaps, growth, business |
+| `/app-baseline` | sonnet | Onboard app onto the 12-dimension production baseline: charter interview, BASELINE.md, infra scaffolds |
+| `/baseline-check` | sonnet | Check existing app against the baseline spec (infra/process/release); code dimensions delegated to /full-audit |
 | `/mockup` | sonnet | Photorealistic design mockups via Nano Banana Pro / ImageMagick (personal) |
 | `/produktbild` | sonnet | AI lifestyle product images via Nano Banana Pro (personal) |
 | `/produktvideo` | sonnet | AI lifestyle video via Runway Gen-4 (personal) |
