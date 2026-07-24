@@ -20,6 +20,8 @@ hooks:
   PreToolUse:
     - matcher: "Bash"
       hook: bash "${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/hooks/block-unsafe-push.sh"
+    - matcher: "Bash"
+      hook: bash "${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/hooks/block-worktree-wide-git.sh"
 ---
 
 # Audit: Review of all open changes
@@ -307,7 +309,14 @@ Count verified Critical+Important. Save `FINDINGS_AKTUELLE_RUNDE`. Convergence c
 git status --porcelain | awk '{print $2}' | sort > /tmp/audit-wave-actual.txt
 # expected = every file assigned in this wave, plus files already modified before it
 comm -13 /tmp/audit-wave-actual.txt /tmp/audit-wave-expected.txt   # assigned but NOT modified -> fix lost
+
+# Stash-Check: ein Eintrag hier heisst, ein Fix-Agent hat trotz Verbot gestasht.
+# Unabhaengig von jeder Selbstauskunft — der 2026-07-22-Verstoss wurde nur durch
+# die Selbstmeldung des Agents entdeckt, dieser Check findet ihn deterministisch.
+git stash list | grep -q . && echo "STASH DETECTED: Welle ungueltig"
 ```
+
+`STASH DETECTED` → wait until every agent of the wave is idle, `git stash pop` to restore the erased work, re-run the cross-check above, and re-dispatch any still-missing assignment ALONE.
 
 Any assigned file that is NOT modified means the fix never landed or was destroyed by a sibling agent, regardless of what that agent reported. Re-dispatch it ALONE, with no other agent running, and state in its briefing that the previous attempt was destroyed.
 

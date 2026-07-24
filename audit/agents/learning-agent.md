@@ -110,7 +110,7 @@ LEARNING_LOG_ENTRY:
 ## Retro — {DATE} — {BRANCH} ({AUDIT_TYPE})
 
 ### Statistics
-- Total audits in the project: {N}  <!-- deterministic: `ls .claude/audits/*.md | grep -v learning-log | grep -v open-points | grep -v suppressions | wc -l` — NEVER carry the number forward from the previous trends block (drift bug 202 vs 196) -->
+- Total audits in the project: {N}  <!-- deterministic: `ls .claude/audits/*.md | grep -v learning-log | grep -v open-points | grep -v suppressions | grep -v -- '-state\.md$' | wc -l` — the `-state.md` exclusion drops `full-audit-state.md`, which is loop state, not an audit log; NEVER carry the number forward from the previous trends block (drift bug 202 vs 196) -->
 - Most frequent finding category: {Category} ({M}x)
 - Average findings per audit: {X}
 

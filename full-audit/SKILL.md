@@ -137,6 +137,32 @@ fi
 
 ---
 
+## Phase 0.45: Build Preflight (compiled languages)
+
+Before the first batch, verify the unchanged HEAD actually builds. A broken build discovered only at the end (Phase 3b linter/tests) means an entire audit run's worth of fixes gets applied on top of code nobody could have compiled in the first place.
+
+```bash
+BUILD_PREFLIGHT_RESULT=SKIP
+if [ -f "$ROOT/Package.swift" ] || ls "$ROOT"/*.xcodeproj >/dev/null 2>&1 || ls "$ROOT"/*.xcworkspace >/dev/null 2>&1; then
+  command -v xcodebuild >/dev/null 2>&1 && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
+elif [ -f "$ROOT/Cargo.toml" ]; then
+  command -v cargo >/dev/null 2>&1 && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
+elif [ -f "$ROOT/go.mod" ]; then
+  command -v go >/dev/null 2>&1 && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
+elif [ -f "$ROOT/pom.xml" ] || [ -f "$ROOT/build.gradle" ] || [ -f "$ROOT/build.gradle.kts" ]; then
+  { command -v gradle >/dev/null 2>&1 || command -v mvn >/dev/null 2>&1; } && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
+fi
+echo "Build preflight: $BUILD_PREFLIGHT_RESULT"
+```
+
+`RUN` → run the project's normal build command against the unchanged HEAD (narrowest scope available, e.g. a single scheme/package — not a full clean build), before any fix agent has touched anything. Build fails → log it immediately as a **Critical** finding `[Build]` in batch 1; do not wait for Phase 3b to surface it. Build succeeds → continue silently, no log entry needed.
+
+`SKIP` (no known compiled-language manifest) or `NO_TOOLCHAIN` (manifest present, toolchain missing) → gap note only, same as the Phase 0.4 test-runner gap note, not a finding.
+
+**Skip when:** ENV `FULL_AUDIT_SKIP_BUILD_PREFLIGHT=1`.
+
+---
+
 ## Phase 0.5: Dimension Selection
 
 Before scope is collected, clarify which dimensions should be checked. Saves tokens and time when the user e.g. only wants Security checked.
@@ -320,6 +346,8 @@ Agent definitions: `{AUDIT_AGENTS}/*.md`.
 
 Prompt template: `{AUDIT_AGENTS}/prompt-template.md` → section "For /full-audit (codebase-based)".
 
+**Idle watchdog (applies to ALL dispatched agents in this phase — workers, fix agents, verifiers; adopted from `../audit/SKILL.md`):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that: dispatch ONE fresh agent for the same dimension/assignment before falling back further — a single idle event is not enough evidence to skip a dimension outright. Only if that fresh agent ALSO fails to deliver → failure path per agent type: **worker** → note in the audit log, continue without the dimension for this batch; **fix agent** → check `git diff HEAD` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once more; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once per agent.
+
 **Skip rules:**
 - Dimension NOT in `SELECTED_DIMENSIONS` → don't dispatch the agent at all
 - **5 (SEO): skip project-wide if the project has no web frontend at all.** Check once per Full-Audit: `find . -path ./node_modules -prune -o \( -name '*.html' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' -o -name '*.astro' -o -name '*.blade.php' \) -print -quit` returns nothing → pure native/CLI/JSON-API project (e.g. only Swift + bun backend), SEO has no attack surface → never dispatch agent 5 (no wasted tokens). On a hit, decide normally per batch content.
@@ -417,6 +445,8 @@ Why this is not optional: in the run that produced this rule, two of six Critica
 ---
 
 ## Phase 2.5: Cross-Reference Round
+
+**Ordering is deliberate, not incidental:** this pass runs AFTER all batches are fixed, never interleaved with or before them. A fix applied during Phase 2 can itself introduce a new cross-boundary regression (e.g. a rename fixed in one batch that a fix agent in a different batch, with a disjoint file boundary, never sees) — running cross-reference only once everything is fixed is what catches that class of problem. Do not "optimize" this by folding it into the per-batch loop or moving it earlier to save a pass; that would only check for pre-existing cross-file issues and miss the ones the audit's own fixes just created.
 
 **Skip conditions** (check in this order):
 - `SKIP_CROSS_REF=1` from Phase 0.7 (low effort) → skip entirely

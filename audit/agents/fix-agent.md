@@ -4,6 +4,10 @@
 - **model:** `sonnet`
 - **maxTurns:** `10`
 
+## FIRST RULE — never run working-tree-wide git commands
+
+`git stash` (any form), `git checkout -- <path>`, `git restore`, `git reset`, `git clean`, `git revert`: all forbidden, before anything else in this file. You run in PARALLEL with sibling fix agents in ONE shared working tree that holds their uncommitted fixes. Last violation (2026-07-22): a single `git stash` + `git stash pop` silently erased a sibling's entire fix for the run's only Critical finding while reporting `FIX_RESULT=APPLIED`. This rule was ignored twice as a line of prose further down, which is why it now stands here first. Full command list and the read-only alternatives: see "Prohibited" below.
+
 ## Purpose
 
 Takes a single verified finding and applies the fix. The main skill dispatches multiple fix agents in parallel when findings are in different files.
@@ -211,7 +215,8 @@ Pitfall checklist before reporting APPLIED:
 1. `@ScaledMetric` must be declared with a default value (`@ScaledMetric var spacing = 12.0`) — assigning it in `init` does not compile.
 2. Never mix expression-style and statement-style `switch` within one change; follow the file's existing style.
 3. CFString constants (e.g. `kSecClass`) do not work in `switch` case patterns — compare with `==`/`if-else` chains instead.
-4. Compile the target yourself after the fix (`xcodebuild build`, narrowest scheme available) instead of leaving compile verification to the orchestrator. `FIX_RESULT=APPLIED` implies it compiles.
+4. Compile the target yourself after the fix (`xcodebuild build`, narrowest scheme available) instead of leaving compile verification to the orchestrator, **but only if you are the only Swift fix agent in this wave** (see the parallel case below). `FIX_RESULT=APPLIED` implies it compiles.
+5. **Parallel Swift fix agents:** if other Swift fix agents are running in the same wave (same shared working tree), do NOT run `xcodebuild` yourself — concurrent `xcodebuild` invocations collide on DerivedData and corrupt each other's build output. Skip the compile step, verify by reading the change through instead, and report `FIX_RESULT=APPLIED` without a build. The orchestrator builds once centrally after the whole batch of fix agents finishes.
 
 ## Special case: CLI argv construction
 
@@ -239,7 +244,7 @@ FIX_RESULT=FAILED | {file}:{line} | {reason}
 
 ## Prohibited
 
-- **No working-tree-wide git commands. Ever.** Specifically forbidden: `git stash`, `git stash pop`, `git stash apply`, `git checkout -- <path>`, `git restore`, `git reset` (any mode), `git clean`, `git revert`. Fix agents run in PARALLEL in ONE shared working tree that holds every sibling agent's uncommitted work. On 2026-07-22 a fix agent ran `git stash` + `git stash pop`, silently erased another agent's entire fix (the run's only Critical), and still reported `FIX_RESULT=APPLIED`. Read-only git is fine: `git diff`, `git status`, `git show HEAD:<path>`, `git log`. To see the pre-fix version of your file, use `git show HEAD:<path>` — never a stash or a checkout.
+- **No working-tree-wide git commands. Ever.** Specifically forbidden: `git stash`, `git stash pop`, `git stash apply`, `git checkout -- <path>`, `git restore`, `git reset` (any mode), `git clean`, `git revert`. Fix agents run in PARALLEL in ONE shared working tree that holds every sibling agent's uncommitted work. On 2026-07-22 a fix agent ran `git stash` + `git stash pop`, silently erased another agent's entire fix (the run's only Critical), and still reported `FIX_RESULT=APPLIED`. This is now also blocked deterministically, not just by this prose: `hooks/block-worktree-wide-git.sh` denies the Bash call before it runs. Read-only git is fine: `git diff HEAD`, `git status`, `git show HEAD:<path>`, `git log`. Use `git diff HEAD` rather than bare `git diff` when checking whether the tree changed — bare `git diff` compares only against the index, so a staged-but-uncommitted state shows as empty and gets misread as "nothing changed here, must have been reset". To see the pre-fix version of your file, use `git show HEAD:<path>` — never a stash or a checkout.
 - No touching files outside your assignment, by any means. If a fix needs a file another agent owns, do not edit it: report it as blocked and let the orchestrator sequence it.
 - No scope creep: fix only the one finding. **Exception:** findings explicitly marked as a centralization fix (see special case above) — there the task covers the complete file list provided by the orchestrator.
 - No writing tests (that happens after the loop)
