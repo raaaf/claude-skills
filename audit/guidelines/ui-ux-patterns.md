@@ -134,3 +134,23 @@ If these drift, the admin edits one value but the visitor sees another, or an em
 In plain PHP/JS use a truthiness check (`$x !== '' && $x !== null`, or `value || 'default'`), not nullish-coalescing, for any field a human can empty.
 
 **Audit signal:** a view fallback via `??` on a CMS/settings/user-editable field → flag and switch to `filled()`/truthiness. Then verify the seed, fallback, and form-default texts match. Pairs with the seeder stale-key rule in architecture.md XVI.
+
+## HTML / Plain-Text Mail Twin Parity
+
+Transactional mails usually exist twice: an HTML view and a plain-text twin
+(`emails/foo.blade.php` + `emails/text/foo.blade.php`, or a shared shell with
+per-mail bodies). Any content change (footer links, sender wording, legal
+lines, unsubscribe targets) applied to one side silently diverges the other —
+recipients on text-only clients (and spam filters comparing parts) see stale
+or contradictory content.
+
+**Rule:** any finding or fix that touches HTML mail views MUST enumerate the
+corresponding plain-text twins (and vice versa) and either cover them in the
+same fix or flag the gap as its own finding. "The diff only contained the HTML
+side" is not an excuse — the twin lives outside the diff by definition.
+
+**Audit signal:** diff touches `emails/`, `mail/`, or a Mailable's view pair →
+list both view sets, compare the changed fragment across them. A change on one
+side without the twin → Important [UX], with all affected twin files named.
+Fix agents: check twins BEFORE reporting done (incident 2026-07: footer-link
+change landed in the HTML shell, 16 plain twins kept the old link).

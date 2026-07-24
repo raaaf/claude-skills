@@ -1,0 +1,22 @@
+{
+  "fixture": "architecture/exhaustive-match-missing-arms.php",
+  "notes": "Regression eval from audit 2026-07-24: JourneyExitRule gained Pause and BillableResolved in the diff, but a match over the enum in the send path still covered only 3 of 5 cases - sending a draft for such a journey threw UnhandledMatchError (500). Same defect shape as the tracked ProjectType/retainer pattern, second enum family. The audit must treat any match over a backed enum with missing arms and no default as a runtime crash, and check enum extensions against ALL existing match sites.",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 31,
+      "matches": ["match", "exhaustive", "UnhandledMatchError", "Pause", "BillableResolved", "missing", "cases", "500"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input beyond bound model, no injection surface"
+    },
+    {
+      "dimension": "performance",
+      "reason": "single-row operations, no query pattern issue"
+    }
+  ]
+}

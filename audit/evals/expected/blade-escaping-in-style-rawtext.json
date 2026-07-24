@@ -1,0 +1,22 @@
+{
+  "fixture": "ui/blade-escaping-in-style-rawtext.blade.php",
+  "notes": "Regression eval from audit 2026-07: a quoted font stack rendered via {{ config(...) }} inside a <style> block escapes to &quot;-entities that the browser never decodes (RAWTEXT context) - the font-family declaration is silently invalid and the mail falls back to the default font. Round-1 workers missed it; only the fix-verifier caught it. Trusted config values in CSS need {!! !!} plus a trusted-source justification.",
+  "must_find": [
+    {
+      "dimension": "ui_design",
+      "line": 13,
+      "matches": ["style", "RAWTEXT", "entit", "&quot;", "escap", "font-family", "{!!", "not decoded", "invalid CSS"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "config-sourced value, developer-controlled, no user input reaches the style block"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static mail markup, no perf surface"
+    }
+  ]
+}

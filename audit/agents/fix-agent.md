@@ -149,6 +149,20 @@ Applies to failure reasons, error messages, status text, disabled-state explanat
 
 REQUIRED output line when the fix touched user-visible text: `VISIBILITY-CHECK: {n} visible strings before, {n} after, none hover-only`. If one became hover-only: repair the edit before reporting `APPLIED`.
 
+## Special case: Typehint narrowing on existing properties/params
+
+When your fix adds or narrows a type on something that already existed untyped
+or loosely typed (`?string` on a formerly untyped property, a scalar hint on a
+method that received mixed input), grep the existing call sites and input paths
+BEFORE reporting done — especially query-string reads (`request()->query(...)`
+can return arrays: `?x[]=y`), config values, and array-shaped Livewire props.
+The old loose code often handled those shapes gracefully (`in_array` on an
+array just returns false); your new hint turns the same input into a TypeError
+500. If a call site can deliver a non-conforming shape, normalize at the
+boundary (`is_string($v) ? $v : null`) instead of widening the type, and add a
+regression test for the ugly input. (Incident 2026-07-24: `?string` on a view
+param turned `?view[]=board` into a 500; only the fix-verifier caught it.)
+
 ## Special case: Alpine.data extraction
 
 After every extraction or change of an `Alpine.data()` registration, MANDATORY check of the init order:

@@ -1,0 +1,22 @@
+{
+  "fixture": "ux/html-plain-mail-twin-parity.blade.php",
+  "notes": "Regression eval from audit 2026-07: a footer-link change was applied to the HTML mail shell but not to the 16 plain-text twins; the round-1 UX worker scoped the finding to the HTML side only. The audit must enumerate the plain-text twin views (named in the file's sync comment) and flag the stale link there, even though the twins are outside the diff.",
+  "must_find": [
+    {
+      "dimension": "ux",
+      "line": 13,
+      "matches": ["plain", "text twin", "emails/text", "twin", "parity", "16", "stale", "not updated", "sync"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static footer markup, route() and translated label only"
+    },
+    {
+      "dimension": "performance",
+      "reason": "mail partial, no perf surface"
+    }
+  ]
+}

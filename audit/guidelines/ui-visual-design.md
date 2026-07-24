@@ -343,6 +343,16 @@ Patterns that mark an interface as generic AI output. Each is a Minor finding un
 
 ---
 
+## Blade Escaping Context in `<style>` Blocks (2026)
+
+`{{ }}` inside a `<style>` block escapes to HTML entities that the browser
+never decodes (RAWTEXT): a quoted font stack from config renders as
+`&quot;Inter&quot;` and the whole declaration is silently dropped. Visual
+symptom: fallback font, no error anywhere. Trusted, developer-controlled
+config values in CSS need `{!! !!}` plus a trusted-source comment; anything
+user-influenced must not be interpolated into `<style>` at all (use a
+sanitized custom property). Full rule: security.md XVI.
+
 ## References
 
 - [MDN Pseudo-elements](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/Pseudo-elements)

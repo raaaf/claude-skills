@@ -78,6 +78,23 @@ If the framework supports tenant-global query scopes (e.g. a global scope that f
 userId: locked(int)
 ```
 
+**Classify every auth/lock failure as retryable or structural.** Not every failed authentication attempt has the same fix. A wrong password or a stale token is retryable — the user tries again and it works. A missing device passcode, no biometrics enrolled, or a revoked credential is structural — retrying the identical action fails identically, forever. Only the structural case needs an escape hatch (a fallback auth method, a support/reset path, another way to reach the app's data); a bare "try again" on a structural failure locks the user out permanently, and it looks identical to a working retry loop until someone actually hits it.
+
+```
+// BAD — same message and only action, regardless of why it failed
+catch (error):
+    showAlert('Authentication failed. Try again.')
+
+// GOOD — structural failures get a different path than retryable ones
+catch (error):
+    if error.isStructural:  // no passcode set, no biometrics enrolled, credential revoked
+        showAlert('Face ID is not set up on this device.', action: openSystemSettings)
+    else:
+        showAlert('Authentication failed. Try again.')
+```
+
+**Rule:** every error path in an auth/lock gate must branch on this classification before deciding what to show the user. Audit every `catch` block in login, biometric unlock, and re-authentication flows for a single generic message covering both cases.
+
 ## III. CSRF, Rate Limiting & Abuse Prevention
 
 **CSRF protection** is typically automatic in modern frameworks for web routes. Do not disable it. If you have a webhook or API endpoint that needs to skip CSRF, place it in an API-specific route group — never add broad CSRF exceptions for convenience.
@@ -359,3 +376,30 @@ Without SRI, a CDN compromise compromises every site using it.
 **Postinstall scripts.** Block by default in CI (`npm config set ignore-scripts true` in builds), allow per-package after review. Postinstall is the most common npm-supply-chain vector.
 
 **Typosquat detection.** Before adding a dependency, search the registry for similar names; established packages have stars/downloads, typosquats often do not.
+
+## XVI. Blade Escaping Context: `{{ }}` inside `<style>` / `<script>` (RAWTEXT)
+
+`<style>` and `<script>` are RAWTEXT elements: the browser does NOT decode
+HTML entities inside them. Blade's `{{ }}` escapes to entities, so a quoted
+value rendered into CSS/JS breaks silently:
+
+```blade
+{{-- BAD — renders font-family: &quot;Inter&quot;, sans-serif; -> invalid CSS, silently ignored --}}
+<style>body { font-family: {{ config('mail.font_stack') }}; }</style>
+
+{{-- GOOD — trusted config value, unescaped WITH justification --}}
+{{-- font stack comes from config/mail.php (developer-controlled, no user input) --}}
+<style>body { font-family: {!! config('mail.font_stack') !!}; }</style>
+```
+
+**Rule:** `{{ }}` inside `<style>`/`<script>` with a value that can contain
+quotes/ampersands is a correctness bug (broken CSS/JS), and `{!! !!}` there is
+only acceptable when the value is provably developer-controlled (config,
+enum, constant) — never request/user/DB input. Each `{!! !!}` in RAWTEXT
+context needs a trusted-source justification comment. User-dependent values
+in `<script>` belong in `@js()` / `Js::from()`, in `<style>` in a sanitized
+custom property.
+
+**Audit signal:** grep the diff for `{{` between `<style>`/`<script>` tags →
+quoted/entity-prone value: Important [Correctness]; user-influenced value with
+`{!! !!}`: Critical [Security] (XSS).
