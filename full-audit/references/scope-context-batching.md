@@ -71,6 +71,14 @@ Variables from the outputs:
 - **TRANSLATION_DATEIEN:** `/tmp/full-audit-translations.txt`
 - **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**, **CONTEXT_FALLBACK**
 
+## Suppressions: re-validate factual-claim reasons at audit start
+
+Before passing `SUPPRESSIONS` to the workers, re-check every suppression whose `reason` is a **factual claim about the current code** (e.g. "unused", "never called", "dead code", "no callers", "already handled elsewhere"), not a decision or tradeoff ("accepted risk", "single-user app", "by design"). A factual reason can silently go stale: the thing gets used again while the suppression keeps waving the finding through.
+
+For each such entry, grep the codebase for the claim before honouring it (e.g. reason "unused `hairlineStrong`" → `grep -rn "hairlineStrong" <source dirs>`; more than the declaration site means it IS used now). If the claim no longer holds, drop that pattern from the passed-in `SUPPRESSIONS` for this run so the finding surfaces normally, and log a line under `## Notes` (`Stale suppression re-activated: {pattern} — reason "{reason}" no longer true`). Do NOT edit `suppressions.json` here; removal from the live set is enough, the user decides on the file in Phase 4. Decision/tradeoff reasons are never re-checked this way — they stand until the user revisits them.
+
+Real incident: `hairlineStrong` was suppressed as "unused", stayed suppressed after it had gained call sites, and rode through several audits unflagged.
+
 ## Project Context: the heading is not the contract
 
 `/audit` asks the user to draft an `## Audit Context` section when it finds none

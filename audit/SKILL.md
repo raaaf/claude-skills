@@ -105,6 +105,14 @@ bash "$AUDIT_BIN/check-number-format-locale.sh"
 # [Correctness], sofern die Datei im Diff liegt; sonst Hinweis. Laeuft nur bei
 # vorhandenem lang/de. OK/SKIP → nichts tun.
 
+# Swift-Anti-Pattern-Grep in diff-geaenderten .swift-Dateien (deterministisch)
+bash "$AUDIT_BIN/check-swift-deprecations.sh"
+# SWIFTDEPR_RESULT=FINDINGS → jede Zeile "SWIFTDEPR {file}:{line}: ..." wird
+# ein Minor-Finding [Code-Quality] (NIEMALS Critical — Convention-Drift, keine
+# Korrektheits-Bugs: UIScreen.main, try! ausserhalb #Preview/Tests, hartcodierte
+# Color.red/.white ausserhalb Theme.swift/Brand.swift), sofern die Datei im
+# Diff liegt. OK/SKIP → nichts tun.
+
 # Test-Zahl-Claims in README/CLAUDE.md vs. tatsaechliche Suites (deterministisch)
 bash "$AUDIT_BIN/check-test-count-drift.sh"
 # TESTCOUNT_RESULT=MISMATCH → KEIN Auto-Finding: Source-Zaehlung ist bei

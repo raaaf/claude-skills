@@ -1,0 +1,22 @@
+{
+  "fixture": "architecture/unreachable-branch-behind-caller-condition.swift",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 20,
+      "matches": ["unreachable", "dead", "mutually exclusive", ".complete", "never", "completionShimmer"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "no markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ],
+  "notes": "completionShimmer() type-checks and, tested in isolation, is correct — the only call site sits inside case .writing checking for step == .complete, a state that case can never hold. Compiler and existing tests miss this; only tracing the call site back catches it."
+}

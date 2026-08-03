@@ -1,0 +1,27 @@
+{
+  "fixture": "architecture/job-payload-overwritten-before-consumption.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 25,
+      "matches": ["overwritten", "overwrite", "rebuild", "discarded", "digest_ready", "before", "read"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "architecture",
+      "line": 31,
+      "matches": ["wasAggregated", "never read", "unused", "dead write", "flag"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no trust boundary, no user input — internal queued aggregation job"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "backend-only job, no UI"
+    }
+  ]
+}

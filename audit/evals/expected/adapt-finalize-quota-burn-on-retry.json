@@ -1,0 +1,22 @@
+{
+  "fixture": "correctness/adapt-finalize-quota-burn-on-retry.swift",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 34,
+      "matches": ["retry", "quota", "unsaved", "mutated", "network", "context.save", "local save", "refetch"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no trust boundary or auth logic in this file, only a local persistence + retry flow"
+    },
+    {
+      "dimension": "performance",
+      "reason": "single async call per retry, not a hot path"
+    }
+  ],
+  "notes": "Real bug fixed in the audited project (commit 8a1a55c, 'fix(adapt): audit findings on finalize reliability change'): a failed ModelContext.save() left the eager @Bindable mutation applied in memory, and the retry path re-hit the backend for suggestions instead of retrying the local save -- burning adaptSubjectQuota on every retry of a purely local failure. Second bug in the same finalize-reliability area across two consecutive audit passes (see learning-log.md 2026-07-30 retro)."
+}

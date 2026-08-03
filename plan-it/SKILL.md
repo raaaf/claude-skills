@@ -224,6 +224,8 @@ Documented in the learning log: Plan 7 had 11 raw → 9 after dedup. Convergent 
 
 ### Finalize the Plan
 
+When incorporating a "provider too expensive/risky" concern: explicitly look for a permission-free/cost-free alternative first, before merely simplifying or deferring the provider.
+
 Merge in the incorporated concerns. Note accepted concerns as a comment in the plan. Save the plan file.
 
 TodoWrite: `Challenge plan — {N} dimensions` (completed), same `{N}` as at Phase 3 start

@@ -103,7 +103,7 @@ Agent(
 
     1. Completeness — Are steps missing? Gaps between 'what the plan says' and 'what actually needs to be done'?
     2. Ordering — Is the sequence right? Dependencies wrong or not considered at all?
-    3. Effort — Does the effort estimate in the plan match the step list? If missing, estimate it yourself and name the biggest item.
+    3. Effort — Re-estimate the effort yourself from the step list, independently; do NOT just sanity-check the author's number (3 of 4 past plans had to revise the initial estimate upward). Name the biggest item and say where your estimate differs from the plan's.
     4. Risks — What is the biggest risk the plan doesn't address?
     5. Actionability — Can a developer take the plan and start right away? Does every step have a checkable verify criterion?
 

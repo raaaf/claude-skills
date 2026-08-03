@@ -14,6 +14,8 @@ Redundant state (duplicated/derivable), parameter sprawl, copy-paste with slight
 
 **Component counterpart check (Blade/component frameworks):** If the diff introduces a new interactive inline pattern in a template (custom keyboard handling, accordion/disclosure, toggle, stepper, dropdown), FIRST grep whether a component counterpart exists (`grep -rl "{pattern}" resources/views/components/` or the project's component directory). If an `x-atoms`/`x-molecules` counterpart (or equivalent) exists, the inline logic is a finding (Important): use the component instead of duplicating. Only accept inline logic once no counterpart exists.
 
+**New contextMenu/long-press interaction path (native apps):** If the diff ADDS a `contextMenu`/long-press interaction (SwiftUI `.contextMenu`, Android long-click handler, or equivalent), propose UITest coverage for it as an explicit open point in the finding — not just a note in "what was missing." Real case 2026-07-02: a new category-`contextMenu` path shipped without an accompanying UITest, matching a recurring gap from earlier retros (05-20, 05-21).
+
 ## Full-Audit Focus (additional)
 
 Dead code, unused imports, missing return types on public methods, copy-paste logic, stringly-typed code (magic strings instead of constants/enums), outdated framework patterns, untyped properties in components.
@@ -23,6 +25,8 @@ Dead code, unused imports, missing return types on public methods, copy-paste lo
 - **XSS/injection-adjacent findings:** First cross-check the associated store/form-request validation or sanitization. If the input is already caught there, no finding.
 - **Enum findings (raw strings instead of enum):** Before flagging, check whether the proposed enum case actually exists (`grep app/Enums/`). Findings against non-existent cases are hallucinations.
 - **Operator render risk in Alpine `x-data`:** Only flag `>`/`>=` — `<`/`<=` are safe.
+
+**Notification/aggregation tests must guard literals:** new tests for notifications or aggregated texts must assert the rendered literal (`toContain` on the actual string), not only structure/counts — a silently missing lang key otherwise renders the raw key and every structural assertion still passes. Flag new notification/aggregation tests that lack a literal guard.
 
 **Trait extraction needs trait-level tests:** when a diff moves or adds logic in a shared trait, check that the new/changed trait methods have their own unit tests in the trait's test file — coverage inherited indirectly via component call-site tests is not enough (the trait's contract regresses invisibly when a component test is later refactored; real case 2026-07-17: releaseSubmitLock/acquireSubmitLockOrExisting untested at trait level).
 

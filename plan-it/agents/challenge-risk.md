@@ -33,4 +33,6 @@ Deliver 0-3 concrete concerns. Each concern:
 
 No generic statements. Only concrete, actionable concerns.
 
+**Mandatory verification:** if the plan asserts an existing gating/security mechanism ("X is locked/disabled/guarded for Y"), verify it at the code (Read/Grep the named site) before rating the risk. A plan statement about a guard is a claim, not a fact.
+
 No concerns? Reply: "Risk: No concerns. The risks are manageable and covered."

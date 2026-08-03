@@ -100,6 +100,8 @@ Dead code is noise that distracts readers and creates false search results. Remo
 
 **Rule:** If the code is not executing, it should not exist. Version control preserves history — the codebase should only contain code that runs.
 
+**Dynamically unreachable branches (FLAG).** Beyond syntactically dead code, check for a branch that compiles and type-checks but can never run at all: a `case` whose only call site sits inside a mutually exclusive branch of another condition. Example: logic meant for state `.complete` invoked only from inside `case .writing` of a switch — the state cannot by construction be `.complete` there, so the call never fires. Neither the compiler nor the existing test suite flags this: it type-checks cleanly, and if the branch itself has a unit test in isolation, that test passes too. The tell is a documented feature or behavior with no reachable path to it. Trace every non-trivial branch back to its actual call sites, not just its type signature, before accepting it as live code.
+
 ## V. Magic Values
 
 Magic numbers and strings make code impossible to understand without context and dangerous to change.
@@ -194,6 +196,20 @@ User-facing text hardcoded directly in templates, components, or controllers is 
 - **Validation messages** should use the framework's validation translation system, not hardcoded strings
 - If the project already uses a translation function somewhere — new code MUST follow the same pattern. Mixing translated and hardcoded text is a **Critical** finding.
 - If the project has NO translation usage at all — flag hardcoded strings as **Minor** and recommend establishing a pattern
+
+### Tests pinning user-facing text must assert the resolved value (FLAG)
+
+A test that pins user-visible text is only as good as what it reads. Asserting against the source declaration — a translation key, a seed constant, an enum raw value — instead of the resolved, rendered output (localization catalog output, template render, computed display property) proves nothing about what the user actually sees. A complete content rewrite can ship live while the test stays green, because the test and the UI read from two different places. Same failure mode as the color-token check in `ui-visual-design.md:290`: resolve the actual value behind the name/key, never trust the label.
+
+```
+// Avoid: pins the source, not what renders
+#expect(SeedQuestion.text == "Was war heute dein wertvollster Moment?")
+
+// Prefer: pins what the UI actually shows
+#expect(question.displayText == "Was war heute dein wertvollster Moment?")
+```
+
+**Rule:** when a test's subject is user-visible text, trace it to the rendering/resolution step (translation call, computed property, template output) and assert on that value — never on the constant or key that feeds it.
 
 **Checking for violations:**
 ```bash

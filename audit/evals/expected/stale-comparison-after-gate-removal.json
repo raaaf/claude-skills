@@ -1,0 +1,22 @@
+{
+  "fixture": "correctness/stale-comparison-after-gate-removal.swift",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 20,
+      "matches": ["unconditional", "mehr Termine als sonst", "gate", "median", "comparison", "false claim"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "string formatting only, no injection surface"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "no markup"
+    }
+  ],
+  "notes": "Provider/phrasing code left over from a salience-gate removal: the gate used to guarantee the comparison was true before this text ran, so the claim was never made conditional on eventCount vs. medianCount. Once the gate is removed, the same generated sentence flows into the recap and, downstream, into a question-generation prompt, so the false claim propagates further than the UI."
+}

@@ -46,6 +46,8 @@ bash "$AUDIT_BIN/patterns-store.sh" recurrences   # "4x widget reads lock state 
 
 Normalize the pattern the same way `normalize-suppression.sh` does, otherwise "Widget-Lock nur punktuell geprueft" and "widget reads lock state only once" count as two different things and the counter never reaches the threshold. A pattern at >= 3 belongs in the improvement list with its count named explicitly ("4th audit in a row"), not as a fresh suggestion.
 
+**Discrepancy check (total audits count):** compare the deterministic count from the raw logs on disk (see the "Total audits" formula below) against the total in the PREVIOUS trends block at the top of `learning-log.md`. If the new count is lower than the previous block's number, do NOT silently adopt the lower figure — log rotation deletes raw `.md` logs while their retro text survives further down in the file, so a drop is expected, not a correction. State the discrepancy explicitly in the new trends block ("Total audits: {N} Rohlogs auf Disk (voriger Trends-Block nannte {M} — Luecke durch Log-Rotation, Formel kann sie nicht erkennen)") instead of presenting {N} as if it were the full history.
+
 Format of the metrics block:
 
 ```markdown

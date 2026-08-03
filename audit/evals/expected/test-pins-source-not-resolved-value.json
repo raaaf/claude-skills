@@ -1,0 +1,22 @@
+{
+  "fixture": "correctness/test-pins-source-not-resolved-value.swift",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 27,
+      "matches": ["SeedQuestion.text", "resolved", "displayText", "source", "rendered", "pin"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "test file, no injection surface"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "no markup"
+    }
+  ],
+  "notes": "Analog to the color-token check in ui-visual-design.md:290: a test must assert the resolved/rendered value, never the source declaration or key."
+}

@@ -18,11 +18,15 @@ Existing utilities/helpers that could replace new code (use grep!), DRY, compone
 
 **Paired acquire/release call sites (idempotency locks, mutexes, subscriptions):** when the diff touches a call site of a paired-resource trait (e.g. PreventsDuplicateSubmit), explicitly DIFF the key expression (scope/actor/fingerprint) between the acquire call and every release call in the same flow — do not just check that both calls exist. Re-typed key expressions are a finding even when currently identical (one-sided edits silently turn the release into a no-op; 3rd recurrence 2026-07-17). Prefer recommending the no-argument held-key release where the trait offers one.
 
+**Queued jobs mutating their payload:** when a queued job (or listener/notification) writes a field on its payload/model, check whether that written field is overwritten before the next read access (same class or a downstream consumer in the pipeline). A flag that is set but never read anywhere is its own finding (dead write hides intent; real case: round-1 miss, only cross-ref caught the Critical).
+
 **Complete guidelines:** Read these files in the skill directory and check the code against all rules described there:
 - `guidelines/architecture.md` — DRY, SRP, layers, component reuse, API design, observability (section XIV: silent catch blocks, Sentry context, structured logging, failed() handlers)
 - `guidelines/atomic-design.md` — only for frontend files: component composition (token layer/atoms, duplicated markup that should be a component, god components, data fetching in presentational components). XII stays for individual elements, atomic-design for the layering.
 - `guidelines/data-migrations.md` — only relevant when migrations are in the diff/batch: destructive ops, locking, rollback, expand-contract, backfill chunking
 - `guidelines/theme-fork.md` — only relevant when the project is a forked theme (WordPress starter theme, UI-kit fork etc.): namespace, text domain, logging, tests
+
+**Dependency direction (service layer vs. routes):** service-layer modules (`src/services/`, or the project's equivalent app-service layer) must not import from route/controller layers (`src/routes/`, `controllers/`). A service importing a route-layer helper inverts the dependency and couples business logic to HTTP concerns; flag it as Important, citing the importing file and the route-layer symbol it pulls in. Confirmed real case: `householdStore.ts` (service) importing from `routes/adaptSanitize` (route layer).
 
 ## Full-Audit Focus (additional)
 

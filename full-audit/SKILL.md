@@ -406,6 +406,7 @@ Fix Minor findings when `FIX_MINOR=1` (medium/high/xhigh). Unfixed Minor finding
 - 0 findings → `CLEAN`
 - Otherwise: fix all high/medium via fix subagent. Group findings by file, bundle multiple findings per file into one fix-agent call.
 - **Centralization findings (new shared utility / helper / trait):** if a finding extracts a duplicated pattern into a new `lib/*.js` (or similar), FIRST grep all occurrences (`grep -rn "{altes_pattern}" src/`, adjust the glob to the project language) and hand ALL matching files to ONE single fix agent (no parallel split, or file collision results). Mark as a centralization fix so the fix agent applies the extended file boundary (see `fix-agent.md` special case) and migrates every occurrence.
+- **Cross-finding dependencies before parallel dispatch:** before dispatching fix agents for the round in parallel, scan the findings for pairs that depend on each other — fix A references a helper/extension that fix B creates in the same run, or fix C reads a file derived from a source that fix D rewrites. Sequence such pairs (A after B, C after D) or merge them onto one agent instead of relying on the round's own verification pass as the safety net; that pass only catches it one round late, after the broken intermediate state has already shipped as its own finding. This complements the centralization rule above, which only covers one finding wrongly split across agents — this one covers two distinct findings that depend on each other.
 - Add each fix to `BEREITS_GEFIXT`. Increment C/I/M in the batch row of the state file.
 - Unclear fix → ask briefly. No "open point" without explicit user consent.
 - **Hook-blocked files** (e.g. `.env.example` blocked by a write-protection hook): not a plain open point. Present a ready diff/copy-paste block in the chat and actively offer to apply it yourself via `!` command, not just list it.
@@ -418,6 +419,22 @@ bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE"
 ```
 
 Output the line verbatim as the last line. Completion is decided ONLY from this line of the current turn, never from memory.
+
+### Per-round dedup sweep (after fixes, before the next round)
+
+Parallel fix agents in one round share a working tree but cannot see each other's edits, so two agents can independently add the *same* new top-level declaration (helper, extension, method, state mapping) in different files. The per-agent same-diff grep in `fix-agent.md` only sees one agent's own diff, so cross-agent duplicates slip through and surface as a fresh finding one round later.
+
+After Step C applies the round's fixes and before starting the next round, run a short deterministic sweep over ONLY the round's own diff:
+
+```bash
+# top-level declarations the round introduced (adjust decl keywords to the project language)
+git diff HEAD --unified=0 -- {round's changed files} \
+  | grep -E '^\+' \
+  | grep -Ei 'func |extension |struct |enum |class |static (let|var|func)|def |function |const ' \
+  | sort | sed -E 's/^\+[[:space:]]*//' | sort | uniq -d
+```
+
+Any name that appears added in `>= 2` different files (or twice in one) is a candidate cross-agent duplicate: read both sites, and if they are the same logic, dispatch ONE centralization fix agent to collapse them (extended file boundary, per the centralization rule in Step C) before the next round runs. This is cheap (one grep over a small diff) and catches the class of duplicate — doubled firmware-state mappings, re-implemented analyzer helpers — that has repeatedly cost an extra round. It runs every round, including before the final regression pass.
 
 ### After every round (update the state row, then:)
 
@@ -463,6 +480,8 @@ Otherwise after all batches: 2 subagents in parallel:
 Input: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + summary of all batch findings.
 Fixes as in Step C. No further rounds.
 
+**This round is never shortened or skipped under time/token pressure once it is scheduled to run** (i.e. outside the skip conditions above). It is the only mechanism that catches regressions the fixes themselves introduced across disjoint fix-agent boundaries, and it did so three times in one recorded run. Cutting it to save time defeats the reason it exists.
+
 Afterward (even on skip): in `$STATE_FILE` set `post-phases:` → `cross_ref=done`.
 
 ---
@@ -494,7 +513,7 @@ If `VISUELL_RELEVANTE_DATEIEN` is not empty: max 15 steps (more than /audit, bec
 Detail in `references/audit-log-and-issues.md`. Briefly:
 
 - Write the audit log to `.claude/audits/{datum}-full-audit.md` (format template in the reference). Record `SELECTED_DIMENSIONS` in the header so later audits know which dimensions were not checked.
-- **Open-point aging:** before presenting them, compare the open points against previous `.claude/audits/*-full-audit.md` files (chronologically). A point that (same file + same core statement) already stood open in `>= 2` earlier audit logs gets an **`AGED`** marker in the current log and appears as a prioritized block at the very top of the open-points section ("open 3x+ — decision overdue"). This keeps tradeoff decisions from stalling audit after audit.
+- **Open-point + gap aging:** before presenting them, compare the open points AND the recorded gap notes (test-runner, build-preflight, translation-completeness, and any other line logged as a gap rather than a fix) against previous audit logs, chronologically. Compare across ALL audit logs in `.claude/audits/*.md` — regular `/audit` logs included, not only `*-full-audit.md` — otherwise a point or gap that only ever recurs in pre-push `/audit` runs never accumulates the count needed to escalate. A point or gap that (same file/area + same core statement) already stood open in `>= 2` earlier logs of either kind gets an **`AGED`** marker in the current log and appears as a prioritized block at the very top of its section — open points at the top of the open-points section, aged gaps at the top of the "## Gaps" section (or wherever the log records gap notes, if it has no dedicated heading for them) — labelled "open/present 3x+ — decision overdue". This keeps both tradeoff decisions and infrastructure gaps from stalling audit after audit.
 - Load the log via the Read tool and display it in chat as a markdown code block (MANDATORY). Afterward `post-phases:` → `log=done`.
 - Present open points to the user (AskUserQuestion): **Decide + fix now / Defer as issue / Discard**. Present `AGED` points first. Issues ONLY for deferred items (dedup per finding). Minor never gets issues — stays in the log. Afterward (even with no open points) `post-phases:` → `issues=done`.
 

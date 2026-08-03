@@ -48,7 +48,7 @@ If the diff is empty and all pre-checks are `CLEAN`: report and stop. Not a git 
 - **TRANSLATION_DATEIEN:** section `---TRANSLATIONS---`
 - **VISUELL_RELEVANTE_DATEIEN:** `FRONTEND_DATEIEN` + framework-specific backend files (e.g. `app/Livewire/`, controllers with `return view(...)`/`return Inertia::render(...)`). NOT: pure services, models, migrations, commands, jobs, middleware — unless they change what's passed to the view.
 - **UNIFIED_DIFF:** section `---DIFF---` (goes only to Triage, NOT to Workers)
-- **SUPPRESSIONS:** load `$(git rev-parse --show-toplevel)/.claude/audits/suppressions.json` if present, extract `pattern` fields. Otherwise `"No suppressions"`.
+- **SUPPRESSIONS:** load `$(git rev-parse --show-toplevel)/.claude/audits/suppressions.json` if present, extract `pattern` fields. Otherwise `"No suppressions"`. **Re-validate factual-claim reasons first:** for any entry whose `reason` asserts something about the current code ("unused", "never called", "dead code", "no callers"), grep the codebase to confirm it still holds before honouring the suppression; if the claim is now false, drop that pattern from the passed-in set for this run and note it (`Stale suppression re-activated: {pattern}`). Decision/tradeoff reasons ("accepted risk", "by design") are never re-checked. Do not edit `suppressions.json` here — the user decides on the file in Phase 5. (Incident: `hairlineStrong` suppressed as "unused" rode through several audits after it had gained call sites.)
 - **PROJECT_CONTEXT:** `## Audit Context` from `CLAUDE.md` (if present), via `awk '/^## Audit Context$/{f=1;next} /^## /{f=0} f'`. Otherwise `"No project-specific context."`
 
 ## Audit Context Check (MANDATORY when context is missing)
