@@ -1,0 +1,22 @@
+{
+  "fixture": "a11y/broken-html-duplicate-set.blade.php",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 19,
+      "matches": ["unclosed", "missing >", "malformed", "inert", "aria-hidden", "not applied"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "line": 12,
+      "reason": "first set has alt text and real links — it is the correct one"
+    },
+    {
+      "dimension": "seo",
+      "reason": "duplicate logo markup is a marquee technique, not a content-duplication SEO issue"
+    }
+  ]
+}

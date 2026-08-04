@@ -16,6 +16,7 @@ allowed-tools:
   - Grep
   - TodoWrite
   - AskUserQuestion
+  - SendMessage   # idle watchdog re-prompts dispatched agents
 hooks:
   PreToolUse:
     - matcher: "Bash"
@@ -44,23 +45,23 @@ The skill scales depth by `${CLAUDE_EFFORT}`. Default `medium`.
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"
 case "$CLAUDE_EFFORT" in
   low)    MAX_RUNDEN=1; FIX_MINOR=0; SKIP_LEARNING=1; CONFIDENCE_FLOOR=high ;;
-  high)   MAX_RUNDEN=3; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=low ;;
+  high|xhigh) MAX_RUNDEN=3; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=low ;;
   medium|*) MAX_RUNDEN=2; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=medium ;;
 esac
 echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLearning=$SKIP_LEARNING | ConfidenceFloor=$CONFIDENCE_FLOOR"
 ```
 
-| Level | Rounds | Fix Minor | Learning | Confidence floor |
-|---|---|---|---|---|
-| low | 1 | no | skip | high (safe fixes only) |
-| medium (default) | 2 | yes | yes | medium |
-| high | 3 | yes | yes | low (also fix unsafe ones, with warning) |
+| Level | Rounds | Fix Minor | Learning | Confidence floor | Finding verification (D.7) |
+|---|---|---|---|---|---|
+| low | 1 | no | skip | high (safe fixes only) | skipped |
+| medium (default) | 2 | yes | yes | medium | `medium` + `low` confidence |
+| high / xhigh | 3 | yes | yes | low | every Critical/Important |
 
-Below, `{MAX_RUNDEN}` means the value set here.
+`{MAX_RUNDEN}` below always means the value set here.
 
 ## Phase 0.6: Dimension scoping via argument (optional partial audit)
 
-The skill argument may select dimensions explicitly (`/audit security`, `/audit performance,a11y`, group aliases `backend`/`frontend`/`design`, `?` for a multi-select prompt). If it does: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}` — read `references/partial-audit.md` and apply it (skip triage+floor, user-scoped `Routing:` line, Step-D extras only for governing dimensions, Phase 4 writes NO push marker, pre-checks always run). Non-dimension arguments stay a free-text scope hint (`PARTIAL_AUDIT=0`).
+The skill argument arrives as `$ARGUMENTS` (empty when none was given). It may select dimensions explicitly (`/audit security`, `/audit performance,a11y`, group aliases `backend`/`frontend`/`design`, `?` for a multi-select prompt). If it does: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}` — read `references/partial-audit.md` and apply it (skip triage+floor, user-scoped `Routing:` line, Step-D extras only for governing dimensions, Phase 4 writes NO push marker, pre-checks always run). Non-dimension arguments stay a free-text scope hint (`PARTIAL_AUDIT=0`).
 
 ## Phase 1: Pre-flight & scope
 
@@ -77,54 +78,17 @@ bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
 bash "$AUDIT_BIN/pre-checks.sh"
 
-# Dependency-Health (nur wenn Manifest/Lockfile im Diff)
+# Deterministische Checks. Ergebniscodes -> Findings: Tabelle in
+# references/scope-and-pre-checks.md, Abschnitt "Deterministic checks".
+# Regel ueberall gleich: Treffer im Diff wird Finding, Treffer ausserhalb nur Hinweis.
 if echo "$ALLE_DATEIEN" | grep -qE '(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Podfile(\.lock)?|Package\.(swift|resolved)|pubspec\.(yaml|lock)|build\.gradle)'; then
   bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)"
-  # DEP_SECURITY_RESULT=VULNS -> jede gemeldete Zeile wird ein Critical-Finding
-  # [Security] (verwundbare Dependency blockiert Push wie jedes Critical).
-  # DEP_OUTDATED_RESULT=OUTDATED -> jede gemeldete Zeile (npm/composer outdated)
-  # wird ein Minor-Finding [Dependencies] (neue Version verfuegbar, kein Blocker).
-  # SKIP/CLEAN/CURRENT -> nichts tun.
 fi
-
-# i18n-Vollstaendigkeit (deterministisch, kein LLM)
 bash "$AUDIT_BIN/check-i18n-keys.sh"
-
-# Doppelte Array-Keys in Lang-Files (deterministisch, php -l faengt das NICHT)
 bash "$AUDIT_BIN/check-duplicate-array-keys.sh"
-# DUPKEY_RESULT=DUPLICATES → jede Zeile "DUPLICATE {file}:{line} key ..." wird
-# ein Critical-Finding [Correctness], sofern die Datei im Diff liegt. PHP behaelt
-# beim Duplikat den LETZTEN Wert, der erste ist stumm weg — der Crash kommt erst,
-# wenn ein Code-Pfad den beschatteten Key liest. Ausserhalb des Diffs: als Hinweis
-# ausgeben, nicht als Finding. OK/SKIP → nichts tun.
-
-# number_format() ohne Locale-Argumente in Views (deterministisch)
-# Neue Checks nach references/writing-deterministic-checks.md bauen.
 bash "$AUDIT_BIN/check-number-format-locale.sh"
-# NUMFMT_RESULT=MISSING_LOCALE → jede Zeile wird ein Important-Finding
-# [Correctness], sofern die Datei im Diff liegt; sonst Hinweis. Laeuft nur bei
-# vorhandenem lang/de. OK/SKIP → nichts tun.
-
-# Swift-Anti-Pattern-Grep in diff-geaenderten .swift-Dateien (deterministisch)
 bash "$AUDIT_BIN/check-swift-deprecations.sh"
-# SWIFTDEPR_RESULT=FINDINGS → jede Zeile "SWIFTDEPR {file}:{line}: ..." wird
-# ein Minor-Finding [Code-Quality] (NIEMALS Critical — Convention-Drift, keine
-# Korrektheits-Bugs: UIScreen.main, try! ausserhalb #Preview/Tests, hartcodierte
-# Color.red/.white ausserhalb Theme.swift/Brand.swift), sofern die Datei im
-# Diff liegt. OK/SKIP → nichts tun.
-
-# Test-Zahl-Claims in README/CLAUDE.md vs. tatsaechliche Suites (deterministisch)
 bash "$AUDIT_BIN/check-test-count-drift.sh"
-# TESTCOUNT_RESULT=MISMATCH → KEIN Auto-Finding: Source-Zaehlung ist bei
-# parametrisierten Tests (test.each, @Test arguments:) nur eine Naeherung.
-# Stattdessen in Phase 3c die Claims gegen die ECHTE Testlauf-Ausgabe halten;
-# erst eine Laufzeit-Abweichung wird ein Important-Finding [Docs]. Nach der
-# letzten Fix-Welle erneut ausfuehren — Fix-Agents fuegen Tests hinzu und
-# genau dann veralten die Zahlen still (3 Audits in Folge). OK/SKIP → nichts.
-# I18N_RESULT=MISSING → jede Zeile "MISSING {locale}: {key}" wird ein
-# Important-Finding [i18n] (Schritt D), sofern die betroffenen Keys/Files
-# im Diff liegen. Bei /audit ausserhalb des Diffs: als Hinweis ausgeben,
-# nicht als Finding. SKIP/OK → nichts tun.
 
 # Project-Specific Guidelines (Override global)
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
@@ -145,11 +109,7 @@ AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | 
 
 **WIP/stale-snapshot scope check (before Phase 2):** look at `git status --porcelain` + `git diff --stat`. Does the working tree contain files that clearly do NOT belong to the task currently being discussed (pre-existing WIP from another line of work, foreign uncommitted edits, stale snapshots)? Then do NOT silently audit them along with the rest — ask the user via `AskUserQuestion` about the scope: **only the session/task changes** vs. **entire working tree**. Heuristic for "doesn't belong": files in completely different modules than the rest of the diff, or files that were already `M` before the session started. When in doubt, ask — an audit on someone else's WIP produces findings on code the user isn't even working on right now.
 
-Detailed evaluation of the script outputs in `references/scope-and-pre-checks.md`:
-- Diff size gate table (OK/LARGE/HUGE)
-- Pre-check evaluation (secrets, lockfile, binary artifacts)
-- Variable derivation (ALLE_DATEIEN, FRONTEND_DATEIEN, UNIFIED_DIFF, SUPPRESSIONS, PROJECT_CONTEXT)
-- Audit context check (MANDATORY when context is missing)
+Evaluating the script outputs (diff-size gate OK/LARGE/HUGE, pre-checks for secrets/lockfile/binary artifacts, deriving `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`UNIFIED_DIFF`/`SUPPRESSIONS`/`PROJECT_CONTEXT`, the mandatory audit-context check, and the deterministic-check result table): `references/scope-and-pre-checks.md`.
 
 Pass `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS`, `GUIDELINE_MATCHES`, and `DECIDED_TRADEOFFS` (intent docs/ADRs, derivation in `references/scope-and-pre-checks.md`) to all subagents. Only the **triage agent** gets the `UNIFIED_DIFF` for hotspot determination — workers get only their assigned hotspots instead of the diff (see Phase 2 Step C).
 
@@ -279,7 +239,12 @@ Output format:
 
 ### Important / Minor / Sauber
 [same structure, tag matching the header]
+
+### Unverified
+- [Dimension] file:line: description. Verification inconclusive: {REASON from D.7}
 ```
+
+The `Unverified` section holds the `UNCERTAIN` verdicts from Step D.7. It exists so that a finding nobody could settle stays visible instead of disappearing between "not fixed" and "not reported". Empty section → omit the heading.
 
 **Step D.5 — Hallucination validator (MANDATORY before every fix)**
 
@@ -290,18 +255,58 @@ test -f "{datei}" || echo "HALLUCINATION: file missing"
 
 External APIs/libraries: check with `grep -r` in the project whether imported. Filter out hallucinated findings. Output: `Validator: X/Y verified, Z hallucinated (discarded)`.
 
+D.5 is mechanical only: it proves the file and the line exist, never that the problem does. The semantic check is D.7.
+**Step D.7: finding verification (fresh context, BEFORE any fix)**
+
+Workers report for coverage and include findings they are unsure about (see `agents/prompt-template.md`); D.7 is the stage that pays for that. Refuting happens here, by a fresh verifier that never saw the finding produced, because self-critique by the finder or the consolidating orchestrator is weaker, and refuting a wrong finding costs a fraction of applying a wrong fix and reverting it.
+
+**Selection (scales with `CONFIDENCE_FLOOR`):**
+
+| Floor | Effort | Goes through D.7 |
+|---|---|---|
+| `high` | low | nothing (step skipped entirely, fast mode) |
+| `medium` | medium | every Critical/Important finding with `confidence: medium` or `low` |
+| `low` | high/xhigh | every Critical/Important finding, `high` confidence included |
+
+Minor findings never go through D.7: they are only fixed at high/medium confidence anyway, and verifying them costs more than the fix.
+
+**Dispatch** one `finding-verifier.md` subagent (sonnet) per finding, all in one message block, max 10 in parallel:
+
+```
+Agent(
+  subagent_type: code-reviewer,
+  model: sonnet,
+  prompt: "Read agents/finding-verifier.md and execute it.
+    FINDING: {severity} {file:line} (confidence: {level}) {description}
+    DIMENSION: {dimension}
+    DIFF_CONTEXT: {diff hunk of the finding, if available}
+    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}
+    DECIDED_TRADEOFFS: {DECIDED_TRADEOFFS}"
+)
+```
+
+**Verdict handling:**
+
+| `FINDING_VERDICT` | Action |
+|---|---|
+| `CONFIRMED` | goes to Step E, with `SEVERITY_CORRECTION` applied when it is not `none` |
+| `REFUTED` | discarded before any fix + `patterns-store.sh dismissed {pattern}`, one log line with the verifier's `REASON`. Never becomes an issue. |
+| `UNCERTAIN` | not fixed. Goes into the audit log under `### Unverified` with the `REASON`. A Critical `UNCERTAIN` additionally becomes an open point for the user. Never silently dropped. |
+
+A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass.
+
+Print after the step: `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
+
 **Step E — Auto-fix**
 
-Count verified Critical+Important. Save `FINDINGS_AKTUELLE_RUNDE`. Convergence check see above.
+Count confirmed Critical+Important (D.7 output; without D.7, at low effort, the D.5-validated findings). Save `FINDINGS_AKTUELLE_RUNDE`. Convergence check see above.
 
 **0 Critical and 0 Important?** → `SAUBER`. Early exit (Minor never blocks push).
 
 **Otherwise — confidence gate (scales with `CONFIDENCE_FLOOR` from Phase 0.5):**
-- `floor=high` (low effort): fix only `high`, the rest stays in the log (no issues, no re-verification — low effort is the fast mode)
-- `floor=medium` (medium effort): fix `high`+`medium`. `low` → **re-verification** (see below)
-- `floor=low` (high effort): fix all, `low` fixes get the warning marker `(LOW CONFIDENCE FIX)`
-
-**Re-verification for low-confidence (medium effort):** the orchestrator reads the affected location specifically (Read tool). Finding confirmed → treat like `medium` (fix). Not confirmable → discard + `patterns-store.sh dismissed` — an unconfirmed finding does NOT belong in the issue tracker.
+- `floor=high` (low effort): fix only `high`, the rest stays in the log (no issues, no verification stage, low effort is the fast mode)
+- `floor=medium` (medium effort): `high` goes straight to fix, `medium`+`low` go through Step D.7 first
+- `floor=low` (high/xhigh effort): every Critical/Important finding goes through Step D.7, regardless of confidence
 
 **From here on, open points are ONLY:** genuine decision points (architecture tradeoffs, behavior changes, scope questions) that an agent is not allowed to decide. Everything else gets fixed or discarded.
 
@@ -337,18 +342,17 @@ git stash list | grep -q . && echo "STASH DETECTED: Welle ungueltig"
 
 Any assigned file that is NOT modified means the fix never landed or was destroyed by a sibling agent, regardless of what that agent reported. Re-dispatch it ALONE, with no other agent running, and state in its briefing that the previous attempt was destroyed.
 
-Rationale (2026-07-22): a fix agent ran `git stash` + `git stash pop`, wiped a sibling's fix for the run's only Critical, and reported `APPLIED`. Only this cross-check surfaced it. Agent reports are a claim; `git status` is the evidence.
-5. Minor: with `FIX_MINOR=1` (medium + high effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
+5. Minor: with `FIX_MINOR=1` (medium + high/xhigh effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
 6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`
 7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`
 
-**Step E.5 — Fix verification (MANDATORY for medium/high effort, SKIP for low)**
+**Step E.5 — Fix verification (MANDATORY for medium/high/xhigh effort, SKIP for low)**
 
 For every `FIX_RESULT=APPLIED`, dispatch a fix-verifier subagent (sonnet):
 
 ```
 Agent(
-  subagent_type: code-reviewer,
+  subagent_type: general-purpose,
   model: sonnet,
   prompt: "Read agents/fix-verifier.md and evaluate the following fix.
     ORIGINAL_FINDING: {finding}
@@ -364,8 +368,6 @@ Evaluation of `FIX_VERIFIER_RESULT`:
 - `RECOMMEND=revert` → `git checkout {FIX_DATEI}` (revert the fix), original finding goes back into the open list
 
 Parallelization: all verifiers in one message block, max 10 in parallel. Latency add: ~3-5s per round.
-
-**Token cost:** the verifier is Sonnet, costs about a third of a worker. For N fixes that's +N*0.3 worker cost. Worth it because wrong fixes are expensive later.
 
 **Performance fixes — verify-by-measurement (when `PERF_MEASURE_CMD` is set and a baseline was taken in Step E):** re-measure after all fixes of the round: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_AFTER="$PERF_METRIC"`. Deterministic verdict: `AFTER <= BASELINE` → perf fixes `keep` (log: `Verification: measured {BASELINE}->{AFTER}`); `AFTER > BASELINE` → regression, perf fixes as an open point + fix-verifier to narrow it down; `NA` → fallback to fix-verifier. Correctness/regression of other dimensions is still checked by the fix-verifier. Details: `references/perf-measurement.md`.
 
@@ -390,41 +392,10 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 
 ## Phase 2.5: Cross-reference (multi-file features)
 
-**Trigger:** number of changed files >= 3 AND `CONFIDENCE_FLOOR != high` (skip on low effort).
-
-```bash
-FILES_CHANGED_COUNT=$(echo "$ALLE_DATEIEN" | wc -l)
-if [ "$FILES_CHANGED_COUNT" -ge 3 ] && [ "$CONFIDENCE_FLOOR" != "high" ]; then
-  RUN_CROSS_REF=1
-else
-  RUN_CROSS_REF=0
-  echo "Cross-Ref skipped (files=$FILES_CHANGED_COUNT, floor=$CONFIDENCE_FLOOR)"
-fi
-```
-
-If `RUN_CROSS_REF=1`: dispatch a cross-ref subagent (sonnet):
-
-```
-Agent(
-  subagent_type: code-reviewer,
-  model: sonnet,
-  prompt: "Cross-reference check of the changed files.
-    DATEILISTE: {ALLE_DATEIEN}
-    BEREITS_GEFIXT: {BEREITS_GEFIXT}
-    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}
-
-    Check ONLY cross-file problems:
-    - Services <-> UI: called incorrectly, signatures don't match
-    - Models <-> Traits/Mixins: used incorrectly
-    - Controller <-> View: mismatches (e.g. variable not passed to the view)
-    - Consistency: same pattern project-wide (auth checks, cache keys, error handling)
-    - A fix in file A could break file B (e.g. method rename)
-
-    Output format like worker findings. Max 50 words per finding."
-)
-```
-
-Findings are treated like Critical/Important (same confidence gate). Auto-fix follows the same rules (fix agent).
+**Trigger:** changed files >= 3 AND `CONFIDENCE_FLOOR != high` (skipped on low effort). Read
+`references/cross-reference.md` and execute it — it computes the trigger and, when it fires, dispatches
+the cross-ref subagent (sonnet, cross-file problems only). Its findings run through the same confidence
+gate, the same Step D.7 verification and the same fix path as worker findings.
 
 ---
 
@@ -506,38 +477,10 @@ Then: print `Audit passed.`, continue with Phase 5 + 6.
 
 ## Phase 5: Learning
 
-**Skip if `SKIP_LEARNING=1`** (low effort). Go directly to Phase 6.
-
-The learning agent returns a **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection, even in the foreground and with bypassPermissions). The orchestrator parses the output and writes it itself — `.claude/audits/*.md` and `.claude/audits/suppressions.json` are among the allowed orchestrator edits.
-
-**Step 1: dispatch the learning agent**
-
-```
-Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
-  prompt: "Read agents/learning-agent.md and run the process.
-    PROJECT_ROOT={PROJECT_ROOT}
-    AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
-    AUDIT_TYPE=audit",
-  mode: bypassPermissions
-)
-```
-
-Foreground (5-10s, not push-blocking).
-
-**Step 2: parse the output**
-
-The agent returns three blocks between `LEARNING_RESULT_START` and `LEARNING_RESULT_END`: `SUPPRESSIONS_TO_ADD` (JSON array), `LEARNING_LOG_ENTRY` (markdown up to `LEARNING_LOG_ENTRY_END`), and `TRENDS_BLOCK` (markdown between `TRENDS_BLOCK_START` and `TRENDS_BLOCK_END`). The suggestions for guideline/agent changes are included as `- [ ]` checkboxes in the `Vorgeschlagene Verbesserungen` section of the `LEARNING_LOG_ENTRY`.
-
-**Step 3: the orchestrator writes**
-
-- append `LEARNING_LOG_ENTRY` to `.claude/audits/learning-log.md` (or create it if this is the first audit)
-- insert `TRENDS_BLOCK` at the top of `learning-log.md` or replace the existing block (do not append — it should stay a top snapshot)
-- merge `SUPPRESSIONS_TO_ADD` into `.claude/audits/suppressions.json`. **If the file does not exist, create it first** (`{"suppressions": []}`) — any audit run, log, or finding that references a suppression MUST leave a valid `suppressions.json` behind; a dangling reference without the file is an orchestrator bug. **Dedup rule:** run the pattern of every new suppression through `bash "$AUDIT_BIN/normalize-suppression.sh"`, same normalization for existing suppressions. If both produce the same key → keep the existing one, discard the new one. This way "[Security] LIKE injection in scope" and "Like-wildcard injection (security)" are recognized as the same.
-- show in the chat: number of new suppressions and number of new open backlog points. The user knows they'll be asked at the next `/audit` (or `/full-audit`).
-
----
+Skipped entirely when `SKIP_LEARNING=1` (low effort): go directly to Phase 6. Otherwise read `references/learning-phase.md` and execute it: dispatch the learning agent with
+`run_in_background: false` (mandatory, the default has been background since v2.1.198 and a
+backgrounded agent returns after this turn is over), parse its three output blocks, and write
+learning-log, trends block and suppressions yourself. Subagents cannot write under `.claude/`.
 
 ## Phase 6: Create PR (after push)
 

@@ -52,7 +52,7 @@ Severity:
 - `Missing`: a spec requirement has no corresponding implementation
 - `Contradicts`: the implementation inverts or disables what the spec requires
 
-Maximum 15 findings. Report the most impactful if you find more.
+Report every deviation you can point at a spec line for, including small ones. Ranking is the orchestrator's job, and a deviation you drop is gone. Maximum 15 findings; if you find more, report the most impactful and add a final line `TRUNCATED: {n} further deviations not listed` so the cap is visible instead of silent.
 
 If the spec is too vague to extract any verifiable criteria, return:
 ```

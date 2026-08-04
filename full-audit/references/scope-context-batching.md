@@ -2,6 +2,16 @@
 
 Detail bash and batching heuristic for Phase 1 (Scope & Context) and Phase 1.5 (Batching Decision). Read by the orchestrator.
 
+## Contents
+
+- Phase 1: Scope & Context, the executable bash block
+- Suppressions: re-validate factual-claim reasons at audit start
+- Project context: the heading is not the contract
+- Context building (one-time) and optional pre-checks
+- Phase 1.5: Batching decision
+- Concurrent tree check (detail)
+- Intent docs / decided tradeoffs (DECIDED_TRADEOFFS)
+
 Content: Phase 1 scope bash · context building · optional pre-checks · Phase 1.5 batching · concurrent tree check
 
 ## Phase 1: Scope & Context — Bash

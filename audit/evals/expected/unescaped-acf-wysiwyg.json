@@ -1,0 +1,28 @@
+{
+  "fixture": "security/unescaped-acf-wysiwyg.blade.php",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 17,
+      "matches": ["unescaped", "wp_kses", "xss", "raw output", "{!!"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "security",
+      "line": 21,
+      "matches": ["unescaped", "wp_kses", "xss", "raw output", "{!!"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 26,
+      "reason": "footnote is already wrapped in wp_kses_post — flagging it is a false positive"
+    },
+    {
+      "dimension": "performance",
+      "reason": "static markup with no queries or loops"
+    }
+  ]
+}

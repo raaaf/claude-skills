@@ -64,6 +64,14 @@ For PHP files, Pint (hook) runs automatically after every edit. Pint removes imp
 - **Import + first usage MANDATORY in the same edit call.** Never add `use ...;` first and add the usage in a second edit afterward.
 - After every PHP edit that added an import: re-read the file and verify the import still exists. If Pint stripped it → re-add the import together with the usage in ONE edit.
 
+### Fully-qualified global classes (php-cs-fixer projects)
+
+Some projects run php-cs-fixer as a PostToolUse hook instead of Pint. Its import rules rewrite intentionally fully-qualified global-namespace classes into `use` imports: `\WPCF7::`, `\ITSEC_Modules::`, `\WP_Query` become `use WPCF7;` + `WPCF7::`. Inside a namespaced file that changes what the symbol resolves to, and a namespace-consistency test goes red on code you never wrote that way.
+
+- Editing PHP that references a global class with a leading `\` → make the edit via **Bash** (`sed`, heredoc, `cat > file`), not the Edit tool. The hook fires on Edit/Write, not on Bash.
+- Edited such a file via Edit anyway → re-read it, and run the project's namespace-consistency test (`NamespaceConsistencyTest` or equivalent) before reporting.
+- **A test that goes red after your own edits is never "pre-existing" until you have proven it.** Check with `git stash list`-free means: `git show HEAD:<path>` gives you the pre-fix file — diff your version against it and re-run the test on the parts you did not touch. Declaring a self-caused breakage pre-existing hands a real regression to the next round as someone else's problem.
+
 ## Special case: Utility extraction / centralization
 
 If the finding extracts a new shared utility (new `lib/*.js`, new helper/trait/mixin) and centralizes a previously duplicated pattern, it is NOT enough to migrate only the file named in the finding — otherwise the pattern stays duplicated everywhere else and the fix is incomplete.

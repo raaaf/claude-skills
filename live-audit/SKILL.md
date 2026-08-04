@@ -78,7 +78,7 @@ Gesamt: {N} neue Issues erstellt.
 
 ## Phase 4: Learning-Agent dispatchen
 
-Nach allen Site-Runs den Learning-Agent starten. Foreground, damit er Output zurückgeben kann den der Orchestrator schreibt.
+Nach allen Site-Runs den Learning-Agent starten. `run_in_background: false` ist Pflicht: seit Claude Code v2.1.198 laufen Subagents standardmaessig im Hintergrund, und ein Hintergrund-Agent liefert sein Ergebnis erst als Completion-Notification in einem spaeteren Turn, der Orchestrator kann den Output dann nicht mehr parsen und schreiben.
 
 ```
 Agent(
@@ -87,7 +87,8 @@ Agent(
     RUN_DATE={DATUM}",
   subagent_type: general-purpose,
   model: haiku,
-  mode: bypassPermissions
+  mode: bypassPermissions,
+  run_in_background: false
 )
 ```
 

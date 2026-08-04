@@ -16,6 +16,7 @@ allowed-tools:
   - Grep
   - TodoWrite
   - AskUserQuestion
+  - SendMessage   # idle watchdog re-prompts dispatched agents
 ---
 
 # Full Codebase Audit
@@ -25,6 +26,14 @@ allowed-tools:
 > **Architecture note:** This skill has NO worker agents of its own. It uses the definitions from `../audit/agents/*.md` (referenced in the skill via `{AUDIT_AGENTS}`). If you want to change worker configuration, edit there. prompt-template.md has two sections ("For /audit" and "For /full-audit (codebase-based)") — workers dispatch the matching section depending on the skill.
 
 Anti-patterns (red flags) see `{AUDIT_REFS}/anti-patterns.md` (path from Phase 0) — Full-Audit additionally fixes ALL Minor findings.
+
+## Running long
+
+This audit runs for many turns, usually with nobody watching. Three rules for that mode:
+
+- **Don't end a turn on an intention.** If your last paragraph is a plan, a question, a list of next steps, or a promise ("I'll now audit batch 3"), do that work now with tool calls instead. End the turn only when the batch matrix is complete or you are blocked on something only the user can decide.
+- **Every progress claim needs a tool result from this turn.** "Batch 4 clean" means `status-line.sh` printed it in this turn, not that you remember fixing it. Unverified state is reported as unverified.
+- **Context is not a reason to stop.** Do not summarize early, hand off, propose a fresh session, or shrink the audit scope because the session is long. The state file plus `resume-check.sh` exist exactly so a run can be picked up later, use them, don't pre-empt them.
 
 ---
 
@@ -72,129 +81,20 @@ Every `BATCH_DIRTY` line: reset the batch row to `pending` (Rounds `0/{max}`, ze
 
 ---
 
-## Phase 0.3: Learning Backlog Check
+**Scope argument:** `$ARGUMENTS` holds the optional directory scope (empty when none was given). Non-empty means: restrict batching and every worker's file list to that path prefix, and record it in the state-file header.
+## Phases 0.3 to 0.45: Pre-flight checks
 
-Identical to `/audit` Phase 0. Check whether unprocessed learning suggestions from earlier audits are still open:
+Read `references/pre-flight-phases.md` and execute all three in order:
 
-```bash
-LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
-[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
-```
-
-If `>= 1`: ask the user via `AskUserQuestion` with options:
-- **Implement suggestions now** → list the suggestions, user picks which ones, orchestrator dispatches matching changes to `audit/guidelines/*.md` or `audit/agents/*.md` (these are the GLOBAL skill files affecting all projects). **IMPORTANT — edit in the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose content gets overwritten. Before the first edit, resolve the source: check `readlink` or find the skill source repo (e.g. `~/Local Sites/claude-skills`) and edit THERE. Edits in the unpacked copy are lost on the next sync. After implementing: change `[ ]` to `[x]` in learning-log.md. Then continue Full-Audit with Phase 0.5.
-- **Later, run Full-Audit now** → start Phase 0.5, suggestions stay open.
-- **Never ask again for these items** → append a `[skip]` marker to the affected rows, they no longer count.
-
-If `0`: continue without asking.
-
-**Additionally — open audit issues & PRs** (identical to `/audit` Phase 0.2):
-
-```bash
-if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com; then
-  OPEN_AUDIT_ISSUES=$(gh issue list --state open --label audit-finding --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null || true)
-  OPEN_PRS=$(gh pr list --state open --json number,title,headRefName --jq '.[] | "#\(.number) \(.title) [\(.headRefName)]"' 2>/dev/null || true)
-fi
-```
-
-Open `audit-finding` issues → AskUserQuestion: **Fix now too** (feed in as verified findings in batch 1, after the fix `gh issue close` with a comment) / **Leave open**. `OPEN_PRS` as context: Phase 4 dedup checks against it, PR file overlaps go into the log as a note.
-
-**Skip this phase when:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` OR `FULL_AUDIT_SKIP_LEARNING_CHECK=1` is set (for CI/batch runs).
-
----
-
-## Phase 0.4: Test Runner Streak Check
-
-Hard check: if a configured test runner is missing across multiple full audits, the gap escalates to a Critical finding (instead of just a gap note). Without a runner, no fix agent can verify regressions.
-
-```bash
-ROOT=$(git rev-parse --show-toplevel)
-STREAK_FILE="$ROOT/.claude/audits/no-test-runner-streak"
-HAS_RUNNER=0
-# JS/TS runner in package.json or config files
-if [ -f "$ROOT/package.json" ] && grep -Eq '"(vitest|jest|mocha)"|node:test|node --test' "$ROOT/package.json" 2>/dev/null; then HAS_RUNNER=1; fi
-# find instead of glob — zsh aborts on non-matching globs
-[ -n "$(find "$ROOT" -maxdepth 1 \( -name 'vitest.config.*' -o -name 'jest.config.*' \) 2>/dev/null)" ] && HAS_RUNNER=1
-# PHP / Python
-{ [ -f "$ROOT/phpunit.xml" ] || [ -f "$ROOT/phpunit.xml.dist" ]; } && HAS_RUNNER=1
-[ -f "$ROOT/pytest.ini" ] && HAS_RUNNER=1
-grep -q "\[tool.pytest" "$ROOT/pyproject.toml" 2>/dev/null && HAS_RUNNER=1
-
-if [ "$HAS_RUNNER" -eq 1 ]; then
-  rm -f "$STREAK_FILE"; TEST_RUNNER_ESCALATE=0
-  echo "Test-Runner: vorhanden (Streak zurueckgesetzt)"
-else
-  STREAK=$(( $(cat "$STREAK_FILE" 2>/dev/null || echo 0) + 1 ))
-  echo "$STREAK" > "$STREAK_FILE"
-  if [ "$STREAK" -ge 3 ]; then TEST_RUNNER_ESCALATE=1; else TEST_RUNNER_ESCALATE=0; fi
-  echo "Test-Runner: FEHLT (Streak=$STREAK, Escalate=$TEST_RUNNER_ESCALATE)"
-fi
-```
-
-`TEST_RUNNER_ESCALATE=1` → in Phase 3c record the missing test infrastructure as **Critical** in the audit log and as a GitHub issue (Phase 4), not as a gap note. `=0` → gap note as before.
-
-**Skip when:** ENV `FULL_AUDIT_SKIP_TESTRUNNER_CHECK=1`.
-
----
-
-## Phase 0.45: Build Preflight (compiled languages)
-
-Before the first batch, verify the unchanged HEAD actually builds. A broken build discovered only at the end (Phase 3b linter/tests) means an entire audit run's worth of fixes gets applied on top of code nobody could have compiled in the first place.
-
-```bash
-BUILD_PREFLIGHT_RESULT=SKIP
-if [ -f "$ROOT/Package.swift" ] || ls "$ROOT"/*.xcodeproj >/dev/null 2>&1 || ls "$ROOT"/*.xcworkspace >/dev/null 2>&1; then
-  command -v xcodebuild >/dev/null 2>&1 && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
-elif [ -f "$ROOT/Cargo.toml" ]; then
-  command -v cargo >/dev/null 2>&1 && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
-elif [ -f "$ROOT/go.mod" ]; then
-  command -v go >/dev/null 2>&1 && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
-elif [ -f "$ROOT/pom.xml" ] || [ -f "$ROOT/build.gradle" ] || [ -f "$ROOT/build.gradle.kts" ]; then
-  { command -v gradle >/dev/null 2>&1 || command -v mvn >/dev/null 2>&1; } && BUILD_PREFLIGHT_RESULT=RUN || BUILD_PREFLIGHT_RESULT=NO_TOOLCHAIN
-fi
-echo "Build preflight: $BUILD_PREFLIGHT_RESULT"
-```
-
-`RUN` → run the project's normal build command against the unchanged HEAD (narrowest scope available, e.g. a single scheme/package — not a full clean build), before any fix agent has touched anything. Build fails → log it immediately as a **Critical** finding `[Build]` in batch 1; do not wait for Phase 3b to surface it. Build succeeds → continue silently, no log entry needed.
-
-`SKIP` (no known compiled-language manifest) or `NO_TOOLCHAIN` (manifest present, toolchain missing) → gap note only, same as the Phase 0.4 test-runner gap note, not a finding.
-
-**Skip when:** ENV `FULL_AUDIT_SKIP_BUILD_PREFLIGHT=1`.
-
----
-
+- **0.3 Learning backlog + open issues/PRs.** Unprocessed `- [ ]` suggestions in `learning-log.md` are offered for implementation; open `audit-finding` issues can be fed into batch 1; open PRs become dedup context. Skipped with `AUDIT_SKIP_LEARNING_CHECK=1` or `FULL_AUDIT_SKIP_LEARNING_CHECK=1`.
+- **0.4 Test runner streak.** A missing test runner escalates to a Critical finding once the streak reaches the threshold, because without a runner no fix agent can verify a regression.
+- **0.45 Build preflight.** Compiled languages must build before the audit starts; a broken build makes every downstream finding unreliable.
 ## Phase 0.5: Dimension Selection
 
-Before scope is collected, clarify which dimensions should be checked. Saves tokens and time when the user e.g. only wants Security checked.
-
-**Skip via ENV (for CI/batch):**
-
-```bash
-if [ -n "${FULL_AUDIT_DIMENSIONS:-}" ]; then
-  case "$FULL_AUDIT_DIMENSIONS" in
-    all|"") SELECTED_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy" ;;
-    *)      SELECTED_DIMENSIONS="$FULL_AUDIT_DIMENSIONS" ;;
-  esac
-  echo "Dimensions via ENV: $SELECTED_DIMENSIONS"
-fi
-```
-
-**Otherwise via AskUserQuestion (1 or 2 questions):**
-
-Question 1 — preset:
-
-| Option | Dimensions |
-|---|---|
-| Everything (default) | architecture, security, performance, code_quality, seo, a11y, typography, ui_design, ux, animation, docs_sync, copy |
-| Backend only | architecture, security, performance, code_quality, docs_sync |
-| Frontend only | seo, a11y, typography, ui_design, ux, animation, copy |
-| Custom | (triggers question 2) |
-
-Question 2 (only for Custom) — multi-select across all 12 dimensions. User picks any combination.
-
-**Validation:** `SELECTED_DIMENSIONS` must contain at least 1 valid dimension. Discard invalid values.
-
-**Display:** `Full-Audit Scope: {N}/12 dimensions — {list}`.
+Which of the 12 dimensions run. `FULL_AUDIT_DIMENSIONS` (env) sets it non-interactively for CI;
+otherwise ask via AskUserQuestion. Presets, the custom multi-select, validation and the display line
+are in `references/dimension-selection.md` — read and execute it. Result: `SELECTED_DIMENSIONS`,
+at least one valid dimension.
 
 ---
 
@@ -382,18 +282,25 @@ Output:
 
 ### Critical / Important / Minor / Clean
 [same structure]
+
+### Unverified
+[UNCERTAIN findings from Step C's verification stage, with reason]
 ```
 
 **Step C — auto-fix (ALL findings)**
 
 TodoWrite: `Round {RUNDE} — fix findings` (in_progress).
 
-**Base rule:** everything gets fixed — except `low confidence`.
+**Base rule:** everything gets fixed except what the verification stage refutes.
 
-Confidence gate (scales with `CONFIDENCE_FLOOR` from Phase 0.7):
-- `floor=high` (low effort): fix only `high`, rest stays in the log
-- `floor=medium` (medium effort): fix `high`+`medium`. `low` → re-verification: read the spot specifically; confirmed → fix, otherwise discard (no open point, no issue)
-- `floor=low` (high/xhigh effort, default): fix everything, `low` gets a warning marker
+**Finding verification before the fix wave (same stage as `/audit` Step D.7).** Workers report for coverage, including findings they are unsure about, so the filter sits here and not in the finder. Dispatch one `{AUDIT_AGENTS}/finding-verifier.md` subagent (sonnet, fresh context) per selected finding, all in one message block, max 10 in parallel. Verdicts: `CONFIRMED` → fix wave (apply `SEVERITY_CORRECTION` if not `none`); `REFUTED` → discarded before any fix, one log line with the reason, never an issue; `UNCERTAIN` (also: missing or unparseable reply) → not fixed, listed under `### Unverified` in the batch log. Print `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
+
+Selection gate (scales with `CONFIDENCE_FLOOR` from Phase 0.7):
+- `floor=high` (low effort): no verification stage; fix only `high`, rest stays in the log
+- `floor=medium` (medium effort): `high` goes straight to the fix wave, `medium`+`low` through verification first
+- `floor=low` (high/xhigh effort, default): every Critical/Important finding through verification, `high` confidence included
+
+Minor findings skip verification: they are only fixed at high/medium confidence anyway.
 
 Fix Minor findings when `FIX_MINOR=1` (medium/high/xhigh). Unfixed Minor findings stay ONLY in the log.
 
@@ -531,11 +438,12 @@ Agent(
     AUDIT_TYPE=full-audit",
   subagent_type: general-purpose,
   model: sonnet,
-  mode: bypassPermissions
+  mode: bypassPermissions,
+  run_in_background: false
 )
 ```
 
-**Foreground mode matters:** background subagents cannot write `.claude/audits/learning-log.md` (hardcoded `.claude/` protection that also applies under `bypassPermissions`, and background subagents cannot prompt the user). Foreground works around this at a cost of ~5-10s extra at the end.
+**Foreground mode matters, and it has to be requested explicitly.** Since Claude Code v2.1.198 subagents run in the background by default, so omitting `run_in_background: false` backgrounds the learning agent, its result then arrives as a completion notification in a later turn, after the orchestrator has already finished the wrap-up, and the learning pass is silently lost. On top of that, background subagents cannot write `.claude/audits/learning-log.md` themselves (hardcoded `.claude/` protection that also applies under `bypassPermissions`, and they cannot prompt the user). Foreground costs ~5-10s at the end.
 
 ---
 

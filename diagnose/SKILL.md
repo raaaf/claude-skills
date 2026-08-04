@@ -9,7 +9,7 @@ description: |
 when_to_use: "/diagnose, bug report, something is broken, fix attempt failed, can't reproduce, regression, debugging"
 argument-hint: "[optional: brief bug description]"
 model: sonnet
-effort: medium
+effort: high
 allowed-tools:
   - Read
   - Edit
@@ -25,7 +25,7 @@ Structured debugging. Reproduce first; everything else depends on it.
 
 ## Phase 0: Intake
 
-Determine (from user input or context):
+`$ARGUMENTS` holds the bug description passed with the invocation (empty when none was given). Determine (from it, the conversation, or by asking):
 
 1. What was expected?
 2. What actually happened (exact error, output, behavior)?

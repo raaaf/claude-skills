@@ -40,6 +40,12 @@ Invoke directly for one pass, or `/loop /feature-audit` for the unattended grind
 artifacts (full table + test output). Never report done from memory of a prior turn; re-run and
 re-print.
 
+Two more rules for the unattended mode: don't end a turn on an intention (if the last paragraph is
+a plan, a next step, or "I'll now write the test for X", do it with tool calls instead. End the
+turn only on completion or on input only the user can give), and don't treat session length as a
+reason to stop, summarize, or propose a fresh session. The state lives in `FEATURE_AUDIT.md` and
+survives interruption; that is what makes stopping early unnecessary.
+
 ## Phase 0: Setup (first turn)
 
 ### 0.1 Scope

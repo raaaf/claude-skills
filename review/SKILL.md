@@ -42,10 +42,46 @@ No `$target`: auto-detect from git diff.
 
 No argument:
 ```bash
-# On a feature branch
-git diff main...HEAD --name-only 2>/dev/null
+# Resolve the real default branch instead of assuming "main" — a repo on master or
+# develop otherwise produces an empty file list and the review silently falls through
+# to asking the user. Reuse audit/bin/lib-git-base.sh (candidate loop mirrors the
+# AUDIT_ROOT pattern in full-audit/SKILL.md and design-audit/SKILL.md) instead of
+# duplicating its resolution order.
+AUDIT_ROOT=""
+for candidate in \
+  "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
+  "$HOME/.claude/skills/audit" \
+  "$HOME/.claude/skills/claude-skills/audit"; do
+  [ -n "$candidate" ] && [ -d "$candidate/bin" ] && { AUDIT_ROOT="$candidate"; break; }
+done
 
-# On main / no upstream
+if [ -n "$AUDIT_ROOT" ]; then
+  source "$AUDIT_ROOT/bin/lib-git-base.sh"
+  BASE=$(resolve_default_branch)
+else
+  # lib-git-base.sh not reachable — inline the same probing order.
+  # audit/bin/lib-git-base.sh is the reference implementation; keep in sync.
+  BASE=""
+  if git symbolic-ref --quiet refs/remotes/origin/HEAD >/dev/null 2>&1; then
+    BASE=$(git symbolic-ref --quiet refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+  fi
+  if [ -z "$BASE" ]; then
+    for candidate in main master develop trunk; do
+      git rev-parse --verify "refs/remotes/origin/$candidate" >/dev/null 2>&1 && { BASE="$candidate"; break; }
+    done
+  fi
+  if [ -z "$BASE" ]; then
+    for candidate in main master develop trunk; do
+      git rev-parse --verify "refs/heads/$candidate" >/dev/null 2>&1 && { BASE="$candidate"; break; }
+    done
+  fi
+  [ -z "$BASE" ] && BASE="main"
+fi
+
+# On a feature branch
+git diff "$BASE...HEAD" --name-only 2>/dev/null
+
+# On the default branch / no upstream
 git diff --cached --name-only 2>/dev/null
 ```
 

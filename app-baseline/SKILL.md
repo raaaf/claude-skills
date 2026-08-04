@@ -35,7 +35,11 @@ This skill never deploys, never pushes, never runs backups. It writes files.
 
 ```bash
 SKILL_DIR="${CLAUDE_SKILL_DIR}"
-ROOT="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# Skill argument, not the shell positional $1: inside a skill body $1 would be the SECOND
+# argument (shorthand for $ARGUMENTS[1]), and inside the Bash tool a bare $1 is empty either
+# way, so the passed project root was silently ignored and the run always fell back to cwd.
+ROOT="$ARGUMENTS"
+[ -z "$ROOT" ] && ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 bash "$SKILL_DIR/bin/baseline-scan.sh" "$ROOT"
 ```
 

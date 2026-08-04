@@ -15,7 +15,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented); Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
 3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching so workers load only guidelines whose `applies_to` glob matches the diff)
-4. Phase 2: Audit-loop with triage routing (haiku triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 12 specialized workers, hallucination validator, fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
+4. Phase 2: Audit-loop with triage routing (haiku triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 12 specialized workers reporting for coverage rather than self-filtering, hallucination validator (file and line exist), finding verification by fresh-context verifiers that are prompted to refute (only confirmed findings reach the fix stage; refuted ones are discarded before a file is touched, inconclusive ones are listed as unverified), fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
 7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
@@ -235,7 +235,7 @@ These skills live in this repo as architecture examples. They are wired to perso
 | Format | Markdown + YAML frontmatter |
 | Language | English throughout (skill bodies, agents, references, guidelines); German only in trigger phrases, runtime user-facing strings, and the personal skills |
 | Hooks | Bash scripts in `~/.claude/hooks/` (sync, audit-loop, format) |
-| Runtime | Claude Code 2.1.150+ (uses skill frontmatter `model`, `effort`, `allowed-tools`) |
+| Runtime | Claude Code 2.1.218+ (uses skill frontmatter `model`, `effort`, `allowed-tools`, `disallowed-tools`, and `context: fork` with `background`) |
 | Model resolution | `model: opus` alias (auto-resolves to latest Opus on Anthropic API) |
 | Dependencies | none — no npm, no composer, no Python venv |
 
@@ -310,8 +310,9 @@ FULL_AUDIT_DIMENSIONS=security claude /full-audit  # security-only sweep
 SKILL.md (orchestrator)
   -> Dispatches subagents in parallel (agents/*.md)
      -> Each agent reads guidelines/*.md on demand (progressive disclosure)
-  -> Hallucination validator (filesystem checks)
-  -> Auto-fixes via fix-agent subagents
+  -> Hallucination validator (filesystem checks: file exists, line in range)
+  -> Finding verifier (fresh context, prompted to refute; confirmed | refuted | uncertain)
+  -> Auto-fixes via fix-agent subagents, confirmed findings only
   -> Fix-verifier peer-reviews each applied fix
   -> Cross-reference pass for multi-file diffs
   -> Logs run + dispatches learning agent (returns structured output)
@@ -346,13 +347,23 @@ Every skill dispatches a learning agent (Sonnet) after each run.
 
 ## Eval suite
 
-`audit/evals/` contains a scaffold for measuring audit recall:
+`audit/evals/` contains a scaffold for measuring audit recall. Needs bash 4+ (`brew install bash`):
 
 ```bash
-bash ~/.claude/skills/audit/evals/run-evals.sh
+bash audit/evals/run-evals.sh --only security --scoped --timeout 900
 ```
 
-Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. Currently 29 fixtures across 8 categories (a11y, architecture, correctness, performance, quality, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug — over time the eval becomes a real benchmark.
+Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. As of 2026-08-04: 51 scorable fixtures (matched against `expected/<base>.json`) across 9 categories (a11y, architecture, correctness, docs, performance, quality, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug, and over time the eval becomes a real benchmark.
+
+**Know the cost before you start one.** A fixture is a single file, but an unscoped `/audit` still dispatches around ten workers that read dozens of guideline files. Measured on 2026-08-04, one security fixture at `--effort low`: 896 seconds, 41 turns, 6.93 USD. The full set is hours and triple-digit dollars.
+
+Three options exist for that reason:
+
+| Option | Effect |
+|---|---|
+| `--only <substring>` | Run only fixtures whose path contains the substring |
+| `--scoped` | Run `/audit <dimension>` derived from the fixture's category instead of a full audit. Far cheaper, but it measures worker recall instead of routing plus worker recall, so scoped numbers are not comparable to unscoped baselines |
+| `--timeout <sec>` | Per-fixture cap. A timed-out fixture scores as a miss, which is indistinguishable from a recall collapse, so timeouts are printed per fixture and totalled in the summary. Never read a recall number without checking that line |
 
 Status: growing eval suite, not yet a stable benchmark.
 

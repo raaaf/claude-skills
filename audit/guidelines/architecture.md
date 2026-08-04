@@ -352,3 +352,13 @@ $page->save();
 
 - Before writing a new handler for audio/share/navigation glue in a view: grep for an existing shared utility first (e.g. `WordAudioShare.swift`); duplication across sibling views of the same feature pair is a recurring failure mode.
 - When a change introduces a new shared constant/utility or centralizes a pattern: immediately `grep -rn` the OLD pattern across the ENTIRE repo — including `scripts/`, `tests/`, seeders, and tooling, not just the main source directory — and migrate every occurrence in the same change. Partial rollouts resurface as duplicate findings in later audit rounds.
+
+## XVIII. Lock, Wait and Heartbeat Scripts (Bash)
+
+Coordination scripts are the one place where a missing line does not fail loudly, it hangs. `test-lock.sh` needed three audit rounds for exactly the two points below, so check them explicitly whenever a diff adds or changes a lock, spinlock, wait loop, heartbeat, watchdog or retry wrapper.
+
+**Signal traps under `set -u`.** A trap handler runs in the same shell, so every variable it touches must already be assigned at the moment the trap is installed. Under `set -euo pipefail` a handler that references a variable set later in the script aborts with an unbound-variable error, inside the cleanup path, which is where nothing is left to clean up afterwards. Assign the variables the handler needs before `trap`, and keep the handler to operations that work in a half-initialized state.
+
+**Orphan cleanup on kill.** `trap ... EXIT` does not fire on `SIGKILL`, and a lock directory or PID file that outlives its owner blocks every later run until someone deletes it by hand. Any lock needs a second, independent release path: a TTL that a later run can detect and break, a liveness check against the recorded PID (`kill -0`), or both. A lock whose only release is the happy path is a finding, not a style preference.
+
+Check as well: does the wait loop have a bounded number of attempts and a distinct exit code on timeout (a caller cannot distinguish "acquired" from "gave up" otherwise), and does the script clean up background children it started rather than leaving them to reparent to init.

@@ -36,9 +36,16 @@ Format:
 ## Open Points
 - [Code Quality] app/Baz.php — refactor needed (not auto-fixable)
 
+## Unverified
+- [Dimension] file:line: description. Verification inconclusive: {REASON from D.7}
+
 ## Clean
 Performance, SEO
 ```
+
+### Unverified Section (Step D.7)
+
+The `Unverified` section holds the `UNCERTAIN` verdicts from Step D.7 (audit/SKILL.md), one line per finding: dimension, file:line, the description, and the verifier's `REASON` why verification was inconclusive. Omit the heading entirely when no finding came back `UNCERTAIN` in the batch. A Critical `UNCERTAIN` additionally becomes an open point for the user, in addition to appearing here.
 
 ## Display Audit Log in Chat (MANDATORY)
 

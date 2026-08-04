@@ -4,6 +4,7 @@ description: "Erstellt fotorealistische Mockups eines beliebigen Designs (Logo, 
 argument-hint: "[pfad/zum/design.jpg]"
 disable-model-invocation: true
 model: sonnet
+effort: medium
 allowed-tools:
   - Bash
   - AskUserQuestion
@@ -39,7 +40,7 @@ echo "Key: ${KEY:0:10}..."
 
 ### 2. Designdatei ermitteln + ansehen
 
-Argument nutzen, sonst per `AskUserQuestion` nach absolutem Pfad fragen. Datei per `Read` anschauen: erkennen **was es ist** (Logo, Flyer, Aufkleber, Workbook-Cover, Visitenkarte, Poster, volles Branding) und welche Form/Farben. Das steuert die Mockup-Empfehlung.
+Pfad aus `$ARGUMENTS` nutzen (leer, wenn keiner uebergeben wurde), sonst per `AskUserQuestion` nach absolutem Pfad fragen. Datei per `Read` anschauen: erkennen **was es ist** (Logo, Flyer, Aufkleber, Workbook-Cover, Visitenkarte, Poster, volles Branding) und welche Form/Farben. Das steuert die Mockup-Empfehlung.
 
 ### 3. Mockup-Kontext waehlen
 
@@ -156,7 +157,7 @@ RATIO="1:1"; SIZE="2K"; CTX="visitenkarte"
 
 # Payload in Datei (grosse base64 sprengt jq/curl in einer Bash-Variable)
 jq -n --arg p "$PROMPT" --arg u "data:${REF_MIME};base64,${B64}" --arg r "$RATIO" --arg s "$SIZE" '{
-  model:"google/gemini-3-pro-image-preview", modalities:["image","text"],
+  model:"google/gemini-3-pro-image", modalities:["image","text"],
   image_config:{aspect_ratio:$r, image_size:$s},
   messages:[{role:"user",content:[{type:"text",text:$p},{type:"image_url",image_url:{url:$u}}]}]
 }' > "/tmp/mk_${CTX}_req.json"
@@ -194,7 +195,7 @@ Bei komplexem Branding oder wenn ein Winkel driftet, mehrere Referenzen mitgeben
 B64A=$(base64 -i ref_logo.png | tr -d '\n'); B64B=$(base64 -i ref_style.jpg | tr -d '\n')
 PROMPT="Use image 1 as the exact logo and image 2 as the colour/style reference. ${SCENE} ${SUFFIX}"
 jq -n --arg p "$PROMPT" --arg a "data:image/png;base64,${B64A}" --arg b "data:image/jpeg;base64,${B64B}" --arg r "$RATIO" --arg s "$SIZE" '{
-  model:"google/gemini-3-pro-image-preview", modalities:["image","text"],
+  model:"google/gemini-3-pro-image", modalities:["image","text"],
   image_config:{aspect_ratio:$r, image_size:$s},
   messages:[{role:"user",content:[{type:"text",text:$p},{type:"image_url",image_url:{url:$a}},{type:"image_url",image_url:{url:$b}}]}]
 }' > /tmp/mk_multi_req.json
@@ -290,7 +291,7 @@ Konstanten (BAR 88 / IR 110 / PAD 54 / OR 176) sind fuer @2x bzw. @3x kalibriert
 
 ## Hinweise
 
-- Modell-ID `google/gemini-3-pro-image-preview` (Nano Banana Pro), 1K/2K/4K, OpenRouter.
+- Modell-ID `google/gemini-3-pro-image` (Nano Banana Pro, GA-ID, kanonisch `-20260528`), 1K/2K/4K, OpenRouter. Preview-IDs (`-preview`) werden abgekuendigt, GA-IDs nicht.
 - Digitales/UI-Design pixeltreu nur ueber den Composite-Pfad, nie ueber Nano Banana.
 - Mehrere Referenzbilder (bis 14): siehe Schritt 6b.
 - Ein Key deckt viele Bildmodelle ab. Runway separat fuer Video.

@@ -5,7 +5,10 @@ Run this before declaring a skill done. Each item is a hard gate, not a suggesti
 ## Frontmatter
 
 - [ ] `name` matches the directory name (e.g. dir `audit/` -> `name: audit`)
-- [ ] `description` under 1024 chars
+- [ ] `description` + `when_to_use` under 1,536 chars combined (hard cap), key use case in the first sentence
+- [ ] Every declared `argument-hint` is actually bound in the body. Without `$ARGUMENTS` (or a declared named argument) in the content, Claude Code only appends `ARGUMENTS: <value>` at the very end and the body never refers to it
+- [ ] Free-text arguments (commit message, task description, focus area) use `$ARGUMENTS`, not named or indexed arguments: those bind shell-quoted positions, so an unquoted multi-word value loses everything after the first token
+- [ ] No shell positionals (`$1`, `${1:-default}`) standing in for the skill argument inside bash blocks. `$1` is the *second* skill argument, and under the Bash tool it is empty
 - [ ] `description` follows pattern: "What it does. Use when [trigger]. [Optional: NOT when X]."
 - [ ] `when_to_use` lists slash command + 2-4 natural-language phrases (German + English if relevant)
 - [ ] `argument-hint` filled if the skill takes args, otherwise omit
@@ -60,7 +63,7 @@ Per agents/*.md file:
 
 ## Self-Learning (if learning agent)
 
-- [ ] Foreground dispatch (`run_in_background: false` or omit) — background can't write to `.claude/`
+- [ ] Foreground dispatch, spelled out as `run_in_background: false`: omitting it backgrounds the agent (default since Claude Code v2.1.198), and a background agent both can't write to `.claude/` and returns too late for the orchestrator to write for it
 - [ ] Writes to `.claude/<skill>/learning-log.md`
 - [ ] Suggestions, not auto-apply
 - [ ] Reads recent N runs, not entire history each time

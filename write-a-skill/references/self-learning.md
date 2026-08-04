@@ -11,13 +11,16 @@ A learning agent runs after the main flow, reads recent run logs, detects patter
 
 ## Foreground, NOT background
 
-Earlier we tried `run_in_background: true`. It silently fails because background subagents cannot write to `.claude/` (no permission prompt available). Always foreground:
+Earlier we tried `run_in_background: true`. It silently fails because background subagents cannot write to `.claude/` (no permission prompt available), and their result only arrives as a completion notification in a later turn, by which time the orchestrator that was supposed to write for them is done.
+
+Since Claude Code v2.1.198 background is the *default* when the dispatch doesn't say otherwise, so foreground has to be requested explicitly, omitting the flag is no longer the safe choice it used to be:
 
 ```
 Agent(
   subagent_type: general-purpose,
   description: "Learning pass — detect patterns across recent {skill} runs",
-  prompt: "Read agents/learning-agent.md and execute."
+  prompt: "Read agents/learning-agent.md and execute.",
+  run_in_background: false
 )
 ```
 

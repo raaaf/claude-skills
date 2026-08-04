@@ -5,6 +5,13 @@ description: "Use when the user says /improve or wants to discover what the app 
 model: sonnet
 effort: high
 context: fork
+# background: false is load-bearing (needs Claude Code >= v2.1.218): since v2.1.218 a forked
+# skill runs in the BACKGROUND by default, which (a) delivers the report only as a completion
+# notification in a later turn, while the user is sitting there waiting for it, and (b) narrows
+# the built-in tool set to the background subagent set. AskUserQuestion is deliberately absent
+# from allowed-tools: it is stripped from every subagent, foreground or background, so listing
+# it would only pre-approve a tool this skill never gets.
+background: false
 allowed-tools:
   - Agent
   - Bash
@@ -12,7 +19,6 @@ allowed-tools:
   - Glob
   - Grep
   - TodoWrite
-  - AskUserQuestion
   - WebSearch
   - WebFetch
 ---

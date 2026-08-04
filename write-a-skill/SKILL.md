@@ -21,6 +21,9 @@ Inspired by Matt Pocock's [write-a-skill](https://github.com/mattpocock/skills/b
 
 ## Process
 
+`$ARGUMENTS` holds the skill name or short description from the invocation (empty when none was
+given). Use it as the starting point of the interview instead of asking what the skill is about.
+
 1. **Interview the user** (1-2 rounds, max 3 questions per round, each with a recommended answer):
    - What task/domain does the skill cover?
    - When should the skill trigger? (slash command, natural-language phrases, file types)
@@ -55,9 +58,9 @@ description: "What it does. Use when [specific user triggers]. NOT when [adjacen
 when_to_use: "/slash-command, natural language phrase 1, phrase 2"
 argument-hint: "[optional: what the argument means]"
 arguments: [name]        # named positional args; body uses $name (never positional {N})
-model: opus   # or sonnet, haiku
-effort: high             # low, medium, high, xhigh
-allowed-tools:
+model: opus              # or sonnet, haiku, fable, inherit
+effort: high             # low, medium, high, xhigh, max
+allowed-tools:           # pre-approved permissions for the turn, NOT the tool pool
   - Read
   - Edit
   - Bash
@@ -73,11 +76,23 @@ allowed-tools:
 ...
 ```
 
+Every supported field, the description budget, `${CLAUDE_SKILL_DIR}` in `allowed-tools`, and the
+`context: fork` / `background` trap: `references/frontmatter.md`. Three fields that are easy to get
+wrong:
+
+- `allowed-tools` **grants permission**, it does not define the tool pool. `disallowed-tools` is the
+  one that actually removes a tool.
+- `context: fork` runs in the **background by default** since v2.1.218, with a reduced tool set. A
+  forked skill whose report the user is waiting for needs `background: false`.
+- `disable-model-invocation: true` also blocks scheduled-task invocation (v2.1.196+). Never set it
+  on a skill that runs on a schedule.
+
 ## Description Requirements (most important block)
 
 The description is **the only thing the model sees** when picking which skill to load. Get this right or your skill stays cold.
 
-- Max 1024 chars
+- `description` + `when_to_use` are capped at **1,536 chars combined**, and the skill listing as a whole is budgeted at ~1% of the context window. On overflow Claude Code drops the descriptions of the least-used skills first, a bloated description in one skill can cost another skill its trigger text. Write short, don't write up to the cap.
+- Key use case in the **first sentence**: truncation eats the tail
 - Third person, present tense
 - First sentence: what it does
 - Second sentence: "Use when [specific user triggers]"

@@ -25,7 +25,7 @@ Economics of this skill: the expensive model does the work where intelligence ma
 
 ## Phase 0: Scope Gate
 
-Classify the task before any work happens:
+The task is `$ARGUMENTS` (free text, plus an optional `--worktree` flag; empty when the user described the task in conversation instead). Classify it before any work happens:
 
 | Classification | Signal | Action |
 |---|---|---|
@@ -77,6 +77,8 @@ Agent(
     {MINI_SPEC inline}"
 )
 ```
+
+The executor runs in the background (default since Claude Code v2.1.198) and its report arrives as a completion notification. That is fine here, but **test authority follows the executor**: while it runs, the orchestrator does not start its own test run. Phase 5 verification begins after the report has arrived, not alongside it.
 
 Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, respect STOP conditions instead of improvising, check every report claim against a real tool result, same-diff duplication self-check at block level before reporting (identical guard/resolver/logic blocks in two places of the executor's own diff → extract, even inside otherwise different method bodies — the audit-side check cannot catch executor duplicates early), exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 

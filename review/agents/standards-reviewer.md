@@ -53,8 +53,10 @@ STANDARDS_FINDINGS_END
 Confidence rules (same as /audit workers):
 - `high`: violation directly verified in the code, fix is clear
 - `medium`: violation clear, but fix requires project context
-- `low`: uncertain; flag only if the risk is concrete
+- `low`: uncertain about severity or about the project's intent; still report it, that is what the label is for
 
 Include confidence label after severity: `[Critical|high]`, `[Important|medium]`, etc.
 
-Maximum 20 findings. If you find more, report the most severe 20.
+Coverage over filtering: report every violation you have evidence for, including minor and uncertain ones. Don't decide what is "worth reporting", the orchestrator consolidates and ranks, and a finding you drop can't be recovered there. This does not lower the evidence bar: the violation must be visible in code you read, and every `file:line` must come from an actual Read.
+
+Maximum 20 findings. If you find more, report the most severe 20 and add a final line `TRUNCATED: {n} further findings not listed` so the cap is visible instead of silent.

@@ -20,7 +20,12 @@ Keep project documentation current and consistent in style. Check `README.md`, `
 - New top-level dependencies in `package.json`/`composer.json`/`pyproject.toml` → stack section in CLAUDE.md current?
 - Do install/run commands in the README still work (no outdated `npm run dev` if the script was deleted)?
 - Do referenced paths/files still exist?
-- Skill roster or skill descriptions in the diff (SKILL.md frontmatter, new/removed skills)? → check `.claude-plugin/plugin.json` and `marketplace.json` for the same skill list/descriptions; a roster change that skips the plugin manifests is a `[Docs]` finding.
+- **Anything named, numbered or listed changed? Then every place that repeats it is a drift candidate (3/3 audits hit this).** A new, renamed or removed skill, feature, phase, step, agent file or script never lives in one place. Walk the repeat sites explicitly instead of trusting that the diff touched them:
+  - `CLAUDE.md` tables: Commands, "Migrated so far" lists, skill roster, effort-level table, gotchas that name a count ("all N agent files")
+  - `README.md`: counts, feature lists, command examples, pipeline diagrams, runtime/version claims
+  - `SKILL.md`: step and phase numbering plus the format of the step headings. A newly inserted step (D.7 between D.5 and E) must not break references to the neighbouring steps in the same file, in `references/*.md` or in `agents/*.md`
+  - the shipping manifests `.claude-plugin/plugin.json` and `marketplace.json`, which must carry the same skill list and descriptions
+  Each stale repeat site is its own `[Docs]` finding with `file:line`. Verify by grepping the changed identifier repo-wide, never by reading the diff alone: the drift is by definition in the files the diff did NOT touch.
 
 **Test-count drift (UNCONDITIONAL, every run):**
 Regardless of whether the diff touches tests: determine the real test count and diff it against the numbers stated in docs. Test-count drift is a 5x repeat offender.

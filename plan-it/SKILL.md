@@ -108,6 +108,8 @@ Pass `PROJECT_GUIDELINES` through to all challenge agents (see Phase 3). Example
 ### Detect Input
 
 ```
+The invocation argument is `$ARGUMENTS` (empty when none was given).
+
 Argument = free text? → New idea. Step A + B, then clarifying questions.
 Argument = file path? → Existing plan. Read it, then Step B, then clarifying questions.
 Argument = very detailed? → Step B anyway. Skip obvious questions.
@@ -281,11 +283,12 @@ Agent(
     AKTUELLES_LOG={content of the plan log just written}",
   subagent_type: general-purpose,
   model: sonnet,
-  mode: bypassPermissions
+  mode: bypassPermissions,
+  run_in_background: false
 )
 ```
 
-The agent returns **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection). The orchestrator parses it and writes it itself.
+The agent returns **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection). The orchestrator parses it and writes it itself, which only works if the agent runs in the foreground. Since Claude Code v2.1.198 subagents background by default and return in a later turn, so `run_in_background: false` is what keeps the parse step in this turn.
 
 ### Parse the Output
 

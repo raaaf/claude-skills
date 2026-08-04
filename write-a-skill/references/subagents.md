@@ -61,6 +61,23 @@ In the SKILL.md orchestrator phase that dispatches workers:
 
 If 3+ workers share the same prompt structure, extract a single `agents/prompt-template.md` with placeholders. Each worker dispatch fills the placeholders.
 
+## Foreground or background
+
+Since Claude Code v2.1.198 dispatched subagents run in the **background by default**. That is the
+right default for a parallel worker fan-out, but it changes two things a skill can depend on:
+
+- A background subagent's result arrives as a completion notification in a **later turn**. Any step
+  whose output the orchestrator must parse and act on within the same turn (learning pass, status
+  line, push marker) has to dispatch with `run_in_background: false`.
+- A background subagent keeps every MCP tool but only a reduced set of built-ins: `Read`, `Grep`,
+  `Glob`, `Bash`, `Edit`, `Write`, `NotebookEdit`, `WebFetch`, `WebSearch`, `TodoWrite`, `Skill`,
+  `ToolSearch`, `SendMessage`, `Artifact`, plus a few task tools. Everything else is stripped even
+  when the agent definition lists it, so the same worker can resolve to different tools in the
+  foreground and the background.
+
+`AskUserQuestion` is removed from **every** subagent, foreground or background. A worker that needs
+a decision returns it as structured output and lets the orchestrator ask.
+
 ## Model routing
 
 - Pattern-matching, classification, simple typography/SEO: `haiku`
@@ -75,3 +92,9 @@ Every worker output must be strict, not free prose:
 - Structured format (table, fixed line format, or JSON)
 - Confidence label per finding (high | medium | low)
 - "No findings? Reply exactly 'Keine Findings.'" — avoids parsing edge cases
+
+For finder-style workers, split coverage from filtering: tell the worker its job is to report
+everything it has evidence for, including low-severity and uncertain items, and let a separate
+verification stage rank and discard. Current models follow a "only report what really matters"
+instruction faithfully enough that the finder silently drops real findings, and a dropped finding
+can't be recovered downstream. The severity and confidence labels are what carry the doubt.

@@ -2,18 +2,19 @@
 
 Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
-## Trends (Stand 2026-07-17)
+## Trends (Stand 2026-08-04)
 
 | Metrik | Wert |
 |---|---|
-| Audits total | 3 |
+| Audits total | 4 |
 | Critical-Trend (letzte 3) | 0 -> 0 -> 0 (stabil) |
-| Important-Trend (letzte 3) | 1 -> 3 -> 7 (steigend) |
-| Top-Kategorie (letzte 5) | Docs/Docs-Sync (8x) |
-| Avg Findings/Audit | 7,7 |
+| Important-Trend (letzte 3) | 3 -> 7 -> 9 (steigend) |
+| Top-Kategorie (letzte 5) | Docs/Docs-Sync (~11x kumuliert, 4/4 Audits); Architecture stark steigend |
+| Avg Findings/Audit | 9,3 |
 
 **Wiederkehrer (>=3 Audits):**
-- Meta-Doku-Drift (CLAUDE.md/README.md/SKILL.md faellt bei Skill-Aenderungen auseinander) — jetzt in 3/3 Audits, jedes Mal andere Dateien -- candidate for guideline update (11-docs-sync.md verallgemeinern)
+- 4x meta doc drift (CLAUDE.md / README / SKILL.md bei Skill- oder Feature-Aenderungen) -- Guideline bereits erweitert, jetzt auf die Routing-Floor ausgeweitet
+
 
 ---
 
@@ -83,5 +84,37 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 - Iteratives Haerten neuer Concurrency-Bash-Skripte ueber mehrere Runden: jede Runde findet einen neuen Edge-Case im selben File (test-lock.sh: 07-17, einzelner Beleg bisher, noch kein Repeat-Offender)
 
 ### Vorgeschlagene Verbesserungen
-- [ ] audit/agents/11-docs-sync.md: Checkliste ueber plugin.json/marketplace.json hinaus verallgemeinern — bei neuem/umbenanntem Skill, Feature oder Step: CLAUDE.md-Tabellen (Commands, Migrated-so-far, Skill-Roster), README.md-Zahlen/Listen und SKILL.md-Schrittnummerierung/Format explizit gegenchecken (3/3 Audits zeigen dieses Muster)
-- [ ] audit/guidelines/architecture.md: Checklisten-Punkt fuer neue Lock/Wait/Heartbeat-Bash-Skripte ergaenzen (explizite Pruefung von Signal-Traps x set -u, Orphan-Prozess-Cleanup bei Kill) — test-lock.sh brauchte 3 Runden genau dafuer
+- [x] audit/agents/11-docs-sync.md: Checkliste ueber plugin.json/marketplace.json hinaus verallgemeinern — bei neuem/umbenanntem Skill, Feature oder Step: CLAUDE.md-Tabellen (Commands, Migrated-so-far, Skill-Roster), README.md-Zahlen/Listen und SKILL.md-Schrittnummerierung/Format explizit gegenchecken (3/3 Audits zeigen dieses Muster)
+- [x] audit/guidelines/architecture.md: Checklisten-Punkt fuer neue Lock/Wait/Heartbeat-Bash-Skripte ergaenzen (explizite Pruefung von Signal-Traps x set -u, Orphan-Prozess-Cleanup bei Kill) — test-lock.sh brauchte 3 Runden genau dafuer
+
+---
+
+## Retro — 2026-08-04 — main (audit)
+
+### Statistik
+- Audits insgesamt im Projekt: 4
+- Haeufigste Finding-Kategorie: Docs/Docs-Sync (ca. 11x kumuliert ueber 4 Audits, weiterhin Repeat-Offender) — Architecture holt in diesem Audit stark auf (7x in diesem Lauf allein)
+- Durchschnittliche Findings/Audit: 9,3
+
+### Was lief gut
+- Erster Lauf von Schritt D.7 (Verifikation vor Fix): 9 bestaetigt, 1 widerlegt, 0 unklar (von 10) in Runde 1, plus 1 weitere Bestaetigung mit Schweregrad-Korrektur im Cross-Ref-Pass. Die Widerlegung war substanziell — der Verifier verfolgte den echten Kontrollfluss und zeigte, dass die behauptete Push-Gate-Luecke nicht existiert
+- Derselbe Verifier korrigierte zusaetzlich eine falsche Zeitangabe im Finding selbst (wann der Defekt eingefuehrt wurde)
+- Beide offenen Vorschlaege aus dem vorigen Retro wurden vor Audit-Start umgesetzt und als [x] bestaetigt
+- Validator 19/19 verifiziert, 0 halluziniert
+
+### Was lief schlecht
+- Die Routing-Floor uebersprang docs_sync in Runde 1 trotz eines Diffs mit CLAUDE.md, README.md und 18 SKILL.md-Dateien. Der Orchestrator musste manuell uebersteuern. Grund: performance/seo/animation/docs_sync waren komplett der inzwischen Opt-in gewordenen Triage ueberlassen und liefen bei keinem Standardlauf. In derselben Runde als Finding erkannt und in check-skips.sh gefixt
+- 3 von 9 Important-Findings lagen in audit/evals/run-evals.sh. Zwei davon (verunreinigtes Skill-Argument, must_not_find-Regel) waren monatealt: die Eval-Suite hat unbemerkt falsch gescort, bis ein Vollaudit die Datei zufaellig traf
+
+### Was hat gefehlt
+- Keine gezielte Pruefung fuer die Audit-Infrastruktur selbst (run-evals.sh, check-skips.sh, fix-verifier-Dispatch). Alle drei bisherigen "vorbestehend seit Monaten"-Funde lagen in dieser Skriptklasse und wurden beilaeufig gefunden
+- Nur ein Datenpunkt fuer die neue Kombination aus Coverage-Worker-Prompt und D.7 als Filter. 9/1/0 zeigt noch keinen Trend
+
+### Erkannte Patterns
+- Meta-Doku-Drift (Docs-Sync): 4/4 Audits, Umfang waechst. Diesmal traf es die Routing-Floor selbst
+- Neu (1 Beleg): audit-eigene bin/*.sh-Skripte tragen ungetestet monatealte Bugs, die nur durch Zufallstreffer auffallen
+
+### Vorgeschlagene Verbesserungen
+- [ ] Naechster Audit: bestaetigen, dass der Floor-Fix in check-skips.sh (has_docs/has_seo) docs_sync/performance/seo/animation auf einem echten Diff ausloest, ohne manuelle Uebersteuerung
+- [ ] audit/guidelines/code-quality.md: Checklisten-Punkt fuer audit/bin/*.sh selbst — bei Aenderung pruefen, ob ein deterministischer Test oder eine eval-Fixture den Pfad abdeckt, da alle bisherigen Monate-alten Funde in dieser Klasse lagen
+- [ ] eval-fixture: architecture/routing-floor-doc-heavy-diff-skipped — Diff mit vielen SKILL.md/CLAUDE.md/README.md-Aenderungen loeste docs_sync nicht ueber die Floor aus

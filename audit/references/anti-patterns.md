@@ -32,3 +32,17 @@ Findings produced against a diff base that no longer matches the working tree. T
 
 - **"This finding is Minor, I'll skip it"** → WRONG. Full-audit fixes EVERYTHING — Critical, Important, and Minor.
 - **"I can skip the convergence check"** → WRONG. Without a convergence check you end up in fix loops.
+
+## Why the working-tree cross-check exists (2026-07-22)
+
+A fix agent ran `git stash` + `git stash pop`, wiped a sibling agent's fix for the run's only
+Critical, and reported `FIX_RESULT=APPLIED`. Nothing in the reports revealed it; only the
+deterministic cross-check against `git status` did. Agent reports are a claim, `git status` is the
+evidence. Same reason the stash check in Step E is not optional.
+
+## Cost of the two verification stages
+
+Both the finding verifier (Step D.7) and the fix verifier (Step E.5) run on Sonnet at roughly a
+third of a worker each, in parallel, adding about 5-10s per round. D.7 is what makes a high-recall
+finder prompt affordable: without a real filter behind it, coverage at the finding stage would turn
+into wrong fixes, which are far more expensive than a refuted finding.

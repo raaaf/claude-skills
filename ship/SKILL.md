@@ -10,9 +10,8 @@ description: |
   never silently.
 when_to_use: "/ship, ready to ship, commit and deploy, commit push deploy, ship this, release this"
 argument-hint: "[optional: commit message]"
-arguments: [message]
 model: sonnet
-effort: low
+effort: medium
 allowed-tools:
   - Read
   - Write
@@ -170,9 +169,11 @@ git diff --stat HEAD 2>/dev/null
 git status --short
 ```
 
-**If `$message` is set:** use it as the commit message (skip generation).
+**If `$ARGUMENTS` is non-empty:** use it verbatim as the commit message (skip generation).
 
-**If no `$message`:** read the diff and generate a conventional commit message:
+`$ARGUMENTS`, not a named argument: a commit message is free text, and named or indexed arguments map to shell-quoted *positions*, so `/ship fix: broken login` would bind only `fix:`. `$ARGUMENTS` expands to the full argument string as typed.
+
+**If `$ARGUMENTS` is empty:** read the diff and generate a conventional commit message:
 - Format: `{type}({optional-scope}): {what changed in imperative mood}`
 - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`
 - One line, max 72 chars, no period at end

@@ -30,6 +30,9 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 ## Open Points
 - (if any)
 
+## Unverified
+- [Dimension] file:line: description. Verification inconclusive: {REASON from D.7}
+
 ## Clean
 Dimension1, Dimension2
 ```
@@ -43,6 +46,10 @@ The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EV
 ## Mandatory Tagging Convention
 
 Every finding line — in the round-1 chat output AND in the log — carries BOTH tags: severity (`[Critical]` / `[Important]` / `[Minor]`) and dimension (`[Security]`, `[Architecture]`, ...). A domain tag alone is not enough; trend metrics in the learning log count by severity and turn into estimates when the severity tag is missing.
+
+## Unverified Section (Step D.7)
+
+The `Unverified` section holds the `UNCERTAIN` verdicts from Step D.7 (SKILL.md), one line per finding: dimension, file:line, the description, and the verifier's `REASON` why verification was inconclusive. Omit the heading entirely when no finding came back `UNCERTAIN` in the run. A Critical `UNCERTAIN` additionally becomes an open point for the user, in addition to appearing here.
 
 ## Follow-Up Audit Logic
 

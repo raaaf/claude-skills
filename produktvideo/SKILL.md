@@ -4,6 +4,7 @@ description: "Erstellt ein KI-Lifestyle-Video eines punktundpause Produkts (Stat
 argument-hint: "[pfad/zur/produktbild.jpg]"
 disable-model-invocation: true
 model: sonnet
+effort: medium
 allowed-tools:
   - Bash
   - AskUserQuestion
@@ -44,7 +45,7 @@ Falls leer: Abbrechen mit klarer Fehlermeldung:
 
 ### 2. Bilddatei ermitteln
 
-Falls Argument uebergeben (`/produktvideo pfad/zum/bild.jpg`): diesen Pfad nutzen. Sonst per `AskUserQuestion` nach dem absoluten Pfad fragen (Freitext/Other). Datei per `Read` pruefen.
+Falls `$ARGUMENTS` nicht leer ist (`/produktvideo pfad/zum/bild.jpg`): diesen Pfad nutzen. Sonst per `AskUserQuestion` nach dem absoluten Pfad fragen (Freitext/Other). Datei per `Read` pruefen.
 
 Unterstuetzte Formate: JPEG, PNG, WebP.
 

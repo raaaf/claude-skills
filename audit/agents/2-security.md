@@ -14,6 +14,16 @@ Secrets, injection, OWASP Top 10, dependencies.
 
 **For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section II — Keychain/Keystore instead of UserDefaults, ATS/cleartext, deep-link validation, privacy manifest, permission descriptions. XSS/CSP rules do not apply there.
 
+## Diff mode (/audit): whole-file output-sink sweep
+
+Hotspots point at changed lines. Output sinks do not have to be on a changed line to be exploitable — they only have to be in a file someone is actively editing.
+
+**For every template file in the diff, read the ENTIRE file and check every output sink, not just the changed lines.** Sinks to enumerate: `{!! !!}` (Blade), `v-html`, `dangerouslySetInnerHTML`, `echo`/`print` without an `esc_*`/escaping call, `.innerHTML =`, any raw-HTML directive the framework offers. A sink fed by user input, a CMS/ACF field, or an API response without an allowlist filter (`wp_kses_post`, sanitizer, DOMPurify) is a finding regardless of whether the diff touched that line.
+
+This costs one extra Read per touched template and is not optional: 25 unprotected `{!! !!}` sinks in flexible templates survived four consecutive diff audits (2026-03-16 through 03-31) that each had those exact files in scope and reported security clean. Only the full audit caught them, as Critical.
+
+Same rule for the whole-file scan when a diff-mode finding claims a sink is safe: verify the escaping call sits on the same variable, not merely somewhere in the file.
+
 ## Full-Audit Focus (additional)
 
 XSS (unescaped output), missing auth checks in actions/endpoints, SQL injection, secrets in code, insecure file uploads without mime-type check, missing CSRF protection, cache keys without user scope (data leak).

@@ -4,6 +4,7 @@ description: "Erstellt treue KI-Lifestyle-Produktbilder: ein beliebiges Motiv (P
 argument-hint: "[pfad/zum/motiv.jpg]"
 disable-model-invocation: true
 model: sonnet
+effort: medium
 allowed-tools:
   - Bash
   - AskUserQuestion
@@ -41,7 +42,7 @@ echo "Key: ${KEY:0:10}..."
 
 ### 2. Motivdatei ermitteln
 
-Argument (`/produktbild pfad/zum/motiv.jpg`) nutzen, sonst per `AskUserQuestion` nach absolutem Pfad fragen. Datei per `Read` anschauen (Farben/Stimmung erfassen, hilft bei Raum-Empfehlung). Formate: JPEG, PNG, WebP.
+Pfad aus `$ARGUMENTS` nutzen (`/produktbild pfad/zum/motiv.jpg`; leer, wenn keiner uebergeben wurde), sonst per `AskUserQuestion` nach absolutem Pfad fragen. Datei per `Read` anschauen (Farben/Stimmung erfassen, hilft bei Raum-Empfehlung). Formate: JPEG, PNG, WebP.
 
 ### 3. Stimmungen, Format, Aufloesung waehlen
 
@@ -88,7 +89,7 @@ PROMPT="Create a photorealistic interior photograph of ${ROOM}. On the wall hang
 
 # WICHTIG: Response in Datei schreiben. Die base64-Antwort (mehrere MB) sprengt jq in einer Bash-Variable.
 jq -n --arg p "$PROMPT" --arg u "data:image/jpeg;base64,${B64}" --arg r "$RATIO" --arg s "$SIZE" '{
-  model:"google/gemini-3-pro-image-preview",
+  model:"google/gemini-3-pro-image",
   modalities:["image","text"],
   image_config:{aspect_ratio:$r, image_size:$s},
   messages:[{role:"user",content:[{type:"text",text:$p},{type:"image_url",image_url:{url:$u}}]}]
@@ -161,7 +162,7 @@ Fuer den Shop: im Filament-Admin am Produkt die WebPs in die Collection "Eigene 
 
 ## Hinweise
 
-- Modell-ID `google/gemini-3-pro-image-preview` (Nano Banana Pro). Liefert 2K (1792x2400 bei 3:4) bzw. 4K.
+- Modell-ID `google/gemini-3-pro-image` (Nano Banana Pro, GA-ID, kanonisch `-20260528`). Liefert 2K (1792x2400 bei 3:4) bzw. 4K. Die alte Preview-ID `-preview` loest bei OpenRouter zwar noch auf, Preview-IDs werden aber abgekuendigt; GA-IDs sind stabil.
 - Ein Key (OpenRouter) deckt viele Bildmodelle ab. Runway bleibt separat fuer Video.
 - Motiv ist beliebig: Poster, Print, Illustration, alles was gerahmt an eine Wand passt.
 - Fuer mehrere Motive: Skill mehrfach aufrufen.

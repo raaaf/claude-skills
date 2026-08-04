@@ -77,3 +77,23 @@ INTENT_DOCS=$( { ls "$ROOT"/docs/adr/*.md "$ROOT"/docs/adrs/*.md "$ROOT"/docs/de
 - Matches found → read the files (for many ADRs: only title + status + decision line per ADR) and summarize as `DECIDED_TRADEOFFS`: one line per decision ("ADR-007: sync-over-async write in store.ts is deliberate — consistency over latency"). Max 15 lines.
 - No matches → `DECIDED_TRADEOFFS="no documented decisions found"`.
 - Passed through to all workers (prompt-template.md placeholder). Worker rule there: don't report documented tradeoffs; code drift from the decision is a docs_sync finding ("a stale ADR is itself a finding").
+
+## Deterministic checks: how to turn their result codes into findings
+
+Phase 1 runs the scripts below. Each prints a result code; the orchestrator converts it into findings
+by this table. The scope rule is the same everywhere: a hit on a file **inside the diff** becomes a
+finding, a hit outside the diff is printed as a hint and nothing more (this is `/audit`, not
+`/full-audit`).
+
+| Script | Result code | Becomes |
+|---|---|---|
+| `check-outdated.sh` (only when a manifest/lockfile is in the diff) | `DEP_SECURITY_RESULT=VULNS` | one **Critical** `[Security]` per reported line. A vulnerable dependency blocks the push like any Critical. |
+| | `DEP_OUTDATED_RESULT=OUTDATED` | one **Minor** `[Dependencies]` per reported line. New version available, not a blocker. |
+| | `SKIP`/`CLEAN`/`CURRENT` | nothing |
+| `check-i18n-keys.sh` | `I18N_RESULT=MISSING` | one **Important** `[i18n]` per `MISSING {locale}: {key}` line, when the affected keys/files are in the diff |
+| `check-duplicate-array-keys.sh` | `DUPKEY_RESULT=DUPLICATES` | one **Critical** `[Correctness]` per `DUPLICATE {file}:{line}` line. PHP keeps the LAST value on a duplicate key and drops the first silently, so the crash only appears once a code path reads the shadowed key. `php -l` does not catch this. |
+| `check-number-format-locale.sh` | `NUMFMT_RESULT=MISSING_LOCALE` | one **Important** `[Correctness]` per line. Only runs when `lang/de` exists. |
+| `check-swift-deprecations.sh` | `SWIFTDEPR_RESULT=FINDINGS` | one **Minor** `[Code-Quality]` per `SWIFTDEPR {file}:{line}` line. **Never Critical**: these are convention drift, not correctness bugs (`UIScreen.main`, `try!` outside `#Preview`/tests, hardcoded `Color.red`/`.white` outside `Theme.swift`/`Brand.swift`). |
+| `check-test-count-drift.sh` | `TESTCOUNT_RESULT=MISMATCH` | **no automatic finding.** Counting tests from source is only an approximation with parametrized tests (`test.each`, `@Test arguments:`). Instead, Phase 3c holds the documented claims against the REAL test-run output; only a runtime deviation becomes an **Important** `[Docs]`. Re-run the script after the last fix wave: fix agents add tests, and that is exactly when the numbers go stale unnoticed (three audits in a row). |
+
+`OK`/`SKIP` always means: do nothing. New checks follow `references/writing-deterministic-checks.md`.

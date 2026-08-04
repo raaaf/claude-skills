@@ -16,6 +16,7 @@ allowed-tools:
   - Grep
   - TodoWrite
   - AskUserQuestion
+  - Skill         # optional second opinion from design skills in Phase 3
 ---
 
 # Design Audit: Elevate the Existing Frontend
@@ -49,6 +50,8 @@ AUDIT_AGENTS="$AUDIT_ROOT/agents"
 AUDIT_BIN="$AUDIT_ROOT/bin"
 AUDIT_GUIDELINES="$AUDIT_ROOT/guidelines"
 
+bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "ERROR: missing agent files in $AUDIT_AGENTS."; exit 1; }
+
 # PreCompact protection (same marker family as /audit, WITH newline hash)
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
@@ -70,7 +73,7 @@ bash "$AUDIT_BIN/detect-framework.sh"   # FRAMEWORK, SOURCE_DIRS, PLATFORM
 
 # Frontend surface: whole repo (tracked files), NOT the diff.
 # Optional argument narrows to a path prefix.
-SCOPE_PREFIX="{ARGUMENT_OR_EMPTY}"
+SCOPE_PREFIX="$ARGUMENTS"
 # Visual surface only — no lang/i18n files (copy is out of scope here).
 FRONTEND_FILES=$(git -C "$PROJECT_ROOT" ls-files -- ${SCOPE_PREFIX:+"$SCOPE_PREFIX"} \
   | grep -E '\.(css|scss|sass|less|styl|html|blade\.php|vue|svelte|astro|jsx|tsx|swift|kt|dart)$|tailwind\.config' \
@@ -129,7 +132,7 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
    test -f "{datei}" || echo "HALLUCINATION: file missing"
    [ "$(wc -l < "{datei}")" -ge "{zeile}" ] || echo "HALLUCINATION: line out of range"
    ```
-3. **Low-confidence re-verification:** the orchestrator re-reads the location for every `confidence: low` Defect; unconfirmed → drop (never into the report). Elevation entries with confidence low are dropped silently — elevation must be convincing or absent.
+3. **Defect verification:** every `confidence: low` or `medium` Defect goes through a fresh-context `$AUDIT_AGENTS/finding-verifier.md` subagent (sonnet, parallel, max 10 per block) before it reaches the report, same stage as `/audit` Step D.7, and for the same reason: the workers report for coverage, so the filter belongs to an agent that did not produce the finding. `CONFIRMED` → into the report (apply `SEVERITY_CORRECTION`); `REFUTED` → dropped, never into the report; `UNCERTAIN` → into the report's `Unverified` list with the reason, never a fix candidate. A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass. Unlike `/audit` and `/full-audit`, this selection is not scaled by `CONFIDENCE_FLOOR` — design-audit has no confidence-floor concept and always verifies every low/medium-confidence Defect regardless of effort level. Elevation entries with confidence low are dropped silently, elevation must be convincing or absent.
 4. **Consistency map** (orchestrator, from worker output): 3-6 bullet summary of the design system's actual state — token coverage, component variant sprawl, spacing/type scale adherence, motion vocabulary coherence.
 
 ## Phase 4: Report (chat, before ANY fix)
@@ -143,6 +146,9 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 ### Defects
 #### Critical / Important / Minor
 - [Severity][Dimension] file:line — description (confidence)
+
+#### Unverified
+- [Dimension] file:line — description (reason)
 
 ### Worst Views (ranked, from the workers' dissection)
 1. view — one sentence why it falls below the rest
@@ -181,7 +187,7 @@ Same machinery as /audit Phase 2 E/E.5:
 
 ## Phase 7: Learning + cleanup
 
-Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, foreground) with `AUDIT_TYPE=design-audit` and the design log; orchestrator writes learning-log/suppressions exactly as /audit Phase 5 (subagents cannot write under `.claude/`).
+Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background: false`, because the default has been background since Claude Code v2.1.198, and a backgrounded learning agent returns after the orchestrator is done, so the pass is lost) with `AUDIT_TYPE=design-audit` and the design log; orchestrator writes learning-log/suppressions exactly as /audit Phase 5 (subagents cannot write under `.claude/`).
 
 ```bash
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"

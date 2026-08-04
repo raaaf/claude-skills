@@ -28,6 +28,7 @@ REQUIRED=(
   12-copy.md
   0-triage.md
   fix-agent.md
+  finding-verifier.md
   fix-verifier.md
   prompt-template.md
   learning-agent.md
