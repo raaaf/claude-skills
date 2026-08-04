@@ -148,7 +148,7 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 - [Severity][Dimension] file:line — description (confidence)
 
 #### Unverified
-- [Dimension] file:line — description (reason)
+- [Dimension] file:line: description (reason)
 
 ### Worst Views (ranked, from the workers' dissection)
 1. view — one sentence why it falls below the rest

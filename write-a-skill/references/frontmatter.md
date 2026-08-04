@@ -1,11 +1,11 @@
 # Frontmatter Reference
 
-- [Trigger and identity](#trigger-and-identity) — `name`, `description`, `when_to_use`, `argument-hint`, `arguments`, `paths`
-- [The description budget](#the-description-budget-matters-more-than-it-looks) — the 1,536-char cap and the listing budget
-- [Invocation control](#invocation-control) — `disable-model-invocation`, `user-invocable`
-- [Execution environment](#execution-environment) — `model`, `effort`, `allowed-tools`, `disallowed-tools`, `hooks`, `shell`
-- [Forked execution](#forked-execution) — `context`, `agent`, `background`, and the background-by-default trap
-- [String substitutions](#string-substitutions-in-the-body) — `$ARGUMENTS`, `$name`, `${CLAUDE_SKILL_DIR}` and friends
+- [Trigger and identity](#trigger-and-identity): `name`, `description`, `when_to_use`, `argument-hint`, `arguments`, `paths`
+- [The description budget](#the-description-budget-matters-more-than-it-looks): the 1,536-char cap and the listing budget
+- [Invocation control](#invocation-control): `disable-model-invocation`, `user-invocable`
+- [Execution environment](#execution-environment): `model`, `effort`, `allowed-tools`, `disallowed-tools`, `hooks`, `shell`
+- [Forked execution](#forked-execution): `context`, `agent`, `background`, and the background-by-default trap
+- [String substitutions](#string-substitutions-in-the-body): `$ARGUMENTS`, `$name`, `${CLAUDE_SKILL_DIR}` and friends
 - [Repo defaults](#repo-defaults)
 
 Every field Claude Code supports on a `SKILL.md`, what it is good for, and the version it needs.

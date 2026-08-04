@@ -1,0 +1,25 @@
+{
+  "fixture": "docs/routing-floor-doc-drift/",
+  "must_find": [
+    {
+      "dimension": "docs",
+      "line": 13,
+      "matches": ["notify", "does not exist", "no such", "not implemented", "drift", "stale", "channel"],
+      "severity": "important"
+    },
+    {
+      "dimension": "docs",
+      "line": 18,
+      "matches": ["three flags", "four", "skip-tests", "channel", "undocumented", "drift", "stale"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 31,
+      "reason": "SLACK_WEBHOOK is referenced by name only, never printed or logged; the ${VAR:?} guard is correct usage, not a leak"
+    }
+  ],
+  "notes": "must_find[0] targets line 13 on purpose: the --notify drift appears both in the command table (line 11) and in the prose below it (line 15), and the scorer allows +/-3 around one line, so 13 covers a worker citing either. Routing regression fixture. The defect itself is ordinary docs drift: README documents --notify, which the script does not implement, and claims exactly three flags while the script parses four (--dry-run, --tag, --channel, --skip-tests). The point of the fixture is the ROUTING, not the difficulty: it is a documentation-only unit, so it only scores when the deterministic floor in bin/check-skips.sh routes docs_sync from its has_docs signal. Before 2026-08-04 the floor left docs_sync entirely to the opt-in triage, so a doc-heavy diff silently skipped the dimension and a real audit missed it (observed live on a diff touching CLAUDE.md, README.md and 18 SKILL.md files). If this fixture drops to zero recall, suspect the has_docs signal before suspecting the docs-sync worker."
+}

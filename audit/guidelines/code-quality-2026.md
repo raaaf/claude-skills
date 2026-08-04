@@ -1,6 +1,6 @@
 # Code Quality: 2026 Additions
 
-Continuation of code-quality.md (sections XVI-XVII). Always read together with code-quality.md.
+Continuation of code-quality.md (sections XVI-XVIII). Always read together with code-quality.md.
 
 
 ## XVI. 2026 Type-Safety Patterns
@@ -113,3 +113,45 @@ Stabile Beispiele (Muster, keine erschoepfende Liste):
 | JS: `unload`-Event | `pagehide` / `visibilitychange` |
 
 Schweregrad: Minor solange funktional; Important wenn Removal in der naechsten Major-Version der im Projekt genutzten Runtime ansteht (PHP-Version aus composer.json, Node aus engines lesen).
+
+## XVIII. Tooling That Audits Other Code Needs Its Own Evidence
+
+A script whose job is to decide, route, score or gate has a failure mode ordinary code does not: when
+it is wrong, it produces a confident answer instead of an error, and nothing downstream contradicts
+it. Every long-lived defect found so far in this repo's own `audit/bin/*.sh` and `audit/evals/*.sh`
+sat there for months and was found by accident, never by a check.
+
+Concretely, three that shipped and stayed:
+
+- a routing floor that left four dimensions to a triage step that had meanwhile become opt-in, so
+  those dimensions ran on no default audit at all
+- a scoring rule that matched dimension names without normalizing separators, so a whole class of
+  false positives could never be counted
+- an invocation that appended human instructions to a slash command, which the skill then parsed as
+  its argument
+
+None of these threw. All three reported success.
+
+**Scope, so this does not turn into a test-coverage complaint.** This applies to scripts that
+*decide* something: routing, gating, scoring, dispatch, matching. It is not a general call for tests,
+and "this file has no tests" is never a finding on its own in this repo. The question is narrower:
+does the specific decision this script makes have any evidence behind it other than someone having
+read the code.
+
+When a diff touches a script of this class, ask for evidence rather than for review:
+
+- **Does a deterministic check exercise the decision?** A fixture, a golden output, a `--dry-run`
+  that prints what would happen. "I read it and it looks right" is not evidence for a router.
+- **Does the failure mode announce itself?** A skipped dimension, a swallowed timeout, a silently
+  unscored fixture all look identical to a clean run. Anything that drops work must say so on
+  stdout and be counted in the summary.
+- **Do the two directions agree?** If the tool maps A to B (fixture to expected file, dimension to
+  worker, category to config), check both directions and report orphans on each side. One-way
+  matching hides exactly the entries that never fire.
+- **Is the contract asserted where it is used, not only where it is defined?** An agent file that
+  says it needs a specific subagent type does not enforce it; the dispatch site does. Grep every
+  dispatch site when the definition changes.
+
+Severity: a routing, gating or scoring defect that silently drops work is `Important` even when the
+code around it is clean, because the loss is invisible in the output. It is `Critical` only when it
+lets something through a safety gate.

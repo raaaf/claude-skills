@@ -156,7 +156,7 @@ Edit `audit/guidelines/{name}.md`. Append a new Roman-numeral section (e.g. `## 
 ## Audit Context
 
 - Markdown + Bash skills repo, no runtime, no dependencies. Findings about missing package manifests, test frameworks, or CI configs for the skills themselves are noise.
-- **Public repo on GitHub.** Secrets/keys/tokens anywhere in the diff are always Critical. Audit logs under `.claude/audits/` are local-only (gitignored) and reference `file:line` instead of reproducing content.
+- **Public repo on GitHub.** Secrets/keys/tokens anywhere in the diff are always Critical. Audit logs under `.claude/audits/` are committed (only `cache.json`, `full-audit-state.md`, `full-audit-batches/` and `.claude/plans/logs/` are gitignored), so they reference `file:line` and never reproduce file content. That rule is what makes committing them safe, not an optional style preference.
 - `audit/bin/*.sh` and every hook must stay **bash 3.2 compatible** (macOS default): no `declare -A`, no `readarray`, no `${var,,}`. Exception: `audit/evals/run-evals.sh` (dev-only, requires bash 4+).
 - German-named contract identifiers (`RUNDE`, `SAUBER`, `BEREITS_GEFIXT`, `{DATEILISTE}`, ...) are deliberate cross-file contracts, NOT English-migration violations (see Conventions).
 - Eval fixtures under `audit/evals/fixtures/` deliberately contain bugs, vulnerabilities, and anti-patterns — they are test data, never findings. Same for `evals/expected/*.json`.

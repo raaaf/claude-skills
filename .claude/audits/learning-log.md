@@ -115,6 +115,6 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 - Neu (1 Beleg): audit-eigene bin/*.sh-Skripte tragen ungetestet monatealte Bugs, die nur durch Zufallstreffer auffallen
 
 ### Vorgeschlagene Verbesserungen
-- [ ] Naechster Audit: bestaetigen, dass der Floor-Fix in check-skips.sh (has_docs/has_seo) docs_sync/performance/seo/animation auf einem echten Diff ausloest, ohne manuelle Uebersteuerung
-- [ ] audit/guidelines/code-quality.md: Checklisten-Punkt fuer audit/bin/*.sh selbst — bei Aenderung pruefen, ob ein deterministischer Test oder eine eval-Fixture den Pfad abdeckt, da alle bisherigen Monate-alten Funde in dieser Klasse lagen
-- [ ] eval-fixture: architecture/routing-floor-doc-heavy-diff-skipped — Diff mit vielen SKILL.md/CLAUDE.md/README.md-Aenderungen loeste docs_sync nicht ueber die Floor aus
+- [x] Naechster Audit: bestaetigen, dass der Floor-Fix in check-skips.sh (has_docs/has_seo) docs_sync/performance/seo/animation auf einem echten Diff ausloest, ohne manuelle Uebersteuerung
+- [x] audit/guidelines/code-quality-2026.md (nicht code-quality.md, die liegt bei 490 Zeilen): Abschnitt XVIII, Checklisten-Punkt fuer audit/bin/*.sh selbst — bei Aenderung pruefen, ob ein deterministischer Test oder eine eval-Fixture den Pfad abdeckt, da alle bisherigen Monate-alten Funde in dieser Klasse lagen
+- [x] eval-fixture: docs/routing-floor-doc-drift (Verzeichnis-Fixture, deckt has_docs ab) — Diff mit vielen SKILL.md/CLAUDE.md/README.md-Aenderungen loeste docs_sync nicht ueber die Floor aus

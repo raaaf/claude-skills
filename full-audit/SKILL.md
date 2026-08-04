@@ -93,7 +93,7 @@ Read `references/pre-flight-phases.md` and execute all three in order:
 
 Which of the 12 dimensions run. `FULL_AUDIT_DIMENSIONS` (env) sets it non-interactively for CI;
 otherwise ask via AskUserQuestion. Presets, the custom multi-select, validation and the display line
-are in `references/dimension-selection.md` — read and execute it. Result: `SELECTED_DIMENSIONS`,
+are in `references/dimension-selection.md`, read and execute it. Result: `SELECTED_DIMENSIONS`,
 at least one valid dimension.
 
 ---
