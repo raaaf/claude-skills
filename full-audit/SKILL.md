@@ -225,7 +225,7 @@ TodoWrite: `Round {RUNDE} — dispatch subagents` (in_progress), `Round {RUNDE} 
 
 MANDATORY: dispatch ALL subagents contained in `SELECTED_DIMENSIONS` (from Phase 0.5) in EVERY round. Non-selected dimensions are skipped entirely — not caught up in later rounds either. Fixes can introduce issues in the selected dimensions.
 
-Dispatch all in a single message block. Pass ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files**.
+Dispatch all in a single message block. Pass ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files**. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
 
 Agent definitions: `{AUDIT_AGENTS}/*.md`.
 
@@ -293,7 +293,7 @@ TodoWrite: `Round {RUNDE} — fix findings` (in_progress).
 
 **Base rule:** everything gets fixed except what the verification stage refutes.
 
-**Finding verification before the fix wave (same stage as `/audit` Step D.7).** Workers report for coverage, including findings they are unsure about, so the filter sits here and not in the finder. Dispatch one `{AUDIT_AGENTS}/finding-verifier.md` subagent (sonnet, fresh context) per selected finding, all in one message block, max 10 in parallel. Verdicts: `CONFIRMED` → fix wave (apply `SEVERITY_CORRECTION` if not `none`); `REFUTED` → discarded before any fix, one log line with the reason, never an issue; `UNCERTAIN` (also: missing or unparseable reply) → not fixed, listed under `### Unverified` in the batch log. Print `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
+**Finding verification before the fix wave (same stage as `/audit` Step D.7).** Workers report for coverage, including findings they are unsure about, so the filter sits here and not in the finder. Dispatch one `{AUDIT_AGENTS}/finding-verifier.md` subagent (sonnet, fresh context) per selected finding, all in one message block, max 10 in parallel, each with `run_in_background: false` (its verdict gates the same round's fix wave). Verdicts: `CONFIRMED` → fix wave (apply `SEVERITY_CORRECTION` if not `none`); `REFUTED` → discarded before any fix, one log line with the reason, never an issue; `UNCERTAIN` (also: missing or unparseable reply) → not fixed, listed under `### Unverified` in the batch log. Print `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
 
 Selection gate (scales with `CONFIDENCE_FLOOR` from Phase 0.7):
 - `floor=high` (low effort): no verification stage; fix only `high`, rest stays in the log

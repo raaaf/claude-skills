@@ -138,6 +138,22 @@ and "this file has no tests" is never a finding on its own in this repo. The que
 does the specific decision this script makes have any evidence behind it other than someone having
 read the code.
 
+The class is defined by the failure mode, not by the directory. It covers `audit/bin/*.sh`,
+`audit/evals/*.sh`, `audit/hooks/*.sh`, `*/bin/*.sh` in any skill, and the `hooks:` declarations in
+skill frontmatter. That last one is not a script at all, which is exactly why it was missed: on
+2026-08-05 both of `/audit`'s PreToolUse guards turned out to be inert because the frontmatter used
+a key the schema rejects, and because the scripts blocked with `exit 1` where only `exit 2` blocks.
+This section had been written the day before for the same failure mode and did not catch it, because
+its scope named two directories instead of the shape of the problem.
+
+**A control declared in configuration needs evidence that the configuration was accepted.** Testing
+the script it points at proves the script works, never that anything invokes it. What an auditor can
+check statically: the declaration's shape against the documented nested schema (`matcher` plus
+`hooks[]` with `type` and `command`); a flat or misnamed key is a real defect, catchable by Read
+alone. The debug-log run showing the registration line is what the hook's AUTHOR owes, not what the
+auditor must produce. What the static check cannot catch: a syntactically valid declaration that
+still never fires, for example a matcher that never matches the intended tool.
+
 When a diff touches a script of this class, ask for evidence rather than for review:
 
 - **Does a deterministic check exercise the decision?** A fixture, a golden output, a `--dry-run`

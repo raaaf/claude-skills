@@ -1,6 +1,16 @@
 # Hooks: Pitfalls and Patterns
 
+- [The recursion pitfall](#the-recursion-pitfall): never spawn `claude` inside a hook
+- [Hook events overview](#hook-events-overview), [Output formats](#output-formats): which event can block, and how
+- [Anti-recursion guards](#anti-recursion-guards), [Disable switches](#disable-switches), [Performance](#performance), [Documentation](#documentation)
+- [The path pitfall](#the-path-pitfall-a-skill-hook-cannot-find-its-own-skill): there is no `CLAUDE_SKILL_DIR` for hooks
+- [The schema pitfall](#the-schema-pitfall-testing-the-script-proves-nothing-about-the-hook): verify registration, not just the script
+- [The frontmatter shape pitfall](#the-frontmatter-shape-pitfall-hook-instead-of-hooks): a flat `hook:` key is rejected silently
+- [The single-consumption stdin pitfall](#the-single-consumption-stdin-pitfall-two-guards-one-pipe): why two guards need a dispatcher
+
 Hooks run automatically on tool events. They can amplify a skill or burn down your machine. Read this before adding any hook.
+
+The four pitfalls at the bottom are not hypothetical: each one shipped in this repo and each one was invisible until something forced it into the open.
 
 ## The recursion pitfall
 
@@ -124,8 +134,31 @@ hook: bash -c 'for c in "$HOME/.claude/skills/my-skill" "$HOME/.claude/skills/my
 deliberate: a `PreToolUse` hook that cannot find its script must not block every Bash call in a
 project that has nothing to do with the skill.
 
-**Test it, because nothing else will.** A dead hook produces no error, no log line and no failed
-run. Pipe a payload into the hook command and check both directions:
+## The schema pitfall: testing the script proves nothing about the hook
+
+Skill frontmatter takes the same shape as settings-based hooks, a list per event of
+`{matcher, hooks: [{type: command, command: "..."}]}`. A flat `hook: <string>` key looks plausible
+and is rejected outright: Claude Code logs `Invalid hooks in skill '<name>'` to the debug log at
+session start and registers nothing at all. Nothing else surfaces it. The skill still loads, the
+tool calls still run, and the guard is simply absent.
+
+This is why piping a payload into the script is not enough evidence. It proves the script decides
+correctly, never that anything invokes it. Both of `/audit`'s guards passed that kind of testing
+twice while being completely inert.
+
+Verify the registration itself, once, with a throwaway project and a trivial prompt:
+
+```bash
+claude --debug hooks --debug-file /tmp/hooks.log -p "reply with OK"
+grep -E "Invalid hooks in skill|Registered .* hooks from skill" /tmp/hooks.log
+```
+
+A working declaration produces the `Registered` line. A rejected one produces `Invalid hooks`, with
+the JSON path of the offending entry. Do not invoke the skill itself for this: config validation
+happens at session start, and invoking an expensive skill to test its frontmatter is a bad trade.
+
+**Test the script too, because nothing else will.** A dead hook produces no error, no log line and no
+failed run. Pipe a payload into the hook command and check both directions:
 
 ```bash
 echo '{"tool_input":{"command":"git stash"},"cwd":"/tmp"}' | bash -c '<your hook command>'   # expect the block, exit 2

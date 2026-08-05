@@ -1,0 +1,19 @@
+{
+  "fixture": "security/deploy-guard-skill.md",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 14,
+      "matches": ["schema", "flat", "nested", "never registered", "not registered", "silently", "invalid"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 24,
+      "reason": "the marker path uses id -u and /tmp deliberately; it is the fixture's scenery, not the defect under test"
+    }
+  ],
+  "notes": "The defect is a skill frontmatter that declares a PreToolUse hook with a flat `hook:` key holding a shell string. The documented schema is a nested list per matcher: `hooks: [{type: command, command: ...}]`. Claude Code rejects the malformed entry, logs `Invalid hooks in skill` to the debug log at session start and registers nothing, so the declared protection does not exist. Nothing else surfaces it: the skill loads, the tool calls run, no error reaches the user. The fixture deliberately includes a Notes section claiming the hook is verified because the script was tested in isolation, which is the exact reasoning that let this ship twice in this repo (2026-08-04 and 2026-08-05). A worker that only checks the script path or the script contents scores zero here; the finding has to be about the declaration shape."
+}

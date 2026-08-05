@@ -6,14 +6,16 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
 | Metrik | Wert |
 |---|---|
-| Audits total | 5 |
-| Critical-Trend (letzte 3) | 0 -> 0 -> 2 (erste Criticals ueberhaupt in diesem Projekt) |
-| Important-Trend (letzte 3) | 7 -> 9 -> 6 |
-| Top-Kategorie (letzte 5) | Docs/Docs-Sync (~14x kumuliert); Security dominierte diese Runde einzeln (4x, davon 2 Critical) |
-| Avg Findings/Audit | 10,2 |
+| Audits total | 6 |
+| Critical-Trend (letzte 3) | 0 -> 2 -> 0 |
+| Important-Trend (letzte 3) | 9 -> 6 -> 6 |
+| Top-Kategorie (letzte 5) | Docs/Docs-Sync (14x kumuliert, 4. Audit in Folge Top-Kategorie) |
+| Avg Findings/Audit (letzte 5) | 11,6 |
 
-**Wiederkehrer (>=3 Audits):**
-- 6x meta doc drift (CLAUDE.md / README / SKILL.md bei Skill- oder Feature-Aenderungen) -- Zaehler in dieser Runde um 2 erhoeht
+**Wiederkehrer (aus `patterns-store.sh recurrences`):**
+- 7x meta doc drift (CLAUDE.md / README / SKILL.md bei Skill- oder Feature-Aenderungen)
+- 1x fix agent self-designed test table clean, Verifier findet echten Defekt (Log-Historie zeigt ~10 Vorkommen ueber 3 Audits; der Zaehler wurde erst jetzt erstmals gefuettert, der naechste Lauf steht also deutlich hoeher)
+- 1x audit-eigene Infrastruktur traegt unsichtbare Defekte, nur beilaeufig gefunden (Log-Historie zeigt 3 Vorkommen, gleicher Kaltstart)
 
 
 ---
@@ -150,8 +152,41 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 - Falsche Referenzdoku als Fehlerursache: erster Beleg
 
 ### Vorgeschlagene Verbesserungen
-- [ ] audit/guidelines/code-quality-2026.md Abschnitt XVIII: Scope explizit auf audit/hooks/*.sh und skill-deklarierte hooks:-Frontmatter erweitern, gleiches Fehlerbild, andere Dateiklasse
-- [ ] audit/agents/fix-agent.md: bei Fixes an Shell-basierten Security-Guards die Selbsttest-Tabelle verpflichtend um Case-Variation und Command-Substitution erweitern, beides wurde in jeder Runde uebersehen
-- [ ] write-a-skill/references/hooks-pitfalls.md: ergaenzen, dass isoliertes Skript-Testen eine schema-abgelehnte Deklaration nicht erkennt, der Debug-Log-Lauf gehoert dazu
-- [ ] eval-fixture: security/hook-frontmatter-flat-key-silently-ignored
-- [ ] eval-fixture: security/pretooluse-exit-1-non-blocking
+- [x] audit/guidelines/code-quality-2026.md Abschnitt XVIII: Scope explizit auf audit/hooks/*.sh und skill-deklarierte hooks:-Frontmatter erweitern, gleiches Fehlerbild, andere Dateiklasse
+- [x] audit/agents/fix-agent.md: bei Fixes an Shell-basierten Security-Guards die Selbsttest-Tabelle verpflichtend um Case-Variation und Command-Substitution erweitern, beides wurde in jeder Runde uebersehen
+- [x] write-a-skill/references/hooks-pitfalls.md: ergaenzen, dass isoliertes Skript-Testen eine schema-abgelehnte Deklaration nicht erkennt, der Debug-Log-Lauf gehoert dazu
+- [x] eval-fixture: security/hook-frontmatter-flat-key-silently-ignored, jetzt audit/evals/fixtures/security/deploy-guard-skill.md (umbenannt, weil der alte Name seine eigenen Scoring-Keywords enthielt)
+- [x] eval-fixture: security/pretooluse-exit-1-non-blocking, jetzt audit/evals/fixtures/security/db-command-guard.sh (umbenannt, weil der alte Name seine eigenen Scoring-Keywords enthielt)
+
+---
+
+## Retro — 2026-08-05 — main (audit, 02:00-Lauf)
+
+### Statistik
+- Audits insgesamt im Projekt: 6
+- Haeufigste Finding-Kategorie: Docs/Docs-Sync (14x kumuliert, 4. Audit in Folge Top-Kategorie)
+- Durchschnittliche Findings/Audit (letzte 5): 11,6
+
+### Was lief gut
+- D.7: 4 bestaetigt, 1 widerlegt (von 5). Die Widerlegung war werthaltig: der vorgeschlagene Fix haette Step C "konsistent" gemacht und dabei eine echte neue Inkonsistenz erzeugt
+- Den subtilsten Fund der Nacht lieferte der Fix-Verifier, kein Worker: die zwei neuen Eval-Fixtures konnten korrekte von falschen Findings nicht unterscheiden, weil Findings `file:line` zitieren muessen und beide Fixture-Namen ihr eigenes Scoring-Keyword trugen. Bewiesen, indem er ein bewusst falsches Finding durch den echten Scorer schickte
+- Die falsche Case-Behauptung wurde an allen vier Stellen korrigiert, an die sie sich verbreitet hatte: zwei Hook-Kommentare, die Selbsttest-Vorschrift und der vorige Audit-Log
+
+### Was lief schlecht
+- Dieser Audit existierte, weil die Umsetzung der eigenen fuenf Lernpunkte in 4 von 6 Important-Findings selbst defekt war: eine Beweisschwelle, die kein Worker erreichen kann, ein Sweep, der /full-audit ausliess obwohl CLAUDE.md bereits Abdeckung behauptete, und eine falsche Begruendung, die schon in drei Dateien plus einem committeten Log stand
+- Abschnitt XVIII, vor zwei Tagen fuer genau diese Fehlerklasse geschrieben, musste binnen zwei Tagen zweimal korrigiert werden: erst zu enger Scope, dann eine Beweisschwelle, die mit Read/Grep/Glob unerreichbar ist
+
+### Was hat gefehlt
+- Keine Pruefung, ob eine frisch geschriebene Beweisschwelle mit dem Tool-Zugriff der Worker-Rolle erfuellbar ist, die sie lesen wird
+- Kein Mechanismus, der die Umsetzung eigener Lernpunkte als normal risikobehafteten Diff behandelt statt als abgehakte Checkliste
+
+### Erkannte Patterns
+- Selbst-getestet-sauber, Verifier findet echten Bug: ~10x ueber drei Audits derselben Nacht
+- Audit-eigene Infrastruktur traegt unsichtbare Defekte, nur beilaeufig gefunden: dritter Beleg, damit ueber der 3er-Schwelle
+- Neu: die Umsetzung eines eigenen Lernpunkts ist nicht risikoaermer als eine gewoehnliche Aenderung
+
+### Vorgeschlagene Verbesserungen
+- [ ] audit/agents/fix-agent.md: korrigiert ein Fix eine Faktenbehauptung, die anderswo als Begruendung dient, vor "done" einen repo-weiten Grep auf die Kernformulierung verlangen, nicht nur die Zieldatei
+- [ ] Guideline-Regel: eine Guideline, die Evidenz verlangt, muss benennen, welche Worker-Rolle sie liefern soll, gegengeprueft gegen die Tool-Grants in agents/*.md
+- [ ] eval-fixture: process/self-test-blind-spot, ein Durchlauf, der eine Shell-Guard-Aenderung nur gegen die selbst geschriebene Tabelle prueft
+- [ ] Bei jedem Fund der beiden neuen Muster `patterns-store.sh recur` aufrufen, der Zaehler startet bei 1 statt bei den beobachteten ~10 bzw. 3

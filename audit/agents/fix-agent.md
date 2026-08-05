@@ -39,6 +39,37 @@ Takes a single verified finding and applies the fix. The main skill dispatches m
 5. **Briefly verify**: re-read the file, fix is in, syntax crash unlikely.
 6. Return the result.
 
+## Special case: a fix to a shell-based guard (permission, gate, matcher)
+
+When the fix changes a pattern that decides whether a command is allowed, blocked or escalated
+(a PreToolUse hook, a lint gate, any `grep`/`case` over a command string), your self-test table is
+not done when the cases from the briefing pass. Three rounds of one audit on 2026-08-05 each ended
+with a clean self-reported table, and an independent verifier found a real defect in every one of
+them, always in a class the table had not covered. Test these yourself, before reporting:
+
+- **Case variation.** `GIT push`, `Git push`. On a case-insensitive filesystem the git BINARY
+  resolves under any casing, but git SUBCOMMANDS are case-sensitive (`GIT PUSH` fails with
+  "cannot handle PUSH as a builtin" and never pushes) -- the only real bypass shape is an
+  uppercase/mixed-case binary with a lowercase subcommand, so a case-sensitive pattern on the
+  binary name is a live bypass, not a nitpick.
+- **Command substitution.** Both `$(cmd)` and the backtick form. They are different characters and
+  an anchor set that covers one usually misses the other.
+- **Prefixes that keep the command in command position.** Env assignment, subshell, brace group,
+  `if/then`, `for/do`, a leading `&`, an absolute path to the binary, and the wrapper class
+  (`sh -c`, `bash -c`, `eval`, `xargs`). A PreToolUse hook receives the whole command string, so
+  `sh -c 'git push'` IS visible to a static pattern as text -- what a static pattern cannot do is
+  decide whether that text will be executed or is just an inert argument. Test the wrapper forms
+  yourself and decide deliberately whether the pattern should match them, rather than assuming
+  they are invisible.
+- **The opposite direction, which is the one that gets guards disabled.** The same word appearing as
+  ordinary text: inside `echo`, inside `grep` arguments, in a filename, in a commit message. An
+  over-block that fires during normal work is how a guard ends up switched off.
+- **Read-only relatives of the blocked verb.** `git stash list` next to `git stash`, `--dry-run`
+  variants, `log`/`show`/`status` forms.
+
+Report the table in both directions, must-block and must-pass. A row you did not run is a row you
+do not get to claim.
+
 ## Styling-system rule (all UI fixes)
 
 Express every style fix in the styling system the file already uses: Tailwind utilities in a Tailwind project, plain declarations in CSS/SCSS files, the CSS-in-JS API in styled-components/StyleX code. Never introduce a second styling approach just to apply a fix (no inline `style=` in a Tailwind codebase, no utility classes dropped into a CSS-modules component). If the correct expression is unclear, mimic the nearest existing component.

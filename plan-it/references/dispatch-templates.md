@@ -40,7 +40,13 @@ Determine ZENTRALE_PATTERNS:
 
 ## Phase 3: Challenge Dispatch
 
-Subagents in parallel — only the dimensions included in `CHALLENGE_DIMS` (Phase 0.5) (low=3, medium=4, high/xhigh=5).
+Subagents in parallel, only the dimensions included in `CHALLENGE_DIMS` (Phase 0.5) (low=3, medium=4, high/xhigh=5).
+
+**Dispatch them with `run_in_background: false`.** Since Claude Code v2.1.198 subagents background by
+default, and a background subagent returns its result as a completion notification in a *later*
+turn. The consolidation step right after this one has to see all challenger outputs at once in order
+to deduplicate convergent concerns, which is where the value of the panel sits. A backgrounded
+challenge round turns that into a partial read of whichever agents happened to have reported.
 
 `{PROJECT_GUIDELINES}` comes from Phase 0.7 (`.claude/plan-guidelines.md`); if empty, omit the block.
 
@@ -53,7 +59,8 @@ Agent(
     PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}",
   subagent_type: general-purpose,
-  model: haiku
+  model: haiku,
+  run_in_background: false
 )
 ```
 
@@ -71,7 +78,8 @@ Agent(
     CORE PATTERNS: {ZENTRALE_PATTERNS}
     FRAMEWORK: {FRAMEWORK}",
   subagent_type: general-purpose,
-  model: sonnet
+  model: sonnet,
+  run_in_background: false
 )
 ```
 
@@ -115,6 +123,7 @@ Agent(
     At the end: an overall verdict in ONE sentence.
     If changes are recommended: at most 3 concrete suggestions.",
   subagent_type: general-purpose,
-  model: sonnet
+  model: sonnet,
+  run_in_background: false
 )
 ```

@@ -50,11 +50,16 @@ Agent(
     SKILL_DIR={SKILL_DIR}",
   subagent_type: general-purpose,
   model: sonnet,
-  mode: bypassPermissions
+  mode: bypassPermissions,
+  run_in_background: false
 )
 ```
 
-Warte bis alle drei Site-Agents fertig sind.
+Warte bis alle drei Site-Agents fertig sind. `run_in_background: false` ist hier Pflicht: seit
+v2.1.198 laufen Subagents standardmaessig im Hintergrund und liefern ihr Ergebnis erst als
+Completion-Notification in einem spaeteren Turn. Dieser Skill laeuft woechentlich unbeaufsichtigt
+per Scheduled Task, es gibt also niemanden, der einen spaeteren Turn ausloest: die Phasen 3 und 4
+(Run-Summary, Learning-Agent) wuerden auf leere Ergebnisse laufen.
 
 ---
 

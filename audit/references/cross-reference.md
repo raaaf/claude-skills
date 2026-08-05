@@ -33,7 +33,8 @@ Agent(
     - Consistency: same pattern project-wide (auth checks, cache keys, error handling)
     - A fix in file A could break file B (e.g. method rename)
 
-    Output format like worker findings. Max 50 words per finding."
+    Output format like worker findings. Max 50 words per finding.",
+  run_in_background: false
 )
 ```
 

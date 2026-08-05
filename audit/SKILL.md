@@ -105,10 +105,8 @@ fi
 bash "$AUDIT_BIN/diff-size-gate.sh"
 
 eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"   # PERF_MEASURE_CMD: Verify-by-Measurement (opt-in, evtl. leer)
-GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)  # Guidelines die den Diff treffen (name+priority); ohne applies_to = always
-
-# Working-Tree-Exklusivitaet: Basis-Zustand festhalten (Check in Phase 4)
-AUDIT_BASE_HEAD=$(git rev-parse HEAD)
+GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)  # Guidelines die den Diff treffen; ohne applies_to = always
+AUDIT_BASE_HEAD=$(git rev-parse HEAD)   # Working-Tree-Exklusivitaet, Check in Phase 4
 AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
 
@@ -197,7 +195,7 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 - `HOTSPOTS` (marked locations, exact file:line)
 - `DATEILISTE` + `GUIDELINE_MATCHES` (for orientation; the worker loads only the listed guidelines, see prompt-template)
 
-**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round).
+**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
 
 **Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
 
@@ -286,7 +284,8 @@ Agent(
     DIMENSION: {dimension}
     DIFF_CONTEXT: {diff hunk of the finding, if available}
     PROJECT_GUIDELINES: {PROJECT_GUIDELINES}
-    DECIDED_TRADEOFFS: {DECIDED_TRADEOFFS}"
+    DECIDED_TRADEOFFS: {DECIDED_TRADEOFFS}",
+  run_in_background: false
 )
 ```
 
@@ -363,7 +362,8 @@ Agent(
     ORIGINAL_FINDING: {finding}
     FIX_DIFF: {diff_des_fix_agents}
     FIX_DATEI: {datei}
-    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}"
+    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}",
+  run_in_background: false
 )
 ```
 

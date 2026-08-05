@@ -39,15 +39,25 @@ cmd=$(echo "$input" | jq -r '.tool_input.command')
 # `if true; then git push; fi`, `for i in 1; do git push; done`,
 # `/usr/bin/git push`, `sleep 1 & git push`) plus the round-3 backtick
 # bypass, without matching `git` as text. This is a static regex, not a
-# shell parser: it cannot and does not try to see into `sh -c '...'` or
-# `eval '...'` payloads -- the guard's threat model is an ordinary fix agent
-# following instructions, not an adversary obfuscating a command through a
-# string-eval layer.
+# shell parser: it does not track quote state or parse `sh -c`/`eval`
+# argument boundaries, so the anchor set above does not include the wrapper
+# class (`sh -c`, `bash -c`, `eval`, `xargs`) as command-position openers --
+# that is a deliberate scope decision, not because the text is invisible.
+# The hook receives the whole command string, so `sh -c 'git push'` IS
+# visible to this pattern as text; what a static regex cannot do is decide
+# whether that text will be executed as a command or is an inert string.
+# The guard's threat model is an ordinary fix agent following instructions,
+# not an adversary obfuscating a command through a string-eval layer.
 #
 # Matching is case-insensitive (grep -i) throughout: this machine's boot
-# volume is case-insensitive APFS, so `GIT PUSH` / `Git Push` resolve to the
-# same real git binary as `git push` and must be caught identically, not
-# just the lowercase spelling.
+# volume is case-insensitive APFS, so the git BINARY resolves under any
+# casing (`GIT`, `Git`, `git`). Git SUBCOMMANDS, by contrast, are
+# case-sensitive -- `GIT PUSH` fails outright ("cannot handle PUSH as a
+# builtin") and never runs -- so the only real bypass shape is an
+# uppercase/mixed-case binary with a lowercase subcommand (`GIT push`,
+# `Git push`). Case-insensitive matching catches the binary-casing
+# variation regardless of subcommand case, which safely covers the real
+# bypass without depending on the subcommand's own case.
 #
 # Accepted, not fixed (round 3, Finding 3): `echo "$cmd" | grep` feeds a
 # multi-line command to grep line-by-line, so `^` in GIT_ANCHOR matches the

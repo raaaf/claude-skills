@@ -1,0 +1,19 @@
+{
+  "fixture": "security/db-command-guard.sh",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 28,
+      "matches": ["exit 1", "exit 2", "does not block", "non blocking", "not blocking", "proceeds", "only exit 2"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 21,
+      "reason": "the md5 marker-path convention mirrors the repo's documented one and is not the defect under test"
+    }
+  ],
+  "notes": "The guard ends its blocking path with exit 1. For PreToolUse only exit 2 blocks; every other non-zero code is treated as a non-blocking error and the tool call proceeds, so the production database command runs anyway while the operator sees only a stderr line that looks like a refusal. The fixture's header comment states the guard was verified by piping payloads in and checking the exit status, which is exactly the test that cannot catch this: checking that the script returns non-zero looks correct, and the semantics of WHICH non-zero code are the whole defect. Shipped twice in this repo before being caught on 2026-08-05. A worker that reports the regex scope or the marker TTL instead of the exit code has missed it."
+}

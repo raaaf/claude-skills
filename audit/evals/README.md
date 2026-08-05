@@ -14,7 +14,7 @@ SHOULD produce. The runner scores precision/recall.
 
 ## Status: growing eval suite
 
-As of 2026-08-04: 52 scorable fixtures (matched against `expected/<base>.json`)
+As of 2026-08-05: 54 scorable fixtures (matched against `expected/<base>.json`)
 across 9 categories (a11y, architecture, correctness, docs, performance,
 quality, security, ui, ux) ship with the repo. Not yet a stable benchmark:
 add a new fixture every time you discover a class of bug the audit missed.
@@ -107,6 +107,20 @@ Three options exist for that reason:
    scored: the score won't tell you it was missed, only the runner's log
    line does.
 3. Re-run. Check the diff in score.
+
+**Fixture names are free keyword matches, name the scenario, never the
+defect.** Findings are required to cite `file:line`, so the fixture's own
+path is quoted on every scoring log line, and the scorer runs the log
+through `tr '-' ' '` before matching. A fixture named after its bug (e.g.
+`pretooluse-exit-1-nonblocking.sh`) turns hyphens in the filename into
+free-standing keyword hits ("exit 1", "nonblocking") that a completely
+wrong finding scores just by citing the right line, no worker reasoning
+required (caught 2026-08-05: two fixtures scored hits from filename alone,
+confirmed by pushing a deliberately wrong finding line through the actual
+scorer). Name fixtures for the scenario/component under test
+(`db-command-guard.sh`, `deploy-guard-skill.md`), not for the defect, and
+double check no `matches` keyword is a substring of the fixture's own path
+after the hyphen-to-space transform.
 
 ## Honest limitations
 

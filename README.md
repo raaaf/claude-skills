@@ -353,7 +353,7 @@ Every skill dispatches a learning agent (Sonnet) after each run.
 bash audit/evals/run-evals.sh --only security --scoped --timeout 900
 ```
 
-Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. As of 2026-08-04: 52 scorable fixtures (matched against `expected/<base>.json`) across 9 categories (a11y, architecture, correctness, docs, performance, quality, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug, and over time the eval becomes a real benchmark.
+Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. As of 2026-08-05: 54 scorable fixtures (matched against `expected/<base>.json`) across 9 categories (a11y, architecture, correctness, docs, performance, quality, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug, and over time the eval becomes a real benchmark.
 
 **Know the cost before you start one.** A fixture is a single file, but an unscoped `/audit` still dispatches around ten workers that read dozens of guideline files. Measured on 2026-08-04, one security fixture at `--effort low`: 896 seconds, 41 turns, 6.93 USD. The full set is hours and triple-digit dollars.
 
