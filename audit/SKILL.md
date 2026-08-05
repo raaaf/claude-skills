@@ -37,13 +37,11 @@ Anti-patterns / common mistakes in the loop: `references/anti-patterns.md`.
 
 ## Phase 0: Pre-flight checks (learning backlog + open issues/PRs)
 
-Both checks (learning backlog question, open `audit-finding` issues + PR dedup context) are in `references/pre-flight-checks.md` — read and execute. Result: issues as findings for round 1 if applicable, `OPEN_PRS` as dedup context for Phase 3f.
-
-**Skip this phase if:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` is set (for CI/batch runs) — then also no issue question.
+Both checks (learning backlog question, open `audit-finding` issues + PR dedup context) are in `references/pre-flight-checks.md` — read and execute. Result: issues as findings for round 1 if applicable, `OPEN_PRS` as dedup context for Phase 3f. **Skip the whole phase** when ENV `AUDIT_SKIP_LEARNING_CHECK=1` is set (CI/batch runs), including the issue question.
 
 ## Phase 0.5: Effort configuration
 
-The skill scales depth by `${CLAUDE_EFFORT}`. Default `medium`.
+The skill scales depth by `${CLAUDE_EFFORT}` (default `medium`) and by what the diff contains. `{MAX_RUNDEN}` below always means the value set here.
 
 ```bash
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-medium}"
@@ -52,20 +50,23 @@ case "$CLAUDE_EFFORT" in
   high|xhigh) MAX_RUNDEN=3; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=low ;;
   medium|*) MAX_RUNDEN=2; FIX_MINOR=1; SKIP_LEARNING=0; CONFIDENCE_FLOOR=medium ;;
 esac
-echo "Effort=$CLAUDE_EFFORT | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | SkipLearning=$SKIP_LEARNING | ConfidenceFloor=$CONFIDENCE_FLOOR"
+eval "$(bash "${CLAUDE_SKILL_DIR}/bin/classify-diff.sh")"   # DIFF_CLASS=prose|code
+PROSE_GATE=0
+if [ "$DIFF_CLASS" = "prose" ]; then MAX_RUNDEN=1; FIX_MINOR=0; CONFIDENCE_FLOOR=medium; PROSE_GATE=1; fi
+echo "Effort=$CLAUDE_EFFORT | Diff=$DIFF_CLASS | Runden=$MAX_RUNDEN | FixMinor=$FIX_MINOR | ConfidenceFloor=$CONFIDENCE_FLOOR"
+# PROSE_GATE=1 = Stoppregel (eine Runde, keine Minor-Fixes, nur Floor-Dimensionen). Bei DIFF_CLASS=prose references/prose-gate.md lesen.
 ```
 
-| Level | Rounds | Fix Minor | Learning | Confidence floor | Finding verification (D.7) |
+| Level | Rounds | Fix Minor | Learning | Floor | D.7 verification |
 |---|---|---|---|---|---|
-| low | 1 | no | skip | high (safe fixes only) | skipped |
+| low | 1 | no | skip | high | skipped |
 | medium (default) | 2 | yes | yes | medium | `medium` + `low` confidence |
 | high / xhigh | 3 | yes | yes | low | every Critical/Important |
-
-`{MAX_RUNDEN}` below always means the value set here.
+| any, `DIFF_CLASS=prose` | 1 | no | yes | medium | `medium` + `low` confidence |
 
 ## Phase 0.6: Dimension scoping via argument (optional partial audit)
 
-The skill argument arrives as `$ARGUMENTS` (empty when none was given). It may select dimensions explicitly (`/audit security`, `/audit performance,a11y`, group aliases `backend`/`frontend`/`design`, `?` for a multi-select prompt). If it does: `PARTIAL_AUDIT=1`, `SELECTED_DIMENSIONS={list}` — read `references/partial-audit.md` and apply it (skip triage+floor, user-scoped `Routing:` line, Step-D extras only for governing dimensions, Phase 4 writes NO push marker, pre-checks always run). Non-dimension arguments stay a free-text scope hint (`PARTIAL_AUDIT=0`).
+`$ARGUMENTS` (empty when none was given) may select dimensions: `/audit security`, `/audit performance,a11y`, the aliases `backend`/`frontend`/`design`, or `?` for a multi-select. If it does, set `PARTIAL_AUDIT=1` + `SELECTED_DIMENSIONS`, then read `references/partial-audit.md` and apply it; a partial audit never writes the push marker. Anything else stays a free-text scope hint (`PARTIAL_AUDIT=0`).
 
 ## Phase 1: Pre-flight & scope
 
