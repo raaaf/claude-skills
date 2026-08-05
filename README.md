@@ -234,7 +234,7 @@ These skills live in this repo as architecture examples. They are wired to perso
 |---|---|
 | Format | Markdown + YAML frontmatter |
 | Language | English throughout (skill bodies, agents, references, guidelines); German only in trigger phrases, runtime user-facing strings, and the personal skills |
-| Hooks | Bash scripts in `~/.claude/hooks/` (sync, audit-loop, format) |
+| Hooks | Two kinds: global hooks in `~/.claude/hooks/` (sync, audit-loop, format), not version controlled; skill-scoped hooks shipped inside the skill (`audit/hooks/`) — frontmatter registers one dispatcher (`pretooluse-bash.sh`) that invokes the guards as siblings |
 | Runtime | Claude Code 2.1.218+ (uses skill frontmatter `model`, `effort`, `allowed-tools`, `disallowed-tools`, and `context: fork` with `background`) |
 | Model resolution | `model: opus` alias (auto-resolves to latest Opus on Anthropic API) |
 | Dependencies | none — no npm, no composer, no Python venv |
@@ -329,7 +329,7 @@ SKILL.md (orchestrator)
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Orchestrator-only `.claude/` writes** — subagents are blocked by hardcoded path protection; they return structured output, orchestrator parses and writes
 - **Semantic suppression dedup** — `bin/normalize-suppression.sh` produces stable keys so paraphrased dismissals collapse into one
-- **Hooks separate from skill** — `~/.claude/hooks/audit-loop.sh` (Stop), `block-unsafe-push.sh` (PreToolUse Bash), `auto-format.sh` (PostToolUse Edit)
+- **Two hook scopes** — global hooks in `~/.claude/hooks/`, outside version control, wired up in `~/.claude/settings.json`: `audit-loop.sh` (Stop), `auto-format.sh` (PostToolUse Edit). Skill-scoped hooks ship inside the skill directory, version controlled. The skill's frontmatter registers exactly one PreToolUse/Bash entry, `audit/hooks/pretooluse-bash.sh` — a dispatcher that reads the tool payload once and re-feeds it to `block-worktree-wide-git.sh` and `block-unsafe-push.sh` as siblings: the worktree guard's `exit 2` hard-blocks and short-circuits, the push guard's `ask` decision is relayed on `exit 0`, and a missing guard is skipped (fails open by design)
 
 ## How self-learning works
 

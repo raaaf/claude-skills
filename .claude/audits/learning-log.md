@@ -2,18 +2,18 @@
 
 Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
-## Trends (Stand 2026-08-04)
+## Trends (Stand 2026-08-05)
 
 | Metrik | Wert |
 |---|---|
-| Audits total | 4 |
-| Critical-Trend (letzte 3) | 0 -> 0 -> 0 (stabil) |
-| Important-Trend (letzte 3) | 3 -> 7 -> 9 (steigend) |
-| Top-Kategorie (letzte 5) | Docs/Docs-Sync (~11x kumuliert, 4/4 Audits); Architecture stark steigend |
-| Avg Findings/Audit | 9,3 |
+| Audits total | 5 |
+| Critical-Trend (letzte 3) | 0 -> 0 -> 2 (erste Criticals ueberhaupt in diesem Projekt) |
+| Important-Trend (letzte 3) | 7 -> 9 -> 6 |
+| Top-Kategorie (letzte 5) | Docs/Docs-Sync (~14x kumuliert); Security dominierte diese Runde einzeln (4x, davon 2 Critical) |
+| Avg Findings/Audit | 10,2 |
 
 **Wiederkehrer (>=3 Audits):**
-- 4x meta doc drift (CLAUDE.md / README / SKILL.md bei Skill- oder Feature-Aenderungen) -- Guideline bereits erweitert, jetzt auf die Routing-Floor ausgeweitet
+- 6x meta doc drift (CLAUDE.md / README / SKILL.md bei Skill- oder Feature-Aenderungen) -- Zaehler in dieser Runde um 2 erhoeht
 
 
 ---
@@ -118,3 +118,40 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 - [x] Naechster Audit: bestaetigen, dass der Floor-Fix in check-skips.sh (has_docs/has_seo) docs_sync/performance/seo/animation auf einem echten Diff ausloest, ohne manuelle Uebersteuerung
 - [x] audit/guidelines/code-quality-2026.md (nicht code-quality.md, die liegt bei 490 Zeilen): Abschnitt XVIII, Checklisten-Punkt fuer audit/bin/*.sh selbst — bei Aenderung pruefen, ob ein deterministischer Test oder eine eval-Fixture den Pfad abdeckt, da alle bisherigen Monate-alten Funde in dieser Klasse lagen
 - [x] eval-fixture: docs/routing-floor-doc-drift (Verzeichnis-Fixture, deckt has_docs ab) — Diff mit vielen SKILL.md/CLAUDE.md/README.md-Aenderungen loeste docs_sync nicht ueber die Floor aus
+
+---
+
+## Retro — 2026-08-05 — main (audit)
+
+### Statistik
+- Audits insgesamt im Projekt: 5
+- Haeufigste Finding-Kategorie: Docs/Docs-Sync (~14x kumuliert). In diesem Lauf dominierte Security (4x, davon 2 Critical, die ersten Criticals in der Projekt-Historie)
+- Durchschnittliche Findings/Audit: 10,2
+
+### Was lief gut
+- D.7 und die Fix-Verifikation arbeiteten ueber alle drei Runden wie entworfen: der Fix-Agent legte jede Runde eine saubere, selbst entworfene Testtabelle vor, und der unabhaengige Verifier fand mit eigenen Faellen trotzdem jedes Mal einen echten Defekt. Ohne diese Stufe waeren alle drei ausgeliefert worden
+- Der Schema-Fehler wurde reproduziert statt behauptet: `Invalid hooks in skill 'audit'` im Debug-Log gegen eine erfolgreiche Registrierung einer Kontroll-Skill
+- 10/10 bestaetigt, 0 widerlegt; der Verifier praezisierte dabei ein Finding selbst (der `--git-dir=`-Bypass galt nur fuer einen der beiden Guards)
+- Nach dem letzten Fix wurde die deployte Kopie synchronisiert und live gegengetestet
+
+### Was lief schlecht
+- Dieselbe Sicherheitsmechanik war in der Vorsession schon einmal als gefixt gemeldet worden, nachdem nur die Skripte isoliert getestet wurden. Weder die Hook-Registrierung noch die Exit-Code-Semantik waren geprueft. Beide Defekte sind vollstaendig unsichtbar: keine Fehlermeldung, keine Logzeile, kein fehlgeschlagener Lauf
+- Die Referenzdatei, die genau fuer solche Faelle existiert, behauptete selbst den falschen Exit-Code und widersprach dabei ihrer eigenen Zeile 33. Plausible Quelle des urspruenglich falschen Fixes
+- Konvergenz nicht monoton (10, 1, 3), weil der Fix-Agent jede Runde nur gegen die eigene Tabelle prueft
+- Abschnitt XVIII in code-quality-2026.md, gestern fuer genau diese Fehlerklasse geschrieben, griff nicht: sein Scope nennt audit/bin und audit/evals, der Defekt lag in audit/hooks und im Frontmatter
+
+### Was hat gefehlt
+- Ein Checklistenpunkt, der beim Patchen eines Shell-Guards die Standard-Bypass-Klassen (Case-Variation, Command-Substitution, Subshell- und Brace-Prefixe) VOR dem Verifier verlangt
+- Eine Ende-zu-Ende-Pruefung fuer skill-deklarierte Hooks: isoliertes Skript-Testen kann eine vom Schema abgelehnte Deklaration nicht auffangen
+
+### Erkannte Patterns
+- Selbst-getestet-sauber, Verifier findet echten Bug: dreimal im selben Audit. Erster Beleg, dass das innerhalb eines Laufs wiederholt auftritt
+- Audit-eigene Infrastruktur traegt unsichtbare Defekte: zweiter Beleg (04.08. run-evals.sh/check-skips.sh, 05.08. Hook-Registrierung und Exit-Code). Gleiche Ursache, andere Dateiklasse, Guideline-Scope zu eng
+- Falsche Referenzdoku als Fehlerursache: erster Beleg
+
+### Vorgeschlagene Verbesserungen
+- [ ] audit/guidelines/code-quality-2026.md Abschnitt XVIII: Scope explizit auf audit/hooks/*.sh und skill-deklarierte hooks:-Frontmatter erweitern, gleiches Fehlerbild, andere Dateiklasse
+- [ ] audit/agents/fix-agent.md: bei Fixes an Shell-basierten Security-Guards die Selbsttest-Tabelle verpflichtend um Case-Variation und Command-Substitution erweitern, beides wurde in jeder Runde uebersehen
+- [ ] write-a-skill/references/hooks-pitfalls.md: ergaenzen, dass isoliertes Skript-Testen eine schema-abgelehnte Deklaration nicht erkennt, der Debug-Log-Lauf gehoert dazu
+- [ ] eval-fixture: security/hook-frontmatter-flat-key-silently-ignored
+- [ ] eval-fixture: security/pretooluse-exit-1-non-blocking

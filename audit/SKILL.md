@@ -18,11 +18,15 @@ allowed-tools:
   - AskUserQuestion
   - SendMessage   # idle watchdog re-prompts dispatched agents
 hooks:
+  # Nested schema per the hooks docs (matcher + hooks[].type/command). There is no
+  # CLAUDE_SKILL_DIR here, only CLAUDE_PROJECT_DIR (the AUDITED project, not this skill), so we
+  # still probe the known install locations and fail OPEN (exit 0) when none matches -- a missing
+  # install must not block every Bash call in an unrelated project. Detail: write-a-skill/references/hooks-pitfalls.md.
   PreToolUse:
     - matcher: "Bash"
-      hook: bash "${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/hooks/block-unsafe-push.sh"
-    - matcher: "Bash"
-      hook: bash "${CLAUDE_PROJECT_DIR:-$HOME/.claude/skills/audit}/hooks/block-worktree-wide-git.sh"
+      hooks:
+        - type: command
+          command: bash -c 'for c in "$HOME/.claude/skills/audit" "$HOME/.claude/skills/claude-skills/audit"; do [ -f "$c/hooks/pretooluse-bash.sh" ] && exec bash "$c/hooks/pretooluse-bash.sh"; done; exit 0'
 ---
 
 # Audit: Review of all open changes
@@ -74,6 +78,7 @@ CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
+for h in pretooluse-bash block-unsafe-push block-worktree-wide-git; do [ -f "${CLAUDE_SKILL_DIR}/hooks/$h.sh" ] || echo "WARNING: hook script missing: ${CLAUDE_SKILL_DIR}/hooks/$h.sh (push gate / worktree guard fails open by design, not blocking)"; done
 bash "$AUDIT_BIN/collect-scope.sh"
 bash "$AUDIT_BIN/detect-framework.sh"
 bash "$AUDIT_BIN/pre-checks.sh"
