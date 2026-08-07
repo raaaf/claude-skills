@@ -69,7 +69,14 @@ STATE_FILE="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-state.md"
 BATCH_DIR="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-batches"
 
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
+
+# Worktree config guard: a worktree without its own .env has no config source to rebuild from
+if [ "$(git rev-parse --git-common-dir)" != ".git" ] && [ ! -f ./.env ]; then
+  echo "GUARD: worktree without own .env — php artisan config:clear is FORBIDDEN for this entire run."
+fi
 ```
+
+**On a guard hit:** `php artisan config:clear` must never run in this session — it deletes the only configuration source the worktree has. The command is also embedded in `composer test`, so that path is equally forbidden; run scoped `php artisan test` invocations instead. A violation destroyed a test environment on 2026-08-04.
 
 **Resume check:** If `$STATE_FILE` already exists → RESUME mode:
 
@@ -389,12 +396,15 @@ Why this is not optional: in the run that produced this rule, two of six Critica
 - Neither `architecture` nor `code_quality` in `SELECTED_DIMENSIONS` → skip
 - SINGLE mode AND `FORCE_CROSS_REF_SINGLE` not set (medium effort) → skip
 
-Otherwise after all batches: 2 subagents in parallel:
+Otherwise after all batches: 3 subagents in parallel:
 
 | # | Focus | Scope |
 |---|---|---|
 | 1 | Cross-module dependencies | Services ↔ UI called incorrectly, Models ↔ Traits/Mixins misused, controller-view mismatches |
 | 2 | Consistency | Same patterns applied uniformly? (auth checks, cache keys, error handling) |
+| 3 | Trust boundaries | Follow each trust boundary end to end — input endpoint, storage, use site — across batch lines |
+
+**Why subagent 3 exists:** file-batching creates blind spots exactly at trust boundaries. The endpoint that accepts input and the code that later uses it routinely land in different batches, so no per-batch worker ever sees the full path. Reference case: an SSRF whose endpoint sat in one batch and whose send path in another — invisible to every batch agent. Subagent 3 ignores batch lines entirely and traces each boundary from input to use.
 
 Input: ARCHITEKTUR-NOTIZ + BEREITS_GEFIXT + summary of all batch findings.
 Fixes as in Step C. No further rounds.

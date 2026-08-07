@@ -116,6 +116,14 @@ AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | 
 
 **A deleted test file is a coverage question, not a cleanup.** For every test file the `--diff-filter=DR` command above reports: name the rule it pinned, then decide which case you are in. (a) The rule is gone with the code → fine, note it. (b) The rule survived in a new shape and the diff pins it somewhere else → fine, name where. (c) The rule survived and nothing pins it → **Important**, and the fix is the successor test, not restoring the old file. Case (c) is the one that happened (2026-07-27): a redesign deleted the file pinning the old layout rule and shipped the new rule, which carried the whole surface, untested. The deletion looked like housekeeping because the old test genuinely no longer applied.
 
+**An empty `origin/$DEFAULT_BRANCH..HEAD` is not "nothing to audit."** For projects with a manual
+deploy step, pushed-but-not-deployed is the normal state, not an edge case: the work sits on the
+remote and production has never seen it. Auditing an empty diff certifies nothing while releasing
+every commit behind it. The base to fall back to is the last commit certified by an audit, taken
+from the `## Scope` block of the newest log in `.claude/audits/`, not `HEAD~20` and not the
+resolved `BASE_REF`. State the substituted base in the log's own `## Scope` block, because every
+finding afterwards is relative to it.
+
 **WIP/stale-snapshot scope check (before Phase 2):** look at `git status --porcelain` + `git diff --stat`. Does the working tree contain files that clearly do NOT belong to the task currently being discussed (pre-existing WIP from another line of work, foreign uncommitted edits, stale snapshots)? Then do NOT silently audit them along with the rest — ask the user via `AskUserQuestion` about the scope: **only the session/task changes** vs. **entire working tree**. Heuristic for "doesn't belong": files in completely different modules than the rest of the diff, or files that were already `M` before the session started. When in doubt, ask — an audit on someone else's WIP produces findings on code the user isn't even working on right now.
 
 Evaluating the script outputs (diff-size gate OK/LARGE/HUGE, pre-checks for secrets/lockfile/binary artifacts, deriving `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`UNIFIED_DIFF`/`SUPPRESSIONS`/`PROJECT_CONTEXT`, the mandatory audit-context check, and the deterministic-check result table): `references/scope-and-pre-checks.md`.
@@ -153,9 +161,20 @@ echo "$ALLE_DATEIEN" | tr '\n' '\0' | xargs -0 bash "$AUDIT_BIN/cache-check.sh"
 ```bash
 WAVE_HEAD=$(git rev-parse HEAD)
 [ "$WAVE_HEAD" = "$AUDIT_BASE_HEAD" ] || echo "WARN: HEAD drift before wave (base $AUDIT_BASE_HEAD, now $WAVE_HEAD)"
+
+# Uncommitted drift, too: a parallel session editing the shared working tree changes what
+# the workers read WITHOUT moving HEAD. On 2026-08-06 another session rewrote eight files
+# mid-audit (including two from the commit under review) and the workers reported on a
+# roving-tabindex method that existed only as an uncommitted change, calling it pre-existing.
+# The HEAD check above saw nothing, because HEAD had not moved.
+WAVE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
+[ "$WAVE_STATUS_HASH" = "$AUDIT_BASE_STATUS_HASH" ] || echo "WARN: working-tree drift before wave (uncommitted changes appeared or vanished since Phase 1)"
+git status --porcelain   # print it: the diff decides whether it is a fix agent's own work or foreign
 ```
 
-On drift: re-run `collect-scope.sh` and confirm the new base BEFORE dispatching — do not wait for the Phase 4 drift check (a parallel session committing mid-audit otherwise invalidates worker findings silently). Pass `WAVE_HEAD` into every worker briefing (placeholder in `agents/prompt-template.md`); workers compare it against their own `git rev-parse HEAD` first and return `WORKER_RESULT=HEAD_DRIFT` instead of findings when it differs. A `HEAD_DRIFT` response → treat like the drift warning above: re-pin, re-collect scope, re-dispatch that wave once.
+On HEAD drift: re-run `collect-scope.sh` and confirm the new base BEFORE dispatching — do not wait for the Phase 4 drift check (a parallel session committing mid-audit otherwise invalidates worker findings silently).
+
+On working-tree drift in round 1 (before any fix agent ran, so nothing of it can be yours): treat it as a foreign session in the same tree. Do NOT dispatch. Report the file list with mtimes to the user and let them decide, because every finding from that point on describes code the user is not currently working on and a fix wave would collide with theirs. From round 2 on, subtract the files your own fix agents touched before judging. Pass `WAVE_HEAD` into every worker briefing (placeholder in `agents/prompt-template.md`); workers compare it against their own `git rev-parse HEAD` first and return `WORKER_RESULT=HEAD_DRIFT` instead of findings when it differs. A `HEAD_DRIFT` response → treat like the drift warning above: re-pin, re-collect scope, re-dispatch that wave once.
 
 **Step C.0 — Triage agent (opt-in only, NOT the default)**
 
@@ -204,6 +223,8 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 **NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
 
 **Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
+
+**Liveness is a briefing contract, not a timer.** The Agent tool has no timeout, so nothing outside the agent can cut it off; the only lever is the instruction it carries. Every briefing therefore states a hard tool-call budget and the duty to send a partial report on reaching it (`agents/prompt-template.md` carries this for workers, `fix-agent.md` for fix agents). Keep that line in any briefing you write by hand. A silent agent is then a contract violation you can act on immediately via the failure paths above, instead of a wait of unknown length.
 
 The triage agent is deliberately NOT in this list: it is opt-in, gets no re-prompt, and its silence is a non-event because the deterministic floor already decided the routing (log `TRIAGE=FLOOR_ONLY`).
 
@@ -278,6 +299,8 @@ Workers report for coverage and include findings they are unsure about (see `age
 | `low` | high/xhigh | every Critical/Important finding, `high` confidence included |
 
 Minor findings never go through D.7: they are only fixed at high/medium confidence anyway, and verifying them costs more than the fix.
+
+**At `floor=low`, confirming a finding yourself by grep is not a substitute for D.7**, however mechanical it looks ("is the key I just deleted gone?", "does that line really say what the worker claims?"). A verifier costs one grep there too, so there is no cost advantage that would justify the skip. The run that produced this rule waved five of six Important findings through on self-confirmation and sent only the one product judgement to a verifier — which is exactly where the single genuine misjudgement of the set sat. Mechanical certainty is not the property that predicts a correct finding.
 
 **Dispatch** one `finding-verifier.md` subagent (sonnet) per finding, all in one message block, max 10 in parallel:
 

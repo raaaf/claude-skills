@@ -64,6 +64,11 @@ Fuer jede Strategy in `PSI_STRATEGY`, sequenziell mit 2s Delay, **per Bash**:
 
 ```bash
 PSI_KEY="${GOOGLE_PSI_API_KEY:-$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/settings.json')))['env'].get('GOOGLE_PSI_API_KEY',''))" 2>/dev/null)}"
+# Dritter Fallback: 1Password als durable Kopie, damit ein verlorener Key in Env und
+# settings.json die Pipeline nicht blind laufen laesst. Best effort: im headless Cron
+# ohne entsperrtes op (oder ohne OP_SERVICE_ACCOUNT_TOKEN) faellt es still durch auf
+# den no-key-Pfad unten.
+[ -n "$PSI_KEY" ] || PSI_KEY=$(op read "op://development/seo-cli/GOOGLE_PSI_API_KEY" 2>/dev/null || true)
 [ -n "$PSI_KEY" ] || { echo "PSI_ERROR=true reason=no-key"; exit 0; }
 
 # curl MUSS direkt nach python3 gepipet werden. Der Umweg ueber eine Variable

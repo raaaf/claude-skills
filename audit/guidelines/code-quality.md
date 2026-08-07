@@ -488,3 +488,27 @@ Continued: sections XVI (2026 Type-Safety Patterns) and XVII (Deprecated APIs) l
 3. Never: the same multi-part expression written twice.
 
 Cross-request releases (delete flow frees a lock the create flow acquired) are the exception — there the key must be re-derived from the persisted row, and the fingerprint contract "derived from what gets stored" must hold on both sides.
+
+## Self-Referential Guard Tests (regex/keyword-based enforcement tests)
+
+A guard test enforces a rule about OTHER code via pattern matching: a regex over templates,
+a keyword list over prose, a grep over source files. Its blind spot is itself — when the
+pattern is incomplete, the test stays green while the rule it claims to enforce is violated,
+and nothing downstream ever notices (2 audits running, learning log 2026-08-05/06:
+`INTEGRATION_WORDS` lacked "importier", so import claims passed a test named after
+catching them).
+
+Before closing round 1 on a diff that adds or edits such a test, run its own coverage
+self-check:
+
+- **Word/pattern-list completeness:** does the list cover the obvious morphological variants
+  (German verb stems, plural forms, compound words) of what the docblock or test name
+  promises? Compare the list against the claim, not against the current fixture data.
+- **Scan granularity vs. claim:** a test that promises "no X anywhere on the page" but scans
+  per-sentence/per-line can miss multi-sentence violations; the granularity must match the
+  docblock's wording.
+- **Can it fail?** Feed one known-bad sample mentally (or as a fixture) through the pattern.
+  A guard test nobody has ever seen red is unverified.
+
+Severity anchor: an incomplete enforcement pattern is Important (the rule is silently
+unenforced), not Minor — the whole point of the test is the enforcement.

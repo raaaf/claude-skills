@@ -1,0 +1,27 @@
+{
+  "fixture": "quality/guard-test-incomplete-keyword-list.php",
+  "must_find": [
+    {
+      "dimension": "quality",
+      "line": 26,
+      "matches": ["importier", "incomplete", "keyword list", "word list", "verb stem", "missing variant"],
+      "severity": "important"
+    },
+    {
+      "dimension": "quality",
+      "line": 33,
+      "matches": ["per sentence", "sentence granularity", "multi-sentence", "granularity", "anywhere on the page"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "test-only code, no user input reaches anything exploitable"
+    },
+    {
+      "dimension": "performance",
+      "reason": "three static routes in a test are not a performance concern"
+    }
+  ]
+}

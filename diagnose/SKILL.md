@@ -55,6 +55,22 @@ failure description is guesswork.
 Report exactly what you ran, what came back, and what you expected. Ask the user for
 the missing context. Do not proceed to Phase 2 with an unconfirmed repro.
 
+**Rule out the tool before you believe the symptom.** A repro attempt that fails or
+hangs is evidence about your setup until proven otherwise. One logout hunt burned an
+evening on three independent tooling artifacts, each of which looked exactly like the
+reported bug: browser-extension clicks that fire no page events (the button "does
+nothing"), a text locator that silently waits on a hidden duplicate of the element and
+times out, and a simulator serving a cached page after a rebuild (the fix "has no
+effect"). Only a test seam that injected the hanging dependency isolated the real
+defect.
+
+So before a failed repro becomes a hypothesis: reproduce the same step through a second,
+independent mechanism (a trusted-click browser test instead of an extension, a
+container-scoped selector instead of a text match, a cache-busted URL instead of the
+same one). If the two mechanisms disagree, you are debugging your tools. Prefer a test
+seam that injects the suspect dependency over any UI-level repro, since it fails for
+exactly one reason.
+
 Document the repro signal:
 ```
 Repro:

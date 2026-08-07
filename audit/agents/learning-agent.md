@@ -33,6 +33,8 @@ Extract from past audit log files (`.claude/audits/*-*.md`) and have the orchest
 - Average findings/audit (last 5)
 - "Repeat offenders": findings that appear in >= 3 audits (candidate for a guideline update)
 
+**Full-audit batch runs distort the windows.** A full-audit's batched scans produce finding counts one to two orders of magnitude above a regular audit. Compute last-3/last-5 and the average over regular audits only, and report any full-audit run in the window as a separately annotated outlier, never blended into the trend or the average.
+
 **Use the counter, do not eyeball the logs.** Recurrence is tracked persistently, so it survives log rotation and stays consistent between `/audit` and `/full-audit`:
 
 ```bash

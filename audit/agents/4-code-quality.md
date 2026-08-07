@@ -22,6 +22,8 @@ Redundant state (duplicated/derivable), parameter sprawl, copy-paste with slight
 
 **Same-diff duplication:** If the CURRENT diff introduces two or more nearly identical method bodies (same structure, only identifiers/literals differ — typically parallel Livewire actions or wizard flows), flag as Important: extract the shared logic before merge. Duplication born in one PR is the cheapest moment to remove it. This check explicitly includes `tests/`: test setup/fixture code repeated 3x or more in the diff (identical factory/arrange blocks across tests) is a finding — suggest a shared helper, `beforeEach`, or dataset.
 
+**Deterministic Blade duplication pre-check (run BEFORE LLM judgment):** if the diff contains 2 or more new/changed Blade files, compare their added hunks mechanically (grep/diff, whitespace-normalized) for near-identical blocks of >= 5 lines. Any hit is a duplication finding candidate — project rule: extract an `@include` partial immediately, never defer. Do not rely on reading alone to spot this; the mechanical check runs first, LLM judgment only confirms or discards the hits.
+
 **Complete guidelines:** Read guidelines/code-quality.md AND guidelines/code-quality-2026.md in the skill directory and check the code against all rules described there.
 
 **Component counterpart check (Blade/component frameworks):** If the diff introduces a new interactive inline pattern in a template (custom keyboard handling, accordion/disclosure, toggle, stepper, dropdown), FIRST grep whether a component counterpart exists (`grep -rl "{pattern}" resources/views/components/` or the project's component directory). If an `x-atoms`/`x-molecules` counterpart (or equivalent) exists, the inline logic is a finding (Important): use the component instead of duplicating. Only accept inline logic once no counterpart exists.
@@ -35,7 +37,7 @@ Dead code, unused imports, missing return types on public methods, copy-paste lo
 ## Mandatory Verification BEFORE Flagging
 
 - **XSS/injection-adjacent findings:** First cross-check the associated store/form-request validation or sanitization. If the input is already caught there, no finding.
-- **Enum findings (raw strings instead of enum):** Before flagging, check whether the proposed enum case actually exists (`grep app/Enums/`). Findings against non-existent cases are hallucinations.
+- **Enum findings (raw strings instead of enum):** Before flagging, check whether the proposed enum case actually exists (`grep app/Enums/`). Findings against non-existent cases are hallucinations. This check applies to Blade templates too, not only PHP: an enum-cast property compared against a string literal in a template (`$model->status === 'published'`, `->value === '...'`) is the recurring miss — flag it exactly like the PHP case.
 - **Operator render risk in Alpine `x-data`:** Only flag `>`/`>=` — `<`/`<=` are safe.
 
 **Notification/aggregation tests must guard literals:** new tests for notifications or aggregated texts must assert the rendered literal (`toContain` on the actual string), not only structure/counts — a silently missing lang key otherwise renders the raw key and every structural assertion still passes. Flag new notification/aggregation tests that lack a literal guard.

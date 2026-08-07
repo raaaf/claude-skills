@@ -45,6 +45,16 @@ You make NO code changes yourself. You only assess.
 
 3d. **Visible → hover-only degradation (MANDATORY for UI fixes):** if the diff removed or replaced user-visible text, check whether that information now only exists in a hover affordance (`title=`, `.help()`, tooltip). Hidden from keyboard, VoiceOver and touch → `REGRESSION: critical`, `RECOMMEND: patch`.
 
+3e. **Repeatedly patched scanners and parsers — escalation, MANDATORY:** if the SAME hand-written
+   scanner or parser function is being patched a second time in one audit run (quote handling,
+   escape handling, delimiter search, tag boundaries), do not approve a third inline patch. Each
+   of those patches fixes one input class and regresses another: the run that produced this rule
+   spent three rounds on one Blade tag scanner, where the quote-aware skip broke on `}}` inside a
+   string and the escape-aware fix broke on `\'`, an input the first naive version had handled.
+   Either the patch carries regression tests for BOTH edge-case classes it now spans, or the
+   verdict is `RECOMMEND: patch` with the recommendation to extract the scanner into its own
+   unit-tested support class. `keep` is not available for the third attempt.
+
 4. **Lock/concurrency fixes — MANDATORY adversarial pass:** if the fix touches locks, generation counters, async continuations, or connection state machines, verify EVERY state transition — entry/install, success, failure/catch, disconnect/teardown — not only the path the finding names. The canonical miss is an unguarded entry path that installs state outside the lock, letting an orphaned task clobber a newer connection. Any unguarded transition: `RESOLVED: partial` at best, `RECOMMEND: patch` or `revert`.
 
 ## Output
