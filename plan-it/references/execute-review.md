@@ -36,6 +36,11 @@ The prompt MUST include:
 > (even inside two otherwise different method bodies), extract or delegate
 > the shared logic as part of the task instead of finishing. The check is
 > structural (statement sequence, branching shape), not name-based.
+> Do not invent machinery around the plan: no helper scripts, state
+> files, progress ledgers, scoreboards, or verification harnesses beyond
+> what the plan itself names — verification belongs to the review, state
+> to the orchestrator. If a step seems to require such tooling, treat it
+> as a STOP condition and report instead of building it.
 > Answer exactly in the report format.
 
 3. The report format:

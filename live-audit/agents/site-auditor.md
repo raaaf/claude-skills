@@ -13,6 +13,7 @@ Du bekommst:
 - `GITHUB_REPO` — z.B. `raaaf/portfolio-2025`
 - `PSI_STRATEGY` — `["mobile", "desktop"]`
 - `SKILL_DIR` — Pfad zum Skill-Verzeichnis
+- `DESIGN_REFERENCE` — optional, z.B. `linear.app` (Feld `design_reference` in sites.json; leer = Schritt 5.5 entfällt)
 
 ## Ablauf
 
@@ -179,6 +180,35 @@ Ausnahmen ohne Toleranz-Band (sofort):
 - `site-unreachable`
 - `ssl-expired`
 
+### Schritt 5.5: Design-Verdict (optional, fail-open)
+
+Nur wenn `DESIGN_REFERENCE` gesetzt ist. Erzwungenes Ranking gegen eine benannte
+echte Referenz-Site, kein Inspirations-Sammeln: das Verdict muss sich festlegen.
+
+1. Screenshot-Tool laden: `mcp__chrome-devtools__navigate_page` + `take_screenshot`
+   via ToolSearch. Nicht verfügbar (headless Cron ohne MCP): Schritt still
+   überspringen, im Output `DESIGN_VERDICT: skipped reason=no-browser`.
+2. Above-the-fold-Screenshot von `https://{SITE_URL}` und von
+   `https://{DESIGN_REFERENCE}` aufnehmen (Desktop-Viewport, je 1 Frame — keine
+   Capture-Serien).
+3. Beide Frames vergleichen und EIN Verdict fällen, plus maximal 3 konkrete Gaps
+   auf UNSERER Seite (nur was auf dem Frame sichtbar ist: Layout, Typo-Hierarchie,
+   Spacing, Farbklima, Zustände — keine Code-Vermutungen):
+
+   ```
+   DESIGN_VERDICT: reference|ours|par | gap1; gap2; gap3
+   ```
+
+Regeln:
+- Das Verdict erzeugt NIE ein GitHub Issue: es ist subjektiv und gehört nicht in
+  die Threshold/Fingerprint-Maschinerie. Es landet nur im Audit-Log (Schritt 11)
+  und im SITE_RESULT-Output; was daraus wird, entscheidet der User.
+- Referenz-Look nie kopieren: Gaps benennen, was unserer Site fehlt, nicht wie
+  die Referenz aussieht.
+- Screenshots sind flüchtig — nie ins Repo oder in Issues schreiben.
+- `ours` und `par` sind valide Ergebnisse, kein Weichzeichnen in Richtung
+  "reference" aus Höflichkeit gegenüber der bekannten Marke.
+
 ### Schritt 6: Toleranz-Band anwenden
 
 Für jedes Finding (außer Sofort-Exceptions):
@@ -290,6 +320,9 @@ CONTENT=$(cat <<'EOF'
 |---|---|---|
 | {fingerprint} | {severity} | new issue / existing / suppressed / pending |
 
+### Design-Verdict
+{DESIGN_VERDICT-Zeile, oder "nicht konfiguriert" wenn DESIGN_REFERENCE leer}
+
 ### Neue Issues: {N}
 ### Suppressed: {N}
 ### Pending (Toleranz-Band): {N}
@@ -343,6 +376,7 @@ REPO: {GITHUB_REPO}
 PSI_MOBILE: {performance_score}/100
 PSI_DESKTOP: {performance_score}/100
 SSL: OK|WARN|ERROR
+DESIGN_VERDICT: {reference|ours|par | gaps} | skipped reason=... | n/a
 NEW_ISSUES: {N}
 SUPPRESSED: {N}
 PENDING: {N}

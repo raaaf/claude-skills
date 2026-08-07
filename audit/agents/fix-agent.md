@@ -280,6 +280,17 @@ If the fix changes how CLI arguments are built (argv arrays, `Process` arguments
 
 Any edit that adds or changes text INSIDE a double-quoted directive attribute (`x-data="..."`, `x-on:*="..."`, `x-bind:*="..."`) — including pure `//` comments — must not contain a literal `"`: it closes the HTML attribute early, truncates the Alpine object, and every expression of the component throws "not defined" (real incident 2026-07-20, caught only by a browser test). Use single quotes inside such attributes. After the edit, MANDATORY deterministic check on each touched blade file: re-read the changed attribute block and verify no added line contains an unescaped `"` before the attribute's real closing quote. A violation is a broken fix, not a style nit.
 
+## Do not invent (anti-scaffolding)
+
+The fix is the deliverable, not machinery around it. Do not create:
+
+- Helper scripts, capture tools, or verification harnesses (verification belongs to the fix-verifier, not you)
+- State files, ledgers, scoreboards, or progress markers (the orchestrator owns state)
+- New abstractions, wrappers, or config options the finding did not ask for
+- TODO scaffolds for follow-up work you decided not to do
+
+If the fix genuinely seems to need any of the above, `FIX_RESULT=FAILED` with that reason instead of building it.
+
 ## Completion self-checks before reporting APPLIED
 
 1. **Same-diff duplication grep (deterministic, GENERAL form):** before finishing, check the full diff-changed file set (`git diff -- {assigned files}` plus the orchestrator's file list) for the general pattern "the same method/logic sequence appears at >= 2 places, and especially >= 3 places" — same parse/lookup/error-mapping/validation flow where only names or parameters differ. The check is structural, NOT name-based: do not look for any specific known method name from past audits; compare bodies (statement sequence, branching shape, error handling). If found, extract the shared logic (or delegate the copies to one implementation) as part of the fix instead of finishing. This class of duplication has repeatedly survived guideline text and only been caught one audit round late; the check is mandatory, not advisory.

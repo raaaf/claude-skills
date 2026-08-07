@@ -33,7 +33,7 @@ SITES_JSON="$SKILL_DIR/sites.json"
 cat "$SITES_JSON"
 ```
 
-Lies `sites.json`. Daraus: Liste aller Sites mit `url`, `github_repo`, `psi_strategy`.
+Lies `sites.json`. Daraus: Liste aller Sites mit `url`, `github_repo`, `psi_strategy` und optional `design_reference` (benannte Referenz-Site für das Design-Verdict in Schritt 5.5 des Site-Auditors; fehlt das Feld, entfällt der Schritt für diese Site).
 
 ---
 
@@ -47,6 +47,7 @@ Agent(
     SITE_URL={url}
     GITHUB_REPO={github_repo}
     PSI_STRATEGY={psi_strategy als JSON-Array}
+    DESIGN_REFERENCE={design_reference, oder leer wenn nicht gesetzt}
     SKILL_DIR={SKILL_DIR}",
   subagent_type: general-purpose,
   model: sonnet,
@@ -78,6 +79,8 @@ Sammle die Outputs aller drei Site-Agents. Ausgabe:
 
 Gesamt: {N} neue Issues erstellt.
 ```
+
+Hat mindestens ein Site-Agent eine `DESIGN_VERDICT:`-Zeile geliefert (nicht `n/a`), unter der Tabelle auflisten: `{site}: {verdict-Zeile}`.
 
 ---
 
