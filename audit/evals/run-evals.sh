@@ -76,6 +76,7 @@ dimension_for_category() {
     typography)   echo "typography" ;;
     ui|ui_design) echo "ui_design" ;;
     ux)           echo "ux" ;;
+    animation)    echo "animation" ;;
     *)            echo "" ;;
   esac
 }

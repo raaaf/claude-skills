@@ -95,6 +95,9 @@ bash "$AUDIT_BIN/check-duplicate-array-keys.sh"
 bash "$AUDIT_BIN/check-number-format-locale.sh"
 bash "$AUDIT_BIN/check-swift-deprecations.sh"
 bash "$AUDIT_BIN/check-test-count-drift.sh"
+bash "$AUDIT_BIN/check-docs-path-drift.sh" "$BASE_REF"
+# Deleted test files: the rule they pinned may have a successor that nobody pins.
+git diff --name-status --diff-filter=DR "$BASE_REF" -- '*[Tt]est*' 2>/dev/null || true
 
 # Project-Specific Guidelines (Override global)
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
@@ -110,6 +113,8 @@ GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/g
 AUDIT_BASE_HEAD=$(git rev-parse HEAD)   # Working-Tree-Exklusivitaet, Check in Phase 4
 AUDIT_BASE_STATUS_HASH=$(git status --porcelain | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 ```
+
+**A deleted test file is a coverage question, not a cleanup.** For every test file the `--diff-filter=DR` command above reports: name the rule it pinned, then decide which case you are in. (a) The rule is gone with the code → fine, note it. (b) The rule survived in a new shape and the diff pins it somewhere else → fine, name where. (c) The rule survived and nothing pins it → **Important**, and the fix is the successor test, not restoring the old file. Case (c) is the one that happened (2026-07-27): a redesign deleted the file pinning the old layout rule and shipped the new rule, which carried the whole surface, untested. The deletion looked like housekeeping because the old test genuinely no longer applied.
 
 **WIP/stale-snapshot scope check (before Phase 2):** look at `git status --porcelain` + `git diff --stat`. Does the working tree contain files that clearly do NOT belong to the task currently being discussed (pre-existing WIP from another line of work, foreign uncommitted edits, stale snapshots)? Then do NOT silently audit them along with the rest — ask the user via `AskUserQuestion` about the scope: **only the session/task changes** vs. **entire working tree**. Heuristic for "doesn't belong": files in completely different modules than the rest of the diff, or files that were already `M` before the session started. When in doubt, ask — an audit on someone else's WIP produces findings on code the user isn't even working on right now.
 
@@ -442,6 +447,8 @@ Only files that are clean after all fixes. Do NOT cache files with open points.
 
 ## Phase 4: Pre-push behavior
 
+**Re-fire the baseline check HERE, immediately before commit and push.** It runs between rounds, and that is where it was assumed to be enough — but every fix wave lands after the last inter-round check, so the window that matters most is the one that was never re-checked. The check below is that re-fire; do not skip it because "it was green two rounds ago".
+
 **Check working-tree exclusivity (before marker):**
 
 ```bash
@@ -460,6 +467,8 @@ On deviation: warn (`Fremd-Commit/Index-Drift waehrend Audit, Diff-Basis instabi
 **`PARTIAL_AUDIT=1`: STOP here — no marker, no push.** Print: `Teilaudit ({SELECTED_DIMENSIONS}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` Then continue with Phase 5 (learning runs normally).
 
 **Everything fixed, tests green:**
+
+**Staging: never `git add -A`, never `git add .`.** When this run commits its own fix waves, stage the verified files by name — the ones the fix agents reported and the verifier confirmed. A wildcard add sweeps in whatever else the working tree happens to hold: a file another session wrote, a scratch file, or (2026-07-27, real) a test file created seconds after the verification run, committed unseen and pushed to TestFlight without ever having been executed. `git diff --staged --stat` before the commit, and every line in it is a file this audit verified.
 
 **CRITICAL — marker and push NEVER in the same bash command.** The pre-push hook checks the command string for `git push` and blocks BEFORE the marker is written.
 

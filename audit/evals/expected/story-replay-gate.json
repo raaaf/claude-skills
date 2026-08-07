@@ -1,0 +1,33 @@
+{
+  "fixture": "correctness/story-replay-gate.swift",
+  "must_find": [
+    {
+      "dimension": "correctness",
+      "line": 27,
+      "matches": ["Bool", "midnight", "yesterday", "never resets", "store the date", "isDate", "inSameDayAs", "new day"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "correctness",
+      "line": 48,
+      "matches": ["outlives", "never rebuilt", "midnight", "stale", "date change", "not recomputed", "phase"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "correctness",
+      "line": 62,
+      "reason": "shouldRefresh compares the stored day against now and is the correct pattern; it sits in the fixture as the counter-example and flagging it inverts the finding"
+    },
+    {
+      "dimension": "correctness",
+      "line": 41,
+      "reason": "the gateHour comparison itself is fine — the defect is the flag it is combined with, not the hour check"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

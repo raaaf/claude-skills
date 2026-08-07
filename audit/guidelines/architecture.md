@@ -362,3 +362,21 @@ Coordination scripts are the one place where a missing line does not fail loudly
 **Orphan cleanup on kill.** `trap ... EXIT` does not fire on `SIGKILL`, and a lock directory or PID file that outlives its owner blocks every later run until someone deletes it by hand. Any lock needs a second, independent release path: a TTL that a later run can detect and break, a liveness check against the recorded PID (`kill -0`), or both. A lock whose only release is the happy path is a finding, not a style preference.
 
 Check as well: does the wait loop have a bounded number of attempts and a distinct exit code on timeout (a caller cannot distinguish "acquired" from "gave up" otherwise), and does the script clean up background children it started rather than leaving them to reparent to init.
+
+## XIX. Rules That Depend on State Outliving Their Screen
+
+A layout, routing or visibility rule that reads state which lives LONGER than the screen rendering it is a different animal from one that reads props. The screen can be rebuilt, or not; the state does not care. When it is not rebuilt, the rule keeps answering with an input that has since expired.
+
+Trigger: the rule's inputs include anything held outside the view's own lifetime — a step in a flow, a phase enum, a cached "already done" marker, a deadline, a persisted selection.
+
+Then walk these three explicitly, in writing, before accepting the rule:
+
+1. **Day boundary.** The process is alive at 00:01 with the screen untouched. What does the rule return?
+2. **Background and return.** The app was backgrounded for hours and comes back to the same view instance. Which inputs went stale while nothing ran?
+3. **External change.** A sync, another device, or a background task rewrote the underlying data. Does the rule see it, or is it reading a value captured at first render?
+
+Head-arithmetic is not enough here and the failure is documented: on 2026-07-27 an orchestrator checked exactly such a rule by reasoning and declared it safe, missing that the state survived the day change because the view is never rebuilt. A worker found it afterwards. If the rule is worth having, it is worth a test on the state sequence rather than on the rendered output.
+
+Platform specifics and the five precedent cases: `guidelines/native-mobile.md`, section XIV.
+
+Confidence: layout/routing rule reading view-outliving state with none of the three cases handled -> Important. The same rule with no test pinning it -> name it as an open point even when the logic is right.

@@ -33,6 +33,8 @@ Detection order: **Formatter → Linter → Static Analysis → Tests**. All via
 
 Tool not installed (`command -v` fails)? → skip with a note, do NOT install via brew/gem.
 
+**xcodegen projects: regenerate after ANY wave that created a Swift file, test files included.** `*.xcodeproj` is rebuilt from the on-disk tree, so a file written after the last `xcodegen generate` is simply not in the target. There is no error: the build succeeds, the test run succeeds, and the new tests never ran. That is indistinguishable from "all green" in every line of output the orchestrator reads. So: after a fix wave that added files, run `xcodegen generate` BEFORE the test run, and confirm the reported test count rose by the number of cases the wave added. A wave that adds tests and reports an unchanged count did not run them (see `guidelines/native-mobile.md`, section IX).
+
 For `/full-audit`, all linters/formatters run globally instead of file-scoped.
 
 On static analysis errors: fix manually, re-run. Repeat until clean.

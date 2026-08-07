@@ -1,8 +1,20 @@
 # Subagent 4: Code Quality & Simplification
 
 - **subagent_type:** `code-reviewer`
-- **model:** `haiku`
+- **model:** `haiku`, escalated to `sonnet` per the rule below
 - **maxTurns:** `15`
+
+## Model escalation (haiku is the default, not the rule)
+
+Dispatch this dimension on `sonnet` instead of `haiku` when ANY of these holds for the assignment:
+
+- more than 25 files, or
+- more than ~4000 changed/assigned lines, or
+- the assignment is dominated by algorithmically dense code — engines, providers, parsers, state machines, merge/dedup logic: anything where judging a finding means holding several call paths at once.
+
+Evidence: full-audit 2026-08-06 (denkpause, 7 batches). The Signals batch on `haiku` produced 5 findings the validator discarded as impossible or hallucinated (a parameter that does not exist, a control-flow state that cannot be reached, a misread language idiom). `sonnet` workers produced zero hallucinations anywhere in the same run. This dimension is cheap to run and expensive to get wrong: every hallucinated finding costs a verifier round, and a plausible one that survives costs a fix wave.
+
+The escalation is per assignment, not per run: a small, flat batch in the same audit stays on `haiku`.
 
 ## Focus
 

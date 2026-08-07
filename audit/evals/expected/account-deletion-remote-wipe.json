@@ -1,0 +1,36 @@
+{
+  "fixture": "security/account-deletion-remote-wipe.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 38,
+      "matches": ["defer", "pending", "flag", "cleared", "unconditional", "error path", "retry", "resume"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "security",
+      "line": 50,
+      "matches": ["swallow", "catch", "ignored", "logged", "reports success", "claims", "iCloud", "zone"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 63,
+      "reason": "recoverIfPending clearing the flag after a successful zone delete is correct on its own; the defect is that the guard above can never be reached, not this line"
+    },
+    {
+      "dimension": "code-quality",
+      "reason": "the empty deleteLocalStore/deleteCloudKitZone bodies are fixture scaffolding, not dead code in a real codebase"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "no UI markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

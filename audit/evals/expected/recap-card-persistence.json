@@ -1,0 +1,33 @@
+{
+  "fixture": "security/recap-card-persistence.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 43,
+      "matches": ["widget", "unfiltered", "no filter", "isProtected", "locked", "health", "leaks", "second sink"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "security",
+      "line": 51,
+      "matches": ["legacy", "migration", "re-encode", "rewrite", "no filter", "isProtected", "health", "existing rows"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 34,
+      "reason": "encodedCards applies the filter correctly; flagging the write path means the finding was pattern-matched on the field name rather than on the missing guard"
+    },
+    {
+      "dimension": "security",
+      "line": 65,
+      "reason": "summaryLine filters before joining and is correct — it is in the fixture precisely so a blanket 'every path is broken' answer scores as a false positive"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

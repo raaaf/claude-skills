@@ -35,7 +35,12 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`.
 
 ## Clean
 Dimension1, Dimension2
+
+## Incidents
+- {what happened} — {how many times}, {which rounds/agents}
 ```
+
+**The `## Incidents` section is mandatory whenever something went wrong OUTSIDE the formal rounds**, and it carries the COUNT, not just the fact. Everything the round structure produces already lands in the sections above; what has been getting lost is the rest — an agent that had to be re-prompted, a stale test bundle, a build that had to be repeated, a limit interruption, a deviation from a hard rule. Those were passed on verbally or mentioned once in prose, so the learning phase saw "happened" where the truth was "happened four times", and a systemic problem read as a one-off. Frequency is the whole signal: one re-prompted agent is noise, 40% of the fleet is a prompt defect. Write the number even when it is 1, so the next run can add to it.
 
 ## Mandatory Field: Findings Fixed
 

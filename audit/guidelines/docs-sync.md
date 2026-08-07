@@ -19,6 +19,7 @@ When a diff touches wizard steps, config files, or the DB schema, the surroundin
 
 ## Rules
 
+0. **The deleted-path half is checked mechanically, not by reading.** `bin/check-docs-path-drift.sh` runs in Phase 1 and reports every live doc that still names a file the diff deleted or renamed away (`DOCSPATH {doc}:{line}`). Do not re-derive those by hand and do not treat a clean result as "docs are in sync" — the script only decides the question that needs no judgment. Everything below is what is left: whether the surviving text is still TRUE. This split exists because docs drift is the most frequent finding class in this pipeline (18 of 27 audits) and years of prose reminders in this very file did not move that number.
 1. **Enumerating docs are the drift hotspot.** Any doc that lists steps, columns, routes, or config keys (test plans, CSV column contracts, step tables) breaks on every add/remove — grep the old identifier across `*.md` before closing the finding.
 2. **Removed features leave doc corpses.** When code is deleted, grep docs for the feature name; a doc describing a removed page/field is an Important finding.
 3. **`.env.example` mirrors config reads.** Every `env('X')` added to config needs a matching `X=` line in `.env.example`; every removed read should drop it.

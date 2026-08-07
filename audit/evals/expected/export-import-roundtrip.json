@@ -1,0 +1,30 @@
+{
+  "fixture": "security/export-import-roundtrip.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 88,
+      "matches": ["questionId", "nil", "silently", "skipped", "discard", "second init", "no question", "data loss"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 89,
+      "reason": "the questionLookup guard on the next line is correct: an entry pointing at a question that exists nowhere really is unresolvable. Flagging it confuses the legitimate guard with the illegitimate one above it"
+    },
+    {
+      "dimension": "code-quality",
+      "reason": "the two Entry initializers are the documented current design (legacy path plus questionless path), not duplication to collapse"
+    },
+    {
+      "dimension": "a11y",
+      "reason": "no UI markup"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

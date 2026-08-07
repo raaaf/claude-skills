@@ -1,0 +1,26 @@
+{
+  "fixture": "animation/completion-sequence.swift",
+  "must_find": [
+    {
+      "dimension": "animation",
+      "line": 49,
+      "matches": ["same pass", "same cycle", "never drawn", "no frame", "start state", "overwritten", "no-op", "suspension point"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "animation",
+      "line": 66,
+      "reason": "finishCorrectly separates the two states with an await and is the working version; flagging it means the finding matched on withAnimation rather than on the missing render pass"
+    },
+    {
+      "dimension": "animation",
+      "reason": "a finding that only proposes different duration or scale VALUES scores as a miss: the defect is that no frame carries the start state, and new values change nothing"
+    },
+    {
+      "dimension": "seo",
+      "reason": "native code, no pages"
+    }
+  ]
+}

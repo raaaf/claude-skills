@@ -403,3 +403,26 @@ custom property.
 **Audit signal:** grep the diff for `{{` between `<style>`/`<script>` tags →
 quoted/entity-prone value: Important [Correctness]; user-influenced value with
 `{!! !!}`: Critical [Security] (XSS).
+
+## XVII. New Sensitive or Derived Field: Check EVERY Sink in One Round
+
+When a diff adds a field that can reach a persistent or shared sink — anything CloudKit-mirrored, exported, backed up, indexed, or rendered outside the locked app — the audit checks ALL of its sinks in the SAME round. Fixing the first sink found and discovering the rest over the following rounds is the documented failure mode, not a thorough process.
+
+Real case (2026-08-06): a health-card filter was added to the write path in round 1. The widget render path and the legacy-entry scrub path carried the same data and were only found in rounds 2 and 3. Same field, same rule, three rounds, and between round 1 and round 3 the fix looked complete.
+
+The sink list for one new field, all in one pass:
+
+| Sink | Question |
+|---|---|
+| Write / persist | Does the filter sit on the write, or only on one caller of it? |
+| Export | Does the JSON/Markdown/backup path carry it? |
+| Import / validation | Does an untrusted payload get to set it, bypassing the write-path filter? A file from before the rule existed is the normal case. |
+| Derived summaries | Does an anchor/chip/summary field quote it in prose? A filter on the structured field does nothing for a string that already contains the value. |
+| Extensions | Widget, watch, share sheet, notification body, Siri response — surfaces that render without the app's lock. |
+| Diagnostics | Diagnostic dumps and share-a-report features quote real values and leave the device by design. |
+| Backup | Plists and files in a shared container ride along in the device backup unless explicitly excluded. |
+| Prompt | Does it reach an on-device or remote model as context? |
+
+A field that is legitimately excluded from a sink says so in a comment at the filter, naming the rule (a store policy, a platform guideline), so the next audit does not have to re-derive whether the omission was deliberate.
+
+Confidence: a new sensitive field filtered at one sink while another sink in this list carries it -> Critical. All sinks covered but none documented -> Minor.

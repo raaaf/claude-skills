@@ -141,6 +141,14 @@ Native test suites have two pitfalls that an audit can misread as "tests missing
 - The `xcodebuild` summary `Executed N tests` counts only XCTest. Swift Testing reports separately as `✔ Test run with N tests in M suites passed`. Check both lines, otherwise a 117-case suite looks like 7 tests.
 - To isolate individual Swift Testing cases, use `swift test --filter` or a test plan, not `-only-testing`.
 
+**A red test is not a signal until the build is demonstrably fresh.** Hit twice in a single run (2026-07-27): a test bundle built before the fix still fails, and the failure reads exactly like an unfixed bug. Before treating any failure as real, confirm the run rebuilt — no `Building for testing` output, or a fix timestamp newer than the bundle, means re-run first and diagnose second. Same for the inverse: a test file created after the last build is not in the bundle and its absence looks like "passed".
+
+**Hold the run's test COUNT against the expected count, every time.** A crashed or skipped suite reports FEWER failures, not more, so a silent runner problem reads as improvement. Note the number from the previous green run and compare; a drop with no deletions in the diff is a defect in the run, not a success.
+
+**Untyped integer literals where `TimeInterval?`/`Double?` is expected (Swift).** `let gap: TimeInterval? = 20` is fine, but an untyped `20` handed to a parameter or comparison that infers `Int` silently changes the semantics, and the mismatch surfaces at runtime or as a puzzling test failure rather than at compile time. Give the literal an explicit type (`20.0`, `TimeInterval(20)`) wherever the target is an optional Double. Seen 2x in one file.
+
+**MainActor isolation on `static` helpers extracted from SwiftUI `View` types.** A pure function pulled out of a `@MainActor` type inherits that isolation, so a `@Test` calling it from a nonisolated context fails to compile — and if the helper is reached through a Swift Testing trait, the runner can crash (`_applyScopingTraits`) and mask the whole suite as "fewer failures". Extracted pure helpers get `nonisolated static`; if it genuinely needs the main actor, it was not pure and does not belong in a unit test.
+
 **On-device model-dependent tests (FoundationModels / Apple Intelligence).** Tests whose code path calls the on-device model (e.g. on certain weekdays/conditions) are non-deterministic on devices/simulators WITH the model available. Correct fix: disable the model tier via an environment variable/launch flag (e.g. `JOURNAL_NO_AI=1`) and test the deterministic fallback (curated rotation) in isolation.
 - **Do not** add such a test as "flaky" to `suppressions.json` if an env flag already makes it deterministic — that masks real regressions. Check the harness first (does the suite run with the disable flag?) before suggesting a flaky suppression.
 
@@ -181,3 +189,30 @@ Recurring finding (two audits): inside a cancellable `Task`, a persisting side e
 - Watch for a task that is replaced by a newer one (`task?.cancel(); task = Task { ... }`): the old one keeps running to its next suspension point.
 
 Confidence: persisting write behind an `await` in a cancellable task without a guard and without a justifying comment -> Important.
+
+## XIV. Day Boundary: State That Outlives the Screen
+
+**The most frequent correctness class in this project's history — five findings, never a guideline until now.** Precedents: `reminderHour = 0` treated as "not set" (2026-05-21), a widget lock deadline compared against build time (2026-06-23), a pending-anchor dead end at midnight (2026-07-22), sleep samples bucketed before overlapping intervals were merged so a night ending at 00:30 landed in the wrong day (2026-07-27 morning), a `chatStep` that survived the day change because the view was never rebuilt (2026-07-27 evening). Each was found on its own, filed as a one-off, and the class never escalated.
+
+Every value that is read again after a relaunch, after a background stretch, or when a view reappears gets one question: **does it survive midnight, and should it?**
+
+- **A "today" flag must be a DATE, not a Bool.** `hasPlayedToday = true` is yesterday's answer at 00:01. Store the day and compare.
+- **A deadline is compared against the entry's own moment,** never against "now at build time" (see section XII).
+- **A view that is not rebuilt keeps its state across the day change.** SwiftUI does not re-run `init` because the calendar moved. If a layout or routing rule reads such state, play the midnight case through explicitly: app open at 23:59, screen untouched, what does the rule return at 00:01?
+- **Bucketing by day happens AFTER merging/normalizing,** not before. An interval that crosses midnight belongs to a rule you have written down, not to whichever end the code happens to look at first.
+- **Zero and midnight are real values, not "unset".** Any `if value == 0` / `if hour == 0` on a time-of-day quantity is suspect: model absence as optional.
+- **The overnight background case is separate from the relaunch case.** A process that stays alive across midnight never runs the launch-time recomputation that would have saved it.
+
+Confidence: a day-scoped flag stored as a Bool -> Important. A layout/routing rule reading state that outlives its view, with no midnight handling -> Important. Day bucketing before interval merge -> Critical when it feeds a user-visible number.
+
+## XV. Prove an Animation Renders Before Tuning It
+
+Three consecutive rounds were spent adjusting the values of an animation that never ran (2026-07-27): a scale factor, then a sequenced swap, then a keyboard delay, each time reported as "I don't see it". The cause was structural, not aesthetic — the start state was set and overwritten inside the same main-actor cycle, so SwiftUI never rendered a frame with it. Two of the three rounds were value tuning on a no-op.
+
+Order of questions, and it is not negotiable: **does it run at all** before **is it strong enough**.
+
+- `withAnimation` on a value that is assigned and reassigned within one cycle animates nothing. The start state needs its own render pass (a `Task { }` hop, an explicit `await Task.yield()`, or a two-phase state machine).
+- Before proposing new values for an existing animation, name the evidence that the current one renders: a visible intermediate state, a screenshot, a test on the state sequence. "The code says `withAnimation`" is not evidence.
+- Same trap with a transition on a view that is inserted and removed in one pass, and with `.onAppear` setting the state it is supposed to animate from.
+
+Confidence: animation whose start state cannot be observed in a rendered frame -> Important (it is dead code with a cost). A finding that proposes only new VALUES for an animation, with no statement that it currently renders -> the reviewer sends it back rather than fixing it.

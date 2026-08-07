@@ -57,7 +57,7 @@ fi
 # All audit-relevant files — exclude build output, vendor and cache
 EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/*'
 # shellcheck disable=SC2086
-find $SOURCE_DIRS \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
+find $SOURCE_DIRS \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" -o -name "*.swift" -o -name "*.kt" -o -name "*.java" -o -name "*.m" -o -name "*.mm" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
 # Prompt template files — LLM prompt templates (*.md under prompt[s]/) are security targets
 # (untrusted-placeholder isolation, see guidelines/security.md section XII) but are not caught
 # by the standard globs. Include them so template files are never missed.

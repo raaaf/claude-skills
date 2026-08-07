@@ -116,6 +116,7 @@ If the finding extracts a new shared utility (new `lib/*.js`, new helper/trait/m
    (Adjust the glob to the project's language, e.g. `--include="*.php"` for Laravel.)
 2. Switch every occurrence to the new utility import. Remaining inline duplicates are an incomplete fix.
 3. Spots you do NOT migrate due to unclear semantics: name them as a note in the output, don't silently omit them.
+4. **Then grep the REST of the diff for the same SHAPE, not the same string.** The literal grep in step 1 only finds what already looks alike. A second block doing the same job with different identifiers stays invisible to it, and the round closes with the duplication half-removed — round 2 then re-reports it as a fresh finding (2026-07-26: a `joinedAnd`-style helper was extracted in round 1 and its second call site was only found in round 2). Read the other changed files in the diff for blocks with the same structure and different names before reporting APPLIED, and name in your output which files you checked. An extraction that leaves a structural twin behind is not done.
 
 ## Special case: Rename / Extract (trait, class, method, namespace)
 
