@@ -268,6 +268,8 @@ Prompt template: `{AUDIT_AGENTS}/prompt-template.md` → section "For /full-audi
 
 **Idle watchdog (applies to ALL dispatched agents in this phase — workers, fix agents, verifiers; adopted from `../audit/SKILL.md`):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that: dispatch ONE fresh agent for the same dimension/assignment before falling back further — a single idle event is not enough evidence to skip a dimension outright. Only if that fresh agent ALSO fails to deliver → failure path per agent type: **worker** → note in the audit log, continue without the dimension for this batch; **fix agent** → check `git diff HEAD` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once more; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once per agent.
 
+**Partial coverage (`COVERAGE:` trailing line, `{AUDIT_AGENTS}/prompt-template.md`).** Every worker reply ends with `COVERAGE: full` or `COVERAGE: partial | not read: {file1}, {file2}, ...`. A `partial` reply means the dimension is NOT covered for this batch round, however clean the findings look. Collect the named files per dimension into `UNCOVERED_BY_DIM`. If a round remains in this batch (`ROUND < {MAX_RUNDEN_PRO_BATCH}`), that dimension's file list for `ROUND+1` is `UNCOVERED_BY_DIM[dimension]` instead of the full `{BATCH_DATEILISTE}`, so the retry's budget goes to what was missed first — this is the manual rescoping the 2026-08-06 run did by hand, made automatic. Disposition when no round remains: see "After every round" below.
+
 **Dispatch is rate-limited mid-run (org/session limit).** The skill assumes subagents are always
 available; they are not. When `Agent` calls start failing on a usage limit, do NOT silently drop the
 remaining assignments and do NOT let the orchestrator quietly become the fix agent for the whole
@@ -321,7 +323,12 @@ Output:
 
 ### Unverified
 [UNCERTAIN findings from Step C's verification stage, with reason]
+
+### Coverage gaps
+[dimension: not read {file1}, {file2}, ... — from `COVERAGE: partial`]
 ```
+
+The `Coverage gaps` section holds this round's `UNCOVERED_BY_DIM`. Empty section → omit the heading.
 
 **Step C — auto-fix (ALL findings)**
 
@@ -346,11 +353,12 @@ Fix Minor findings when `FIX_MINOR=1` (medium/high/xhigh). Unfixed Minor finding
 
 **Allowed orchestrator edits:** `.claude/audits/*.md` (log + state file), `.claude/audits/full-audit-batches/*.txt`, `CLAUDE.md` context draft, `suppressions.json`, changelog files.
 
-- 0 findings → `CLEAN`
+- 0 findings AND `UNCOVERED_BY_DIM` empty → `CLEAN`. 0 findings WITH `UNCOVERED_BY_DIM` non-empty → NOT clean: no fix wave needed, but the round-disposition table below still applies (carry the unread files into the next round, or mark the row `blocked` if this was the batch's last round) — a dimension that never finished reading is not the same as a dimension that found nothing.
 - Otherwise: fix all high/medium via fix subagent. Group findings by file, bundle multiple findings per file into one fix-agent call.
 - **Centralization findings (new shared utility / helper / trait):** if a finding extracts a duplicated pattern into a new `lib/*.js` (or similar), FIRST grep all occurrences (`grep -rn "{altes_pattern}" src/`, adjust the glob to the project language) and hand ALL matching files to ONE single fix agent (no parallel split, or file collision results). Mark as a centralization fix so the fix agent applies the extended file boundary (see `fix-agent.md` special case) and migrates every occurrence.
 - **Cross-finding dependencies before parallel dispatch:** before dispatching fix agents for the round in parallel, scan the findings for pairs that depend on each other — fix A references a helper/extension that fix B creates in the same run, or fix C reads a file derived from a source that fix D rewrites. Sequence such pairs (A after B, C after D) or merge them onto one agent instead of relying on the round's own verification pass as the safety net; that pass only catches it one round late, after the broken intermediate state has already shipped as its own finding. This complements the centralization rule above, which only covers one finding wrongly split across agents — this one covers two distinct findings that depend on each other.
-- Add each fix to `BEREITS_GEFIXT`. Increment C/I/M in the batch row of the state file.
+- **`FIX_RESULT=PARTIAL` (mandatory, never falls through as done).** The code changed but is incomplete — do not add it to `BEREITS_GEFIXT` (that list tells workers to stop reporting something, which would hide an unfinished fix instead of exposing it). Re-enter the finding into the round's confirmed-finding set under its original `file:line`/severity, description replaced by the agent's `remaining:` text; it counts toward the next round's Critical+Important tally like any confirmed finding, so the batch cannot go `CLEAN` while a `PARTIAL` remainder is outstanding. On the batch's final round there is no next round to carry it into — the regression pass below is explicitly scoped to check it, and if unresolved there, it is why the row goes `blocked` rather than `clean`.
+- Add each fully `FIX_RESULT=APPLIED` fix to `BEREITS_GEFIXT`. Increment C/I/M in the batch row of the state file.
 - Unclear fix → ask briefly. No "open point" without explicit user consent.
 - **Hook-blocked files** (e.g. `.env.example` blocked by a write-protection hook): not a plain open point. Present a ready diff/copy-paste block in the chat and actively offer to apply it yourself via `!` command, not just list it.
 - Result: `FIXES_APPLIED`.
@@ -383,9 +391,11 @@ Any name that appears added in `>= 2` different files (or twice in one) is a can
 
 | Result | ROUND | Action |
 |---|---|---|
-| `CLEAN` | — | row → clean + HEAD; next pending batch (or Phase 2.5) |
-| `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | convergence check; else ROUND+1 |
-| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | **regression pass first** (below), then row → clean + HEAD; next batch (or Phase 2.5) |
+| `CLEAN`, `UNCOVERED_BY_DIM` empty | — | row → clean + HEAD; next pending batch (or Phase 2.5) |
+| `CLEAN`, `UNCOVERED_BY_DIM` non-empty | < {MAX_RUNDEN_PRO_BATCH} | Not actually done: ROUND+1, re-dispatch only the affected dimensions against their unread files |
+| `CLEAN`, `UNCOVERED_BY_DIM` non-empty | = {MAX_RUNDEN_PRO_BATCH} | row → blocked + bullet under `## Blocked / Needs review` naming dimension + unread files (never fully covered) |
+| `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | convergence check; else ROUND+1 (carries `UNCOVERED_BY_DIM` per above if present) |
+| `FIXES_APPLIED` | = {MAX_RUNDEN_PRO_BATCH} | **regression pass first** (below), then row → clean + HEAD; next batch (or Phase 2.5) — UNLESS `UNCOVERED_BY_DIM` or an unresolved `PARTIAL` remainder survives the pass, then row → blocked instead |
 
 ### Regression pass after the final round (MANDATORY)
 
@@ -396,6 +406,7 @@ Dispatch ONE worker, scoped to the files the final round's fix agents actually t
 - Fixes applied by parallel agents that could not see each other's edits: contradictions, half-applied changes, a comment that now describes something else, an import that no longer matches.
 - State a fix forgot to reset, a lifecycle a fix left half-torn-down, a check a fix moved but did not re-verify from the other side.
 - Anything the round's own fix reports flagged as "skipped" or "outside my boundary".
+- Every `FIX_RESULT=PARTIAL` from this round: is the `remaining:` work actually done now, or does it still need another pass?
 
 Findings from this pass are fixed like any other. It does NOT open a new round and does not extend `{MAX_RUNDEN_PRO_BATCH}`; on findings it cannot resolve, the row goes `blocked` rather than `clean`.
 

@@ -90,7 +90,13 @@ Compare all audit logs and look for:
 - Findings whose description suggests a later user report ("reported later", "found in production")
 - For every hit: propose a backlog item in the format `- [ ] eval-fixture: {category}/{short-name} — {1-sentence description of the bug that was missed}`. The user then creates the fixture under `audit/evals/fixtures/{category}/` (or has it created in Phase 0). This grows the eval suite from real misses instead of invented examples.
 
-### 4. Return structured output
+### 4. Backlog cap on new suggestions
+
+Before adding anything to `Suggested improvements`, read the existing open `- [ ] ` items in `learning-log.md` first. Check whether a candidate suggestion is really the same issue as an open item, just worded differently — normalize it the same way you normalize recurring-finding patterns (see "Normalize the pattern the same way `normalize-suppression.sh` does" above). If it matches or overlaps an open item, sharpen or merge into that item's existing text instead of proposing a twin; a sharpened existing item does not count against the cap below.
+
+**Cap: at most 3 NEW `- [ ]` items per run.** Today's run proposed 3 — that is the ceiling this cap is calibrated against, not a target. If genuinely new candidates (after the merge check above) still exceed 3, keep the 3 most important and drop the rest from this run's output; a real problem that recurs will surface again and get proposed again, it does not need to be queued twice. If a new candidate is more important than an item already open in the backlog, say so explicitly and name which existing item it should supersede, instead of silently appending a fourth item and growing the backlog anyway. A backlog that only grows is a known failure mode, not a learning system — the cap exists to force the prioritization choice here, at proposal time, rather than leaving it to accumulate.
+
+### 5. Return structured output
 
 Return **EXACTLY this structure**. The orchestrator parses it and writes the files.
 

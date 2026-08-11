@@ -224,6 +224,8 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 
 **Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
 
+**Partial coverage (`COVERAGE:` trailing line, `agents/prompt-template.md`).** Every worker reply ends with `COVERAGE: full` or `COVERAGE: partial | not read: {file1}, {file2}, ...`. A `partial` reply means the dimension is NOT covered for this round, however clean the findings look — do not treat it like a full scan that found nothing. Collect the named files per dimension into `UNCOVERED_BY_DIM`. If a round remains (`RUNDE < MAX_RUNDEN`), that dimension's assignment for `RUNDE+1` is exactly `UNCOVERED_BY_DIM[dimension]` (ahead of any new hotspots), so the retry's budget goes to what was missed first — this is the manual rescoping done by hand in the run that exposed the gap, made automatic. Disposition when no round remains: see "After each round" below.
+
 **Dispatch is rate-limited mid-run (org/session limit).** The skill assumes subagents are always
 available; they are not. When `Agent` calls start failing on a usage limit, do NOT silently drop the
 remaining assignments and do NOT let the orchestrator quietly become the fix agent for the whole
@@ -285,9 +287,14 @@ Output format:
 
 ### Unverified
 - [Dimension] file:line: description. Verification inconclusive: {REASON from D.7}
+
+### Coverage gaps
+- [Dimension] not read: {file1}, {file2}, ... (`COVERAGE: partial` this round)
 ```
 
 The `Unverified` section holds the `UNCERTAIN` verdicts from Step D.7. It exists so that a finding nobody could settle stays visible instead of disappearing between "not fixed" and "not reported". Empty section → omit the heading.
+
+The `Coverage gaps` section holds this round's `UNCOVERED_BY_DIM` (Step C). Empty section → omit the heading. Entries still open when `RUNDE = MAX_RUNDEN` become Phase 3f open points tagged `Coverage gap` instead of closing out silently with the round.
 
 **Step D.5 — Hallucination validator (MANDATORY before every fix)**
 
@@ -416,13 +423,15 @@ git stash list | grep -q . && echo "STASH DETECTED: Welle ungueltig"
 
 Any assigned file that is NOT modified means the fix never landed or was destroyed by a sibling agent, regardless of what that agent reported. Re-dispatch it ALONE, with no other agent running, and state in its briefing that the previous attempt was destroyed.
 
+4b. **`FIX_RESULT=PARTIAL` (mandatory handling, never falls through unhandled).** The code changed — verify it: the fix-verifier run (E.5) is MANDATORY for these files, exactly like `APPLIED`. It is NOT a clean fix, so do not add it to `BEREITS_GEFIXT` (point 7) — that list tells workers to stop reporting something, which would hide the leftover instead of exposing it. Instead, the original finding (same `file:line`/`severity`/`dimension`) re-enters `FINDINGS_NAECHSTE_RUNDE` with its description replaced by the agent's `remaining:` text, skipping D.7 (already confirmed once). On `RUNDE < MAX_RUNDEN` this feeds directly into the next round's finding set, so it counts toward that round's `FINDINGS_AKTUELLE_RUNDE` like any confirmed finding — a round cannot report `SAUBER` while a `PARTIAL` remainder is outstanding. On `RUNDE = MAX_RUNDEN` there is no next round: see "After each round" below for where it lands (Phase 3f, tagged `Fix incomplete`).
+
 5. Minor: with `FIX_MINOR=1` (medium + high/xhigh effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
 6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`
-7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`. At `floor=high`, also call `patterns-store.sh recur {pattern}` here (same string) — D.7 was skipped for this run, so this is the only point a self-confirmed finding gets counted.
+7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`. At `floor=high`, also call `patterns-store.sh recur {pattern}` here (same string) — D.7 was skipped for this run, so this is the only point a self-confirmed finding gets counted. `FIX_RESULT=PARTIAL` is excluded from this step (see 4b) — only a fully `APPLIED` fix is a fixed issue.
 
 **Step E.5 — Fix verification (MANDATORY for medium/high/xhigh effort, SKIP for low)**
 
-For every `FIX_RESULT=APPLIED`, dispatch a fix-verifier subagent (sonnet):
+For every `FIX_RESULT=APPLIED` or `FIX_RESULT=PARTIAL`, dispatch a fix-verifier subagent (sonnet):
 
 ```
 Agent(
@@ -430,8 +439,10 @@ Agent(
   model: sonnet,
   prompt: "Read agents/fix-verifier.md and evaluate the following fix.
     ORIGINAL_FINDING: {finding}
+    FIX_RESULT: {APPLIED|PARTIAL}
     FIX_DIFF: {diff_des_fix_agents}
     FIX_DATEI: {datei}
+    REMAINING: {remaining text from the agent, if PARTIAL}
     PROJECT_GUIDELINES: {PROJECT_GUIDELINES}",
   run_in_background: false
 )
@@ -458,9 +469,11 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 
 | Result | Action |
 |---|---|
-| `SAUBER` | Loop ends → Phase 2.5 (if multi-file) → Phase 3 |
-| `FIXES_APPLIED` + RUNDE < {MAX_RUNDEN} | `RUNDE += 1`, repeat procedure. No user wait. |
-| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop ends → Phase 2.5 (if multi-file) → Phase 3 |
+| `SAUBER`, `UNCOVERED_BY_DIM` empty | Loop ends → Phase 2.5 (if multi-file) → Phase 3 |
+| `SAUBER`, `UNCOVERED_BY_DIM` non-empty, RUNDE < {MAX_RUNDEN} | Not actually done: `RUNDE += 1`, dispatch only the affected dimensions against their unread files, repeat procedure |
+| `SAUBER`, `UNCOVERED_BY_DIM` non-empty, RUNDE = {MAX_RUNDEN} | Loop ends → Phase 2.5 (if multi-file) → Phase 3; unread files become Phase 3f open points tagged `Coverage gap` |
+| `FIXES_APPLIED` + RUNDE < {MAX_RUNDEN} | `RUNDE += 1`, repeat procedure (carries `UNCOVERED_BY_DIM` per above if present). No user wait. |
+| `FIXES_APPLIED` + RUNDE = {MAX_RUNDEN} | Loop ends → Phase 2.5 (if multi-file) → Phase 3; any outstanding `UNCOVERED_BY_DIM` entries or `PARTIAL` remainders (`FINDINGS_NAECHSTE_RUNDE`, see Step E point 4b) become Phase 3f open points |
 | `NO_CONVERGENCE` | Loop ends → Phase 3. Warning. |
 
 ---
