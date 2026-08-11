@@ -68,7 +68,7 @@ echo "Effort=$CLAUDE_EFFORT | MaxElevation=$MAX_ELEVATION | BatchSize=$BATCH_SIZ
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-bash "$AUDIT_BIN/detect-framework.sh"   # FRAMEWORK, PLATFORM read below; SOURCE_DIRS is %q-escaped raw output, unused here (no downstream reference in this skill)
+bash "$AUDIT_BIN/detect-framework.sh"   # FRAMEWORK, PLATFORM read below; SOURCE_DIRS is a per-directory %q-quoted, space-joined list, unused here (no downstream reference in this skill)
 
 # Frontend surface: whole repo (tracked files), NOT the diff.
 # Optional argument narrows to a path prefix.

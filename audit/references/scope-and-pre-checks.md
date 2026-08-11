@@ -38,7 +38,7 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 ## Output of detect-framework.sh
 
-Provides: `FRAMEWORK`, `SOURCE_DIRS`.
+Provides: `FRAMEWORK`, `SOURCE_DIRS`, `PLATFORM` (three lines, exactly `FRAMEWORK=`, `SOURCE_DIRS=`, `PLATFORM=`, in that order). `SOURCE_DIRS` is a list of directories, each `%q`-quoted individually and joined by plain (unescaped) spaces — a `%q` escape only ever protects a space that is actually inside a directory name, so the separators between directories stay real spaces. Consume it by capturing the script's stdout as text (never one blanket `eval "$(...)"` over all three lines — the `SOURCE_DIRS` line's unescaped separators make it multiple shell words, not a single assignment), extracting the value after `SOURCE_DIRS=`, then reconstructing the array with `eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"`. That targeted `eval` is required (not optional) — it is what turns the `%q` escaping back into real array elements, and it is also what keeps an attacker-controlled directory name in an audited repo inert: `NAME=(...)` compound-assignment syntax only ever treats the parenthesized content as array-literal words, never as commands to execute.
 
 ## Output of pre-checks.sh
 

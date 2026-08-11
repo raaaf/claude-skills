@@ -35,17 +35,38 @@ cd "$PROJECT_ROOT"
 # which the whole mechanism depends on, is unaffected.
 set -f
 
-# Framework detection (shared with /audit) — read output via eval
-eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
+# Framework detection (shared with /audit). detect-framework.sh emits three
+# lines: FRAMEWORK=, SOURCE_DIRS=, PLATFORM=. SOURCE_DIRS is a list of
+# directories, each %q-quoted individually and joined by plain (unescaped)
+# spaces — a %q escape only ever protects a space that is actually INSIDE a
+# directory name, so the separators stay real spaces.
+#
+# DO NOT collapse the four lines below back into the shorter-looking
+#   eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
+# That single form is exactly the bug this comment exists to prevent: the
+# SOURCE_DIRS line's unescaped separator spaces make it several shell words,
+# not one assignment, so bash's "VAR=value word2 word3" sets SOURCE_DIRS only
+# in word2's environment while word2 itself runs as a command -- FRAMEWORK
+# and PLATFORM (plain single-word lines) come through fine, SOURCE_DIRS comes
+# out silently empty, and the only visible symptom is an unrelated-looking
+# bash error ("<dir>: is a directory") that never names SOURCE_DIRS as the
+# casualty. Reproduced directly against this repo (2026-08-11). The four
+# lines below are the only correct way to consume this script's output:
+# capture the raw text first, pull each value out by key with sed, THEN
+# reconstruct the array with its own targeted eval (below, after this block).
+FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
+FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
+SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
+PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
 
-# SOURCE_DIRS is a space-separated list (contract from detect-framework.sh,
-# unchanged). Split into an array once so every find call below gets each
-# directory as its own argument instead of unquoted word-split text — the
-# original `find $SOURCE_DIRS` broke as soon as a directory contained a
-# space (this repo's own root, "Local Sites/claude-skills", is one).
-# SOURCE_DIRS itself keeps its original string form for anything that still
-# reads it as text.
-IFS=' ' read -r -a SOURCE_DIRS_ARR <<< "$SOURCE_DIRS"
+# Reconstruct the array from the %q-quoted, space-joined SOURCE_DIRS text.
+# `NAME=(...)` compound-assignment syntax splits on unescaped whitespace and
+# honors each element's own %q escaping, so every find call below gets each
+# directory as its own argument, spaces-inside-names and all — the original
+# `find $SOURCE_DIRS` broke as soon as a directory contained a space (this
+# repo's own root, "Local Sites/claude-skills", is one). SOURCE_DIRS itself
+# keeps its %q-quoted string form for anything that still reads it as text.
+eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"
 
 # Directory-scope argument (SKILL.md Phase 1: "$ARGUMENTS holds the optional
 # directory scope"). A non-empty value overrides the framework-detected

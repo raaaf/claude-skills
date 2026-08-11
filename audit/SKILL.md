@@ -80,7 +80,19 @@ touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 for h in pretooluse-bash block-unsafe-push block-worktree-wide-git; do [ -f "${CLAUDE_SKILL_DIR}/hooks/$h.sh" ] || echo "WARNING: hook script missing: ${CLAUDE_SKILL_DIR}/hooks/$h.sh (push gate / worktree guard fails open by design, not blocking)"; done
 bash "$AUDIT_BIN/collect-scope.sh"
-eval "$(bash "$AUDIT_BIN/detect-framework.sh")"; echo "FRAMEWORK=$FRAMEWORK SOURCE_DIRS=$SOURCE_DIRS PLATFORM=$PLATFORM"
+# detect-framework.sh emits SOURCE_DIRS as individually %q-quoted directories
+# joined by plain spaces (a %q escape only ever protects a space that's
+# actually inside a directory name) — capture the text and pull each value
+# out by key instead of running the whole 3-line output through one blanket
+# `eval "$(...)"`, which would parse the SOURCE_DIRS line as several shell
+# words rather than a single assignment. Re-echoed clean below so the
+# orchestrator reads correct, human-readable FRAMEWORK/SOURCE_DIRS/PLATFORM
+# values (not the %q escaping) when briefing subagents.
+FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
+FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
+SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
+PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
+echo "FRAMEWORK=$FRAMEWORK SOURCE_DIRS=$SOURCE_DIRS PLATFORM=$PLATFORM"
 bash "$AUDIT_BIN/pre-checks.sh"
 
 # Deterministische Checks. Ergebniscodes -> Findings: Tabelle in
