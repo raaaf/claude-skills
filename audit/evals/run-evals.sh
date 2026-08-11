@@ -95,7 +95,67 @@ dim_pattern_for() {
     a11y) pat="a11y|accessibility" ;;
     ui_design) pat="ui[-_ ]?design|ui" ;;
   esac
-  printf '%s' "$pat"
+  # Anchor the whole alternation to word boundaries so a short dimension name
+  # can only match as a whole word, never as a substring inside an unrelated
+  # word (bare "seo" matched inside ".easeOut", a Swift easing call, on an
+  # animation fixture where no SEO worker had even run). \b is evaluated at
+  # the actual match position regardless of which alternative fires, so one
+  # boundary pair around the group correctly anchors every alternative
+  # (verified: [SEO], seo:, [a11y], accessibility, [UI-Design], ui_design,
+  # [UI], correctness all still match; easeOut, season, useSEO, build,
+  # requirement, equality, qualitative do not). BSD grep -E (macOS default)
+  # supports \b and (...) grouping, confirmed on this machine — no
+  # [[:<:]]/[[:>:]] fallback needed.
+  printf '\\b(%s)\\b' "$pat"
+}
+
+# A real audit-log finding is a wrapped Markdown bullet: the severity tag,
+# dimension tag and file:line sit on the FIRST line ("- [Critical][Dimension]
+# file:line — ..."), the explanatory prose that carries the must_find/
+# must_not_find keywords sits on indented CONTINUATION lines below it. Both
+# scoring passes below match dimension + line + keywords with plain per-line
+# grep, so without this join step the three conditions can never be satisfied
+# by the same physical line unless the finding happens to be short — every
+# well-argued, multi-line finding scores as a miss purely because of how far
+# it wrapped. This joins each bullet with its continuation lines into ONE
+# physical line before scoring; structural boundaries are never absorbed into
+# a bullet: a blank line, another bullet, a heading (#…), a table row (|…),
+# and fenced code blocks (```…```, passed through verbatim, never merged,
+# since a fence's contents are typically indented too and would otherwise
+# read as "more continuation").
+#
+# MUST run on the RAW log text, before the `tr '-' ' '` step below: that tr
+# exists to make hyphenated keywords match space-separated patterns, but it
+# also turns the leading "- [" bullet marker this function keys on into "  ["
+# — join first, then tr the joined result.
+normalize_findings() {
+  awk '
+    {
+      line = $0
+      trimmed = line
+      sub(/^[ \t]+/, "", trimmed)
+      if (trimmed ~ /^```/) {
+        if (buf != "") { print buf; buf = "" }
+        print line
+        in_fence = !in_fence
+        next
+      }
+      if (in_fence) { print line; next }
+      if (line ~ /^- \[/) {
+        if (buf != "") print buf
+        buf = line
+        next
+      }
+      if (buf != "" && line ~ /^[ \t]+[^ \t]/) {
+        sub(/^[ \t]+/, " ", line)
+        buf = buf line
+        next
+      }
+      if (buf != "") { print buf; buf = "" }
+      print line
+    }
+    END { if (buf != "") print buf }
+  '
 }
 
 if [ ! -d "$FIXTURES_DIR" ] || [ ! -d "$EXPECTED_DIR" ]; then
@@ -223,9 +283,13 @@ score_fixture() {
   [ -n "$logfile" ] && cp "$logfile" "$RESULTS_DIR/$base-auditlog.md" 2>/dev/null || true
 
   local log
-  # tr '-' ' ' so hyphenated variants ("SQL-Injection") match space-separated
-  # keyword patterns ("sql injection"); dim/line matching is hyphen-tolerant.
-  log=$({ cat "$logfile" 2>/dev/null; cat "$tmp_dir/claude-stdout.txt" 2>/dev/null; } | tr '-' ' ')
+  # normalize_findings joins each wrapped bullet into one physical line (see
+  # its definition above); the blank line between the two `cat`s guarantees a
+  # bullet from the log file can never absorb the first line of stdout as a
+  # continuation. tr '-' ' ' runs AFTER the join, so hyphenated variants
+  # ("SQL-Injection") match space-separated keyword patterns ("sql
+  # injection"); dim/line matching is hyphen-tolerant either way.
+  log=$({ cat "$logfile" 2>/dev/null; printf '\n'; cat "$tmp_dir/claude-stdout.txt" 2>/dev/null; } | normalize_findings | tr '-' ' ')
   if [ -z "$log" ]; then
     echo "  FAIL $fixture_rel: no audit log and no session output"
     return
