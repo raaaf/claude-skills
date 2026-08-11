@@ -20,6 +20,21 @@ Content: Phase 1 scope bash · context building · optional pre-checks · Phase 
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT"
 
+# Disable pathname expansion for the rest of this script. $EXCLUDE below is
+# an intentionally unquoted string so it word-splits into multiple find
+# flags (existing pattern, shellcheck-disabled where it's used) -- but an
+# unquoted `*` is ALSO a glob, and bash expands it against real files before
+# find ever sees it if any happen to match at that exact relative path. The
+# original `*/node_modules/*`-style entries never matched a real path from
+# repo root so this stayed latent; `.claude/audits/*` (added for the
+# scope-extensions override below) does match real files in this repo, and
+# without `set -f` bash silently rewrites `-not -path .claude/audits/*` into
+# `-not -path <every file in that directory>`, corrupting the find
+# expression -- confirmed by reproducing it (TOTAL_FILES collapsed to 0).
+# `set -f` stops only pathname expansion; IFS word-splitting on $EXCLUDE,
+# which the whole mechanism depends on, is unaffected.
+set -f
+
 # Framework detection (shared with /audit) — read output via eval
 eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 
@@ -73,8 +88,18 @@ else
   SUPPRESSIONS="Keine Suppressions"
 fi
 
-# All audit-relevant files — exclude build output, vendor and cache
-EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/*'
+# All audit-relevant files — exclude build output, vendor and cache, and this
+# skill's own generated log directories (never source, in any project that
+# uses /audit or /full-audit; only matters once a project adds *.md to scope
+# below, but pruning them is unconditional so it needs no project opt-in).
+# Both a nested form (*/.claude/audits/*) and a root form (.claude/audits/*)
+# are needed: when .claude/ is itself one of SOURCE_DIRS (true for this repo
+# — detect-framework.sh's git-ls-files fallback lists every top-level tracked
+# directory, .claude/ included), find's walked paths start with ".claude/..."
+# with no leading "/" for "*/.claude/..." to match against. Proven by testing
+# both forms directly: the leading-* pattern alone left the audits/plans logs
+# in scope, silently, exactly the failure this exclusion exists to prevent.
+EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/* -not -path */.claude/audits/* -not -path .claude/audits/* -not -path */.claude/plans/logs/* -not -path .claude/plans/logs/*'
 # shellcheck disable=SC2086 -- EXCLUDE is a fixed, static flag list (no
 # interpolated paths), meant to expand as multiple words; SOURCE_DIRS_ARR is
 # a quoted array below and no longer subject to SC2086.
@@ -97,6 +122,67 @@ find "${SOURCE_DIRS_ARR[@]}" \( -path "*/prompts/*" -o -path "*/prompt/*" \) -na
 while IFS= read -r f; do
   [ "$(head -c 2 "$f" 2>/dev/null)" = "#!" ] && printf '%s\n' "$f"
 done < <(find "${SOURCE_DIRS_ARR[@]}" -type f -perm -u+x ! -name "*.*" $EXCLUDE 2>/dev/null) >> /tmp/full-audit-files.txt
+
+# Project-level scope override (optional, ADD-only): a project whose real
+# source is Markdown — this repo's own SKILL.md orchestrators, agents/*.md,
+# guidelines/*.md — declares extra extensions via a `scope-extensions:` line
+# in .claude/audit-guidelines.md, the same file and declared-line convention
+# already used by `perf-measure:` (audit/bin/perf-measure.sh):
+#   scope-extensions: md
+# Multiple extensions are space-separated on the one line. No file present,
+# no matching line, or a line that sanitizes down to nothing (see below) all
+# collapse to the same result: SCOPE_EXTRA_LIST stays empty and the block
+# below is skipped, so scope collection behaves exactly as it always has.
+# ADD-only by design: it can only widen the fixed glob above, never replace
+# or narrow it, so there is no override syntax that can silently shrink
+# coverage on a project that had none. REPLACE/SUBTRACT are not implemented
+# — no real project needs less than the default source globs, and a narrowing
+# override would be indistinguishable from the exact bug the plausibility
+# assert below exists to catch.
+SCOPE_EXTRA_LIST=""
+if [ -f "$PROJECT_ROOT/.claude/audit-guidelines.md" ]; then
+  SCOPE_EXTENSIONS_RAW=$(grep -m1 '^scope-extensions:[[:space:]]*' "$PROJECT_ROOT/.claude/audit-guidelines.md" \
+    | sed 's/^scope-extensions:[[:space:]]*//')
+  SCOPE_EXTRA_COUNT=0
+  for ext in $SCOPE_EXTENSIONS_RAW; do
+    # Sanitize: bare alnum tokens only. No dots, slashes, spaces, globs or
+    # find flags survive this — a malformed or hostile line (a stray `*`,
+    # a `-not -path /` fragment, anything) degrades to "not an extension,
+    # skip it" instead of reaching the find command. This is what keeps
+    # "an override that matches everything" impossible: the one token that
+    # WOULD match everything, `*`, is rejected here, not by a downstream
+    # size check.
+    case "$ext" in
+      ''|*[!A-Za-z0-9]*) continue ;;
+    esac
+    # Sanity bound: 5 extra extensions is generous for a real case (this
+    # repo needs exactly one, `md`) and keeps the find expression built
+    # below bounded regardless of what the line contains.
+    [ "$SCOPE_EXTRA_COUNT" -ge 5 ] && break
+    SCOPE_EXTRA_LIST="$SCOPE_EXTRA_LIST $ext"
+    SCOPE_EXTRA_COUNT=$((SCOPE_EXTRA_COUNT + 1))
+  done
+  SCOPE_EXTRA_LIST="${SCOPE_EXTRA_LIST# }"
+fi
+if [ -n "$SCOPE_EXTRA_LIST" ]; then
+  echo "Scope override: scope-extensions adds: $SCOPE_EXTRA_LIST"
+  # Build the -o -name clauses as an array (not string word-splitting like
+  # EXCLUDE above) so the *.$ext patterns stay quoted literals and never risk
+  # pathname expansion against the cwd. Only entered when SCOPE_EXTRA_LIST is
+  # non-empty, so the array always has >= 2 elements here — bash 3.2 treats
+  # an empty array as an unbound variable under `set -u`, this path never
+  # constructs one.
+  SCOPE_EXTRA_FIND_ARGS=()
+  for ext in $SCOPE_EXTRA_LIST; do
+    if [ ${#SCOPE_EXTRA_FIND_ARGS[@]} -eq 0 ]; then
+      SCOPE_EXTRA_FIND_ARGS=(-name "*.$ext")
+    else
+      SCOPE_EXTRA_FIND_ARGS+=(-o -name "*.$ext")
+    fi
+  done
+  find "${SOURCE_DIRS_ARR[@]}" \( "${SCOPE_EXTRA_FIND_ARGS[@]}" \) $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt
+fi
+
 sort -u -o /tmp/full-audit-files.txt /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
@@ -149,10 +235,12 @@ find "${SOURCE_DIRS_ARR[@]}" \( -path "*/lang/*" -o -path "*/locales/*" -o -path
 ```
 
 Variables from the outputs:
-- **ALLE_DATEIEN:** `/tmp/full-audit-files.txt`
+- **ALLE_DATEIEN:** `/tmp/full-audit-files.txt` — includes any `scope-extensions:` extra extensions, already merged and deduplicated
 - **VISUELL_RELEVANTE_DATEIEN:** `/tmp/full-audit-frontend.txt`
 - **TRANSLATION_DATEIEN:** `/tmp/full-audit-translations.txt`
 - **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**, **CONTEXT_FALLBACK**
+
+**Project-level scope override (`scope-extensions:`).** No functional effect on `/audit`: its scope is diff-based (`audit/bin/collect-scope.sh` lists whatever changed, regardless of extension), not a fixed-glob tree scan, so a changed `SKILL.md` is already in `/audit`'s scope today. This override exists for `/full-audit` only, where the fixed extension list above is otherwise the sole gate. `.claude/audit-guidelines.md` is a general per-project file, though — a project using both commands declares the line once and only `/full-audit` acts on it.
 
 ## Suppressions: re-validate factual-claim reasons at audit start
 
@@ -210,8 +298,34 @@ Only useful when a local diff exists. Skip on a greenfield audit.
 ### Batch Creation (BATCHED only)
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+
+# Re-derive the scope-extensions: override (Phase 1.5 runs as a separate bash
+# invocation from Phase 1, so its shell state is gone). Same sanitize-and-cap
+# logic as Phase 1 — see that block for the reasoning; kept here only so a
+# directory whose extra files (e.g. many *.md) push it over BATCH_MAX is
+# still counted correctly and gets split like any oversized directory would.
+SCOPE_EXTRA_LIST=""
+if [ -f "$PROJECT_ROOT/.claude/audit-guidelines.md" ]; then
+  SCOPE_EXTENSIONS_RAW=$(grep -m1 '^scope-extensions:[[:space:]]*' "$PROJECT_ROOT/.claude/audit-guidelines.md" \
+    | sed 's/^scope-extensions:[[:space:]]*//')
+  SCOPE_EXTRA_COUNT=0
+  for ext in $SCOPE_EXTENSIONS_RAW; do
+    case "$ext" in
+      ''|*[!A-Za-z0-9]*) continue ;;
+    esac
+    [ "$SCOPE_EXTRA_COUNT" -ge 5 ] && break
+    SCOPE_EXTRA_LIST="$SCOPE_EXTRA_LIST $ext"
+    SCOPE_EXTRA_COUNT=$((SCOPE_EXTRA_COUNT + 1))
+  done
+fi
+
 for dir in $(find "${SOURCE_DIRS_ARR[@]}" -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
   count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" -o -name "*.sh" -o -name "*.bash" -o -name "*.zsh" \) 2>/dev/null | wc -l)
+  for ext in $SCOPE_EXTRA_LIST; do
+    extra=$(find "$dir" -maxdepth 1 -name "*.$ext" 2>/dev/null | wc -l)
+    count=$((count + extra))
+  done
   [ "$count" -gt 0 ] && echo "$count $dir"
 done | sort -rn
 ```

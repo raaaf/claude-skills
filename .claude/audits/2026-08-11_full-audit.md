@@ -66,7 +66,7 @@ Guideline contradictions (each would produce conflicting verdicts on the same el
 
 ## Open points (not fixed, need a decision)
 
-1. **`audit/SKILL.md` is 571 lines and `full-audit/SKILL.md` 519**, both over the repo's own 500-line convention. Suggested split exists (extract Step E's fix-wave rules to `references/fix-loop.md`) but it moves contract-bearing text, so it is a deliberate decision rather than a mechanical fix.
+1. **`audit/SKILL.md` is 585 lines and `full-audit/SKILL.md` 532**, both well over the repo's own 500-line convention, and both grew further during the post-audit hardening (PARTIAL handling, coverage-gap routing). Suggested split exists (extract Step E's fix-wave rules to `references/fix-loop.md`) but it moves contract-bearing text, so it is a deliberate decision rather than a mechanical fix. This is now the largest un-actioned convention violation in the repo and it grows every time the loop gains a rule.
 2. **`code-quality.md` (514) and `performance.md` (513) exceed 500 lines.** Convention says split into a `{name}-2026.md` continuation; `performance-2026.md` does not exist yet.
 3. **13 guideline files over 100 lines have no table of contents**, against the repo convention. Mechanical but high-churn; not done unprompted.
 4. **`feature-audit/bin/run-tests.sh` and `perf-measure.sh` `eval` repo-supplied commands** (`test-command:` from FEATURE_AUDIT.md, `perf-measure:` from `.claude/audit-guidelines.md`). This is the documented, intended design, but it means opening a hostile repo and running the skill executes its commands. Worth an explicit one-time confirmation per repo.

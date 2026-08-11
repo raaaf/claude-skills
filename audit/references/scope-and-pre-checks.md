@@ -23,6 +23,8 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 - Classified file lists: `---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`
 - Deduplicated unified diff: `---DIFF---`
 
+**Project-level `scope-extensions:` override — does not apply here.** `.claude/audit-guidelines.md` may declare a `scope-extensions:` line (see CLAUDE.md "Project-specific overrides" / Gotchas) to add extensions to `/full-audit`'s fixed-glob tree scan. `/audit`'s scope above is diff-based instead — `collect-scope.sh` lists every changed file regardless of extension — so a changed `SKILL.md`, `agents/*.md` or any other Markdown file is already in `ALLE_DATEIEN` today, with or without the override. The line only has an effect for `/full-audit`.
+
 ## Output of detect-framework.sh
 
 Provides: `FRAMEWORK`, `SOURCE_DIRS`.
