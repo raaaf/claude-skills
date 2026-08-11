@@ -53,5 +53,13 @@ echo "FRAMEWORK=$FRAMEWORK"
 # %q-quoted so `eval "$(...)"` reconstructs the space-separated list as one
 # assignment instead of word-splitting it into a second, failing command.
 # Same pattern as perf-measure.sh --detect; don't simplify back to a bare echo.
+# MUST be consumed via `eval "$(...)"`, never as bare stdout, or the %q
+# backslash-escaping leaks through as literal text. Known consumers:
+#   - full-audit/references/scope-context-batching.md — eval "$(...)" (correct)
+#   - audit/SKILL.md Phase 1 — eval "$(...)" then re-echoes FRAMEWORK/
+#     SOURCE_DIRS/PLATFORM clean, since the orchestrator reads that stdout
+#     text to brief subagents
+#   - design-audit/SKILL.md Phase 1 — reads FRAMEWORK/PLATFORM raw from
+#     stdout (fine, single-token values); does not consume SOURCE_DIRS
 printf 'SOURCE_DIRS=%q\n' "$SOURCE_DIRS"
 echo "PLATFORM=$PLATFORM"

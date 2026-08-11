@@ -80,7 +80,7 @@ touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 for h in pretooluse-bash block-unsafe-push block-worktree-wide-git; do [ -f "${CLAUDE_SKILL_DIR}/hooks/$h.sh" ] || echo "WARNING: hook script missing: ${CLAUDE_SKILL_DIR}/hooks/$h.sh (push gate / worktree guard fails open by design, not blocking)"; done
 bash "$AUDIT_BIN/collect-scope.sh"
-bash "$AUDIT_BIN/detect-framework.sh"
+eval "$(bash "$AUDIT_BIN/detect-framework.sh")"; echo "FRAMEWORK=$FRAMEWORK SOURCE_DIRS=$SOURCE_DIRS PLATFORM=$PLATFORM"
 bash "$AUDIT_BIN/pre-checks.sh"
 
 # Deterministische Checks. Ergebniscodes -> Findings: Tabelle in
