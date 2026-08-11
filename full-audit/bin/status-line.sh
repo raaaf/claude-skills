@@ -11,11 +11,21 @@
 #   | ID | Directory | Files | Rounds | C | I | M | Status | HEAD |   (legacy German headers Verzeichnis/Dateien/Runden still parsed)
 # Status values: pending | running | clean | blocked
 # Header keys: post-phases: <phase>=pending | <phase>=done:<witness> | <phase>=skipped:<reason>
-#   A bare "<phase>=done" with no ":<witness>" (old pre-witness format, or a
-#   value written without evidence) does NOT count as done -- only a witnessed
-#   done or a documented skip does. See references/state-file.md
+#   post_phases=done requires ALL THREE required phase keys (cross_ref, log,
+#   issues -- the fixed set documented in references/state-file.md) to each
+#   carry a witnessed "=done:<witness>" or "=skipped:<reason>", matched
+#   ANCHORED to the start of that key's value. A bare "<phase>=done" with no
+#   ":<witness>" (old pre-witness format, or a value written without
+#   evidence) does NOT count as done. A key outside the required set (typo,
+#   rename, or free text that happens to contain "=done:...") is ignored,
+#   not counted -- an anchored match against an unrecognised key can no
+#   longer substitute for a real one. See references/state-file.md
 #   "Post-Phase Witnesses" for why (post_phases=done was reported once while
-#   the cross-reference round genuinely had not run yet).
+#   the cross-reference round genuinely had not run yet). A witness may
+#   contain spaces (e.g. "skipped:effort was low"); only the leading
+#   "key=value" token of each whitespace-separated fragment is read for a
+#   known key, trailing free-text words are parsed but discarded once they
+#   don't themselves look like "key=value" for a required key.
 # Section "## Blocked / Needs review": bullets count as blocked items ("- none" does not).
 #
 # Output: exactly one line, e.g.
@@ -35,17 +45,37 @@ awk '
   BEGIN{ FS="|"; status_col=0; rounds_col=0; c_col=0; i_col=0; m_col=0
          total=0; pending=0; running=0; clean=0; blocked=0
          rounds=0; crit=0; imp=0; minor=0; items=0; in_blocked=0
-         pp_total=0; pp_done=0 }
+         # Fixed required set (see references/state-file.md). A phase key
+         # outside this set -- typo, rename, or dropped -- is never counted,
+         # no matter what its value looks like.
+         pp_required["cross_ref"]=1; pp_required["log"]=1; pp_required["issues"]=1
+         pp_n_required=3 }
 
   # post-phases header key: only a WITNESSED done ("=done:<witness>") or a
-  # documented skip ("=skipped:<reason>") counts. A bare "=done" (old format,
-  # or written without evidence) does NOT satisfy pp_done -- see
-  # references/state-file.md "Post-Phase Witnesses".
-  /^post-phases:/ {
-    line=$0; sub(/^post-phases:[ \t]*/,"",line)
+  # documented skip ("=skipped:<reason>") on one of the REQUIRED phase keys
+  # counts -- see references/state-file.md "Post-Phase Witnesses". Two
+  # defects fixed here (2026-08-11, reproduced against the committed
+  # version): (1) the value match is now ANCHORED to the start of the
+  # value, so a bogus value that merely CONTAINS "=done:..." as a substring
+  # (e.g. "cross_ref=pending-see-log=done:1") no longer passes; (2) the key
+  # is checked against the required set before its value is even looked at,
+  # so a misspelled/renamed/wrong key (e.g. "zzz=done:1") can no longer
+  # substitute for a real phase. Tolerant of leading whitespace (matches the
+  # sibling rules below) and of a witness containing a space -- splitting on
+  # runs of whitespace can turn one witness into several tokens, but only
+  # the first token of a phase carries its "key=value" shape; later
+  # fragments lack a required key and are dropped, not mis-attributed.
+  /^[[:space:]]*post-phases:/ {
+    line=$0; sub(/^[[:space:]]*post-phases:[ \t]*/,"",line)
     n=split(line, kv, /[ \t]+/)
-    for(k=1;k<=n;k++){ if(kv[k]=="") continue; pp_total++
-      if(kv[k] ~ /=done:.+/ || kv[k] ~ /=skipped:.+/) pp_done++ }
+    for(k=1;k<=n;k++){
+      if(kv[k]=="") continue
+      eq=index(kv[k], "=")
+      if(eq==0) continue
+      key=substr(kv[k],1,eq-1); val=substr(kv[k],eq+1)
+      if(!(key in pp_required)) continue
+      if(val ~ /^done:.+$/ || val ~ /^skipped:.+$/) pp_seen[key]=1
+    }
     next
   }
 
@@ -86,7 +116,9 @@ awk '
   }
 
   END{
-    pp=(pp_total>0 && pp_done==pp_total) ? "done" : "pending"
+    pp_done_count=0
+    for (rk in pp_required) if (rk in pp_seen) pp_done_count++
+    pp=(pp_done_count==pp_n_required) ? "done" : "pending"
     printf "FULL_AUDIT_STATUS batches_total=%d pending=%d running=%d clean=%d blocked=%d rounds_used=%d critical=%d important=%d minor=%d blocked_items=%d post_phases=%s\n",
       total, pending, running, clean, blocked, rounds, crit, imp, minor, items, pp
   }

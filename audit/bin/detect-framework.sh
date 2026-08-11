@@ -67,15 +67,50 @@ else
     # FIND_OPTS in detect-mobile.sh) -- so a caller that skips those prunes
     # still doesn't sweep in node_modules/vendor/build output.
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      # -c core.quotePath=false disables git's default C-quoting of non-ASCII
+      # bytes in a path. With the default on, a directory named "Übersicht"
+      # prints from `git ls-files` as the octal-escaped literal
+      # "\303\234bersicht/sub/file.txt", which this derivation would carry
+      # straight through -- no find(1) on disk matches that string, so the
+      # directory silently disappears from SOURCE_DIRS. -z + NUL-splitting
+      # would be the fully robust fix but is out of scope here (grep/sort/awk
+      # below are all line-oriented); quotePath=false covers the reproduced
+      # non-ASCII loss without rewriting the whole pipeline.
+      #
       # grep -v legitimately finds nothing to filter on a repo with no
       # matching noise dirs (or no subdirectories at all) and exits 1 in that
       # case; under `set -o pipefail` that would abort the whole script, so
       # `|| true` treats "nothing left after filtering" as the valid empty
       # result it is, not an error.
-      SOURCE_DIRS=$( (git ls-files 2>/dev/null | awk -F/ 'NF>1 {print $1}' | sort -u |
-        grep -vE '^(node_modules|vendor|\.next|\.nuxt|dist|build|coverage|\.git)$' || true) |
-        sed 's/$/\//' | tr '\n' ' ')
-      SOURCE_DIRS="${SOURCE_DIRS% }"
+      RAW_TOP_DIRS=$( (git -c core.quotePath=false ls-files 2>/dev/null | awk -F/ 'NF>1 {print $1}' | sort -u |
+        grep -vE '^(node_modules|vendor|\.next|\.nuxt|dist|build|coverage|\.git|\.github|\.vscode|\.idea|target|out|\.venv|__pycache__)$' || true) )
+
+      # SOURCE_DIRS is consumed downstream as a space-separated list
+      # (full-audit/references/scope-context-batching.md:
+      # `IFS=' ' read -r -a SOURCE_DIRS_ARR <<< "$SOURCE_DIRS"`). A top-level
+      # directory whose own name contains a space cannot be represented in
+      # that contract: emitting it word-splits into two nonexistent path
+      # fragments at the consumer (e.g. "my dir/" becomes array elements
+      # "my" and "dir/", neither of which exists), which is a worse failure
+      # than simply omitting the directory (silently wrong scope vs.
+      # silently narrower scope). `printf %q` only protects the `eval`
+      # assignment, it does not fix this -- the space-separated contract
+      # itself can't carry a space-containing name. Skip such names here and
+      # say so on stderr; switching the delimiter is a cross-file contract
+      # change (this script's every emission point, plus every consumer of
+      # SOURCE_DIRS as space-separated text) outside this script's boundary.
+      SOURCE_DIRS=""
+      while IFS= read -r d; do
+        [ -z "$d" ] && continue
+        case "$d" in
+          *' '*)
+            echo "detect-framework.sh: skipping top-level dir with a space in its name (would break the space-separated SOURCE_DIRS contract downstream): $d" >&2
+            continue
+            ;;
+        esac
+        SOURCE_DIRS="$SOURCE_DIRS $d/"
+      done <<< "$RAW_TOP_DIRS"
+      SOURCE_DIRS="${SOURCE_DIRS# }"
     fi
   fi
 

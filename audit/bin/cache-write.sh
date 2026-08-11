@@ -64,7 +64,16 @@ jq --argjson cutoff "$CUTOFF" '.entries |= with_entries(select(.value.timestamp 
 # up in the audit log instead of being a silent side effect on a file the
 # audit run does not own.
 GITIGNORE_REL='.claude/audits/cache.json'
-if git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
+# A symlinked .gitignore is never written to: ">>" follows the symlink and
+# would append outside the repo, and git itself ignores a symlinked
+# .gitignore (check-ignore never reports it as covering anything), so the
+# else branch below would otherwise re-append on every single run
+# (reproduced: three runs against a symlinked .gitignore produced three
+# appended lines in the link target). -L checks the link itself, no
+# dereference.
+if [ -L "$PROJECT_ROOT/.gitignore" ]; then
+  echo "NOTE: $PROJECT_ROOT/.gitignore is a symlink; refusing to follow it. Not touching it -- add '$GITIGNORE_REL' to it manually if needed."
+elif git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
   echo "NOTE: $GITIGNORE_REL is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $GITIGNORE_REL' if that was not intended."
 elif git -C "$PROJECT_ROOT" check-ignore -q "$GITIGNORE_REL" 2>/dev/null; then
   echo "$GITIGNORE_REL already ignored, .gitignore left unchanged"

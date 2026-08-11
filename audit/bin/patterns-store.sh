@@ -102,16 +102,50 @@ overlap_score() {
   echo "$(( inter * 1000 / minN )) $inter"
 }
 
+# Extract the "cat:xxx" category slug from a normalized pattern/key, or the
+# empty string if the pattern carries no category (normalize-suppression.sh
+# only emits a "cat:" prefix when the original finding text had a
+# "[Category]" bracket).
+extract_category() {
+  local s="$1"
+  if [[ "$s" =~ ^cat:([^\|]*)\| ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  else
+    printf '%s' ""
+  fi
+}
+
 # Scan existing .recurrences keys for a near-duplicate of $1 (already
 # normalized). Echoes the best matching existing key on stdout if one clears
 # both thresholds, nothing otherwise. Picks the highest-scoring match;
 # ties keep the first one encountered in stored key order.
+#
+# Category guard: a fold across two DIFFERENT categories is a false merge by
+# definition -- a Docs finding and a Performance finding are never the same
+# pattern as a Security one, no matter how many generic words ("missing rate
+# limit") they share (reproduced: both folded into an unrelated security
+# key on 3 shared tokens, clearing both numeric thresholds). Skip any
+# candidate key whose category is known and differs from the new pattern's
+# category. When either side has no determinable category (the finding text
+# carried no "[Bracket]"), the category check does NOT block the fold --
+# that is the case the folding was built for: an uncategorized recurrence
+# description ("audit-owned infrastructure carries invisible defects, found
+# only incidentally") must still fold into the categorized key seeded
+# earlier ("cat:architecture|audit-owned infrastructure ...|only found
+# incidentally"), because the caller simply didn't restate the category
+# the second time, not because it names a different pattern.
 find_near_duplicate() {
   local pattern="$1"
+  local pattern_cat
+  pattern_cat=$(extract_category "$pattern")
   local best_key="" best_score=-1
-  local key score inter
+  local key score inter key_cat
   while IFS= read -r key; do
     [ -z "$key" ] && continue
+    key_cat=$(extract_category "$key")
+    if [ -n "$pattern_cat" ] && [ -n "$key_cat" ] && [ "$pattern_cat" != "$key_cat" ]; then
+      continue
+    fi
     read -r score inter <<< "$(overlap_score "$pattern" "$key")"
     if [ "$inter" -ge "$NEARDUP_MIN_INTERSECT" ] && [ "$score" -ge "$NEARDUP_MIN_OVERLAP_COEFF_X1000" ]; then
       if [ "$score" -gt "$best_score" ]; then
@@ -163,6 +197,10 @@ case "$CMD" in
     fi
     [ -z "$PATTERN" ] && { echo "pattern required"; exit 1; }
     PATTERN=$(normalize_pattern "$PATTERN")
+    # Re-check after normalization: a pattern made up only of stopwords/short
+    # tokens (e.g. "is of to") normalizes to the empty string, which must not
+    # be stored as key "" (reproduced: two such calls produced {"": 2}).
+    [ -z "$PATTERN" ] && { echo "pattern normalizes to empty (stopwords/punctuation only), nothing recorded"; exit 1; }
 
     TARGET_KEY="$PATTERN"
     EXISTS=$(jq -r --arg p "$PATTERN" 'if (.recurrences | has($p)) then "1" else "0" end' "$STORE")
@@ -203,7 +241,16 @@ esac
 # it, announce it on stdout when it actually changes .gitignore.
 if [ "$CMD" = "add" ]; then
   GITIGNORE_REL='.claude/audits/patterns.json'
-  if git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
+  # A symlinked .gitignore is never written to: ">>" follows the symlink and
+  # would append outside the repo, and git itself ignores a symlinked
+  # .gitignore (check-ignore never reports it as covering anything), so the
+  # else branch below would otherwise re-append on every single run
+  # (reproduced: three runs against a symlinked .gitignore produced three
+  # appended lines in the link target). -L checks the link itself, no
+  # dereference.
+  if [ -L "$PROJECT_ROOT/.gitignore" ]; then
+    echo "NOTE: $PROJECT_ROOT/.gitignore is a symlink; refusing to follow it. Not touching it -- add '$GITIGNORE_REL' to it manually if needed."
+  elif git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
     echo "NOTE: $GITIGNORE_REL is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $GITIGNORE_REL' if that was not intended."
   elif git -C "$PROJECT_ROOT" check-ignore -q "$GITIGNORE_REL" 2>/dev/null; then
     echo "$GITIGNORE_REL already ignored, .gitignore left unchanged"
