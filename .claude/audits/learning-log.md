@@ -2,23 +2,22 @@
 
 Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
-## Trends (Stand 2026-08-05)
+## Trends (as of 2026-08-11)
 
-| Metrik | Wert |
+| Metric | Value |
 |---|---|
-| Audits total | 6 |
-| Critical-Trend (letzte 3) | 0 -> 2 -> 0 |
-| Important-Trend (letzte 3) | 9 -> 6 -> 6 |
-| Top-Kategorie (letzte 5) | Docs/Docs-Sync (14x kumuliert, 4. Audit in Folge Top-Kategorie) |
-| Avg Findings/Audit (letzte 5) | 11,6 |
+| Total audits | 7 (6 regular `/audit` + 1 `/full-audit`) |
+| Critical trend (last 3 regular) | 0 -> 2 -> 0 (unchanged, no new regular audit since 2026-08-05) |
+| Important trend (last 3 regular) | 9 -> 6 -> 6 (unchanged) |
+| Top category (last 5 regular) | Docs/Docs-Sync (14x cumulative, 4th audit in a row top category) |
+| Avg findings/audit (last 5 regular) | 11.6 |
+| Full-audit outlier (2026-08-11) | 3 Critical / 51 Important / 35 Minor across 146 files, 5 batches (excluded from the trend and average above per methodology) |
 
-**Wiederkehrer (aus `patterns-store.sh recurrences`):**
-- 7x meta doc drift (CLAUDE.md / README / SKILL.md bei Skill- oder Feature-Aenderungen)
-- 1x fix agent self-designed test table clean, Verifier findet echten Defekt (Log-Historie zeigt ~10 Vorkommen ueber 3 Audits; der Zaehler wurde erst jetzt erstmals gefuettert, der naechste Lauf steht also deutlich hoeher)
-- 1x audit-eigene Infrastruktur traegt unsichtbare Defekte, nur beilaeufig gefunden (Log-Historie zeigt 3 Vorkommen, gleicher Kaltstart)
+**Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
+- 7x meta doc drift (CLAUDE.md / README / SKILL.md on skill or feature changes)
+- 4x audit-owned infrastructure carries invisible defects, found only incidentally
+- 3x self-tested-clean, verifier finds real bug
 
-
----
 
 ## Retro — 2026-07-07 — main (audit)
 
@@ -190,3 +189,37 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 - [ ] Guideline-Regel: eine Guideline, die Evidenz verlangt, muss benennen, welche Worker-Rolle sie liefern soll, gegengeprueft gegen die Tool-Grants in agents/*.md
 - [ ] eval-fixture: process/self-test-blind-spot, ein Durchlauf, der eine Shell-Guard-Aenderung nur gegen die selbst geschriebene Tabelle prueft
 - [ ] Bei jedem Fund der beiden neuen Muster `patterns-store.sh recur` aufrufen, der Zaehler startet bei 1 statt bei den beobachteten ~10 bzw. 3
+
+## Retro — 2026-08-11 — main (full-audit)
+
+### Statistics
+- Total audits in the project: 7 (6 regular `/audit` + 1 `/full-audit`, this run)
+- Most frequent finding category (this run): security/executable-layer correctness (guard bypasses, credential redaction, RCE-via-`@include`, unbounded network calls, races) — batch 1 (bash helpers + hooks) alone carried 2 of 3 Critical and 19 of 51 Important
+- Average findings per audit (last 5 regular audits, this full-audit excluded per methodology): 11.6
+
+### What went well
+- The round-2 regression review caught 3 of round 1's own fixes with regressions, including a fail-open inversion produced by a fix that was correct in isolation (adding a `source` without guarding it). Composition of individually-correct fixes is a real regression source, not just single-fix errors.
+- Every confirmed guard bypass this run was verified by direct reproduction (executing the exact bypass command), not by tracing code. Both refuted findings were pure read-only inferences — reproduction is now the clear differentiator between confirmed and refuted here.
+- The orchestrator caught the scope-collection anomaly manually (`SOURCE_DIRS` output looked wrong during setup) and traced it to a real Critical bug instead of proceeding with a silently wrong scope.
+
+### What went poorly
+- `detect-framework.sh` emitted an un-evalable `SOURCE_DIRS`, so `eval "$(...)"` silently produced an EMPTY scope for every multi-source-dir framework in every prior run on such a repo. Nothing in the pipeline asserts the collected scope is non-empty before dispatching batches as clean.
+- `/audit` Step 4a (the mandatory post-fix-wave cross-check added after the 2026-07-22 stash incident) read a file nothing in the pipeline ever wrote. The safety net was dead on arrival and no audit noticed until this one.
+- Round-1 batch-1 workers exhausted their 20-tool-call budget after ~19 of 31 files, leaving files with zero coverage. Not caught by the pipeline itself — closed only because round 2 happened to be scoped to the unread files by design of the orchestrator, not by any rule.
+- The previous retro's open item to call `patterns-store.sh recur` for two known patterns went unimplemented again; the live-feed gap was 2 retros old. Closed in this run (see recurrence counts).
+
+### What was missing
+- A deterministic assertion that scope collection actually found files before any batch is dispatched as clean.
+- A way for a worker to report which of its assigned files it never reached, distinct from "read the file and found nothing".
+- Verification that mandatory cross-file contracts (a step reads a file another step is supposed to write) are actually wired end to end, not just correct in isolation.
+
+### Detected patterns
+- Audit-owned infrastructure carries invisible defects, found only incidentally: 4th occurrence overall (2026-08-04 run-evals.sh/check-skips.sh, 2026-08-05 hook registration/exit-code, this run's detect-framework.sh scope bug and dead Step 4a safety net — two more hits in one run).
+- Self-tested-clean, verifier finds real bug: recurs at a new granularity this run — previously within-round (fix agent vs fix-verifier), this time across rounds (round 1's own fixes vs round 2's dedicated regression review).
+- New: read-only inference is a measurably weaker signal than reproduction for guard/hook findings in this pipeline (0 of 2 read-only findings confirmed, vs reproduction backing every confirmed guard bypass).
+- New: a security-guard bug (whole-string grep instead of per-segment exemption evaluation) survived the 2026-08-05 hardening audit of the same file undetected — that audit hardened prefix and case-variation bypasses on `block-worktree-wide-git.sh` but not this one.
+
+### Suggested improvements
+- [ ] `full-audit/SKILL.md` Phase 1 (scope collection): assert the collected file list is non-empty and not wildly smaller than `git ls-files | wc -l` before dispatching batches; abort loudly instead of proceeding. Mirror wherever `audit/SKILL.md` consumes `detect-framework.sh` output for scope.
+- [ ] `audit/agents/prompt-template.md`: a worker that stops before covering every assigned file (budget/turn exhaustion) must name the unread files explicitly in its reply, so the orchestrator can auto-schedule a follow-up round instead of relying on manual detection.
+- [ ] eval-fixture: security/guard-exemption-whole-string-grep — a bash guard whose exemption check greps the whole command string instead of evaluating per logical segment (`&&`/`;`/`$()`), letting one read-only mention (e.g. `git stash list`) disarm protection for a mutating command elsewhere in the same line.
