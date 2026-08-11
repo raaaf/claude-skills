@@ -95,6 +95,7 @@ bash "$AUDIT_BIN/check-number-format-locale.sh"
 bash "$AUDIT_BIN/check-swift-deprecations.sh"
 bash "$AUDIT_BIN/check-test-count-drift.sh"
 bash "$AUDIT_BIN/check-docs-path-drift.sh" "$BASE_REF"
+bash "$AUDIT_BIN/check-docs-claims.sh"
 # Deleted test files: the rule they pinned may have a successor that nobody pins.
 git diff --name-status --diff-filter=DR "$BASE_REF" -- '*[Tt]est*' 2>/dev/null || true
 

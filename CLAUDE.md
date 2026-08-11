@@ -51,6 +51,7 @@ Key invariants:
 | `bash audit/bin/match-guidelines.sh <guidelines-dir>` | Per-file guideline selection: which guidelines' `applies_to` ERE matches the diff (emit `name<TAB>priority<TAB>scoped\|always`); no-frontmatter guidelines are always applicable |
 | `bash audit/bin/test-lock.sh <cmd...>` | Serialize test runs across parallel fix-verifiers (mkdir spinlock, per-repo, 15min TTL; exit 75 on lock timeout) |
 | `bash app-baseline/bin/baseline-scan.sh [root]` | Deterministic baseline scan: one `D<n>\|check\|PASS\|FAIL\|UNVERIFIED\|evidence` line per check (shared by /app-baseline and /baseline-check) |
+| `bash audit/bin/check-docs-claims.sh [root]` | Mechanical doc-drift check: CLAUDE.md/README.md/`*/SKILL.md` claims (script paths, repo paths, skill roster) verified against what actually exists on disk right now |
 
 ## Conventions
 
