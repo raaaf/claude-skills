@@ -221,5 +221,5 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
 ### Suggested improvements
 - [x] `full-audit/SKILL.md` Phase 1 (scope collection): assert the collected file list is non-empty and not wildly smaller than `git ls-files | wc -l` before dispatching batches; abort loudly instead of proceeding. Mirror wherever `audit/SKILL.md` consumes `detect-framework.sh` output for scope.
-- [ ] `audit/agents/prompt-template.md`: a worker that stops before covering every assigned file (budget/turn exhaustion) must name the unread files explicitly in its reply, so the orchestrator can auto-schedule a follow-up round instead of relying on manual detection.
+- [x] `audit/agents/prompt-template.md`: a worker that stops before covering every assigned file (budget/turn exhaustion) must name the unread files explicitly in its reply, so the orchestrator can auto-schedule a follow-up round instead of relying on manual detection.
 - [ ] eval-fixture: security/guard-exemption-whole-string-grep — a bash guard whose exemption check greps the whole command string instead of evaluating per logical segment (`&&`/`;`/`$()`), letting one read-only mention (e.g. `git stash list`) disarm protection for a mutating command elsewhere in the same line.
