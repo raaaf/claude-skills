@@ -215,21 +215,12 @@ Onboards a new or existing app (web or mobile) onto a 12-dimension production st
 
 Checks an existing app against the same spec: deterministic scan first (`app-baseline/bin/baseline-scan.sh`, one PASS/FAIL/UNVERIFIED line per check), LLM evidence pass second, report grouped by severity with an explicit UNVERIFIED section (nothing unverifiable is silently passed). `BASELINE.md`'s "Decided tradeoffs" section suppresses findings. Code-level dimensions (a11y in markup, security in code, UI, performance, docs drift) are delegated to `/full-audit`, never duplicated. Not a push gate — no marker is written.
 
-## Personal skills
-
-These skills live in this repo as architecture examples. They are wired to personal infrastructure and not meant for reuse — read them for patterns, not for installing. All API keys live in the environment (`~/.claude/settings.json` env or `~/.zshrc`), never in the skill files.
-
-- **`/live-audit`** — Scheduled weekly live-site audit (PageSpeed Insights API + SSL check) for my own domains. New findings become GitHub Issues in the matching repo; a suppress-label closes the learning loop. Shows: Scheduled-Tasks-MCP integration, API-based auditing without a browser, issue dedup.
-- **`/mockup`** — Photorealistic mockups of any design (logo, flyer, packaging, apparel) via Nano Banana Pro over OpenRouter; pixel-faithful browser/phone frames via deterministic ImageMagick composite. Shows: image-API orchestration with retry/backoff, AI-vs-deterministic routing.
-- **`/produktbild`** — Faithful AI lifestyle product images: a motif is placed unchanged as a framed print into realistic rooms. Shows: prompt engineering for reference fidelity, parallel per-mood generation.
-- **`/produktvideo`** — AI lifestyle video of a poster in a room via Runway Gen-4 (two-step: render still, then animate), loopable and web-optimized. Shows: multi-step generation pipelines with user checkpoints.
-
 ## Stack
 
 | | |
 |---|---|
 | Format | Markdown + YAML frontmatter |
-| Language | English throughout (skill bodies, agents, references, guidelines); German only in trigger phrases, runtime user-facing strings, and the personal skills |
+| Language | English throughout (skill bodies, agents, references, guidelines); German only in trigger phrases and runtime user-facing strings |
 | Hooks | Two kinds: global hooks in `~/.claude/hooks/` (sync, audit-loop, format), not version controlled; skill-scoped hooks shipped inside the skill (`audit/hooks/`) — frontmatter registers one dispatcher (`pretooluse-bash.sh`) that invokes the guards as siblings |
 | Runtime | Claude Code 2.1.218+ (uses skill frontmatter `model`, `effort`, `allowed-tools`, `disallowed-tools`, and `context: fork` with `background`) |
 | Model resolution | `model: opus` alias (auto-resolves to latest Opus on Anthropic API) |
