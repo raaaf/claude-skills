@@ -67,7 +67,7 @@ gh api "repos/{owner}/{repo}/branches/$(git branch --show-current)/protection" \
   --jq '.required_status_checks.contexts' 2>/dev/null || echo "UNVERIFIED: no API access"
 ```
 
-Then one Explore agent (read-only) for the judgment checks, single dispatch:
+Then one Explore agent (read-only, `run_in_background: false` — the result feeds Phase 2 severity mapping this same turn) for the judgment checks, single dispatch:
 
 - D4 critical_paths: are the app's core flows (auth, payment, core loop) covered
   by at least one test each? Name the flow and the test file, or "uncovered".

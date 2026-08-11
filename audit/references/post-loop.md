@@ -54,18 +54,36 @@ Precheck:
 gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -q github.com || echo "kein gh/github — vertagte Punkte bleiben im Log"
 ```
 
-1. **Dedup against issues:** `gh issue list --state open --search "[audit] {kurzfingerprint}" --json number,title` — if an issue with this `[Dimension] datei:zeile` already exists, **skip**.
-1b. **Dedup against open PRs:** check `OPEN_PRS` from Phase 0.2 (fallback: `gh pr list --state open --search "{datei}"`) — if an open PR already addresses this spot, **skip** + note in the log (`deferred — covered by PR #{N}`).
+**Quoting rule (mandatory, all three commands below):** `{datei}`, `{kurzfingerprint}`, and every other repo-derived placeholder are attacker-controllable. Never interpolate them directly into a double-quoted shell string — `$(...)` and backticks are live there and execute at issue-creation time. Read the value into a variable via a quoted heredoc (`<<'EOF'` — the quoted delimiter disables all expansion of the body) first, then reference `"$VAR"`; a plain variable expansion does not get re-parsed for substitution.
+
+1. **Dedup against issues:**
+   ```bash
+   read -r FP <<'EOF'
+{kurzfingerprint}
+EOF
+   gh issue list --state open --search "[audit] $FP" --json number,title
+   ```
+   If an issue with this `[Dimension] datei:zeile` already exists, **skip**.
+1b. **Dedup against open PRs:** check `OPEN_PRS` from Phase 0.2, fallback:
+   ```bash
+   read -r DATEI <<'EOF'
+{datei}
+EOF
+   gh pr list --state open --search "$DATEI"
+   ```
+   If an open PR already addresses this spot, **skip** + note in the log (`deferred — covered by PR #{N}`).
 2. **Create issue:**
    ```bash
-   gh issue create \
-     --title "[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}" \
-     --body "{Finding-Beschreibung}
+   read -r TITLE <<'EOF'
+[audit] [{Dimension}] {datei}:{zeile} — {kurzbeschreibung}
+EOF
+   gh issue create --title "$TITLE" --label "audit-finding" --body-file - <<'EOF2'
+{Finding-Beschreibung}
 
-   **Entscheidung noetig:** {die konkrete Frage an den User}
+**Entscheidung noetig:** {die konkrete Frage an den User}
 
-   **Quelle:** \`{LOGFILE}\` (Audit vom {DATUM}, Branch \`{BRANCH}\`, HEAD \`{SHORT_SHA}\`)" \
-     --label "audit-finding"
+**Quelle:** `{LOGFILE}` (Audit vom {DATUM}, Branch `{BRANCH}`, HEAD `{SHORT_SHA}`)
+EOF2
    ```
 3. Label missing in repo → `gh label create audit-finding --color FBCA04`, then retry.
 4. Output: `{N} points fixed, {M} deferred as issues: {urls}, {K} discarded`.
