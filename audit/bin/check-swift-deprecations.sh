@@ -38,17 +38,14 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "SWIFTDEPR_RESULT=
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-git-base.sh"
-DEFAULT_BRANCH=$(resolve_default_branch)
-BASE_REF=$(resolve_base_ref "$DEFAULT_BRANCH")
 
-FILES=$(
-  {
-    [ -n "$BASE_REF" ] && git diff --name-only --diff-filter=d "$BASE_REF"...HEAD 2>/dev/null
-    git diff --name-only --diff-filter=d
-    git diff --name-only --diff-filter=d --staged
-    git ls-files --others --exclude-standard
-  } | grep -E '\.swift$' | sort -u || true
-)
+# collect_changed_files() (committed-since-base + working tree + untracked,
+# see lib-git-base.sh) is the same changed-file set every other audit script
+# uses. A hand-rolled reimplementation here previously drifted from it (it
+# unioned two separate `git diff` calls instead of the shared helper's
+# `git diff --name-only HEAD`), so a file could count as changed for the rest
+# of the pipeline but not for this check, or vice versa.
+FILES=$(collect_changed_files | grep -E '\.swift$' || true)
 [ -n "$FILES" ] || { echo "SWIFTDEPR_RESULT=SKIP"; exit 0; }
 
 HITS=""

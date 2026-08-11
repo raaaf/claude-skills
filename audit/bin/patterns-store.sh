@@ -20,12 +20,13 @@ STORE_DIR="$PROJECT_ROOT/.claude/audits"
 STORE="$STORE_DIR/patterns.json"
 mkdir -p "$STORE_DIR"
 [ -f "$STORE" ] || echo '{"version":1,"fix_patterns":[],"dismissals":{},"recurrences":{}}' > "$STORE"
+
+command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
+
 # Migrate stores written before the recurrence counter existed.
 jq -e '.recurrences' "$STORE" >/dev/null 2>&1 || {
   jq '.recurrences = {}' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
 }
-
-command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 
 CMD="${1:-list}"
 
@@ -35,6 +36,7 @@ case "$CMD" in
   add)
     INPUT=$(cat)
     [ -z "$INPUT" ] && exit 0
+    printf '%s' "$INPUT" | jq -e . >/dev/null 2>&1 || { echo "add: malformed JSON on stdin, nothing written" >&2; exit 1; }
     jq --argjson new "$INPUT" '.fix_patterns += [$new] | .fix_patterns |= unique_by(.pattern)' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
     ;;
   list)
@@ -58,6 +60,7 @@ case "$CMD" in
     ;;
   should-suggest)
     PATTERN="${2:-}"
+    [ -z "$PATTERN" ] && { echo "pattern required"; exit 1; }
     COUNT=$(jq -r --arg p "$PATTERN" '.dismissals[$p] // 0' "$STORE")
     [ "$COUNT" -ge 3 ] && exit 0 || exit 1
     ;;

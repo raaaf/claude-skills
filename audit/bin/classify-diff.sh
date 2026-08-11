@@ -40,7 +40,7 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || {
 # not yet on the remote.
 FILES=$(
   {
-    git status --porcelain 2>/dev/null | sed 's/^...//'
+    git status --porcelain 2>/dev/null | sed 's/^...//; s/^.* -> //'
     git diff --name-only @{u}..HEAD 2>/dev/null || true
   } | sed 's/^"//; s/"$//' | sort -u | grep -v '^$' || true
 )

@@ -23,6 +23,13 @@
 # (learning 2026-08-01: the real trigger was empty/fenced triage output).
 # bash 3.2 safe (no set -u, no associative arrays).
 set -o pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Guarded source: a missing lib-git-base.sh must not silently kill the floor.
+# Without this guard, an unguarded `source` of a missing file leaves
+# collect_changed_files undefined, `changed` ends up empty, and every
+# dimension looks skippable -- the exact opposite of "fails open".
+# shellcheck disable=SC1091
+[ -r "$SCRIPT_DIR/lib-git-base.sh" ] && source "$SCRIPT_DIR/lib-git-base.sh"
 FRAMEWORK="${1:-}"
 DIMS="architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy"
 
@@ -48,17 +55,23 @@ if ! printf '%s' "$json" | jq -e . >/dev/null 2>&1; then
   exit 0
 fi
 
-# --- derive file-type signals from git (audit scope: working tree + staged + untracked + unpushed) ---
+# Same fail-open contract as the jq checks above, for the same reason: the floor
+# has zero information without a working collect_changed_files, and silently
+# skipping every dimension is the one outcome this script must never produce.
+if ! command -v collect_changed_files >/dev/null 2>&1; then
+  echo "ROUTING_RUN=$(echo "$DIMS" | tr ' ' ',')"
+  echo "ROUTING_SKIPPED="
+  echo "ROUTING_OVERRIDE="
+  echo "Routing: lib-git-base.sh fehlt oder collect_changed_files nicht definiert -- Floor faellt offen, alle Dimensionen laufen."
+  echo "check-skips.sh: lib-git-base.sh missing or collect_changed_files undefined -- floor cannot derive file signals, falling open (all dimensions run)" >&2
+  exit 0
+fi
+
+# --- derive file-type signals from git (audit scope: same file set as collect-scope.sh) ---
 # Eval fixtures are intentionally-broken TEST DATA, not product code: they must not
 # count as a frontend/code signal for the floor (learning 2026-07-07: a fixture
 # blade.php force-dispatched a11y/ui/ux/security for nothing).
-changed=$( {
-  git diff --name-only HEAD 2>/dev/null
-  git diff --name-only --cached 2>/dev/null
-  git ls-files --others --exclude-standard 2>/dev/null
-  up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
-  [ -n "$up" ] && git diff --name-only "${up}...HEAD" 2>/dev/null
-} | sort -u | grep -vE '(^|/)audit/evals/fixtures/' )
+changed=$(collect_changed_files | grep -vE '(^|/)audit/evals/fixtures/')
 
 match(){ printf '%s\n' "$changed" | grep -qiE "$1"; }
 

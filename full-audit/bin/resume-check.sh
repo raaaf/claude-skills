@@ -21,6 +21,24 @@ cd "$ROOT" || exit 2
 BATCH_DIR=$(grep -m1 '^batch-dir:' "$STATE" | sed 's/^batch-dir:[[:space:]]*//')
 [ -n "$BATCH_DIR" ] || BATCH_DIR=".claude/audits/full-audit-batches"
 
+# Guard against a traversal in an untrusted/corrupted batch-dir: value --
+# resolve it and require it stay under the repo's .claude/audits tree,
+# falling back to the safe default otherwise (this script only reads).
+case "$BATCH_DIR" in
+  /*) BATCH_DIR_ABS="$BATCH_DIR" ;;
+  *) BATCH_DIR_ABS="$ROOT/$BATCH_DIR" ;;
+esac
+AUDITS_ROOT=$(cd "$ROOT/.claude/audits" 2>/dev/null && pwd -P) || AUDITS_ROOT=""
+BATCH_DIR_RESOLVED=$(cd "$BATCH_DIR_ABS" 2>/dev/null && pwd -P) || BATCH_DIR_RESOLVED=""
+if [ -z "$AUDITS_ROOT" ] || [ -z "$BATCH_DIR_RESOLVED" ]; then
+  BATCH_DIR=".claude/audits/full-audit-batches"
+else
+  case "$BATCH_DIR_RESOLVED" in
+    "$AUDITS_ROOT"|"$AUDITS_ROOT"/*) : ;;
+    *) BATCH_DIR=".claude/audits/full-audit-batches" ;;
+  esac
+fi
+
 # Emit "id<TAB>head" per clean row; columns located from the header row.
 awk '
   function trim(s){ gsub(/^[ \t]+|[ \t]+$/,"",s); return s }
@@ -41,6 +59,9 @@ awk '
   }
 ' "$STATE" | while IFS=$(printf '\t') read -r id head; do
   [ -n "$id" ] || continue
+  case "$id" in
+    *[!0-9]*) echo "BATCH_DIRTY id=$id files=unknown"; continue ;;
+  esac
   batch_file="$BATCH_DIR/batch-$id.txt"
 
   if [ ! -f "$batch_file" ]; then

@@ -51,7 +51,7 @@ n=${#arr[@]}
 head_part=""
 tail_part=""
 if (( n <= 9 )); then
-  head_part="${arr[*]}"
+  head_part="${arr[*]:-}"
 else
   for ((i=0; i<6; i++)); do head_part+="${arr[i]} "; done
   for ((i=n-3; i<n; i++)); do tail_part+="${arr[i]} "; done

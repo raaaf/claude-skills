@@ -14,20 +14,16 @@
 #   }
 set -euo pipefail
 
+# shellcheck disable=SC1091
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib-git-base.sh"
+
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
 CACHE_DIR="$PROJECT_ROOT/.claude/audits"
 CACHE_FILE="$CACHE_DIR/cache.json"
 mkdir -p "$CACHE_DIR"
 
 command -v jq >/dev/null 2>&1 || { echo "jq not available, cache disabled"; exit 0; }
-
-hash_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
 
 INPUT=$(cat)
 [ -z "$INPUT" ] && exit 0
@@ -53,9 +49,11 @@ while IFS= read -r file; do
     "$TMP" > "${TMP}.new" && mv "${TMP}.new" "$TMP"
 done <<<"$FILES"
 
-# Prune entries older than 30 days
+# Prune entries older than 30 days. Write to a temp file first and mv it
+# into place, same pattern as the per-file loop above: a direct redirect
+# into CACHE_FILE would truncate it non-atomically on a jq failure/interrupt.
 CUTOFF=$((NOW - 2592000))
-jq --argjson cutoff "$CUTOFF" '.entries |= with_entries(select(.value.timestamp >= $cutoff))' "$TMP" > "$CACHE_FILE"
+jq --argjson cutoff "$CUTOFF" '.entries |= with_entries(select(.value.timestamp >= $cutoff))' "$TMP" > "${TMP}.new" && mv "${TMP}.new" "$CACHE_FILE"
 
 grep -qF '.claude/audits/cache.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || printf '\n.claude/audits/cache.json\n' >> "$PROJECT_ROOT/.gitignore"
 

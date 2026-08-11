@@ -50,5 +50,8 @@ else
 fi
 
 echo "FRAMEWORK=$FRAMEWORK"
-echo "SOURCE_DIRS=$SOURCE_DIRS"
+# %q-quoted so `eval "$(...)"` reconstructs the space-separated list as one
+# assignment instead of word-splitting it into a second, failing command.
+# Same pattern as perf-measure.sh --detect; don't simplify back to a bare echo.
+printf 'SOURCE_DIRS=%q\n' "$SOURCE_DIRS"
 echo "PLATFORM=$PLATFORM"

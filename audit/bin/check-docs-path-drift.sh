@@ -62,24 +62,32 @@ while IFS= read -r path; do
   base=$(basename "$path")
   # Basename alone is too loose for generic names: require either the full path
   # or a basename with an extension, which is what docs actually quote.
+  # Fixed-string match (-F): path/basename can contain regex metacharacters
+  # that occur in real filenames (., +, (, [, a stray backslash, ...) — under
+  # -E those cause either a false-negative miss or a spurious match, silently
+  # swallowed by the 2>/dev/null below.
   case "$base" in
-    *.*) pattern="$path|$base" ;;
-    *)   pattern="$path" ;;
+    *.*) hits=$( { printf '%s\n' "$DOCS" | tr '\n' '\0' | xargs -0 grep -nF -e "$path" -e "$base" 2>/dev/null || true; } ) ;;
+    *)   hits=$( { printf '%s\n' "$DOCS" | tr '\n' '\0' | xargs -0 grep -nF -e "$path" 2>/dev/null || true; } ) ;;
   esac
-  # shellcheck disable=SC2086
-  hits=$( { printf '%s\n' "$DOCS" | tr '\n' '\0' | xargs -0 grep -nE "$pattern" 2>/dev/null || true; } )
   [ -n "$hits" ] || continue
   while IFS= read -r hit; do
     [ -n "$hit" ] || continue
     loc=$(printf '%s' "$hit" | cut -d: -f1,2)
     FINDINGS=1
-    OUT="${OUT}DOCSPATH ${loc} references ${path}, removed in this diff\n"
+    # Real newline, not a literal "\n": OUT is printed with printf '%s' below,
+    # which does not interpret backslash escapes. A doc path/basename can
+    # itself contain a backslash sequence (e.g. "\c"), and printf '%b' treats
+    # that as an unknown escape that stops all further output -- silently
+    # dropping every finding accumulated after it in the same OUT buffer.
+    OUT="${OUT}DOCSPATH ${loc} references ${path}, removed in this diff
+"
   done <<< "$hits"
 done <<< "$GONE"
 
 if [ "$FINDINGS" -eq 1 ]; then
   echo "DOCSPATH_RESULT=FINDINGS"
-  printf '%b' "$OUT"
+  printf '%s' "$OUT"
 else
   echo "DOCSPATH_RESULT=CLEAN"
 fi

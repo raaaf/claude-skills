@@ -74,6 +74,8 @@ if [ "${#LOCALE_DIRS[@]}" -ge 2 ]; then
   REF_NAME=$(basename "$REF")
 
   # 1) file-level diff in both directions
+  I18N_FILE_GAPS_TMP=$(mktemp) || exit 1
+  trap 'rm -f "$I18N_FILE_GAPS_TMP"' EXIT
   for dir in "${LOCALE_DIRS[@]}"; do
     [ "$dir" = "$REF" ] && continue
     loc=$(basename "$dir")
@@ -83,25 +85,110 @@ if [ "${#LOCALE_DIRS[@]}" -ge 2 ]; then
     comm -13 <(cd "$REF" && find . -type f \( -name "*.php" -o -name "*.json" \) | sort) \
              <(cd "$dir" && find . -type f \( -name "*.php" -o -name "*.json" \) | sort) \
       | while read -r f; do echo "MISSING $REF_NAME: file ${f#./}"; done
-  done > /tmp/i18n-file-gaps.$$
+  done > "$I18N_FILE_GAPS_TMP"
 
-  cat /tmp/i18n-file-gaps.$$
-  MISSING_COUNT=$(wc -l < /tmp/i18n-file-gaps.$$ | tr -d ' ')
-  rm -f /tmp/i18n-file-gaps.$$
+  cat "$I18N_FILE_GAPS_TMP"
+  MISSING_COUNT=$(wc -l < "$I18N_FILE_GAPS_TMP" | tr -d ' ')
+  rm -f "$I18N_FILE_GAPS_TMP"
 
   # 2) key-level diff for PHP files (requires php)
   if command -v php >/dev/null 2>&1; then
+    # Parses the array literal with PHP's own tokenizer instead of @include-ing
+    # the file, so auditing a lang file never executes its code (same approach
+    # as check-duplicate-array-keys.sh). Scope: quoted/numeric keys mapped to
+    # scalar or nested-array values, which covers real-world Laravel lang
+    # trees; bare (implicit-index) list values are not a translation-key
+    # shape and are not tracked.
     dump_php_keys() {
       php -r '
-        function flat($a, $p = "") {
-          foreach ($a as $k => $v) {
-            $key = $p === "" ? $k : "$p.$k";
-            if (is_array($v)) { flat($v, $key); } else { echo $key, "\n"; }
-          }
-        }
         $f = $argv[1];
-        $a = @include $f;
-        if (is_array($a)) flat($a);
+        $code = @file_get_contents($f);
+        if ($code === false) { exit; }
+        $tokens = @token_get_all($code);
+        if (!is_array($tokens)) { exit; }
+
+        $out = [];
+        $depth = -1;
+        $frame = [];
+        $pendingKey = null;
+        $sawArrow = false;
+        $awaitingValue = false;
+
+        foreach ($tokens as $token) {
+          if (is_array($token)) {
+            $id = $token[0];
+            $text = $token[1];
+
+            if ($id === T_WHITESPACE || $id === T_COMMENT || $id === T_DOC_COMMENT) {
+              continue;
+            }
+            if ($id === T_ARRAY) {
+              continue;
+            }
+
+            if ($awaitingValue) {
+              if ($sawArrow && $pendingKey !== null && $depth >= 0 && !empty($frame[$depth]["isArray"])) {
+                $prefix = $frame[$depth]["prefix"];
+                $out[] = $prefix === "" ? $pendingKey : $prefix . "." . $pendingKey;
+              }
+              $awaitingValue = false;
+              $sawArrow = false;
+              $pendingKey = null;
+              continue;
+            }
+
+            if ($id === T_CONSTANT_ENCAPSED_STRING) {
+              $pendingKey = substr($text, 1, -1);
+              continue;
+            }
+            if ($id === T_LNUMBER) {
+              $pendingKey = $text;
+              continue;
+            }
+            if ($id === T_DOUBLE_ARROW) {
+              $sawArrow = true;
+              $awaitingValue = true;
+              continue;
+            }
+
+            $pendingKey = null;
+            continue;
+          }
+
+          if ($token === "[" || $token === "(") {
+            $depth++;
+            if ($awaitingValue && $sawArrow && $pendingKey !== null) {
+              $parentPrefix = ($depth - 1 >= 0 && !empty($frame[$depth - 1]["isArray"])) ? $frame[$depth - 1]["prefix"] : "";
+              $prefix = $parentPrefix === "" ? $pendingKey : $parentPrefix . "." . $pendingKey;
+              $frame[$depth] = ["isArray" => true, "prefix" => $prefix];
+            } elseif ($depth === 0) {
+              $frame[$depth] = ["isArray" => true, "prefix" => ""];
+            } else {
+              $frame[$depth] = ["isArray" => false, "prefix" => ""];
+            }
+            $awaitingValue = false;
+            $sawArrow = false;
+            $pendingKey = null;
+            continue;
+          }
+
+          if ($token === "]" || $token === ")") {
+            if ($depth >= 0) {
+              unset($frame[$depth]);
+              $depth--;
+            }
+            $pendingKey = null;
+            $sawArrow = false;
+            $awaitingValue = false;
+            continue;
+          }
+
+          $pendingKey = null;
+          $sawArrow = false;
+          $awaitingValue = false;
+        }
+
+        echo implode("\n", $out), "\n";
       ' "$1" 2>/dev/null | sort
     }
     for dir in "${LOCALE_DIRS[@]}"; do
@@ -148,7 +235,7 @@ fi
 LPROJ_DIRS=()
 while IFS= read -r d; do
   LPROJ_DIRS+=("$d")
-done < <(find "$ROOT" -type d -name "*.lproj" -not -path "*/build/*" -not -path "*/Pods/*" -not -path "*/DerivedData/*" 2>/dev/null | grep -v "Base.lproj" | sort)
+done < <(find "$ROOT" -type d -name "*.lproj" -not -path "*/node_modules/*" -not -path "*/vendor/*" -not -path "*/.git/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/Pods/*" -not -path "*/DerivedData/*" 2>/dev/null | grep -v "Base.lproj" | sort)
 
 if [ "${#LPROJ_DIRS[@]}" -ge 2 ]; then
   FOUND_ANY_SOURCE=1
@@ -174,7 +261,7 @@ if [ "${#LPROJ_DIRS[@]}" -ge 2 ]; then
 fi
 
 # --- Mode D: Android values dirs (strings.xml) ---------------------------------
-ANDROID_DEFAULT=$(find "$ROOT" -type d -name "values" -path "*/res/values" -not -path "*/build/*" 2>/dev/null | head -1)
+ANDROID_DEFAULT=$(find "$ROOT" -type d -name "values" -path "*/res/values" -not -path "*/node_modules/*" -not -path "*/vendor/*" -not -path "*/.git/*" -not -path "*/dist/*" -not -path "*/build/*" 2>/dev/null | head -1)
 if [ -n "$ANDROID_DEFAULT" ] && [ -f "$ANDROID_DEFAULT/strings.xml" ]; then
   FOUND_ANY_SOURCE=1
   dump_xml_keys() {

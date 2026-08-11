@@ -23,6 +23,10 @@
 #   }
 set -euo pipefail
 
+# shellcheck disable=SC1091
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib-git-base.sh"
+
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
 CACHE_FILE="$PROJECT_ROOT/.claude/audits/cache.json"
 
@@ -36,14 +40,10 @@ empty_output() {
 
 [ -f "$CACHE_FILE" ] || { empty_output; exit 0; }
 command -v jq >/dev/null 2>&1 || { empty_output; exit 0; }
-
-hash_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
+# Corrupt/unparseable cache.json (e.g. a truncated write) must degrade to the
+# same empty-output fallback instead of aborting under set -e mid-stream,
+# which would break the CACHED_FILES/CACHED_FINDINGS heredoc contract.
+jq empty "$CACHE_FILE" >/dev/null 2>&1 || { empty_output; exit 0; }
 
 HITS=""
 FINDINGS="[]"
