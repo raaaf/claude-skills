@@ -187,7 +187,7 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 ### Vorgeschlagene Verbesserungen
 - [ ] audit/agents/fix-agent.md: korrigiert ein Fix eine Faktenbehauptung, die anderswo als Begruendung dient, vor "done" einen repo-weiten Grep auf die Kernformulierung verlangen, nicht nur die Zieldatei
 - [ ] Guideline-Regel: eine Guideline, die Evidenz verlangt, muss benennen, welche Worker-Rolle sie liefern soll, gegengeprueft gegen die Tool-Grants in agents/*.md
-- [ ] eval-fixture: process/self-test-blind-spot, ein Durchlauf, der eine Shell-Guard-Aenderung nur gegen die selbst geschriebene Tabelle prueft
+- [x] eval-fixture: process/self-test-blind-spot, ein Durchlauf, der eine Shell-Guard-Aenderung nur gegen die selbst geschriebene Tabelle prueft
 - [x] Bei jedem Fund der beiden neuen Muster `patterns-store.sh recur` aufrufen, der Zaehler startet bei 1 statt bei den beobachteten ~10 bzw. 3
 
 ## Retro — 2026-08-11 — main (full-audit)
@@ -222,4 +222,4 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 ### Suggested improvements
 - [x] `full-audit/SKILL.md` Phase 1 (scope collection): assert the collected file list is non-empty and not wildly smaller than `git ls-files | wc -l` before dispatching batches; abort loudly instead of proceeding. Mirror wherever `audit/SKILL.md` consumes `detect-framework.sh` output for scope.
 - [x] `audit/agents/prompt-template.md`: a worker that stops before covering every assigned file (budget/turn exhaustion) must name the unread files explicitly in its reply, so the orchestrator can auto-schedule a follow-up round instead of relying on manual detection.
-- [ ] eval-fixture: security/guard-exemption-whole-string-grep — a bash guard whose exemption check greps the whole command string instead of evaluating per logical segment (`&&`/`;`/`$()`), letting one read-only mention (e.g. `git stash list`) disarm protection for a mutating command elsewhere in the same line.
+- [x] eval-fixture: security/guard-exemption-whole-string-grep — a bash guard whose exemption check greps the whole command string instead of evaluating per logical segment (`&&`/`;`/`$()`), letting one read-only mention (e.g. `git stash list`) disarm protection for a mutating command elsewhere in the same line.
