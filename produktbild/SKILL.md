@@ -2,7 +2,6 @@
 name: produktbild
 description: "Erstellt treue KI-Lifestyle-Produktbilder: ein beliebiges Motiv (Poster, Print, Design) wird unveraendert als gerahmtes Bild in 1-5 realistische Wohnraeume mit unterschiedlichen Stimmungen gesetzt. Nano Banana Pro (Gemini 3 Pro Image) via OpenRouter erhaelt Design und Text exakt. Output als WebP fuer die custom_images-Media-Collection. - /produktbild, produktbild erstellen, lifestyle bild, mockup, poster in wohnraum, produktfoto"
 argument-hint: "[pfad/zum/motiv.jpg]"
-disable-model-invocation: true
 model: sonnet
 effort: medium
 allowed-tools:
@@ -67,6 +66,10 @@ Motiv handlich skalieren (Modell braucht keine 6k px, spart Tokens). **Nicht tri
 magick "$MOTIV" -resize 1280x /tmp/pb_ref.jpg
 B64=$(base64 -i /tmp/pb_ref.jpg | tr -d '\n')
 ```
+
+### 4b. Kosten bestaetigen (Pflicht, vor dem ersten bezahlten Call)
+
+Jeder Nano-Banana-Call kostet echtes Geld. Bevor Schritt 5 laeuft, per `AskUserQuestion` bestaetigen lassen: Anzahl gewaehlter Stimmungen mal ~0,14 USD (2K) bzw. ~0,28 USD (4K), als Summe genannt (z.B. "3 Stimmungen x 2K = ~0,42 USD"). Optionen: "Ja, generieren (~SUMME)" und "Abbrechen". Nur bei Ja weiter zu Schritt 5; bei Abbrechen hier stoppen, es wird nichts abgerechnet. Diese Bestaetigung nie ueberspringen, auch wenn der Skill automatisch ausgeloest wurde.
 
 ### 5. Pro Stimmung generieren
 

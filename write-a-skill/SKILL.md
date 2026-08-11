@@ -1,6 +1,5 @@
 ---
 name: write-a-skill
-disable-model-invocation: true
 description: "Create a new Claude Code skill with proper frontmatter, scoped trigger description, progressive disclosure into references/, optional subagent dispatch, and self-learning loop. Use when user wants to write, build, or scaffold a new skill, when adding a workflow that should run via slash command, or when refactoring an existing skill into the canonical structure."
 when_to_use: "/write-a-skill, build a new skill, neuen skill schreiben, scaffold skill, refactor skill"
 argument-hint: "[skill-name or short description]"
@@ -51,9 +50,10 @@ given). Use it as the starting point of the interview instead of asking what the
 ```md
 ---
 name: skill-name
-disable-model-invocation: true   # repo default; omit ONLY for intentional auto-trigger
-                                 # (find-skills, delegate) and NEVER
-                                 # set it on scheduled-task skills (blocks the schedule >= v2.1.196)
+# disable-model-invocation: true  # OMIT by default. Set it ONLY when an auto-trigger would
+                                  # spend money or be otherwise unrecoverable (the paid-API
+                                  # skills). NEVER set it on a scheduled-task skill: it blocks
+                                  # the schedule (>= v2.1.196).
 description: "What it does. Use when [specific user triggers]. NOT when [adjacent skill territory]."
 when_to_use: "/slash-command, natural language phrase 1, phrase 2"
 argument-hint: "[optional: what the argument means]"

@@ -1,6 +1,5 @@
 ---
 name: improve
-disable-model-invocation: true
 description: "Use when the user says /improve or wants to discover what the app could do better from a product perspective: feature gaps, growth opportunities, marketing, business potential, unfinished work. Thinks like a product owner, not a code reviewer. For code quality, performance, security, a11y, DX, modernization issues use /audit instead."
 model: sonnet
 effort: high

@@ -2,7 +2,6 @@
 name: mockup
 description: "Erstellt fotorealistische Mockups eines beliebigen Designs (Logo, Flyer, Workbook, Aufkleber, Visitenkarte, Poster, Branding, Apparel, Verpackung, Social) im passenden Kontext via Nano Banana Pro (Gemini 3 Pro Image) ueber OpenRouter. Digitale/UI-Designs (Website, App, Screenshot) pixeltreu ueber deterministischen ImageMagick-Composite (Browser-/Phone-Rahmen, kein KI-Redraw). Bild waehlen, sagen was es ist, fertiges Mockup. - /mockup, mockup erstellen, logo mockup, flyer mockup, branding mockup, visitenkarte, aufkleber, produktmockup, website mockup, app mockup, ui mockup, screenshot mockup, browser mockup, phone mockup, shirt mockup, verpackung, social mockup"
 argument-hint: "[pfad/zum/design.jpg]"
-disable-model-invocation: true
 model: sonnet
 effort: medium
 allowed-tools:
@@ -146,6 +145,12 @@ Aufbau je Szene folgt der Nano-Banana-Formel: **Subjekt + Umgebung. Komposition/
 | `laptop-desk` | 16:9 | A modern laptop on a wooden desk in a bright office, its screen showing this exact website design filling the browser. Slight angle, 35mm, shallow depth of field. Soft daylight, screen crisp, no reflections. (Lifestyle-Vibe, nicht pixeltreu; pixelgenau via Composite-Pfad.) |
 
 Freitext/Other: Szene nach der Formel bauen (Subjekt + Umgebung, dann Kamera/Brennweite/Blende, dann Licht), Suffix anhaengen.
+
+### 5.5 Kosten bestaetigen (Pflicht, nur fuer den Nano-Banana-Pfad)
+
+Betrifft ausschliesslich die generativen Calls in Schritt 6/6b, die echtes Geld kosten. Der Composite-Pfad (Abschnitt "Digital/UI pixeltreu") ist deterministisch und kostenlos, dort entfaellt diese Bestaetigung.
+
+Vor dem ersten bezahlten Call per `AskUserQuestion` bestaetigen lassen: Anzahl gewaehlter Kontexte mal ~0,14 USD (2K) bzw. ~0,07 USD (1K) / ~0,28 USD (4K), als Summe genannt (z.B. "4 Kontexte x 2K = ~0,56 USD"). Optionen: "Ja, generieren (~SUMME)" und "Abbrechen". Nur bei Ja weiter zu Schritt 6; bei Abbrechen hier stoppen, es wird nichts abgerechnet. Diese Bestaetigung nie ueberspringen, auch wenn der Skill automatisch ausgeloest wurde.
 
 ### 6. Generieren (pro Kontext)
 

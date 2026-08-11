@@ -1,6 +1,5 @@
 ---
 name: ship
-disable-model-invocation: true
 description: |
   Full commit-audit-test-push-deploy pipeline in one command. Stages tracked changes, generates
   a conventional commit message (or uses the provided one), enforces audit and (where the project

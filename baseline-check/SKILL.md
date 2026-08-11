@@ -1,6 +1,5 @@
 ---
 name: baseline-check
-disable-model-invocation: true
 description: |
   Checks an existing app (web or mobile) against the app baseline spec: charter,
   quality gates, security posture, deployment/rollback, backups/restore,

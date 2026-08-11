@@ -2,7 +2,6 @@
 name: produktvideo
 description: "Erstellt ein KI-Lifestyle-Video eines punktundpause Produkts (Statement-Poster) in einem realistischen Wohnraum via Runway Gen-4. Zwei-Schritt: Poster per gen4_image als Reference in den Raum rendern, dann mit Kamerafahrt animieren. Loopbar (Boomerang) und web-optimiert (HandBrake). - /produktvideo, produktvideo erstellen, lifestyle video, runway, poster in wohnraum"
 argument-hint: "[pfad/zur/produktbild.jpg]"
-disable-model-invocation: true
 model: sonnet
 effort: medium
 allowed-tools:

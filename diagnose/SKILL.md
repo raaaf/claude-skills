@@ -1,6 +1,5 @@
 ---
 name: diagnose
-disable-model-invocation: true
 description: |
   Systematic bug diagnosis workflow. Creates a fast, shareable reproduction signal first,
   then minimizes, hypothesizes, instruments, fixes, and adds a regression test. Use when a

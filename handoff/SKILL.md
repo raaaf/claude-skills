@@ -1,6 +1,5 @@
 ---
 name: handoff
-disable-model-invocation: true
 disallowed-tools:
   - AskUserQuestion
 description: |

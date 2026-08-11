@@ -1,6 +1,5 @@
 ---
 name: triage
-disable-model-invocation: true
 disallowed-tools:
   - AskUserQuestion
 description: |

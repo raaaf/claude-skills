@@ -1,6 +1,5 @@
 ---
 name: app-baseline
-disable-model-invocation: true
 description: |
   Captures the production baseline for a new or existing app (web or mobile):
   interviews for the positioning charter (three keywords, value prop, target user),
