@@ -212,7 +212,18 @@ Same machinery as /audit Phase 2 E/E.5:
 
 Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background: false`, because the default has been background since Claude Code v2.1.198, and a backgrounded learning agent returns after the orchestrator is done, so the pass is lost) with `AUDIT_TYPE=design-audit` and the design log; orchestrator writes learning-log/suppressions exactly as /audit Phase 5 (subagents cannot write under `.claude/`).
 
+**Run log (fires here — every run reaches Phase 7 regardless of what Phase 5 selected):**
+
 ```bash
+RUN_LOG=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+done
+[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill design-audit --outcome "{fixed|reported_only}" \
+  --counts "critical={N},important={N},minor={N},elevation_offered={N},selected={N},fixed={N}"
+
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
 ```
 

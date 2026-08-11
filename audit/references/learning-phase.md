@@ -4,6 +4,14 @@ Runs after the audit log is written and before the push marker. Skipped entirely
 
 The learning agent returns a **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection, even in the foreground and with bypassPermissions). The orchestrator parses the output and writes it itself — `.claude/audits/*.md` and `.claude/audits/suppressions.json` are among the allowed orchestrator edits.
 
+**Step 0: check the run ledger (mandatory, before dispatching the learning agent).** This is the moment the check happens — the point every `/audit` and `/full-audit` run already passes through — not a new ritual; do not replace it with a separate dashboard.
+
+```bash
+bash "$AUDIT_BIN/run-stats.sh"
+```
+
+`RUNSTATS_RESULT=OK` or `SKIP (reason)`: no action, go to Step 1. `RUNSTATS_RESULT=ANOMALIES (N)`: append every `RUNSTAT <key>: <detail>` line to the current audit log's `## Open Points` section (create the heading if the log has none yet), tagged `AGED` and placed at the top of that section — the same escalation `full-audit/SKILL.md` Phase 4 already applies to a recurring open point or gap, labelled "open/present 3x+ — decision overdue": `run-stats.sh` only reports a condition once it has recurred, so every anomaly it surfaces already qualifies.
+
 **Step 1: dispatch the learning agent**
 
 ```

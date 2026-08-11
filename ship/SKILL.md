@@ -160,6 +160,19 @@ if [ ! -f .claude/ship.md ]; then
 fi
 ```
 
+**Run log setup (resolve once, used by every phase below — fail open, never blocks ship):**
+
+```bash
+RUN_LOG=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+done
+```
+
+Every later "run the log call" below means: `[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
+
 ## Phase 1: Commit
 
 Show what will be committed:
@@ -197,7 +210,7 @@ If found: warn and AskUserQuestion — continue or abort?
 git commit -m "{message}"
 ```
 
-If commit fails (hook rejection, empty): report the hook output and stop.
+If commit fails (hook rejection, empty): run the log call (`outcome=commit_failed`), report the hook output and stop.
 
 ## Phase 2: Audit Gate
 
@@ -209,6 +222,7 @@ if [ -f "$MARKER" ]; then
   AGE=$(( $(date +%s) - $(stat -f%m "$MARKER" 2>/dev/null || stat -c%Y "$MARKER" 2>/dev/null) ))
   if [ "$AGE" -lt 1800 ]; then
     echo "Audit marker fresh (${AGE}s ago). Proceeding to push."
+    SHIP_GATE=passed
   else
     echo "STALE: Audit marker is ${AGE}s old (limit: 1800s)."
     MARKER_FRESH=0
@@ -220,20 +234,20 @@ fi
 ```
 
 If marker missing or stale: AskUserQuestion:
-- "Run /audit now" → invoke the audit skill (`/audit`), then re-check marker. If audit fails: stop.
-- "Push without audit (risky)" → log the bypass and continue with a warning in the output
+- "Run /audit now" → invoke the audit skill (`/audit`), then re-check marker. `SHIP_GATE=passed` on success. On failure: `SHIP_GATE=blocked`, run the log call (`outcome=audit_failed`), then stop.
+- "Push without audit (risky)" → `SHIP_GATE=bypassed`, log the bypass and continue with a warning in the output
 
 Never silently skip the audit. The bypass must be an explicit user choice.
 
 ## Phase 2b: Test Gate
 
-Only when `TEST_COMMAND` is set (`test-command:` in `.claude/ship.md`). Skip silently otherwise.
+Only when `TEST_COMMAND` is set (`test-command:` in `.claude/ship.md`). Skip silently otherwise (`SHIP_TESTS=not_configured`).
 
 ```bash
 eval "$TEST_COMMAND"
 ```
 
-Green → continue to push. Red → STOP. Report the failing tests and do not push. Fixing them is
+Green → `SHIP_TESTS=passed`, continue to push. Red → `SHIP_TESTS=failed`, run the log call (`outcome=test_failed`), then STOP. Report the failing tests and do not push. Fixing them is
 new work: the user commits the fixes, then re-runs `/ship` (which re-audits and re-tests).
 
 Why this phase exists: `/audit` deliberately runs only the *affected* tests, on the assumption
@@ -253,11 +267,11 @@ git push
 If push fails:
 - "Updates were rejected" (diverged): `git pull --rebase`, then retry push
 - "No upstream branch": `git push -u origin $(git branch --show-current)`
-- Any other error: report and stop
+- Any other error: run the log call (`outcome=push_failed`), then report and stop
 
 ## Phase 4: Deploy
 
-If `DEPLOY_COMMAND` is `ci`: skip this phase. CI/CD will deploy from the push.
+If `DEPLOY_COMMAND` is `ci`: skip this phase (`SHIP_DEPLOY=ci`). CI/CD will deploy from the push.
 
 `DEPLOY_COMMAND` is read from the audited repo's own `.claude/ship.md` (same trust boundary as
 `TEST_COMMAND` in Phase 2b — see CLAUDE.md Gotchas). Everywhere else in this pipeline, a
@@ -266,7 +280,7 @@ exception, because it is the one step that is both irreversible and production-f
 because `DEPLOY_COMMAND` is persisted once (Phase 0) and then reused silently on every later run —
 nothing else in the pipeline shows it again before it executes. AskUserQuestion:
 - "Deploy" (default) — show the resolved `{DEPLOY_COMMAND}` in the question text
-- "Skip deploy" → skip Phase 5 (nothing new was deployed, a health check would only re-check the
+- "Skip deploy" → `SHIP_DEPLOY=skipped`, skip Phase 5 (nothing new was deployed, a health check would only re-check the
   old version) and go straight to Summary Output with `Deploy: skipped by user`
 
 Otherwise run the detected/configured deploy command:
@@ -274,7 +288,7 @@ Otherwise run the detected/configured deploy command:
 {DEPLOY_COMMAND}
 ```
 
-Stream output. If command exits non-zero: jump to Phase 6.
+Stream output. `SHIP_DEPLOY=executed` if it exits zero. If command exits non-zero: `SHIP_DEPLOY=failed`, jump to Phase 6.
 
 ## Phase 5: Verify
 
@@ -298,7 +312,7 @@ fi
 
 ## Phase 6: Failure Handling
 
-If deploy failed:
+If deploy failed: run the log call (`outcome=deploy_failed`), then:
 ```
 Deploy failed.
 
@@ -309,7 +323,7 @@ Output: {last 20 lines}
 Next step: /diagnose — describe the deploy failure as the bug.
 ```
 
-If health check failed:
+If health check failed: run the log call (`outcome=health_failed`), then:
 ```
 Deploy succeeded but health check failed.
 
@@ -320,6 +334,8 @@ Check: app logs, recent error monitoring, or run /diagnose.
 ```
 
 ## Summary Output
+
+Run the log call (`outcome=shipped`).
 
 ```
 Shipped.

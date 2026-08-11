@@ -397,11 +397,21 @@ Only files that are clean after all fixes. Do NOT cache files with open points.
 
 On deviation: warn (`Fremd-Commit/Index-Drift waehrend Audit, Diff-Basis instabil`), re-collect scope via `collect-scope.sh` and decide whether the findings still match the diff base. No automatic abort, but push only after deliberate confirmation of the new base.
 
+**Run log (shared step, referenced by every branch below — hard block, partial, passed):**
+
+```bash
+bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{AUDIT_STATUS}" \
+  --counts "rounds={RUNDE}/{MAX_RUNDEN},critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR}" \
+  --gate "{blocked|partial|passed}"
+```
+
+Never in the same Bash call as the marker `touch` or `git push`. `run-log.sh` fails open internally — never blocks this skill.
+
 **Hard block (never push):**
 - `SECRET_SCAN_RESULT=FINDINGS` → abort push, remove secrets + clean history (BFG / `git filter-repo`).
-- Unfixable Critical/Important, linter errors, tests red → `BLOCKED: Push aborted.` + list. NO marker file.
+- Unfixable Critical/Important, linter errors, tests red → `BLOCKED: Push aborted.` + list. NO marker file. Run **Run log** above (`gate=blocked`), then stop.
 
-**`PARTIAL_AUDIT=1`: STOP here — no marker, no push.** Print: `Teilaudit ({SELECTED_DIMENSIONS}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` Then continue with Phase 5 (learning runs normally).
+**`PARTIAL_AUDIT=1`: STOP here — no marker, no push.** Print: `Teilaudit ({SELECTED_DIMENSIONS}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` Run **Run log** above (`gate=partial`), then continue with Phase 5 (learning runs normally).
 
 **Everything fixed, tests green:**
 
@@ -423,7 +433,7 @@ git push
 
 Marker: TTL 30 min, is not deleted (multiple hooks check sequentially). Hash comes from `cwd` of the tool JSON. Multi-repo: `git -C /pfad push`, never `cd /pfad && git push`.
 
-Then: print `Audit passed.`, continue with Phase 5 + 6.
+Run **Run log** above (`gate=passed`). Then: print `Audit passed.`, continue with Phase 5 + 6.
 
 ---
 

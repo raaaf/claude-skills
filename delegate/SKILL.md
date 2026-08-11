@@ -108,6 +108,19 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 | REVISE | SendMessage to the SAME executor with a concrete finding ("criterion 3 red: X; api.ts:90 swallows the error — result pattern per spec"). Max 2 rounds, then BLOCK. |
 | BLOCK | Changes in the working tree: `git checkout` the affected files after asking the user, or leave them + finding. Finding + corrected spec to the user. |
 
+**Run log (fires once a terminal verdict — APPROVE or BLOCK — is reached; REVISE is not terminal):**
+
+```bash
+RUN_LOG=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+done
+[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill delegate --outcome "{APPROVE|BLOCK}" \
+  --counts "revision_rounds={N}"
+```
+
 ## Phase 6: Result report
 
 ```

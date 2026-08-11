@@ -260,7 +260,20 @@ Evaluation: {overall verdict}
 
 ## Phase 4: Learning
 
-**Skip if `SKIP_LEARNING=1`** (low effort). End of audit.
+**Run log (shared step, fires whether or not learning runs):**
+
+```bash
+RUN_LOG=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+done
+[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill plan-it --outcome plan_written \
+  --counts "challenges={N},learning={run|skip}"
+```
+
+**Skip if `SKIP_LEARNING=1`** (low effort). Run **Run log** above (`learning=skip`), then end of audit.
 
 TodoWrite: `Write plan log and learning` (in_progress)
 
@@ -300,6 +313,8 @@ The agent delivers two blocks between `LEARNING_RESULT_START` and `LEARNING_RESU
 - Insert `TRENDS_BLOCK` at the top of `learning-log.md`, or replace the existing block (top snapshot, not an append).
 
 TodoWrite: `Write plan log and learning` (completed)
+
+Run **Run log** above (`learning=run`).
 
 ## Phase 5: Execute & Reconcile (Invocation Variants)
 

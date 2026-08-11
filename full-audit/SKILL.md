@@ -426,6 +426,8 @@ Detail in `references/audit-log-and-issues.md`. Briefly:
 
 **Skip when `SKIP_LEARNING=1`** (low effort). Go directly to wrap-up.
 
+**First, the run-ledger check (single source of truth, same as /audit):** read `../audit/references/learning-phase.md` "Step 0" and execute it against the just-written full-audit log (`$AUDIT_BIN` already resolved in Phase 0).
+
 ```
 Agent(
   prompt: "Read {AUDIT_AGENTS}/learning-agent.md and execute the flow.
@@ -447,10 +449,11 @@ Agent(
 **Completion gate (Bash decides, not memory):**
 
 ```bash
-bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE"
+FULL_STATUS_LINE="$(bash "$FULL_AUDIT_BIN/status-line.sh" "$STATE_FILE")"
+echo "$FULL_STATUS_LINE"
 ```
 
-If the line does NOT show `pending=0 running=0` and `post_phases=done` → NO marker: output an interim digest + status line, end the turn (resume or /loop continues). `blocked>0` does not block completion (points live in the state section + log).
+If the line does NOT show `pending=0 running=0` and `post_phases=done` → NO marker: run **Run log** below (`outcome=paused`, `gate=n/a`), output an interim digest + status line, end the turn (resume or /loop continues). `blocked>0` does not block completion (points live in the state section + log).
 
 **Otherwise — write push marker (MANDATORY):**
 
@@ -462,6 +465,16 @@ touch "/tmp/claude-audit-passed-$hash"
 # Remove PreCompact marker — full audit finished
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
+```
+
+Run **Run log** below (`outcome=complete`, `gate=passed`).
+
+**Run log (fires from both branches above):**
+
+```bash
+bash "$AUDIT_BIN/run-log.sh" --skill full-audit --outcome "{complete|paused}" \
+  --counts "$(echo "$FULL_STATUS_LINE" | sed 's/^FULL_AUDIT_STATUS //; s/ /,/g')" \
+  --gate "{passed|n/a}"
 ```
 
 The state file stays in place (history + dirty-check basis for the next run). Fresh restart: delete the state file + `$BATCH_DIR`.
