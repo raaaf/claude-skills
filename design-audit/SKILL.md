@@ -94,6 +94,24 @@ echo "Frontend surface: $FRONTEND_COUNT files"
 
 **Batching:** if `FRONTEND_COUNT > BATCH_SIZE`, split `FRONTEND_FILES` into chunks of `BATCH_SIZE` (group by directory so views stay together) and run Phase 2 once per chunk, carrying `BEREITS_GEFUNDEN` (consolidated findings so far) into later chunks to avoid duplicates. Consistency checks (tokens, component variants) always get the FULL file list regardless of chunk.
 
+## Phase 1.5: Surface coverage (fail-open)
+
+The worker wave sees only files that exist — a missing 404 page, empty state, or cancel flow is invisible to it by construction. This phase asks the completeness question once, before dissection.
+
+`SURFACE_TAXONOMY` = `${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/design-audit}/references/surface-taxonomy.md`. If the file is missing, skip this phase silently — same report structure without it.
+
+Dispatch ONE sonnet mapping agent (`run_in_background: false`). Input: the frontend file list, the taxonomy file, and an instruction to read the project's route/navigation definitions itself (route files, app-router directories, nav components). Briefing rules: the taxonomy's "Expectation rules" section is binding — a surface is missing only when the domain clearly calls for it, uncertain entries are omitted. Output contract, one line each:
+
+```
+SURFACES_PRESENT: {taxonomy name} -> {entry files}
+SURFACES_MISSING: {taxonomy name} -> {one line why this app's domain expects it}
+```
+
+Consumption:
+
+- `SURFACES_PRESENT` becomes worker context: append the map to every Phase 2 briefing (which views form which surface — grounds cross-view consistency), and it selects the Mobbin core surfaces in Phase 2.5.
+- Every `SURFACES_MISSING` entry is an **Elevation candidate** with purpose `completeness` (valid for surface-coverage candidates only), anchored `file:line` to the route/navigation file where the surface would attach — a missing surface has no file of its own, and the Phase 3 hallucination validator requires an existing anchor. It passes the normal Gate and competes for the `MAX_ELEVATION` cap. Never a Defect.
+
 ## Phase 2: Worker wave (fixed dimensions, no triage)
 
 Dispatch in **one message block** via the Agent tool — the design slice of the audit roster, each reading its own definition from `$AUDIT_AGENTS`:
@@ -121,7 +139,7 @@ Briefing: use `$AUDIT_AGENTS/prompt-template.md` section **"For /full-audit (cod
 
 Two optional signal sources sharpen the Elevation list. Both are strictly optional: if unavailable, skip silently — the audit must produce the same report structure without them.
 
-1. **Mobbin MCP** (`mcp__mobbin__search_flows` / `search_screens` / `search_sections`, load via ToolSearch if deferred): for the 2-4 core surfaces of the app (derive from the file list: checkout, settings, onboarding, dashboard, ...), query how leading products solve the same screen type. Use the results ONLY to ground Elevation suggestions ("reference: how {app} handles {pattern}") and to calibrate what "distinctive" means against the current industry baseline — never to copy a competitor's look, and never as a source of Defects (a deviation from Mobbin references is not a violation).
+1. **Mobbin MCP** (`mcp__mobbin__search_flows` / `search_screens` / `search_sections`, load via ToolSearch if deferred): for the 2-4 core surfaces of the app (from Phase 1.5 `SURFACES_PRESENT` when available, else derive from the file list: checkout, settings, onboarding, dashboard, ...), query how leading products solve the same screen type. Use the results ONLY to ground Elevation suggestions ("reference: how {app} handles {pattern}") and to calibrate what "distinctive" means against the current industry baseline — never to copy a competitor's look, and never as a source of Defects (a deviation from Mobbin references is not a violation).
 
    **Reference verdict (forced ranking):** when Mobbin returned screens for a core surface, do not stop at inspiration. Dispatch ONE fresh-context sonnet agent per surface (max 3 surfaces, `run_in_background: false`): input is the project's view files for that surface plus the reference screens' structure as returned by Mobbin (patterns, states, density — never a look to copy). Output contract, one line per surface: `surface|VERDICT: reference|ours|par|gap1; gap2; gap3`. Each gap must be anchored `file:line` in OUR code and passes the normal Elevation Gate before it enters the report — it competes for the `MAX_ELEVATION` cap like any other candidate, it does not bypass it. A verdict of `ours` or `par` with no gaps is a valid result and is listed under "Already Right". Verdicts are never Defects. Fail-open unchanged: no Mobbin, no verdict stage, same report structure.
 2. **Anthropic design skills** (if listed in this session: `rams`, `dataviz`, brand/design skills): when the report will contain Elevation items in their domain (visual review taste, chart/dataviz styling), the orchestrator MAY invoke the matching skill via the Skill tool during Phase 3 consolidation and use its output as a second opinion on the Elevation ranking. Never dispatch product-file edits from those skills — fixing stays with Phase 6.
@@ -144,6 +162,10 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 
 ### Consistency Map
 - (3-6 bullets: what the design system IS today, where it frays)
+
+### Surface Coverage   (only when Phase 1.5 ran)
+- Present: {N} taxonomy surfaces mapped
+- Missing but expected: {name} — {why}   (gated candidates also appear under Elevation)
 
 ### Defects
 #### Critical / Important / Minor
