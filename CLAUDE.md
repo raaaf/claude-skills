@@ -7,7 +7,7 @@ Repo of Claude Code skills. Each skill is a slash command implemented in Markdow
 - Markdown + YAML frontmatter (skill orchestrator)
 - Bash for deterministic logic (`audit/bin/`, `~/.claude/hooks/`)
 - Claude Code 2.1.218+ frontmatter features: `model`, `effort`, `allowed-tools`, `disallowed-tools`, `maxTurns`, `context: fork` + `agent` + `background`. Full field reference (verified against the official docs, August 2026): `write-a-skill/references/frontmatter.md`
-- No dependencies — no npm, no composer, no venv (single exception: vendored `/find-skills` shells out to `npx skills`)
+- No dependencies — no npm, no composer, no venv
 
 ## Architecture
 
@@ -89,7 +89,6 @@ Key invariants:
 | `/mockup` | sonnet | Photorealistic design mockups via Nano Banana Pro / ImageMagick (personal) |
 | `/produktbild` | sonnet | AI lifestyle product images via Nano Banana Pro (personal) |
 | `/produktvideo` | sonnet | AI lifestyle video via Runway Gen-4 (personal) |
-| `/find-skills` | sonnet | Skill discovery/install via npx skills (third-party, vendored) |
 
 ## Effort levels (set on skill frontmatter or via `CLAUDE_EFFORT`)
 

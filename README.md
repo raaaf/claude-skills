@@ -224,10 +224,6 @@ These skills live in this repo as architecture examples. They are wired to perso
 - **`/produktbild`** — Faithful AI lifestyle product images: a motif is placed unchanged as a framed print into realistic rooms. Shows: prompt engineering for reference fidelity, parallel per-mood generation.
 - **`/produktvideo`** — AI lifestyle video of a poster in a room via Runway Gen-4 (two-step: render still, then animate), loopable and web-optimized. Shows: multi-step generation pipelines with user checkpoints.
 
-## Third-party skills
-
-- **`/find-skills`** — Vendored from the [skills.sh](https://skills.sh) ecosystem. Discovers and installs skills via `npx skills`. Deliberate exceptions: needs npm at runtime, auto-triggers on discovery questions, and always asks before installing anything.
-
 ## Stack
 
 | | |
