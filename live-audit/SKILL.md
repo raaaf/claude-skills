@@ -51,7 +51,6 @@ Agent(
     SKILL_DIR={SKILL_DIR}",
   subagent_type: general-purpose,
   model: sonnet,
-  mode: bypassPermissions,
   run_in_background: false
 )
 ```
@@ -95,7 +94,6 @@ Agent(
     RUN_DATE={DATUM}",
   subagent_type: general-purpose,
   model: haiku,
-  mode: bypassPermissions,
   run_in_background: false
 )
 ```

@@ -12,25 +12,33 @@ Bash logic and prompt templates for Phase 2.5 (codebase context), Phase 3 (chall
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 
-# Detect framework and source dirs
+# Detect framework and source dirs. SOURCE_DIRS_ARR is a bash array built
+# directly (never by re-splitting a joined string), so a space inside
+# PROJECT_ROOT — this repo's own root, "Local Sites/claude-skills", is one —
+# can't fracture a single directory into two find arguments. SOURCE_DIRS
+# keeps the same space-joined string for anything that still reads it as text.
 if [ -f "$PROJECT_ROOT/artisan" ]; then
   FRAMEWORK="laravel"
-  SOURCE_DIRS="$PROJECT_ROOT/app/ $PROJECT_ROOT/resources/ $PROJECT_ROOT/database/ $PROJECT_ROOT/routes/ $PROJECT_ROOT/config/"
+  SOURCE_DIRS_ARR=("$PROJECT_ROOT/app/" "$PROJECT_ROOT/resources/" "$PROJECT_ROOT/database/" "$PROJECT_ROOT/routes/" "$PROJECT_ROOT/config/")
 elif [ -f "$PROJECT_ROOT/package.json" ] && grep -q '"next"' "$PROJECT_ROOT/package.json" 2>/dev/null; then
   FRAMEWORK="nextjs"
-  SOURCE_DIRS="$PROJECT_ROOT/src/ $PROJECT_ROOT/app/ $PROJECT_ROOT/pages/ $PROJECT_ROOT/components/ $PROJECT_ROOT/lib/"
+  SOURCE_DIRS_ARR=("$PROJECT_ROOT/src/" "$PROJECT_ROOT/app/" "$PROJECT_ROOT/pages/" "$PROJECT_ROOT/components/" "$PROJECT_ROOT/lib/")
 elif [ -f "$PROJECT_ROOT/nuxt.config.ts" ] || [ -f "$PROJECT_ROOT/nuxt.config.js" ]; then
   FRAMEWORK="nuxt"
-  SOURCE_DIRS="$PROJECT_ROOT/components/ $PROJECT_ROOT/composables/ $PROJECT_ROOT/pages/ $PROJECT_ROOT/layouts/ $PROJECT_ROOT/server/"
+  SOURCE_DIRS_ARR=("$PROJECT_ROOT/components/" "$PROJECT_ROOT/composables/" "$PROJECT_ROOT/pages/" "$PROJECT_ROOT/layouts/" "$PROJECT_ROOT/server/")
 elif [ -f "$PROJECT_ROOT/manage.py" ]; then
   FRAMEWORK="django"
-  SOURCE_DIRS="$(find "$PROJECT_ROOT" -name 'apps.py' -exec dirname {} \; | head -20 | tr '\n' ' ')"
+  SOURCE_DIRS_ARR=()
+  while IFS= read -r dir; do
+    SOURCE_DIRS_ARR+=("$dir")
+  done < <(find "$PROJECT_ROOT" -name 'apps.py' -exec dirname {} \; 2>/dev/null | head -20)
 else
   FRAMEWORK="generic"
-  SOURCE_DIRS="$PROJECT_ROOT/src/ $PROJECT_ROOT/lib/ $PROJECT_ROOT/app/"
+  SOURCE_DIRS_ARR=("$PROJECT_ROOT/src/" "$PROJECT_ROOT/lib/" "$PROJECT_ROOT/app/")
 fi
+SOURCE_DIRS="${SOURCE_DIRS_ARR[*]}"
 
-find $SOURCE_DIRS -maxdepth 2 -type d 2>/dev/null | head -50
+find "${SOURCE_DIRS_ARR[@]}" -maxdepth 2 -type d 2>/dev/null | head -50
 ```
 
 Determine ZENTRALE_PATTERNS:

@@ -1,6 +1,5 @@
 ---
 name: review
-disable-model-invocation: true
 description: |
   Two-axis code review: checks that implementation follows coding standards (Axis 1) AND
   matches what the linked issue or PRD specified (Axis 2). Axes run in parallel and produce
@@ -113,7 +112,7 @@ cat .claude/audit-guidelines.md 2>/dev/null | head -100
 
 ## Phase 1: Parallel Review
 
-Dispatch both agents simultaneously.
+Dispatch both agents simultaneously (`run_in_background: false` on both — Phase 2 consolidation needs both results this same turn; background is the default since Claude Code v2.1.198 and would return the result only in a later turn).
 
 ### Standards Agent (agents/standards-reviewer.md)
 
@@ -169,7 +168,7 @@ Finding format: max 50 words, file:line refs only, no code snippets (same rules 
 
 For each Critical or Important finding, offer resolution:
 
-- **Fix now**: dispatch `../audit/agents/fix-agent.md`, verify with `../audit/agents/fix-verifier.md`
+- **Fix now**: dispatch `../audit/agents/fix-agent.md` (`run_in_background: false`), verify with `../audit/agents/fix-verifier.md` (`run_in_background: false`)
 - **Accepted deviation**: document why the deviation is intentional (recorded in output)
 - **Spec update**: the implementation is better than the spec; user updates the issue/PRD
 

@@ -1,6 +1,5 @@
 ---
 name: full-audit
-disable-model-invocation: true
 description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 12 parallel subagents per batch (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
@@ -160,6 +159,8 @@ Optional pre-checks (only with a local diff): run `pre-checks.sh`.
 **Dependency health (deterministic):** `bash "$AUDIT_BIN/check-outdated.sh"` (full mode) —
 - `DEP_SECURITY_RESULT=VULNS` → every vulnerable dependency becomes a **Critical** finding `[Security]`
 - `DEP_OUTDATED_RESULT=OUTDATED` → collect as **Minor** findings `[Dependencies]` (grouped, not one issue per package); major jumps with breaking-change risk (e.g. `stripe-php 17 → 20`) become an open point instead of an auto-update — dependency updates are NEVER done automatically by the fix agent
+- `DEP_SECURITY_RESULT=TIMEOUT` → not a finding, not clean: the vulnerability check did not complete. Record a gap note (`Dependency security: skipped, network check timed out`), same class as the Phase 0.4 test-runner / Phase 0.45 build-preflight gap notes, so repeats accumulate toward the Phase 4 aged-gap escalation instead of passing as a silent all-clear.
+- `DEP_OUTDATED_RESULT=TIMEOUT` → same handling, lower stakes: gap note `Dependency updates: skipped, network check timed out`.
 
 **Project-Specific Guidelines:**
 
@@ -264,6 +265,20 @@ Agent definitions: `{AUDIT_AGENTS}/*.md`.
 Prompt template: `{AUDIT_AGENTS}/prompt-template.md` → section "For /full-audit (codebase-based)".
 
 **Idle watchdog (applies to ALL dispatched agents in this phase — workers, fix agents, verifiers; adopted from `../audit/SKILL.md`):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that: dispatch ONE fresh agent for the same dimension/assignment before falling back further — a single idle event is not enough evidence to skip a dimension outright. Only if that fresh agent ALSO fails to deliver → failure path per agent type: **worker** → note in the audit log, continue without the dimension for this batch; **fix agent** → check `git diff HEAD` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once more; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once per agent.
+
+**Dispatch is rate-limited mid-run (org/session limit).** The skill assumes subagents are always
+available; they are not. When `Agent` calls start failing on a usage limit, do NOT silently drop the
+remaining assignments and do NOT let the orchestrator quietly become the fix agent for the whole
+backlog. Decide by what is left: **few, small, already-verified fixes** -> the orchestrator applies
+them directly and the audit log names every fix it applied itself (the hard "orchestrator never edits
+code" rule yields to the limit, but only for findings that already passed verification). **Anything
+larger** -> stop the wave, write the current state (round, confirmed findings, applied fixes, open
+assignments) into the audit log, report the reset time to the user, and resume from that state when
+dispatch works again. Either way the audit log gets a `## Notes: Dispatch limit` block, because a run
+finished this way is not the same evidence as a run with full worker coverage (2026-08-03: the limit
+hit mid-run, the final cross-ref fixes and three open-point fixes were applied by the orchestrator,
+which no line of the skill covered).
+
 
 **Idle rate is a run-level signal, not just a per-agent nuisance.** Count every agent that needed the re-prompt, per wave and for the run as a whole. The per-agent recovery above handles the individual case and demonstrably works — on 2026-08-06 roughly 40% of the fleet went idle without a report and every single one delivered after exactly one re-prompt. What was missing was that nobody recorded the RATE, so a systemic prompt-delivery problem read as a series of unrelated hiccups. Therefore: when the re-prompted share of a wave reaches one third or more, write one line under `## Notes` in the audit log (`Idle-without-report: K/N agents in wave {X} needed the re-prompt`) and carry it into Phase 5 as a process observation. Do not change the recovery path because of it and do not add a second re-prompt: the number is evidence for the next prompt-template revision, not a new retry budget.
 
@@ -460,7 +475,6 @@ Agent(
     AUDIT_TYPE=full-audit",
   subagent_type: general-purpose,
   model: sonnet,
-  mode: bypassPermissions,
   run_in_background: false
 )
 ```

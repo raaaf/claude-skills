@@ -1,6 +1,5 @@
 ---
 name: feature-audit
-disable-model-invocation: true
 description: |
   Goal-driven loop that builds and maintains FEATURE_AUDIT.md, a canonical table of every
   user-facing feature with one automated test per row, and drives it to all-green. Detects the
@@ -95,7 +94,8 @@ impossible or the user declined, with the reason documented in the header.
 
 ## Work order
 
-Do these in order. Optionally dispatch `Explore` subagents for the Phase 1 enumeration sweep on
+Do these in order. Optionally dispatch `Explore` subagents (`run_in_background: false` — the
+enumeration result feeds Phase 1 coverage this same turn) for the Phase 1 enumeration sweep on
 large repos; everything else runs in the main loop.
 
 **(1) Coverage.** Every user-facing feature, route, command, or exported entry point in the scoped

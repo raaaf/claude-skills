@@ -23,6 +23,15 @@ cd "$PROJECT_ROOT"
 # Framework detection (shared with /audit) — read output via eval
 eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 
+# SOURCE_DIRS is a space-separated list (contract from detect-framework.sh,
+# unchanged). Split into an array once so every find call below gets each
+# directory as its own argument instead of unquoted word-split text — the
+# original `find $SOURCE_DIRS` broke as soon as a directory contained a
+# space (this repo's own root, "Local Sites/claude-skills", is one).
+# SOURCE_DIRS itself keeps its original string form for anything that still
+# reads it as text.
+IFS=' ' read -r -a SOURCE_DIRS_ARR <<< "$SOURCE_DIRS"
+
 # Load PROJECT_CONTEXT from CLAUDE.md (awk instead of sed — more portable)
 #
 # Three outcomes, and the middle one is the one that used to fail silently:
@@ -56,23 +65,25 @@ fi
 
 # All audit-relevant files — exclude build output, vendor and cache
 EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* -not -path */.nuxt/* -not -path */dist/* -not -path */build/* -not -path */coverage/* -not -path */.git/*'
-# shellcheck disable=SC2086
-find $SOURCE_DIRS \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" -o -name "*.swift" -o -name "*.kt" -o -name "*.java" -o -name "*.m" -o -name "*.mm" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
+# shellcheck disable=SC2086 -- EXCLUDE is a fixed, static flag list (no
+# interpolated paths), meant to expand as multiple words; SOURCE_DIRS_ARR is
+# a quoted array below and no longer subject to SC2086.
+find "${SOURCE_DIRS_ARR[@]}" \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" -o -name "*.swift" -o -name "*.kt" -o -name "*.java" -o -name "*.m" -o -name "*.mm" -o -name "*.h" -o -name "*.go" -o -name "*.rs" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
 # Prompt template files — LLM prompt templates (*.md under prompt[s]/) are security targets
 # (untrusted-placeholder isolation, see guidelines/security.md section XII) but are not caught
 # by the standard globs. Include them so template files are never missed.
-# shellcheck disable=SC2086
-find $SOURCE_DIRS \( -path "*/prompts/*" -o -path "*/prompt/*" \) -name "*.md" $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt
+# shellcheck disable=SC2086 -- EXCLUDE only, see note above.
+find "${SOURCE_DIRS_ARR[@]}" \( -path "*/prompts/*" -o -path "*/prompt/*" \) -name "*.md" $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt
 sort -u -o /tmp/full-audit-files.txt /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
 # Frontend files
-# shellcheck disable=SC2086
-find $SOURCE_DIRS \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
+# shellcheck disable=SC2086 -- EXCLUDE only, see note above.
+find "${SOURCE_DIRS_ARR[@]}" \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
 
 # Translation files
-# shellcheck disable=SC2086
-find $SOURCE_DIRS \( -path "*/lang/*" -o -path "*/locales/*" -o -path "*/locale/*" -o -path "*/translations/*" -o -path "*/messages/*" -o -path "*/i18n/*" \) \( -name "*.php" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.po" -o -name "*.pot" -o -name "*.ts" -o -name "*.js" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-translations.txt
+# shellcheck disable=SC2086 -- EXCLUDE only, see note above.
+find "${SOURCE_DIRS_ARR[@]}" \( -path "*/lang/*" -o -path "*/locales/*" -o -path "*/locale/*" -o -path "*/translations/*" -o -path "*/messages/*" -o -path "*/i18n/*" \) \( -name "*.php" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.po" -o -name "*.pot" -o -name "*.ts" -o -name "*.js" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-translations.txt
 ```
 
 Variables from the outputs:
@@ -135,8 +146,7 @@ Only useful when a local diff exists. Skip on a greenfield audit.
 ### Batch Creation (BATCHED only)
 
 ```bash
-# shellcheck disable=SC2086
-for dir in $(find $SOURCE_DIRS -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
+for dir in $(find "${SOURCE_DIRS_ARR[@]}" -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
   count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" \) 2>/dev/null | wc -l)
   [ "$count" -gt 0 ] && echo "$count $dir"
 done | sort -rn

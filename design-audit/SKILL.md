@@ -1,6 +1,5 @@
 ---
 name: design-audit
-disable-model-invocation: true
 description: "Purely visual design audit that dissects the entire frontend surface (or a scoped path) file by file: typography, UI visual design incl. OKLCH color system, visual UX patterns, animation, visual a11y (contrast, focus, target sizes). Reports defects AND gated elevation opportunities (consistency, distinctiveness, polish; optional Mobbin reference grounding), then lets the user pick what gets fixed — nothing is changed without selection. Use when the user runs /design-audit or wants the existing UI made better, more consistent, more distinctive. NOT for ARIA/semantics/copy/SEO (use /audit), NOT a push gate, NOT a live-site check (use /live-audit)."
 when_to_use: "/design-audit, Design-Audit, UI-Qualitaet pruefen, Design konsistenter machen, Frontend polieren, UI einzigartiger machen"
 argument-hint: "[optional: path scope, e.g. resources/views/checkout]"
@@ -114,7 +113,7 @@ Consumption:
 
 ## Phase 2: Worker wave (fixed dimensions, no triage)
 
-Dispatch in **one message block** via the Agent tool — the design slice of the audit roster, each reading its own definition from `$AUDIT_AGENTS`:
+Dispatch in **one message block** via the Agent tool (`run_in_background: false` on every agent — Phase 3 consolidation needs all results this same turn) — the design slice of the audit roster, each reading its own definition from `$AUDIT_AGENTS`:
 
 | Agent file | Model | Dimension (visual slice) |
 |---|---|---|
@@ -152,7 +151,7 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
    test -f "{datei}" || echo "HALLUCINATION: file missing"
    [ "$(wc -l < "{datei}")" -ge "{zeile}" ] || echo "HALLUCINATION: line out of range"
    ```
-3. **Defect verification:** every `confidence: low` or `medium` Defect goes through a fresh-context `$AUDIT_AGENTS/finding-verifier.md` subagent (sonnet, parallel, max 10 per block) before it reaches the report, same stage as `/audit` Step D.7, and for the same reason: the workers report for coverage, so the filter belongs to an agent that did not produce the finding. `CONFIRMED` → into the report (apply `SEVERITY_CORRECTION`); `REFUTED` → dropped, never into the report; `UNCERTAIN` → into the report's `Unverified` list with the reason, never a fix candidate. A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass. Unlike `/audit` and `/full-audit`, this selection is not scaled by `CONFIDENCE_FLOOR` — design-audit has no confidence-floor concept and always verifies every low/medium-confidence Defect regardless of effort level. Elevation entries with confidence low are dropped silently, elevation must be convincing or absent.
+3. **Defect verification:** every `confidence: low` or `medium` Defect goes through a fresh-context `$AUDIT_AGENTS/finding-verifier.md` subagent (sonnet, parallel, max 10 per block, each with `run_in_background: false` since its verdict gates the same round's report) before it reaches the report, same stage as `/audit` Step D.7, and for the same reason: the workers report for coverage, so the filter belongs to an agent that did not produce the finding. `CONFIRMED` → into the report (apply `SEVERITY_CORRECTION`); `REFUTED` → dropped, never into the report; `UNCERTAIN` → into the report's `Unverified` list with the reason, never a fix candidate. A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass. Unlike `/audit` and `/full-audit`, this selection is not scaled by `CONFIDENCE_FLOOR` — design-audit has no confidence-floor concept and always verifies every low/medium-confidence Defect regardless of effort level. Elevation entries with confidence low are dropped silently, elevation must be convincing or absent.
 4. **Consistency map** (orchestrator, from worker output): 3-6 bullet summary of the design system's actual state — token coverage, component variant sprawl, spacing/type scale adherence, motion vocabulary coherence.
 
 ## Phase 4: Report (chat, before ANY fix)
@@ -203,9 +202,9 @@ Via `AskUserQuestion` (multiSelect where <= 4 groups, otherwise a collective que
 
 Same machinery as /audit Phase 2 E/E.5:
 
-1. Group selected items by file, dispatch `$AUDIT_AGENTS/fix-agent.md` (sonnet) in parallel — one agent per file, bundles for multiple findings in one file. Fix agents follow their styling-system rule and the motion remedial hierarchy.
+1. Group selected items by file, dispatch `$AUDIT_AGENTS/fix-agent.md` (sonnet, `run_in_background: false`) in parallel — one agent per file, bundles for multiple findings in one file. Fix agents follow their styling-system rule and the motion remedial hierarchy.
 2. Elevation fixes get the elevation text as the finding message plus: "Implement within the existing styling system and tokens. If the change needs a design decision the report did not settle, FIX_RESULT=FAILED with the question instead of improvising."
-3. `VERIFY_FIXES=1` → fix-verifier (sonnet) per applied fix, `RECOMMEND=keep|patch|revert` handling as in /audit (revert → `git checkout {file}` + finding back to open).
+3. `VERIFY_FIXES=1` → fix-verifier (sonnet, `run_in_background: false`) per applied fix, `RECOMMEND=keep|patch|revert` handling as in /audit (revert → `git checkout {file}` + finding back to open).
 4. Post-fix: re-run the linter step from `$AUDIT_ROOT/references/linters-and-tests.md` (formatter + linter only, diff-scoped; no test suites unless the project's `.claude/audit-guidelines.md` names one).
 5. Summarize: fixed / failed / reverted, appended to the design log.
 

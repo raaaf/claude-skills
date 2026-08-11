@@ -391,6 +391,6 @@ SITE_RESULT_END
 
 ## Fehlerbehandlung
 
-- **Site nicht erreichbar** (WebFetch schlägt fehl): `site-unreachable` Critical Issue erstellen, dann Schritt 3-7 überspringen, direkt zu Schritt 10.
+- **Site nicht erreichbar** (`SITE_UNREACHABLE=true` aus dem curl/openssl-Check in Schritt 4, curl schlägt fehl oder liefert keinen 2xx/3xx-Status): `site-unreachable` Critical Issue erstellen, dann Schritt 3-7 überspringen, direkt zu Schritt 10.
 - **gh nicht auth'd** (`GITHUB_TOKEN` fehlt): Output `SITE_RESULT_START ... ERROR: GITHUB_TOKEN missing SITE_RESULT_END`, abbrechen.
 - **gh api write fehlschlägt**: Warnung in Output, nicht abbrechen. Audit-Log und state.json-Schreiben sind non-critical.
