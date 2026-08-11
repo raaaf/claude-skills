@@ -180,6 +180,7 @@ TOTAL_FOUND=0
 TOTAL_CORRECT=0
 TOTAL_FALSE_POSITIVE=0
 TOTAL_TIMEOUT=0
+TOTAL_NO_AUDIT_LOG=0
 declare -A CAT_FOUND
 declare -A CAT_CORRECT
 declare -A CAT_EXPECTED
@@ -275,8 +276,58 @@ score_fixture() {
   # Score against the audit log; headless low-effort sessions do not reliably
   # write the log file, so the session's final chat output (which prints the
   # findings per Phase 3e / Step D) is the fallback scoring source.
-  local logfile
-  logfile=$(ls -t "$tmp_dir/.claude/audits/"*.md 2>/dev/null | head -1 || true)
+  #
+  # Select the real audit log by filename identity, not by mtime. audit/SKILL.md
+  # ("Write audit log", ~line 355) names it
+  #   $(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md
+  # i.e. every genuine audit-log basename starts with a full
+  # YYYY-MM-DD_HHMMSS timestamp followed by a hyphen. Nothing else that lives
+  # under .claude/audits/ matches that shape: learning-log.md
+  # (audit/agents/learning-agent.md) and full-audit-state.md
+  # (full-audit/SKILL.md) are fixed names, suppressions.json/patterns.json/
+  # cache.json aren't .md at all, and full-audit-batches/*.txt sits one
+  # directory deeper than the -maxdepth 1 *.md glob ever reaches. `ls -t`
+  # (mtime order) instead picked whichever .md file was written LAST — when
+  # the learning phase ran after the audit log (it always does), that was
+  # learning-log.md, which of course lists no findings, silently turning a
+  # real find into a reported miss. Matching the filename PATTERN instead of
+  # blacklisting known non-log names means a future generated file that
+  # happens not to look like an audit log is excluded by default, not by
+  # having to be added to a list.
+  local audit_log_pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}-.+\.md$'
+  local matched_logs
+  # `find ... || true`: under pipefail, a pipeline's exit status is the
+  # rightmost NON-zero exit among all its stages, not just the last stage's —
+  # so if the fixture's audit never created .claude/audits/ at all, find's
+  # own exit 1 would abort the whole script here even though `sort` and the
+  # while loop both succeed trivially on the empty input.
+  matched_logs=$(
+    { find "$tmp_dir/.claude/audits" -maxdepth 1 -name '*.md' 2>/dev/null || true; } | sort | while IFS= read -r f; do
+      # `|| true` is load-bearing under `set -euo pipefail`: a non-matching
+      # filename makes the `[[ ]] &&` list exit 1, and for a bare
+      # `var=$(...)` assignment (no command word) bash's exit status IS the
+      # command substitution's exit status, so an unmatched last candidate
+      # would abort the whole script right here.
+      [[ "$(basename "$f")" =~ $audit_log_pattern ]] && printf '%s\n' "$f"
+      true
+    done
+  )
+  local logfile=""
+  local logfile_count=0
+  if [ -n "$matched_logs" ]; then
+    logfile_count=$(printf '%s\n' "$matched_logs" | grep -c .)
+    # sort above is lexicographic; the embedded YYYY-MM-DD_HHMMSS timestamp
+    # makes lexicographic order equal chronological order, so the last line
+    # is deterministically the newest real audit log without touching mtime.
+    logfile=$(printf '%s\n' "$matched_logs" | tail -1)
+  fi
+  if [ "$logfile_count" -gt 1 ]; then
+    echo "  MULTI_LOG $fixture_rel: $logfile_count files matched the audit-log pattern, picked the lexicographically last (newest embedded timestamp): $(basename "$logfile")"
+  fi
+  if [ -z "$logfile" ]; then
+    echo "  NO_AUDIT_LOG $fixture_rel: no file under .claude/audits/ matched the audit-log naming pattern (YYYY-MM-DD_HHMMSS-branch.md) — falling back to session stdout only; a low/zero recall here is UNCONFIRMED, not a proven miss"
+    TOTAL_NO_AUDIT_LOG=$((TOTAL_NO_AUDIT_LOG + 1))
+  fi
 
   # Persist artifacts so misses can be diagnosed/rescored without a paid rerun.
   cp "$tmp_dir/claude-stdout.txt" "$RESULTS_DIR/$base-stdout.txt" 2>/dev/null || true
@@ -415,6 +466,7 @@ else
 fi
 echo "  False-positives: $TOTAL_FALSE_POSITIVE"
 [ "$TOTAL_TIMEOUT" -gt 0 ] && echo "  TIMED OUT (unmeasured, counted as misses): $TOTAL_TIMEOUT"
+[ "$TOTAL_NO_AUDIT_LOG" -gt 0 ] && echo "  NO AUDIT LOG FOUND (scored from stdout fallback only, treat as unconfirmed): $TOTAL_NO_AUDIT_LOG"
 echo
 echo "Per category:"
 for cat in "${!CAT_EXPECTED[@]}"; do
