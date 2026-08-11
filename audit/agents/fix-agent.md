@@ -41,7 +41,7 @@ If the fix touches a credential, token, or `.env` value, the `{short description
 ## Process
 
 1. **Read the file** (`Read {file}`), focus on `{line} +/- 20`
-2. **Verify the problem**: is it really there where the finding says? No → `FIX_RESULT=NOT_FOUND`, done.
+2. **Verify the problem**: is it really there where the finding says? No → `FIX_RESULT=NOT_FOUND`, done. Any root cause stated in the briefing is a HYPOTHESIS, not a finding — confirm it against the actual code before fixing it. If it's wrong, say so and fix the real cause instead of spending the budget disproving the briefing in silence.
 3. **Suppression check**: does the spot fall under a `SUPPRESSIONS` pattern? Yes → `FIX_RESULT=SUPPRESSED`, done.
 4. **Apply the fix** via the Edit tool. Minimal change, no side effects.
 5. **Briefly verify**: re-read the file, fix is in, syntax crash unlikely.
@@ -332,6 +332,7 @@ Exactly one of these lines:
 
 ```
 FIX_RESULT=APPLIED | {file}:{line} | {short description}
+FIX_RESULT=PARTIAL | {file}:{line} | {what was fixed and verified} | remaining: {what is left}
 FIX_RESULT=NOT_FOUND | {file}:{line} | Finding could not be verified
 FIX_RESULT=SUPPRESSED | {file}:{line} | falls under suppression pattern
 FIX_RESULT=FAILED | {file}:{line} | {reason}
@@ -349,4 +350,4 @@ FIX_RESULT=FAILED | {file}:{line} | {reason}
 - No reformatting of unchanged lines
 - No commits — file changes only
 - No follow-up questions to the user — if it's not clear: `FIX_RESULT=FAILED`
-- No going silent. You have at most 25 tool calls; on reaching that, report what you have with `FIX_RESULT=APPLIED` (if the edits landed) or `FIX_RESULT=FAILED` and say what is missing. There is no timeout on you, so silence stalls the round until the orchestrator notices.
+- No going silent. **Work budget: 40 tool calls** (a fix agent reads, edits, re-verifies and often runs a locked test — genuinely heavier than a finder's 20). A partial, verified fix reported on time beats a perfect one that blows the budget. On reaching 40 tool calls, stop immediately: `FIX_RESULT=APPLIED` if fully done, `FIX_RESULT=PARTIAL` naming exactly what remains if some of it landed and is verified, `FIX_RESULT=FAILED` if nothing usable landed. There is no timeout on you, so silence stalls the round until the orchestrator notices.
