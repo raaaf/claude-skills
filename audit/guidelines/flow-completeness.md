@@ -10,6 +10,12 @@ A user flow is a chain: every step must exist, give feedback, and hand the user 
 
 **Severity anchor:** `recommended` → findings from this guideline are Minor by default. Escalate to Important only when the missing step strands the user with no way forward or back (dead end), or silently loses their data/money (double payment, lost upload, unconfirmed destructive action).
 
+## Contents
+- I. Authentication Flows
+- II. Commerce Flows
+- III. Data & Form Flows
+- IV. Account & Support Flows
+
 ## I. Authentication Flows
 
 **Login**

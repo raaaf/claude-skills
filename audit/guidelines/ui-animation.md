@@ -4,6 +4,23 @@ priority: recommended
 ---
 # UI Animation Checklist
 
+## Contents
+- 1. Should This Animate?
+- 2. Animation Purpose
+- 3. Easing Selection
+- 4. Duration Reference
+- 5. Spring Animations
+- 6. Exit Animations (AnimatePresence)
+- 7. Container Animation
+- 8. Component Patterns
+- 9. CSS Transform Rules
+- 10. Gesture & Drag
+- 11. Performance
+- 12. Reduced Motion
+- 13. Review Checklist
+- 14. Debugging
+- 15. Common Implementation Bugs (2026)
+
 ## 1. Should This Animate?
 
 | Frequency | Decision |

@@ -2,6 +2,15 @@
 
 Persistent goal-loop state for /full-audit, following the /feature-audit pattern. The entire loop progress (batches, rounds, finding counters, post-phases) lives in a file on disk, not in the conversation context — it survives session death, context compaction, and interruptions.
 
+## Contents
+- Files
+- Format
+- Post-Phase Witnesses
+- Scripts (bash 3.2, deterministic — Bash decides, not the LLM)
+- Resume Semantics
+- Loop Mode (optional)
+- Future Option (deliberately NOT built)
+
 ## Files
 
 | File | Content |

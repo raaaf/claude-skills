@@ -8,7 +8,7 @@
 
 N+1, memory leaks, bundle size, re-renders, redundant operations (duplicate file reads, repeated API calls), missed concurrency (sequential instead of parallel), hot-path bloat, TOCTOU anti-pattern, unbounded data structures. **Scaling issues:** code that works with 1 user but breaks with 100+ concurrent users (missing pagination, synchronous jobs, file-based sessions, unbounded SELECTs, missing locks on concurrent writes).
 
-**Complete guidelines:** Read `guidelines/performance.md` in the skill directory and check the code against all rules described there.
+**Complete guidelines:** Read guidelines/performance.md AND guidelines/performance-2026.md in the skill directory and check the code against all rules described there.
 
 **For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section III — main-thread blocking, retain cycles / context leaks, list virtualization, image downsampling, app start. Web vitals (INP/LCP/CLS) do not apply there.
 

@@ -1,6 +1,6 @@
 ---
 applies_to: /migrations?/|/migrate/|\.migration\.|_migration\.|\.sql$
-priority: non_negotiable
+priority: mandatory
 ---
 
 # Data-Migration Safety Guidelines

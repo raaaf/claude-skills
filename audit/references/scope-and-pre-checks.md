@@ -2,6 +2,17 @@
 
 Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-trivial.
 
+## Contents
+- Evaluating the Diff-Size Gate
+- Output of collect-scope.sh
+- Output of detect-framework.sh
+- Output of pre-checks.sh
+- Pre-Check Evaluation (immediately, before any subagent dispatch)
+- Deriving Variables from Script Outputs
+- Audit Context Check (MANDATORY when context is missing)
+- Intent-Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
+- Deterministic checks: how to turn their result codes into findings
+
 ## Evaluating the Diff-Size Gate
 
 | `DIFF_SIZE_RESULT` | Action |

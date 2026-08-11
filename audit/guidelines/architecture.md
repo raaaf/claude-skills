@@ -2,6 +2,29 @@
 
 Good architecture makes code easy to change, easy to test, and easy to understand. Every decision below serves at least one of those goals.
 
+## Contents
+- I. DRY — Don't Repeat Yourself
+- II. Single Responsibility Principle
+- III. Composition Over Inheritance
+- IV. Service Layer Patterns
+- V. Traits vs Services vs Helpers
+- VI. Dependency Injection
+- VII. Layer Boundaries
+- VIII. Feature Cohesion
+- IX. API Design
+- X. Configuration
+- XI. Error Handling
+- XI.a Status Codes Are a Contract With Every Caller
+- XII. Component Reuse — No Raw HTML
+- XIII. Guard Clauses
+- View / Template Duplication
+- XIV. Observability & Error Reporting (2026)
+- XV. Admin-Panel Action Gating (Filament 5)
+- XVI. Seeder Idempotency & Stale Keys
+- XVII. Shared Utilities & Constants — Grep First, Roll Out Fully
+- XVIII. Lock, Wait and Heartbeat Scripts (Bash)
+- XIX. Rules That Depend on State Outliving Their Screen
+
 ## I. DRY — Don't Repeat Yourself
 
 Duplication is a signal, not a sin. When you see the same logic in two places, ask: "Is this the same concept, or just the same code right now?"

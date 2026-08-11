@@ -6,6 +6,21 @@ priority: recommended
 
 Search engine optimization is not a marketing afterthought — it is a technical discipline that determines whether your carefully built application is discoverable at all. Every page that lacks a proper title, every image without alt text, every broken heading hierarchy is a missed signal to search engines and a worse experience for the users who find you through search.
 
+## Contents
+- I. Meta Tags
+- II. Open Graph & Social Meta Tags
+- III. Heading Hierarchy
+- IV. Semantic HTML for Content
+- V. Structured Data / JSON-LD
+- VI. Image Optimization
+- VII. URL Structure
+- VIII. Internal Linking
+- IX. Mobile-Friendliness
+- X. Core Web Vitals
+- XI. Sitemap & Robots.txt
+- XII. Multilingual Sites (hreflang)
+- XIII. Answer Engine Optimization (AEO) — 2026
+
 ## I. Meta Tags
 
 The `<title>` and `<meta name="description">` are the most important on-page SEO elements. They are what appears in search results and are the first impression a potential visitor has of your page.

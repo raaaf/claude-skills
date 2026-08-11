@@ -2,6 +2,25 @@
 
 Security is not a feature you bolt on at the end — it is a property of every line of code you write. A single unescaped output, a missing authorization check, or a leaked secret can undo months of careful engineering. Treat every input as hostile, every output as a potential vector, and every permission boundary as load-bearing.
 
+## Contents
+- I. Output Escaping & XSS Prevention
+- II. Authentication & Authorization
+- III. CSRF, Rate Limiting & Abuse Prevention
+- IV. Input Validation & Sanitization
+- V. SQL Injection Prevention
+- VI. File Upload Security
+- VII. Cache Key Isolation
+- VIII. Secret Management
+- IX. Content Security Policy
+- X. OWASP Top 10 — Quick Reference
+- XI. GoBD / Record Immutability
+- XII. AI / LLM Security (2026)
+- XIII. Modern Browser Hardening (2026)
+- XIV. Authentication 2026
+- XV. Supply Chain (2026)
+- XVI. Blade Escaping Context: `{{ }}` inside `<style>` / `<script>` (RAWTEXT)
+- XVII. New Sensitive or Derived Field: Check EVERY Sink in One Round
+
 ## I. Output Escaping & XSS Prevention
 
 Cross-site scripting (XSS) remains one of the most common and damaging vulnerabilities in web applications. The rule is simple: never trust user-supplied data in output context.

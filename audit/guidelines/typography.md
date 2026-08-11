@@ -6,6 +6,21 @@ priority: recommended
 
 Typography is often the foundation of great design. Make sure to pay the attention it deserves.
 
+## Contents
+- I. Body Text Is Everything
+- II. Font Selection & Pairing
+- III. Emphasis & Formatting
+- IV. Spacing & Layout
+- V. Type Composition Details
+- VI. Screen-Specific Considerations
+- VII. Tables & Numeric Typography
+- VIII. OpenType Features
+- IX. Font Rendering & Loading
+- X. Text Wrapping & Decoration
+- XI. Properties Over Raw Feature Tags (2026)
+- XII. Mobile Inputs and Text Scaling (2026)
+- XIII. Structure, Direction, Truncation (2026)
+
 ## I. Body Text Is Everything
 
 The typographic quality of any interface is determined primarily by the body text — there's simply more of it than anything else. Start every project by making body text beautiful, then work outward to headings, captions, and UI chrome.

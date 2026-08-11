@@ -1,5 +1,23 @@
 # UI Visual Design Checklist
 
+## Contents
+- CSS Pseudo-Elements
+- View Transitions API
+- Morphing Icons
+- Border Radius
+- Optical Alignment
+- Image Outlines
+- Shadows
+- Full Button Shadow Anatomy
+- Spacing
+- Borders
+- Dark Mode Contrast
+- Materials & Translucency (2026)
+- Layout Robustness (2026)
+- Generated-UI Slop Heuristics (2026)
+- Blade Escaping Context in `<style>` Blocks (2026)
+- References
+
 ## CSS Pseudo-Elements
 
 | Rule | Implementation |

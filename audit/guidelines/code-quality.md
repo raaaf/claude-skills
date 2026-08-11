@@ -2,6 +2,25 @@
 
 Clean code reads like well-written prose — every name reveals intent, every function does one thing, and the structure guides you without needing a map.
 
+## Contents
+- I. Naming
+- II. Function Size
+- III. Type Safety
+- IV. Dead Code
+- V. Magic Values
+- VI. Hardcoded Strings — User-Facing Text
+- VII. Cyclomatic Complexity
+- VIII. Immutability
+- IX. Consistent Patterns
+- X. Comments
+- XI. Error Messages
+- XII. Parameter Count
+- XIII. Return Types
+- XIV. Temporal Coupling
+- XV. Law of Demeter
+- PHP Strictness
+- Blade Template Whitespace
+
 ## I. Naming
 
 Names are the primary documentation of your code. A good name eliminates the need for a comment.
@@ -199,7 +218,7 @@ User-facing text hardcoded directly in templates, components, or controllers is 
 
 ### Tests pinning user-facing text must assert the resolved value (FLAG)
 
-A test that pins user-visible text is only as good as what it reads. Asserting against the source declaration — a translation key, a seed constant, an enum raw value — instead of the resolved, rendered output (localization catalog output, template render, computed display property) proves nothing about what the user actually sees. A complete content rewrite can ship live while the test stays green, because the test and the UI read from two different places. Same failure mode as the color-token check in `ui-visual-design.md:290`: resolve the actual value behind the name/key, never trust the label.
+A test that pins user-visible text is only as good as what it reads. Asserting against the source declaration — a translation key, a seed constant, an enum raw value — instead of the resolved, rendered output (localization catalog output, template render, computed display property) proves nothing about what the user actually sees. A complete content rewrite can ship live while the test stays green, because the test and the UI read from two different places. Same failure mode as the color-token check in `ui-visual-design.md:308`: resolve the actual value behind the name/key, never trust the label.
 
 ```
 // Avoid: pins the source, not what renders
@@ -473,42 +492,4 @@ managerEmail = employee.getManagerEmail()
 
 ---
 
-Continued: sections XVI (2026 Type-Safety Patterns) and XVII (Deprecated APIs) live in code-quality-2026.md.
-
-## Text-Parser Line-Ending Discipline
-
-**Every hand-written text parser MUST have a CRLF fixture in its tests.** Swift's `split(separator: "\n")` on `String` operates on Characters, and `\r\n` is a single grapheme cluster — a Character-level split finds ZERO separators in CRLF text and silently collapses the whole file into one unparseable line (this shipped twice before being caught, learning log 2026-07-09). Parse file formats on the UTF-8 view or raw bytes, strip a trailing `\r` explicitly, and assert LF/CRLF parity in tests. A parser with only LF-terminated test fixtures is untested for real-world input.
-
-## Paired Resource Calls (acquire/release, lock/unlock, subscribe/unsubscribe)
-
-**The key/handle of a paired call MUST be computed exactly once.** When code acquires something keyed (an idempotency lock, a mutex, a subscription) and later releases it in the same request, re-typing the key expression at both call sites is a latent bug: a one-sided edit silently turns the release into a no-op (3 audits in a row hit this on the same trait, learning log 2026-07-17). Preference order:
-
-1. The abstraction remembers the key itself — release takes no arguments (e.g. `releaseHeldSubmitLock()` after `acquireSubmitLock(...)` stored the key internally). Structurally drift-free.
-2. A single hoisted local (or per-flow helper method) passed to both calls.
-3. Never: the same multi-part expression written twice.
-
-Cross-request releases (delete flow frees a lock the create flow acquired) are the exception — there the key must be re-derived from the persisted row, and the fingerprint contract "derived from what gets stored" must hold on both sides.
-
-## Self-Referential Guard Tests (regex/keyword-based enforcement tests)
-
-A guard test enforces a rule about OTHER code via pattern matching: a regex over templates,
-a keyword list over prose, a grep over source files. Its blind spot is itself — when the
-pattern is incomplete, the test stays green while the rule it claims to enforce is violated,
-and nothing downstream ever notices (2 audits running, learning log 2026-08-05/06:
-`INTEGRATION_WORDS` lacked "importier", so import claims passed a test named after
-catching them).
-
-Before closing round 1 on a diff that adds or edits such a test, run its own coverage
-self-check:
-
-- **Word/pattern-list completeness:** does the list cover the obvious morphological variants
-  (German verb stems, plural forms, compound words) of what the docblock or test name
-  promises? Compare the list against the claim, not against the current fixture data.
-- **Scan granularity vs. claim:** a test that promises "no X anywhere on the page" but scans
-  per-sentence/per-line can miss multi-sentence violations; the granularity must match the
-  docblock's wording.
-- **Can it fail?** Feed one known-bad sample mentally (or as a fixture) through the pattern.
-  A guard test nobody has ever seen red is unverified.
-
-Severity anchor: an incomplete enforcement pattern is Important (the rule is silently
-unenforced), not Minor — the whole point of the test is the enforcement.
+Continued: sections XVI (2026 Type-Safety Patterns), XVII (Deprecated APIs), and XVIII (Tooling That Audits Other Code Needs Its Own Evidence), plus Text-Parser Line-Ending Discipline, Paired Resource Calls, and Self-Referential Guard Tests, live in code-quality-2026.md.

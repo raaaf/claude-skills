@@ -2,6 +2,17 @@
 
 Standards for project documentation: README, CLAUDE.md, .env.example, CHANGELOG, docs/. Inspired by Strunk's "Elements of Style" and the caveman style (short, direct, no filler).
 
+## Contents
+- Core Principles
+- README.md
+- CLAUDE.md
+- .env.example
+- CHANGELOG.md
+- docs/**
+- Style Rules (all doc files)
+- Anti-Patterns (findings that are always reported)
+- Audit Procedure
+
 ## Core Principles
 
 1. **Single source of truth.** Each piece of information lives in one place. Other files reference it.

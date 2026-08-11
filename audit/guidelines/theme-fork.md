@@ -2,6 +2,17 @@
 
 When forking `wordpress-starter-theme` (or any base theme) to create a new client theme, every item below must be updated before the first commit. The architecture subagent checks these during audits.
 
+## Contents
+- I. Namespace & Autoloading
+- II. Text Domain & Theme Identity
+- III. GitHub & Update URLs
+- IV. Logging & Debug Prefixes
+- V. Tests & Mocks
+- VI. Dependencies
+- VII. Quick Grep Verification
+- VIII. Propagation Playbook (backporting base-theme changes into existing client themes)
+- IX. Settled decisions (do not renegotiate per audit)
+
 ## I. Namespace & Autoloading
 
 - `composer.json`: Update `autoload.psr-4` namespace from `WordpressStarter\` to the new namespace (e.g. `FIMVertrieb\`)
