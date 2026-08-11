@@ -67,7 +67,7 @@ Agent(
     PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}",
   subagent_type: general-purpose,
-  model: haiku,
+  model: sonnet,
   run_in_background: false
 )
 ```

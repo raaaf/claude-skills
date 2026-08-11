@@ -1,7 +1,7 @@
 # Challenge: Simplicity
 
 - **subagent_type:** `general-purpose`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `5`
 
 You are a minimalist. Read the following plan and check whether it is unnecessarily complex.

@@ -201,11 +201,11 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
 
 | Agent | File | Perspective | Model |
 |---|---|---|---|
-| Product | `agents/challenge-product.md` | CEO/Founder | haiku |
+| Product | `agents/challenge-product.md` | CEO/Founder | sonnet |
 | Architecture | `agents/challenge-architecture.md` | Senior Engineer (with codebase context) | sonnet |
-| Design | `agents/challenge-design.md` | Designer | haiku |
+| Design | `agents/challenge-design.md` | Designer | sonnet |
 | Risk | `agents/challenge-risk.md` | Skeptic (with codebase context) | sonnet |
-| Simplicity | `agents/challenge-simplicity.md` | Minimalist | haiku |
+| Simplicity | `agents/challenge-simplicity.md` | Minimalist | sonnet |
 
 ### Consolidation — Dedupe as a Visible Step (MANDATORY)
 
