@@ -7,7 +7,7 @@ description: |
   verifies the deploy. Use when ready to ship completed work. Push requires a fresh audit marker
   and a green suite; bypassing either is only possible as an explicit, logged user decision,
   never silently.
-when_to_use: "/ship, ready to ship, commit and deploy, commit push deploy, ship this, release this"
+when_to_use: "/ship, committe das und pushe, fertig zum deployen, jetzt live stellen, push und deploy machen, ab damit, ready to ship, commit and deploy, commit push deploy, ship this, release this"
 argument-hint: "[optional: commit message]"
 model: sonnet
 effort: medium

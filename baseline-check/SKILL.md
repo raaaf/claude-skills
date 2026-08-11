@@ -8,7 +8,7 @@ description: |
   Code-level findings (a11y, security-in-code, UI, performance) are delegated to
   /full-audit, never duplicated. Use to assess existing apps against the standard;
   onboarding a new app is /app-baseline.
-when_to_use: "/baseline-check, App gegen Baseline prüfen, bestehende App prüfen, Baseline-Report, ist die App production-ready, Standard-Check"
+when_to_use: "/baseline-check, App gegen Baseline prüfen, bestehende App prüfen, Baseline-Report, ist die App production-ready, Standard-Check, produktionsreif checken, sind wir deployment-ready, infrastruktur gegen standard prüfen"
 argument-hint: "[project root, defaults to cwd]"
 model: sonnet
 effort: high

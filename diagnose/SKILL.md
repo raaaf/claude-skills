@@ -5,7 +5,7 @@ description: |
   then minimizes, hypothesizes, instruments, fixes, and adds a regression test. Use when a
   bug is reported, something is broken after a recent change, or a previous fix attempt failed.
   Never hypothesizes before reproducing.
-when_to_use: "/diagnose, bug report, something is broken, fix attempt failed, can't reproduce, regression, debugging"
+when_to_use: "/diagnose, das geht nicht mehr, hier ist ein bug, warum funktioniert das nicht, seit der Änderung kaputt, fehler reproduzieren und fixen, bug report, something is broken, fix attempt failed, can't reproduce, regression, debugging"
 argument-hint: "[optional: brief bug description]"
 model: sonnet
 effort: high
