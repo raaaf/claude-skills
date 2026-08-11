@@ -47,3 +47,10 @@ Dead code, unused imports, missing return types on public methods, copy-paste lo
 ## Project-Specific Context
 
 {PROJECT_CONTEXT}
+
+## Behauptungen ueber Testabdeckung und Testart brauchen einen Grep
+
+Before reporting "this has no test coverage anywhere" or "this needs to be documented as a guard test", run the grep and read what the test actually asserts. Two findings died in verification on 2026-08-07 for exactly this: one claimed a Livewire component had zero coverage while it was covered in a differently named test file, the other called a single-component markup test a repo-wide guard test and demanded a CLAUDE.md line for it. Both were plausible, both were wrong, and both would have produced a pointless fix.
+
+- Coverage claims: grep the class name across the whole `tests/` tree, not just for a file named after it. A differently named file counts.
+- Guard-test claims: a guard test scans MANY files for a convention (regex or keyword over a directory). A test that renders one component and asserts its markup is an ordinary unit test, whatever it asserts.

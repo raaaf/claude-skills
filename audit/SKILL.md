@@ -322,11 +322,13 @@ Agent(
 
 | `FINDING_VERDICT` | Action |
 |---|---|
-| `CONFIRMED` | goes to Step E, with `SEVERITY_CORRECTION` applied when it is not `none` |
+| `CONFIRMED` | goes to Step E, with `SEVERITY_CORRECTION` applied when it is not `none` + `patterns-store.sh recur {pattern}` |
 | `REFUTED` | discarded before any fix + `patterns-store.sh dismissed {pattern}`, one log line with the verifier's `REASON`. Never becomes an issue. |
 | `UNCERTAIN` | not fixed. Goes into the audit log under `### Unverified` with the `REASON`. A Critical `UNCERTAIN` additionally becomes an open point for the user. Never silently dropped. |
 
 A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass.
+
+**Feed the store DURING the run, not only at the final retro.** The `recur`/`dismissed` calls above are the orchestrator's job, right where the verdict is decided — not a step reserved for the learning agent's end-of-run pass over the finished log. At `floor=high`, D.7 is skipped entirely (see the effort table above), so there is no verdict to hang `recur` on: call it instead at Step E when the finding enters the fix queue (same `{pattern}` string used for `patterns-store.sh add`, see Step E.7). Either way, `patterns.json` should already show this run's patterns by the time the learning agent reads it — the learning agent's own trends-block pass then only reports `recurrences`, it does not populate them from scratch.
 
 Print after the step: `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
 
@@ -348,6 +350,26 @@ Count confirmed Critical+Important (D.7 output; without D.7, at low effort, the 
 **HARD RULE: the orchestrator NEVER edits code files itself.** Every code fix goes through a fix agent (Sonnet). Edits by the orchestrator on Opus cost a multiple.
 
 **Allowed orchestrator edits:** `.claude/audits/*.md`, `CLAUDE.md` audit context draft, `suppressions.json` (with user consent), changelog files.
+
+**The worktree-wide git ban applies to the orchestrator too, not just to fix agents.** `fix-agent.md`
+forbids its subagents every destructive worktree-wide git command because parallel agents share one
+working tree. The orchestrator shares that same tree — and the tree also holds the user's own
+uncommitted work. On 2026-08-03 the orchestrator ran exactly the command it forbids its subagents,
+in a tree with parallel writers, for exactly the reason that applied to it.
+
+When you need a clean HEAD baseline (lint comparison, render comparison, "was this red before my
+fixes?"), do NOT touch the shared tree. Use a throwaway worktree instead:
+
+```bash
+TMP=$(mktemp -d)
+git worktree add --detach "$TMP" HEAD
+# ... measure inside "$TMP" ...
+git worktree remove --force "$TMP"
+```
+
+For a single file, `git show HEAD:<path>` is enough and touches nothing. Note that
+`hooks/pretooluse-bash.sh` matches on the command string, so it also blocks a Bash call that merely
+*writes about* these commands — author such documentation with the Edit/Write tool.
 
 **Verify-by-measurement (perf) — baseline:** if the round contains a `[Performance]` finding and `PERF_MEASURE_CMD` is set, measure the baseline once BEFORE the fix agent dispatch: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_BASELINE="$PERF_METRIC"`. Details: `references/perf-measurement.md`.
 
@@ -377,7 +399,7 @@ Any assigned file that is NOT modified means the fix never landed or was destroy
 
 5. Minor: with `FIX_MINOR=1` (medium + high/xhigh effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
 6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`
-7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`
+7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`. At `floor=high`, also call `patterns-store.sh recur {pattern}` here (same string) — D.7 was skipped for this run, so this is the only point a self-confirmed finding gets counted.
 
 **Step E.5 — Fix verification (MANDATORY for medium/high/xhigh effort, SKIP for low)**
 

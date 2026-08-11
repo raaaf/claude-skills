@@ -1,0 +1,21 @@
+{
+  "fixture": "reliability/backup-wal-regression.ts",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 16,
+      "matches": ["checkpoint", "serialize()", "cantopen", "inconsistent image", "every cron run", "never produced"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "backend script, no markup"
+    },
+    {
+      "dimension": "typography",
+      "reason": "no user-facing text"
+    }
+  ]
+}

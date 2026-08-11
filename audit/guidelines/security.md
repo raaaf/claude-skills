@@ -70,6 +70,21 @@ function update(request, transaction):
 
 If the framework supports tenant-global query scopes (e.g. a global scope that filters every query by the current tenant), prefer that as defense in depth — but still keep the explicit `abortUnless`/`authorize` guard in the action so the protection is visible and survives a scope being disabled. New controllers are the recurring offender: audit every `update`/`destroy`/`store` for a first-line ownership check.
 
+**A route's gating change or a new route must be checked against the whole route table, not just its own line.** Path-prefix middleware gates the exact path it is mounted on — it does not automatically extend to child/parameter routes, and a parameter route's gate does not automatically extend to its parent. Both directions have shipped as real bypasses:
+
+```
+// BAD — exact-path gate, sibling route left open
+app.use('/api/items', requireEntitlement)
+app.get('/api/items', listItems)        // gated
+app.get('/api/items/:id', getItem)      // NOT gated — served the full record to any authenticated caller
+
+// GOOD — gate applied per route, or with a pattern that covers the whole subtree
+app.get('/api/items', requireEntitlement, listItems)
+app.get('/api/items/:id', requireEntitlement, getItem)
+```
+
+When a diff adds a route or changes what gates an existing one, read the full route table for that resource (not just the diff hunk) and name every sibling/parameter route explicitly: which ones share the new/changed gate, which ones don't, and why. A framework's path-matching semantics (exact vs. prefix vs. regex) decide whether a gate mounted on the parent path reaches the child — verify this for the specific router in front of you rather than assuming it behaves like the last one you audited. This is a repeat offender: the same root cause shipped twice on the same project (`Cache-Control` header scoped to the exact list path while the underlying data leaked through a sibling; then a `GET /api/items/:id` left fully ungated while `GET /api/items` was gated).
+
 **Client-exposed state:** Public properties or state exposed to the client are readable and writable from the browser. Never put sensitive data (other users' records, internal IDs used for authorization) in client-accessible state without server-side validation. Use immutable/locked properties or server-side validation hooks to prevent client-side tampering:
 
 ```
@@ -331,6 +346,26 @@ If the application calls an LLM API or processes LLM output, treat the LLM as an
 **Prompt-template files.** When prompts are assembled from template files (e.g. `src/prompts/*.md`, `resources/prompts/*`) with `{{placeholder}}` substitution, audit the templates themselves, not only the callers. Any `{{placeholder}}` whose value originates from external data (search-console queries, scraped page copy, third-party API titles/snippets, prior LLM output) MUST be wrapped in an explicit untrusted-data block inside the template (`<<<UNTRUSTED_*_START>>>` / `<<<UNTRUSTED_*_END>>>` or equivalent) so the model treats it as data, not instructions. A bare external placeholder in a template is an indirect-prompt-injection hole even when the calling code looks safe. Template files are skipped by default file globs — verify they are in audit scope. Substituted values must also have the fence-marker tokens stripped, otherwise a value containing the literal end marker breaks out of the block.
 
 **Output handling.** LLM output is user-controlled. If you render it as HTML, escape it. If you pass it to a shell/SQL/eval, treat it as user input — same parameterization rules as Section V apply.
+
+**Persisted identifiers from an LLM or a web search need an explicit sanitize/allowlist step before they are stored or rendered — not just at the final render call.** This applies to more than markup: URLs, free-text fields, and other identifiers a pipeline script pulls from LLM generation or a search result are attacker- or hallucination-controlled the same way page content is, and they typically flow through a data-ingestion script (`scripts/seed-*`, `scripts/enrich-*`, importers) long before any template renders them, so a render-time escape alone misses the write path. Two shapes of the same root cause have shipped:
+
+```
+// BAD — LLM/search-derived URL stored as-is, trusted at every later read
+const record = { ...parsed, sourceUrl: llmResult.url };
+db.insert(record);
+
+// GOOD — validated once, at the point it enters persistent storage
+function sanitizeSourceUrl(url) {
+    const parsed = new URL(url);  // throws on malformed input
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('rejected scheme');
+    if (!ALLOWED_HOSTS.has(parsed.hostname)) throw new Error('host not on allowlist');
+    return parsed.toString();
+}
+const record = { ...parsed, sourceUrl: sanitizeSourceUrl(llmResult.url) };
+db.insert(record);
+```
+
+Write one named sanitize/allowlist function per identifier class (URL, free-text marker/fence stripping, etc.) and call it at the ingestion boundary, then reuse it everywhere that class of value enters storage — do not re-derive the check per call site, and do not rely on catching it at render time. A pipeline script that trusts LLM/search output because "it's our own prompt, not a public form" is still ingesting untrusted content; the same class of bug has independently shipped twice on one project (unescaped fence markers from LLM output, an unvalidated `sourceUrl` from search results).
 
 **Secret exposure.** Never include API keys, internal URLs, or PII in the system prompt — the model may echo them back on craft prompts. Use server-side fetch + post-processed results instead of giving the LLM direct credentials.
 

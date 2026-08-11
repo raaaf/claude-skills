@@ -142,3 +142,34 @@ The general rule this is an instance of: **after a bulk regex edit, read one ful
 Greps catch the known corruption shapes. They do not catch a missing class, a renamed method, or a signature change. Run the theme's render smoke test (`tests/Unit/TemplateRenderTest.php` in these themes: compiles and renders every `templates/**/*.blade.php` against the bootstrap mocks) under the **production** PHP version, not the local dev version — "class not found" / "undefined method" are real errors, missing WP functions are mock gaps.
 
 If a theme has no render harness, propagation is unverified regardless of green tests. Add the harness first.
+
+## IX. Settled decisions (do not renegotiate per audit)
+
+Audits kept rediscovering the same two things and arguing them out from scratch each time. Both are
+decided. Report drift from them, not the decisions themselves.
+
+### Flexible-layout duplication is accepted, with one exception
+
+`templates/flexible/*.blade.php` repeat two blocks across layouts: the section-header block and the
+image-card block. They are byte-identical and technically safe to extract — that was measured four
+audits running (2026-03-27, 03-31, 06-11, 08-03), and the verdict swung open → accepted → fixed →
+open again. The renegotiation itself is the defect, not any single answer.
+
+**Decided:** the duplication stays until someone terminates it deliberately, as its own task with its
+own propagation plan. An audit may note it once; it is not a finding.
+
+**One exception, and it matters:** the grid wrapper's `gap` stays explicit per layout. `three-columns`
+already differs from `two-columns` and `four-columns`, so a sweep that "harmonises" the wrappers would
+silently change a rendered value in one of them. A consolidation that touches `gap` is a Critical
+finding, not a cleanup.
+
+### Propagation risk is the standing reason against sweeps
+
+Five client themes are forked from `wordpress-starter-theme`. A regex sweep across all six repos has
+already produced three production outages in one day (2026-06-11), and a follow-up sweep on
+2026-08-06 shipped duplicate attributes into ten files while every test stayed green.
+
+**Decided:** a sweep across the forks is never the default. Per-theme review, per-theme verification,
+per-theme diff reading. When an audit weighs a refactor whose value is "less duplication across the
+forks", this is the counterweight — cite this section instead of re-deriving the argument, and make the
+recommendation only if the benefit clears it.

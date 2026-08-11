@@ -1,0 +1,21 @@
+{
+  "fixture": "security/vocab-id-route-gating.ts",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 19,
+      "matches": ["vocab/:id", "sibling", "exact path", "ungated", "paywall bypass", "entitlement"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "backend route file, no markup"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}
