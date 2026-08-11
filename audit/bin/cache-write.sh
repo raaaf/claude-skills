@@ -55,6 +55,22 @@ done <<<"$FILES"
 CUTOFF=$((NOW - 2592000))
 jq --argjson cutoff "$CUTOFF" '.entries |= with_entries(select(.value.timestamp >= $cutoff))' "$TMP" > "${TMP}.new" && mv "${TMP}.new" "$CACHE_FILE"
 
-grep -qF '.claude/audits/cache.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || printf '\n.claude/audits/cache.json\n' >> "$PROJECT_ROOT/.gitignore"
+# Only touch .gitignore when it would actually change something: skip if the
+# path is already tracked (a .gitignore entry cannot un-track it, so adding
+# one would be a no-op mutation with a misleading effect) or already covered
+# by an existing ignore rule (grep only matched the literal line before, so a
+# broader pattern like ".claude/audits/" still got a redundant duplicate
+# appended). Any mutation that does happen is announced on stdout so it shows
+# up in the audit log instead of being a silent side effect on a file the
+# audit run does not own.
+GITIGNORE_REL='.claude/audits/cache.json'
+if git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
+  echo "NOTE: $GITIGNORE_REL is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $GITIGNORE_REL' if that was not intended."
+elif git -C "$PROJECT_ROOT" check-ignore -q "$GITIGNORE_REL" 2>/dev/null; then
+  echo "$GITIGNORE_REL already ignored, .gitignore left unchanged"
+else
+  printf '\n%s\n' "$GITIGNORE_REL" >> "$PROJECT_ROOT/.gitignore"
+  echo "Added $GITIGNORE_REL to .gitignore (was not previously ignored)"
+fi
 
 echo "CACHE_WRITTEN=$CACHE_FILE"

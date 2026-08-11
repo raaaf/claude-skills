@@ -259,6 +259,16 @@ If push fails:
 
 If `DEPLOY_COMMAND` is `ci`: skip this phase. CI/CD will deploy from the push.
 
+`DEPLOY_COMMAND` is read from the audited repo's own `.claude/ship.md` (same trust boundary as
+`TEST_COMMAND` in Phase 2b — see CLAUDE.md Gotchas). Everywhere else in this pipeline, a
+repo-supplied step that is in its expected green state runs without asking; deploy is the
+exception, because it is the one step that is both irreversible and production-facing, and
+because `DEPLOY_COMMAND` is persisted once (Phase 0) and then reused silently on every later run —
+nothing else in the pipeline shows it again before it executes. AskUserQuestion:
+- "Deploy" (default) — show the resolved `{DEPLOY_COMMAND}` in the question text
+- "Skip deploy" → skip Phase 5 (nothing new was deployed, a health check would only re-check the
+  old version) and go straight to Summary Output with `Deploy: skipped by user`
+
 Otherwise run the detected/configured deploy command:
 ```bash
 {DEPLOY_COMMAND}
@@ -316,7 +326,7 @@ Shipped.
 
 Commit:   {short SHA} {message}
 Push:     origin/{branch}
-Deploy:   {command or "CI/CD triggered"}
+Deploy:   {command or "CI/CD triggered" or "skipped by user"}
 Health:   {OK / FAILED / not configured}
 CI run:   {url or "n/a"}
 ```

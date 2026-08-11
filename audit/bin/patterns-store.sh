@@ -197,7 +197,18 @@ case "$CMD" in
     ;;
 esac
 
-# Ensure .gitignore entry exists (only on add, not every call)
+# Ensure .gitignore entry exists (only on add, not every call). Same
+# tracked/already-ignored guard as cache-write.sh: skip a no-op mutation on a
+# tracked file, skip a redundant append when a broader rule already covers
+# it, announce it on stdout when it actually changes .gitignore.
 if [ "$CMD" = "add" ]; then
-  grep -qF '.claude/audits/patterns.json' "$PROJECT_ROOT/.gitignore" 2>/dev/null || printf '\n.claude/audits/patterns.json\n' >> "$PROJECT_ROOT/.gitignore"
+  GITIGNORE_REL='.claude/audits/patterns.json'
+  if git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
+    echo "NOTE: $GITIGNORE_REL is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $GITIGNORE_REL' if that was not intended."
+  elif git -C "$PROJECT_ROOT" check-ignore -q "$GITIGNORE_REL" 2>/dev/null; then
+    echo "$GITIGNORE_REL already ignored, .gitignore left unchanged"
+  else
+    printf '\n%s\n' "$GITIGNORE_REL" >> "$PROJECT_ROOT/.gitignore"
+    echo "Added $GITIGNORE_REL to .gitignore (was not previously ignored)"
+  fi
 fi
