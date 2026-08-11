@@ -73,6 +73,10 @@ magick "$BILDPFAD" -fuzz 8% -trim +repage -resize "x1280>" -quality 82 "$PREP"
 echo "Base64-Laenge: $(base64 -i "$PREP" | tr -d '\n' | wc -c)  (Limit 5242880)"
 ```
 
+### 5b. Kosten bestaetigen (Pflicht, vor dem ersten bezahlten Call)
+
+Schritt 6 (gen4_image, Standbild) und Schritt 7 (gen4_turbo, Video) kosten beide echtes Geld, zusammen ca. 0,33 USD pro Video (0,08 Bild + 0,25 Video, siehe oben). Mit dieser Bestaetigung committet sich der User auf den ganzen Lauf, nicht nur auf einen Schritt. Bevor Schritt 6 laeuft, per `AskUserQuestion` bestaetigen lassen, Summe genannt (z.B. "Standbild ~0,08 USD + Video ~0,25 USD = ~0,33 USD gesamt"). Optionen: "Ja, generieren (~0,33 USD)" und "Abbrechen". Nur bei Ja weiter zu Schritt 6; bei Abbrechen hier stoppen, es wird nichts abgerechnet. Diese Bestaetigung nie ueberspringen, auch wenn der Skill automatisch ausgeloest wurde. Ersetzt NICHT die Standbild-Bestaetigung in Schritt 6 (dort geht es um Design/Raum, nicht ums Geld — die verhindert nur, dass der teure Video-Schritt auf einem falschen Standbild aufbaut).
+
 ### 6. Schritt 1 — Poster in den Raum rendern (gen4_image)
 
 Raum-Beschreibung je Stil (positiv, kein "no ..."):
