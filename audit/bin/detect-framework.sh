@@ -46,7 +46,45 @@ elif [ -f "settings.gradle" ] || [ -f "settings.gradle.kts" ]; then
   PLATFORM="native"
 else
   FRAMEWORK="generic"
-  SOURCE_DIRS="src/ lib/ app/"
+  # No known framework marker matched. Prefer conventional source directory
+  # names, but only the ones that actually exist -- a hard-coded "src/ lib/
+  # app/" produces an empty SOURCE_DIRS on a repo like this one (top level is
+  # audit/, full-audit/, write-a-skill/, ...), which zeroes out the `find` in
+  # scope-context-batching.md and now trips its scope-plausibility abort
+  # instead of the old silent "audited nothing" bug.
+  CANDIDATES="src lib app source cmd pkg internal api server client packages"
+  SOURCE_DIRS=""
+  for d in $CANDIDATES; do
+    [ -d "$d" ] && SOURCE_DIRS="$SOURCE_DIRS $d/"
+  done
+  SOURCE_DIRS="${SOURCE_DIRS# }"
+
+  if [ -z "$SOURCE_DIRS" ]; then
+    # None of the conventional names exist either. Derive the source set from
+    # what the repo actually tracks: top-level directories holding
+    # git-tracked files, minus the same dependency/build directories every
+    # consumer already prunes (EXCLUDE in scope-context-batching.md,
+    # FIND_OPTS in detect-mobile.sh) -- so a caller that skips those prunes
+    # still doesn't sweep in node_modules/vendor/build output.
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      # grep -v legitimately finds nothing to filter on a repo with no
+      # matching noise dirs (or no subdirectories at all) and exits 1 in that
+      # case; under `set -o pipefail` that would abort the whole script, so
+      # `|| true` treats "nothing left after filtering" as the valid empty
+      # result it is, not an error.
+      SOURCE_DIRS=$( (git ls-files 2>/dev/null | awk -F/ 'NF>1 {print $1}' | sort -u |
+        grep -vE '^(node_modules|vendor|\.next|\.nuxt|dist|build|coverage|\.git)$' || true) |
+        sed 's/$/\//' | tr '\n' ' ')
+      SOURCE_DIRS="${SOURCE_DIRS% }"
+    fi
+  fi
+
+  # Still nothing: either not a git repo, or every tracked file sits directly
+  # at the repo root with no subdirectory to name. Fall back to the whole
+  # tree -- same precedent as the django/ios branches above. An honest
+  # "audit everything" beats aborting, and this is the last resort, not the
+  # default path (both prior steps run first).
+  [ -z "$SOURCE_DIRS" ] && SOURCE_DIRS="./"
 fi
 
 echo "FRAMEWORK=$FRAMEWORK"

@@ -42,6 +42,28 @@ Rules:
 - **SINGLE mode** = one batch row (ID `01`, Directory `.`).
 - **Blocked section:** one checkbox bullet per blocked point (`- [ ] [ID] short description`). `- none` doesn't count. Blocked does NOT block completion, but must appear here AND in the audit log.
 
+## Post-Phase Witnesses
+
+`done` alone is not enough — a value the orchestrator writes has to be true, and a bare boolean gives it nowhere to be wrong. On a real run, the orchestrator wrote `post-phases: cross_ref=done` into the state file BEFORE the cross-reference round had actually run, along with a note rationalising the skip. The round only ran later, at the user's prompting, and found 1 Critical and 11 Important the batch passes had missed. `status-line.sh` had reported `post_phases=done` the whole time it wasn't — a status field that means whatever the orchestrator wants is worthless, and completion is decided from exactly that field.
+
+Each `post-phases:` value therefore carries evidence, not just a state:
+
+```
+<phase>=pending
+<phase>=done:<witness>
+<phase>=skipped:<reason>
+```
+
+- **`pending`** — not yet run. No witness needed, nothing happened yet.
+- **`done:<witness>`** — actually ran; `<witness>` is a short, checkable fact about what happened. Free text after the colon, but keep it a fact a later reader can verify against the log, not a restatement of "done":
+  - `cross_ref` → `agents=3` (the 3 subagents of Phase 2.5 were dispatched)
+  - `log` → `written={path}` (the audit-log path Phase 4 actually wrote)
+  - `issues` → `presented={n}` (open points shown via AskUserQuestion in Phase 4, `0` if there were none — an explicit zero is still a witness, it proves the step ran)
+- **`skipped:<reason>`** — explicitly and legitimately skipped, `<reason>` naming the documented skip condition that applied (e.g. `cross_ref=skipped:effort_low` for one of Phase 2.5's three named skip conditions). Counts the same as `done` for completion.
+- **A bare `done` with no `:` — old-format or written without evidence — does NOT satisfy `status-line.sh`'s completion check.** This is deliberate, not a bug: it is exactly the shape of the incident above, and there is no way to tell a truthful bare `done` from a rationalised one after the fact, so neither counts.
+
+**Backward compatibility:** a state file from before this rule has bare `pending`/`done` values. `status-line.sh` still parses such a file without error — `pending` behaves the same as ever, and a bare `done` is simply not counted as done (falls back to incomplete). A run that was genuinely mid-flight when this shipped will re-report `post_phases=pending` until the orchestrator re-runs (or re-witnesses) whichever phase lacks a witness; there is no way to retroactively distinguish a truthful old `done` from a written-early one, so the conservative read — "not proven done" — is the only safe one.
+
 **Column rename note:** `Verzeichnis`→`Directory` and `Dateien`→`Files` are safe — neither `status-line.sh` nor `resume-check.sh` looks up those two columns by name at all (they're never read, only occupy a position). `Runden`→`Rounds` is safe because `status-line.sh` matches `c=="runden" || c=="rounds"` bilingually, and `resume-check.sh` doesn't reference the rounds column at all. Verified by reading both scripts (see below); do not rename `ID`, `Status`, or `HEAD` without re-verifying the same way.
 
 ## Scripts (bash 3.2, deterministic — Bash decides, not the LLM)
@@ -52,7 +74,7 @@ Rules:
 FULL_AUDIT_STATUS batches_total=3 pending=1 running=1 clean=1 blocked=0 rounds_used=3 critical=1 important=3 minor=5 blocked_items=1 post_phases=pending
 ```
 
-`post_phases=done` only once ALL keys of the `post-phases:` line are `=done`. Missing file → zero line. The orchestrator decides completion ONLY from the line of the current turn, never from memory.
+`post_phases=done` only once ALL keys of the `post-phases:` line are witnessed — `=done:<witness>` or `=skipped:<reason>` (see "Post-Phase Witnesses" above). A bare `=done` with no witness does NOT count. Missing file → zero line. The orchestrator decides completion ONLY from the line of the current turn, never from memory.
 
 **`resume-check.sh <STATE_FILE>`** checks every `clean` row: batch list against everything that changed since the recorded HEAD (`git diff <head>..HEAD` + working tree via `git status --porcelain`). Output per clean batch: `BATCH_DIRTY id=NN files=K` or `BATCH_CLEAN id=NN`. Missing batch list or unresolvable HEAD → `BATCH_DIRTY files=unknown` (fail toward re-audit). The script only reads — resetting rows to `pending` is the orchestrator's job.
 

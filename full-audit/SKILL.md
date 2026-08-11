@@ -152,6 +152,8 @@ From here on, `{MAX_RUNDEN_PRO_BATCH}` refers to the value set here.
 
 Bash logic (framework detection, ALLE_DATEIEN, frontend list, translation list, PROJECT_CONTEXT, SUPPRESSIONS, intent docs/ADRs) and ARCHITEKTUR-NOTIZ creation in `references/scope-context-batching.md`. Resulting variables: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `DECIDED_TRADEOFFS`, `ARCHITEKTUR-NOTIZ`. `DECIDED_TRADEOFFS` is passed to all workers (prompt-template placeholder).
 
+**Scope plausibility assert (MANDATORY, runs inside that same bash, before Phase 1.5 or any batch dispatch):** abort loudly if `TOTAL_FILES` is zero, or implausibly small against `git ls-files` — see `references/scope-context-batching.md`. A wrong scope must never produce a clean-looking audit over files nobody enumerated.
+
 Optional pre-checks (only with a local diff): run `pre-checks.sh`.
 
 **i18n completeness (deterministic):** `bash "$AUDIT_BIN/check-i18n-keys.sh"` — for `I18N_RESULT=MISSING` every line becomes an Important finding `[i18n]` (Full-Audit checks the entire codebase, so report all gaps).
@@ -202,7 +204,7 @@ Deviation in either → warning into the audit log (`## Notes: Tree changed duri
 | ≤ 80 | `SINGLE` |
 | > 80 | `BATCHED` |
 
-Batch rules and bash logic in `references/scope-context-batching.md`. Max ~30-40 files per batch, related files together.
+Batch rules and bash logic in `references/scope-context-batching.md`. Max `BATCH_MAX` (~15) files per batch, derived from the worker tool-call budget — see reference for the arithmetic. Related files together.
 
 **Create state file (MANDATORY, before Phase 2):** additionally copy batch file lists to `$BATCH_DIR/batch-NN.txt` (repo-root-relative — /tmp is ephemeral). Then write `$STATE_FILE`: header (`mode`, `effort`, `dimensions`, `batch-dir`, `post-phases` all pending, `started`) plus one table row per batch with status `pending` (SINGLE mode = exactly one row). Format: `references/state-file.md`.
 
@@ -426,7 +428,7 @@ Fixes as in Step C. No further rounds.
 
 **This round is never shortened or skipped under time/token pressure once it is scheduled to run** (i.e. outside the skip conditions above). It is the only mechanism that catches regressions the fixes themselves introduced across disjoint fix-agent boundaries, and it did so three times in one recorded run. Cutting it to save time defeats the reason it exists.
 
-Afterward (even on skip): in `$STATE_FILE` set `post-phases:` → `cross_ref=done`.
+Afterward (even on skip): in `$STATE_FILE` set `post-phases:` → `cross_ref=done:agents=3` (the 3 subagents above were dispatched), or, on skip, `cross_ref=skipped:<reason>` naming which skip condition applied (`effort_low`, `dims_excluded`, `single_no_force`). A bare `cross_ref=done` with no witness does not count as done — see `references/state-file.md` "Post-Phase Witnesses".
 
 ---
 
@@ -458,8 +460,8 @@ Detail in `references/audit-log-and-issues.md`. Briefly:
 
 - Write the audit log to `.claude/audits/{datum}-full-audit.md` (format template in the reference). Record `SELECTED_DIMENSIONS` in the header so later audits know which dimensions were not checked.
 - **Open-point + gap aging:** before presenting them, compare the open points AND the recorded gap notes (test-runner, build-preflight, translation-completeness, and any other line logged as a gap rather than a fix) against previous audit logs, chronologically. Compare across ALL audit logs in `.claude/audits/*.md` — regular `/audit` logs included, not only `*-full-audit.md` — otherwise a point or gap that only ever recurs in pre-push `/audit` runs never accumulates the count needed to escalate. A point or gap that (same file/area + same core statement) already stood open in `>= 2` earlier logs of either kind gets an **`AGED`** marker in the current log and appears as a prioritized block at the very top of its section — open points at the top of the open-points section, aged gaps at the top of the "## Gaps" section (or wherever the log records gap notes, if it has no dedicated heading for them) — labelled "open/present 3x+ — decision overdue". This keeps both tradeoff decisions and infrastructure gaps from stalling audit after audit.
-- Load the log via the Read tool and display it in chat as a markdown code block (MANDATORY). Afterward `post-phases:` → `log=done`.
-- Present open points to the user (AskUserQuestion): **Decide + fix now / Defer as issue / Discard**. Present `AGED` points first. Issues ONLY for deferred items (dedup per finding). Minor never gets issues — stays in the log. Afterward (even with no open points) `post-phases:` → `issues=done`.
+- Load the log via the Read tool and display it in chat as a markdown code block (MANDATORY). Afterward `post-phases:` → `log=done:written={path}` ({path} = the `.claude/audits/{datum}-full-audit.md` just written).
+- Present open points to the user (AskUserQuestion): **Decide + fix now / Defer as issue / Discard**. Present `AGED` points first. Issues ONLY for deferred items (dedup per finding). Minor never gets issues — stays in the log. Afterward (even with no open points) `post-phases:` → `issues=done:presented={n}` ({n} = number of open points shown, `0` if none — still a witness, just an empty one).
 
 ---
 

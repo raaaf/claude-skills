@@ -10,7 +10,12 @@
 # State file schema (pipe-delimited; cells must not contain a raw "|", escape as "\|"):
 #   | ID | Directory | Files | Rounds | C | I | M | Status | HEAD |   (legacy German headers Verzeichnis/Dateien/Runden still parsed)
 # Status values: pending | running | clean | blocked
-# Header keys: post-phases: cross_ref=<pending|done> log=<pending|done> issues=<pending|done>
+# Header keys: post-phases: <phase>=pending | <phase>=done:<witness> | <phase>=skipped:<reason>
+#   A bare "<phase>=done" with no ":<witness>" (old pre-witness format, or a
+#   value written without evidence) does NOT count as done -- only a witnessed
+#   done or a documented skip does. See references/state-file.md
+#   "Post-Phase Witnesses" for why (post_phases=done was reported once while
+#   the cross-reference round genuinely had not run yet).
 # Section "## Blocked / Needs review": bullets count as blocked items ("- none" does not).
 #
 # Output: exactly one line, e.g.
@@ -32,12 +37,15 @@ awk '
          rounds=0; crit=0; imp=0; minor=0; items=0; in_blocked=0
          pp_total=0; pp_done=0 }
 
-  # post-phases header key: all values done -> done, else pending.
+  # post-phases header key: only a WITNESSED done ("=done:<witness>") or a
+  # documented skip ("=skipped:<reason>") counts. A bare "=done" (old format,
+  # or written without evidence) does NOT satisfy pp_done -- see
+  # references/state-file.md "Post-Phase Witnesses".
   /^post-phases:/ {
     line=$0; sub(/^post-phases:[ \t]*/,"",line)
     n=split(line, kv, /[ \t]+/)
     for(k=1;k<=n;k++){ if(kv[k]=="") continue; pp_total++
-      if(kv[k] ~ /=done$/) pp_done++ }
+      if(kv[k] ~ /=done:.+/ || kv[k] ~ /=skipped:.+/) pp_done++ }
     next
   }
 

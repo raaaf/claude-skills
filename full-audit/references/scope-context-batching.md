@@ -32,6 +32,16 @@ eval "$(bash "$AUDIT_BIN/detect-framework.sh")"
 # reads it as text.
 IFS=' ' read -r -a SOURCE_DIRS_ARR <<< "$SOURCE_DIRS"
 
+# Directory-scope argument (SKILL.md Phase 1: "$ARGUMENTS holds the optional
+# directory scope"). A non-empty value overrides the framework-detected
+# SOURCE_DIRS and restricts every find call below (and the plausibility
+# assert further down) to that one path — this is the actual wiring the
+# scope argument was documented to have but did not.
+if [ -n "${ARGUMENTS:-}" ]; then
+  SOURCE_DIRS_ARR=("$ARGUMENTS")
+  SOURCE_DIRS="$ARGUMENTS"
+fi
+
 # Load PROJECT_CONTEXT from CLAUDE.md (awk instead of sed — more portable)
 #
 # Three outcomes, and the middle one is the one that used to fail silently:
@@ -68,14 +78,66 @@ EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* 
 # shellcheck disable=SC2086 -- EXCLUDE is a fixed, static flag list (no
 # interpolated paths), meant to expand as multiple words; SOURCE_DIRS_ARR is
 # a quoted array below and no longer subject to SC2086.
-find "${SOURCE_DIRS_ARR[@]}" \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" -o -name "*.swift" -o -name "*.kt" -o -name "*.java" -o -name "*.m" -o -name "*.mm" -o -name "*.h" -o -name "*.go" -o -name "*.rs" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
+find "${SOURCE_DIRS_ARR[@]}" \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" -o -name "*.swift" -o -name "*.kt" -o -name "*.java" -o -name "*.m" -o -name "*.mm" -o -name "*.h" -o -name "*.go" -o -name "*.rs" -o -name "*.sh" -o -name "*.bash" -o -name "*.zsh" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
 # Prompt template files — LLM prompt templates (*.md under prompt[s]/) are security targets
 # (untrusted-placeholder isolation, see guidelines/security.md section XII) but are not caught
 # by the standard globs. Include them so template files are never missed.
 # shellcheck disable=SC2086 -- EXCLUDE only, see note above.
 find "${SOURCE_DIRS_ARR[@]}" \( -path "*/prompts/*" -o -path "*/prompt/*" \) -name "*.md" $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt
+# Extension-less executable scripts (deploy, pre-commit, CI helpers named
+# without a suffix). The extension globs above miss these entirely. Restricted
+# to files that are already executable AND start with a shebang, which keeps
+# this cheap: the 2-byte read only fires for the small candidate set that
+# survives `-perm -u+x` and the dotless-name filter, never for every file in
+# the tree. `! -name "*.*"` excludes any name containing a dot (so ordinary
+# extensioned files and dotfile configs like .eslintrc.json are skipped here,
+# not because they are unimportant but because they are already covered above
+# or are not scripts).
+# shellcheck disable=SC2086 -- EXCLUDE only, see note above.
+while IFS= read -r f; do
+  [ "$(head -c 2 "$f" 2>/dev/null)" = "#!" ] && printf '%s\n' "$f"
+done < <(find "${SOURCE_DIRS_ARR[@]}" -type f -perm -u+x ! -name "*.*" $EXCLUDE 2>/dev/null) >> /tmp/full-audit-files.txt
 sort -u -o /tmp/full-audit-files.txt /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
+
+# --- Scope plausibility assert (MANDATORY, before Phase 1.5 / any batch dispatch) ---
+# Guards the failure mode where scope collection silently returns nothing (or
+# next to nothing) and the audit reports "clean" over files nobody enumerated.
+# Real incident: an unquoted SOURCE_DIRS made `eval` drop it for every
+# multi-directory framework, "find $SOURCE_DIRS ..." ran with no starting
+# path, and TOTAL_FILES stayed at 0 all the way to a clean-looking run.
+if [ "$TOTAL_FILES" -eq 0 ]; then
+  echo "ABORT: TOTAL_FILES=0 -- scope collection found nothing under SOURCE_DIRS ($SOURCE_DIRS)."
+  echo "  Likely cause: SOURCE_DIRS is empty or wrong (check the detect-framework.sh eval output"
+  echo "  above), or a directory-scope argument that matches no source files."
+  echo "  A full audit must never report success over an empty scope -- stopping."
+  exit 1
+fi
+
+if [ -n "${ARGUMENTS:-}" ]; then
+  REPO_FILE_COUNT=$(git ls-files -- "$ARGUMENTS" | wc -l | tr -d ' ')
+else
+  REPO_FILE_COUNT=$(git ls-files | wc -l | tr -d ' ')
+fi
+
+if [ "$REPO_FILE_COUNT" -gt 0 ]; then
+  # 2% of ALL tracked files (docs, configs, lockfiles, assets included, not
+  # just source) is a deliberately low bar: real source-to-tracked ratios in
+  # audited repos run far higher (20-70%+), so this fires only on the class
+  # of bug that collapses the scope near-empty, never on a repo that is
+  # legitimately code-light. Floor of 1 keeps a repo with few tracked files
+  # total from demanding more files than it has.
+  SCOPE_THRESHOLD=$(( REPO_FILE_COUNT * 2 / 100 ))
+  [ "$SCOPE_THRESHOLD" -lt 1 ] && SCOPE_THRESHOLD=1
+  if [ "$TOTAL_FILES" -lt "$SCOPE_THRESHOLD" ]; then
+    echo "ABORT: TOTAL_FILES=$TOTAL_FILES looks implausibly small against the repo (git ls-files: $REPO_FILE_COUNT tracked files, expected >= $SCOPE_THRESHOLD)."
+    echo "  Likely cause: SOURCE_DIRS wrong or incomplete ($SOURCE_DIRS), or an over-broad EXCLUDE."
+    echo "  If this really is a legitimately narrow scope, re-run with the directory-scope argument"
+    echo "  so the comparison narrows too instead -- do not override this check by hand."
+    exit 1
+  fi
+fi
+echo "Scope plausibility: TOTAL_FILES=$TOTAL_FILES vs $REPO_FILE_COUNT tracked files (git ls-files) -- OK"
 
 # Frontend files
 # shellcheck disable=SC2086 -- EXCLUDE only, see note above.
@@ -140,23 +202,27 @@ Only useful when a local diff exists. Skip on a greenfield audit.
 
 | TOTAL_FILES | Mode | Rationale |
 |---|---|---|
-| ≤ 80 | `SINGLE` | One pass |
-| > 80 | `BATCHED` | Automatically split into batches |
+| ≤ `BATCH_MAX` (~15, see below) | `SINGLE` | One worker wave covers it inside the tool-call budget |
+| > `BATCH_MAX` | `BATCHED` | Split into batches of `BATCH_MAX` so every batch stays coverable |
+
+`SINGLE` mode dispatches all `TOTAL_FILES` to one worker wave with no batch boundary, so its threshold is not independent of the per-batch max below — it IS the per-batch max. A `SINGLE` run over 79 files would have the exact same worker-budget contradiction as an oversized batch, just without a second round to rescue it.
 
 ### Batch Creation (BATCHED only)
 
 ```bash
 for dir in $(find "${SOURCE_DIRS_ARR[@]}" -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
-  count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" \) 2>/dev/null | wc -l)
+  count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" -o -name "*.sh" -o -name "*.bash" -o -name "*.zsh" \) 2>/dev/null | wc -l)
   [ "$count" -gt 0 ] && echo "$count $dir"
 done | sort -rn
 ```
 
+**`BATCH_MAX`, derived from the worker tool-call budget, not picked independently:** `audit/agents/prompt-template.md` caps each dimension worker at 20 tool calls total ("Deliver something, always, and inside your budget... You have at most 20 tool calls") and separately instructs it to "Read EVERY file in the list. Skip none." Those two rules only both hold if the batch fits the budget. Reserve ~5 calls for the mandatory non-file reads every worker also does (`CLAUDE.md` in full, plus up to ~4 `guidelines/*.md` files for the heaviest worker, architecture) — that leaves `BATCH_MAX = 20 - 5 = 15` file-reads per batch. This replaces the old "max ~30-40", which no worker could finish by construction: batch 1 of the run that motivated this rule had 31 files and workers stopped near 19, leaving the rest with zero coverage. **If the tool-call number in `prompt-template.md`'s worker-budget line changes, recompute `BATCH_MAX` with it — the two are coupled, not independent constants.**
+
 **Batch rules:**
-- Max ~30-40 files per batch
+- Max `BATCH_MAX` (~15) files per batch
 - Related items in the same batch (component + template)
-- Directory with >40 files: split into subdirectories
-- Directory with <10 files: merge with a related one
+- Directory with >`BATCH_MAX` files: split into subdirectories
+- Directory with <5 files: merge with a related one
 - Models/entities + traits/mixins together
 - Config + routing together
 
