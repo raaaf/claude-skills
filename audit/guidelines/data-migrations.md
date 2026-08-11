@@ -64,6 +64,8 @@ Audit signal: a migration AND a code change that immediately depends on it in th
 
 ## VII. Audit Checklist
 
+Severities in this table are per-row and authoritative — they override the frontmatter `priority: mandatory` anchor above. That anchor (per `agents/prompt-template.md`: "`priority` is your severity anchor: non_negotiable → critical candidate, mandatory → important, recommended → minor") only sets the default for a migration issue this table does not itemize; it must never soften a severity stated explicitly below, especially the Critical row (`truncate`/`delete` without `where`), which stays Critical regardless of the file-level anchor.
+
 | Check | Severity if violated |
 |---|---|
 | `dropColumn`/`dropTable`/`renameColumn` in the same diff as removing the code that uses it | Important |

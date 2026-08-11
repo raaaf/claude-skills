@@ -68,7 +68,7 @@ Print after the step: `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (
 
 ## Step E — Auto-fix
 
-Count confirmed Critical+Important (D.7 output; without D.7, at low effort, the D.5-validated findings). Save `FINDINGS_AKTUELLE_RUNDE`. Convergence check see above.
+Count confirmed Critical+Important (D.7 output; without D.7, at low effort, the D.5-validated findings). Save `FINDINGS_AKTUELLE_RUNDE`. Convergence check: defined in `audit/SKILL.md`, Phase 2: Audit loop (search for `NO_CONVERGENCE`).
 
 **0 Critical and 0 Important?** → `SAUBER`. Early exit (Minor never blocks push).
 
@@ -137,7 +137,7 @@ git stash list | grep -q . && echo "STASH DETECTED: Welle ungueltig"
 
 Any assigned file that is NOT modified means the fix never landed or was destroyed by a sibling agent, regardless of what that agent reported. Re-dispatch it ALONE, with no other agent running, and state in its briefing that the previous attempt was destroyed.
 
-4b. **`FIX_RESULT=PARTIAL` (mandatory handling, never falls through unhandled).** The code changed — verify it: the fix-verifier run (E.5) is MANDATORY for these files, exactly like `APPLIED`. It is NOT a clean fix, so do not add it to `BEREITS_GEFIXT` (point 7) — that list tells workers to stop reporting something, which would hide the leftover instead of exposing it. Instead, the original finding (same `file:line`/`severity`/`dimension`) re-enters `FINDINGS_NAECHSTE_RUNDE` with its description replaced by the agent's `remaining:` text, skipping D.7 (already confirmed once). On `RUNDE < MAX_RUNDEN` this feeds directly into the next round's finding set, so it counts toward that round's `FINDINGS_AKTUELLE_RUNDE` like any confirmed finding — a round cannot report `SAUBER` while a `PARTIAL` remainder is outstanding. On `RUNDE = MAX_RUNDEN` there is no next round: see "After each round" below for where it lands (Phase 3f, tagged `Fix incomplete`).
+4b. **`FIX_RESULT=PARTIAL` (mandatory handling, never falls through unhandled).** The code changed — verify it: the fix-verifier run (E.5) is MANDATORY for these files, exactly like `APPLIED`. It is NOT a clean fix, so do not add it to `BEREITS_GEFIXT` (point 7) — that list tells workers to stop reporting something, which would hide the leftover instead of exposing it. Instead, the original finding (same `file:line`/`severity`/`dimension`) re-enters `FINDINGS_NAECHSTE_RUNDE` with its description replaced by the agent's `remaining:` text, skipping D.7 (already confirmed once). On `RUNDE < MAX_RUNDEN` this feeds directly into the next round's finding set, so it counts toward that round's `FINDINGS_AKTUELLE_RUNDE` like any confirmed finding — a round cannot report `SAUBER` while a `PARTIAL` remainder is outstanding. On `RUNDE = MAX_RUNDEN` there is no next round: see `audit/SKILL.md`, section "After each round", for where it lands (Phase 3f, tagged `Fix incomplete`).
 
 5. Minor: with `FIX_MINOR=1` (medium + high/xhigh effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
 6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`

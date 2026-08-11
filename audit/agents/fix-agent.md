@@ -2,7 +2,7 @@
 
 - **subagent_type:** `general-purpose`
 - **model:** `sonnet`
-- **maxTurns:** `10`
+- **maxTurns:** `45`
 
 ## FIRST RULE — never run working-tree-wide git commands
 
