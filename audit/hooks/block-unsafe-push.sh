@@ -24,6 +24,21 @@ set -euo pipefail
 input=$(cat)
 cmd=$(echo "$input" | jq -r '.tool_input.command')
 
+# Recognize `$(which git)` / `` `which git` `` as a stand-in for the literal
+# `git` binary before any other matching happens. Both resolve to the git
+# binary at runtime exactly like a bare `git` word does, but the
+# anchor/wrapper/binpath grammar below only recognizes `git` as literal
+# text, and the parens/backticks around the resolver call are ordinary
+# characters to this single-grep guard (it does not segment the command
+# the way block-worktree-wide-git.sh does), so `$(which git) push` sat
+# between an unmatched `$(` and the anchor never found a `git` word
+# adjacent to `push` on the string's own terms. Substituting the whole
+# resolver expression for a literal `git` closes that gap. Only the exact
+# `which git` idiom is recognized (the reproduced bypass); `command -v
+# git` / `type -p git` are a further extension of the same idea, not
+# covered here.
+cmd=$(printf '%s' "$cmd" | sed -E 's/(\$\(|`)[[:space:]]*which[[:space:]]+git[[:space:]]*(\)|`)/git/g')
+
 # Anchor on `git` in COMMAND POSITION rather than matching it as a bare word
 # anywhere: a plain \b<git>\b also fires inside quoted text and arguments
 # (`grep -rn "git push" docs/`, `echo "remember to git push later"`), which
@@ -95,10 +110,34 @@ cmd=$(echo "$input" | jq -r '.tool_input.command')
 # the failure direction is always an extra confirmation prompt, never a
 # missed push. Workaround: rephrase the message without backticks. The
 # bare-`!` anchor above is the same class of tradeoff and accepted for the
-# same reason.
-GIT_ANCHOR='(^|&&|;|\||&|\(|\{|`|\bthen\b|\bdo\b|\belse\b|!)\s*'
-WRAPPER='(\b(time|command|env|sudo|nohup|xargs)\b\s+|[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*'
-BIN_PATH='(\S*/)?'
+# same reason. The same quote-state limitation also applies to the
+# `then`/`do`/`else` anchors themselves: `git commit -m "we do git push
+# later"` raises an unnecessary "ask" because `\bdo\b` matches inside the
+# quoted message. Removing those keywords from GIT_ANCHOR would reopen the
+# real bypass they exist for (`for i in 1; do git push; done`), so this is
+# accepted for the same reason as the backtick/`!` cases: prefer an extra
+# confirmation prompt over a missed push.
+#
+# `-exec`/`-execdir` (find's action flags) are also a real command
+# position: `find . -exec git push \;` hands the following words to
+# exec(3) as a literal argv, exactly like xargs does -- there is no
+# intermediate shell to interpret them. Ordinary bulk-operation shape for a
+# fix agent, not adversarial obfuscation, so it belongs in the anchor set
+# (shared, byte-identical with block-worktree-wide-git.sh).
+#
+# WRAPPER additionally tolerates flags on `xargs` itself (`xargs -n1 git
+# push`): the previous grammar only matched bare `xargs` followed
+# immediately by whitespace, so any flag between `xargs` and `git` fell
+# through unmatched. Flags are zero or more dash-prefixed tokens directly
+# after `xargs`.
+#
+# BIN_PATH additionally tolerates one leading backslash before `git`
+# (`\git push`, a common way to skip an alias/shell function and invoke
+# the binary directly -- no string-interpretation layer involved, so it is
+# the same static-text-visible prefix class as `/usr/bin/git`).
+GIT_ANCHOR='(^|&&|;|\||&|\(|\{|`|\bthen\b|\bdo\b|\belse\b|!|-exec\b|-execdir\b)\s*'
+WRAPPER='(\b(time|command|env|sudo|nohup)\b\s+|\bxargs\b(\s+-\S+)*\s+|[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*'
+BIN_PATH='\\?(\S*/)?'
 OPTS='(-C\s+\S+\s+|--git-dir=\S+\s+|--work-tree=\S+\s+|(-[A-Za-z]|--[a-z-]+)(=\S+)?(\s+\S+)?\s+)*'
 if ! echo "$cmd" | grep -qiE "${GIT_ANCHOR}${WRAPPER}${BIN_PATH}git\s+${OPTS}push"; then
   exit 0

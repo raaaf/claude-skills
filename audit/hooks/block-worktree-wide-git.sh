@@ -3,13 +3,14 @@
 # PreToolUse hook for the /audit skill.
 #
 # Blocks worktree-wide destructive git commands: git stash (any subcommand),
-# git checkout --, git restore, git reset, git clean, git revert. Fix agents
-# run in PARALLEL in ONE shared working tree that holds every sibling
-# agent's uncommitted work -- any of these commands can silently destroy
-# another agent's fix (2026-07-22: a fix agent's `git stash` + `git stash
-# pop` wiped a sibling's only Critical fix and still reported APPLIED).
-# Reserved for the orchestrator, which sequences worktree-wide git
-# deliberately.
+# git checkout --, git switch --force/--discard-changes, git restore, git
+# reset, git clean, git revert, git rm -rf, git worktree remove --force.
+# Fix agents run in PARALLEL in ONE shared working tree that holds every
+# sibling agent's uncommitted work -- any of these commands can silently
+# destroy another agent's fix (2026-07-22: a fix agent's `git stash` +
+# `git stash pop` wiped a sibling's only Critical fix and still reported
+# APPLIED). Reserved for the orchestrator, which sequences worktree-wide
+# git deliberately.
 #
 # Input: Claude Code PreToolUse hook payload on stdin (JSON with
 # `tool_input.command` and `cwd`).
@@ -23,6 +24,21 @@ set -euo pipefail
 
 input=$(cat)
 cmd=$(echo "$input" | jq -r '.tool_input.command')
+
+# Recognize `$(which git)` / `` `which git` `` as a stand-in for the literal
+# `git` binary before any other matching happens. Both resolve to the git
+# binary at runtime exactly like a bare `git` word does, but the
+# anchor/wrapper/binpath grammar below only recognizes `git` as literal
+# text -- and the parens/backticks around the resolver call are themselves
+# segment delimiters (see "Per-occurrence evaluation" below), so
+# `$(which git) reset --hard` reached the subcommand check as a bare
+# `reset --hard` segment with no `git` in it at all, and the reset/clean/
+# stash/etc checks never fired. Substituting the whole resolver expression
+# for a literal `git` closes that gap without touching segmentation or the
+# anchor grammar itself. Only the exact `which git` idiom is recognized
+# (the reproduced bypass); `command -v git` / `type -p git` are a further
+# extension of the same idea, not covered here.
+cmd=$(printf '%s' "$cmd" | sed -E 's/(\$\(|`)[[:space:]]*which[[:space:]]+git[[:space:]]*(\)|`)/git/g')
 
 # Anchor on `git` in COMMAND POSITION rather than matching it as a bare word
 # anywhere: a plain \b<git>\b also fires inside quoted text and arguments
@@ -106,6 +122,18 @@ cmd=$(echo "$input" | jq -r '.tool_input.command')
 # segment's `^` anchor instead of the backtick's own GIT_ANCHOR entry --
 # the observable behavior of this tradeoff is unchanged.
 #
+# Accepted, not fixed (`then`/`do`/`else` anchor false positive): the same
+# quote-state limitation applies to the control-flow-keyword anchors --
+# `git commit -m "we do git reset now"` hard-blocks because `\bdo\b` in
+# GIT_ANCHOR matches the "do" inside the quoted message, then "git reset"
+# right after it reads as a real command position. Removing `do`/`then`/
+# `else` from GIT_ANCHOR would reopen the real bypass they exist for (`for
+# i in 1; do git reset --hard; done`, `if x; then git push; fi`), so this
+# is the same deliberate tradeoff as the backtick and bare-`!` cases above,
+# not a new one: prefer a false block over a missed destructive command.
+# Workaround: avoid the bare words "do"/"then"/"else" next to "git" in a
+# commit message, or use `-F <file>` for the message.
+#
 # Per-occurrence evaluation (stash/checkout exemptions): the stash and
 # checkout checks below each carry an exemption (`stash list`/`stash
 # show`, `checkout -b`). Testing the exemption against the WHOLE command
@@ -137,9 +165,35 @@ cmd=$(echo "$input" | jq -r '.tool_input.command')
 # and the backtick unchanged (shared, byte-identical with
 # block-unsafe-push.sh) -- that guard does not split segments and still
 # needs them as in-string anchors.
-GIT_ANCHOR='(^|&&|;|\||&|\(|\{|`|\bthen\b|\bdo\b|\belse\b|!)\s*'
-WRAPPER='(\b(time|command|env|sudo|nohup|xargs)\b\s+|[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*'
-BIN_PATH='(\S*/)?'
+#
+# `-exec`/`-execdir` (find's action flags) are also a real command
+# position: `find . -name x -exec git checkout -- {} \;` hands the
+# following words to exec(3) as a literal argv, exactly like xargs does --
+# there is no intermediate shell to interpret them, so a static pattern can
+# recognize the position the same way it recognizes `&&`/`;`/etc. This is
+# an ordinary bulk-revert-by-find shape for a fix agent, not adversarial
+# obfuscation, so it belongs in the anchor set rather than the wrapper set
+# (a bare `-exec` line is not itself a `git`-adjacent prefix the way
+# `sudo`/`env` are, it is a delimiter that starts a new command position).
+#
+# WRAPPER additionally tolerates flags on `xargs` itself (`xargs -n1 git
+# push`): the previous grammar only matched bare `xargs` followed
+# immediately by whitespace, so any flag between `xargs` and `git` (the
+# overwhelmingly common real-world shape) fell through unmatched. Flags are
+# recognized as zero or more dash-prefixed tokens directly after `xargs`;
+# positional (non-flag) arguments before the command are still not
+# tolerated, since xargs' own flags come before the command by convention.
+#
+# BIN_PATH additionally tolerates one leading backslash before `git`
+# (`\git push`): a backslash-escaped command name is a common way to skip
+# an alias or shell function and invoke the binary directly, and unlike
+# `sh -c`/`eval` there is no string-interpretation layer involved -- the
+# escaped word still resolves straight to the `git` binary, so this is the
+# same class of static-text-visible prefix as `/usr/bin/git`, not the
+# string-eval class WRAPPER deliberately excludes.
+GIT_ANCHOR='(^|&&|;|\||&|\(|\{|`|\bthen\b|\bdo\b|\belse\b|!|-exec\b|-execdir\b)\s*'
+WRAPPER='(\b(time|command|env|sudo|nohup)\b\s+|\bxargs\b(\s+-\S+)*\s+|[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*'
+BIN_PATH='\\?(\S*/)?'
 OPTS='(-C\s+\S+\s+|--git-dir=\S+\s+|--work-tree=\S+\s+|(-[A-Za-z]|--[a-z-]+)(=\S+)?(\s+\S+)?\s+)*'
 PREFIX="${GIT_ANCHOR}${WRAPPER}${BIN_PATH}git\s+${OPTS}"
 
@@ -179,10 +233,39 @@ while IFS= read -r seg; do
   fi
   # `git switch -f`/`--force` discards local changes when switching
   # branches -- the same class of destruction as the already-blocked `git
-  # checkout -f`. Plain `git switch <branch>` (no force) only moves HEAD
-  # and is non-destructive, so it stays allowed; only the force flag
-  # blocks. Evaluated per segment, see "Per-occurrence evaluation" above.
-  if echo "$seg" | grep -qiE "${PREFIX}switch\s+(\S+\s+)*(-f|--force)\b"; then
+  # checkout -f`. `--discard-changes` is documented by git as a synonym for
+  # `--force` on `switch`, not a separate lesser flag, so it needs the same
+  # treatment; the two are matched as alternatives rather than assuming
+  # `-f`/`--force` covers it. Plain `git switch <branch>` (no force) only
+  # moves HEAD and is non-destructive, so it stays allowed; only the force
+  # forms block. Evaluated per segment, see "Per-occurrence evaluation" above.
+  if echo "$seg" | grep -qiE "${PREFIX}switch\s+(\S+\s+)*(-f|--force|--discard-changes)\b"; then
+    BLOCKED=1
+  fi
+  # `git rm -rf <path>` erases working-tree content the same way `rm -rf`
+  # would -- the same "wipe a sibling's uncommitted work" incident class
+  # this guard exists for. Only the -r (recursive) AND -f/--force
+  # (combined tradeoff: prefer over-blocking) combination blocks, checked
+  # as two independent AND'd conditions so it catches any order and any
+  # token shape (`-rf`, `-fr`, `-r -f`, `--recursive --force`). Deliberately
+  # NOT blocking `git rm <path>` or `git rm -f <path>` without recursion:
+  # removing one or a few named files (even forcibly) is ordinary,
+  # non-worktree-wide usage, not the bulk-erase shape of the incident.
+  if echo "$seg" | grep -qiE "${PREFIX}rm\b"; then
+    RM_RECURSIVE="${PREFIX}rm\s+(\S+\s+)*(-[A-Za-z]*r[A-Za-z]*|--recursive)\b"
+    RM_FORCE="${PREFIX}rm\s+(\S+\s+)*(-[A-Za-z]*f[A-Za-z]*|--force)\b"
+    if echo "$seg" | grep -qiE "$RM_RECURSIVE" && echo "$seg" | grep -qiE "$RM_FORCE"; then
+      BLOCKED=1
+    fi
+  fi
+  # `git worktree remove --force`/`-f` deletes a worktree directory even
+  # when it holds uncommitted changes -- again the 2026-07-22 incident
+  # class, this time against a sibling's whole worktree rather than a
+  # single file. Plain `git worktree remove <path>` without force is left
+  # allowed: git itself already refuses to remove a dirty worktree without
+  # `--force`, so the non-force form has its own built-in safety check and
+  # does not need one here.
+  if echo "$seg" | grep -qiE "${PREFIX}worktree\s+(\S+\s+)*remove\s+(\S+\s+)*(-f|--force)\b"; then
     BLOCKED=1
   fi
 done <<<"$(printf '%s' "$cmd" | tr '&|;()`' '\n\n\n\n\n\n')"
@@ -191,5 +274,5 @@ if [ "$BLOCKED" -eq 0 ]; then
   exit 0
 fi
 
-echo 'BLOCKED: Worktree-weite destruktive Git-Befehle (git stash/checkout/switch/restore/reset/clean/revert) sind hier nicht erlaubt. Mehrere Agents teilen sich denselben Working Tree -- so ein Befehl kann fremde, noch ungesicherte Aenderungen zerstoeren. Das ist dem Orchestrator vorbehalten, der das bewusst sequenziert. Read-only Git (git diff, git status, git show, git log) bleibt erlaubt. `git checkout -b <neuer-branch>` und `git switch <branch>` (ohne --force) bleiben erlaubt.' >&2
+echo 'BLOCKED: Worktree-weite destruktive Git-Befehle (git stash/checkout/switch/restore/reset/clean/revert/rm -rf/worktree remove --force) sind hier nicht erlaubt. Mehrere Agents teilen sich denselben Working Tree -- so ein Befehl kann fremde, noch ungesicherte Aenderungen zerstoeren. Das ist dem Orchestrator vorbehalten, der das bewusst sequenziert. Read-only Git (git diff, git status, git show, git log) bleibt erlaubt. `git checkout -b <neuer-branch>` und `git switch <branch>` (ohne --force) bleiben erlaubt.' >&2
 exit 2
