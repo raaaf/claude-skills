@@ -73,6 +73,18 @@ Guideline contradictions (each would produce conflicting verdicts on the same el
 5. **The push-gate marker `/tmp/claude-audit-passed-<md5 cwd>` is world-creatable and predictable**, so any local process can pre-forge a pass for 30 minutes. Hardening it touches `audit/SKILL.md`, `ship/SKILL.md` and `~/.claude/settings.json` together, and CLAUDE.md documents two hash conventions that must not be mixed, so this needs a coordinated change.
 6. **`cache-write.sh` and `patterns-store.sh` append to the audited project's `.gitignore`** without asking. Helpful, but it is an audit tool mutating the repo it is auditing.
 7. **`data-migrations.md` declares `priority: non_negotiable`** (which anchors findings to Critical) while its own checklist rates most violations Important.
+8. **`ship/SKILL.md` evals `test-command:` and `deploy-command:`** read from the audited repo's `.claude/ship.md`. Same class as the two documented eval sites in `feature-audit` and `perf-measure`, but not recorded in CLAUDE.md's list of them, and this skill also deploys to production. Either document it alongside the other two or gate it on a per-repo confirmation.
+
+## Cross-reference round
+
+Ran after the batch work was committed. Three subagents, ignoring batch lines: cross-file contracts, pattern consistency across all 20 skills, trust boundaries traced entry to use. It found 1 Critical and 11 Important the batch passes had missed, which is the strongest argument in this log for not skipping it.
+
+- **Critical: `/produktvideo` had no spend gate at all.** The orchestrator had asserted, in this log and in CLAUDE.md, that all three paid skills were gated, reasoning from its still-frame confirmation. That confirmation runs *after* the gen4_image call is already billed; it guards against animating a bad still, not against spending. A wrong claim written by the orchestrator, caught by an independent pass. Fixed with step 5b, and the CLAUDE.md claim corrected.
+- **Two defects introduced by this audit's own fixes.** The `printf %q` fix to `detect-framework.sh` (which repaired a Critical) broke the two consumers that read its stdout without `eval`, so `audit/SKILL.md` began threading a backslash-escaped directory list into every worker briefing. And six further guard holes existed in code the audit had already hardened twice.
+- **Six more reproduced guard bypasses**, none of which anyone had looked for: `git switch --discard-changes`, `xargs -n1 git ...` (the wrapper matched bare `xargs` only), `find -exec git ...`, `git rm -rf`, `git worktree remove --force`, `$(which git)` and `\git`.
+- **The hard rules stopped at the dimension workers.** `prompt-template.md` reaches agents 1-12 only, so fix-verifier had neither the injection nor the secrets rule despite running repo-authored test commands and gating keep-or-revert; finding-verifier lacked the injection rule while being prompted to default to REFUTED.
+- **`gh` command injection in `post-loop.md`**: repo-derived paths interpolated into double-quoted shell strings, so a filename containing `$(...)` executed at issue-creation time. Demonstrated closed.
+- **Undocumented eval site**: `ship/SKILL.md` evals `test-command:` and `deploy-command:` from the audited repo's `.claude/ship.md`, in a skill that also deploys to production. Same class as the two documented eval sites but not recorded in CLAUDE.md. Logged as open point 8, not fixed.
 
 ## Notes
 
