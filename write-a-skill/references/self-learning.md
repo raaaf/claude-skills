@@ -77,7 +77,7 @@ Always per-skill, per-project:
 
 Example:
 ```
-/Users/rafael/Local Sites/events-app/.claude/audit/learning-log.md
+/Users/rafael/Local Sites/events-app/.claude/audits/learning-log.md
 ```
 
 ## Read N recent runs, not all

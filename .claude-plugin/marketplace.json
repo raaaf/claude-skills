@@ -4,7 +4,7 @@
     "name": "Rafael Alex"
   },
   "metadata": {
-    "description": "Claude marketplace catalog for the claude-skills plugin (delegate, audit, full-audit, feature-audit, plan-it, review, triage, ship, diagnose, handoff)."
+    "description": "Claude marketplace catalog for the claude-skills plugin: 20 skills for the whole development lifecycle (delegate, audit, full-audit, design-audit, feature-audit, plan-it, review, triage, improve, app-baseline, baseline-check, write-a-skill, find-skills, ship, diagnose, handoff, live-audit, mockup, produktbild, produktvideo)."
   },
   "plugins": [
     {

@@ -12,7 +12,7 @@ Run this before declaring a skill done. Each item is a hard gate, not a suggesti
 - [ ] `description` follows pattern: "What it does. Use when [trigger]. [Optional: NOT when X]."
 - [ ] `when_to_use` lists slash command + 2-4 natural-language phrases (German + English if relevant)
 - [ ] `argument-hint` filled if the skill takes args, otherwise omit
-- [ ] `disable-model-invocation: true` set (required for destructive/long-running skills; omit only if auto-triggering is explicitly wanted)
+- [ ] `disable-model-invocation` omitted (the default: skills are model-invocable). Set it only when an auto-trigger would spend money or be unrecoverable; never on a scheduled skill
 - [ ] `model` explicit: `opus`, `sonnet`, or `haiku` (aliases resolve to latest on Anthropic API; pin full IDs only on Bedrock/Vertex/Foundry). Never inherit silently.
 - [ ] `effort` explicit: `low` | `medium` | `high` | `xhigh`
 - [ ] `allowed-tools` minimal: only what the skill genuinely needs

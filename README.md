@@ -247,17 +247,21 @@ Real output artifacts (an actual audit log, a full-audit state file) live in [ex
 git clone https://github.com/raaaf/claude-skills ~/.claude/skills/claude-skills
 
 # Symlink each skill (or use sync-skills.sh if you cloned alongside another location)
-ln -s ~/.claude/skills/claude-skills/audit         ~/.claude/skills/audit
-ln -s ~/.claude/skills/claude-skills/full-audit    ~/.claude/skills/full-audit
-ln -s ~/.claude/skills/claude-skills/design-audit  ~/.claude/skills/design-audit
-ln -s ~/.claude/skills/claude-skills/feature-audit ~/.claude/skills/feature-audit
-ln -s ~/.claude/skills/claude-skills/ship          ~/.claude/skills/ship
-ln -s ~/.claude/skills/claude-skills/diagnose      ~/.claude/skills/diagnose
-ln -s ~/.claude/skills/claude-skills/review        ~/.claude/skills/review
-ln -s ~/.claude/skills/claude-skills/triage        ~/.claude/skills/triage
-ln -s ~/.claude/skills/claude-skills/handoff       ~/.claude/skills/handoff
-ln -s ~/.claude/skills/claude-skills/plan-it       ~/.claude/skills/plan-it
-ln -s ~/.claude/skills/claude-skills/write-a-skill ~/.claude/skills/write-a-skill
+ln -s ~/.claude/skills/claude-skills/audit          ~/.claude/skills/audit
+ln -s ~/.claude/skills/claude-skills/full-audit     ~/.claude/skills/full-audit
+ln -s ~/.claude/skills/claude-skills/design-audit   ~/.claude/skills/design-audit
+ln -s ~/.claude/skills/claude-skills/feature-audit  ~/.claude/skills/feature-audit
+ln -s ~/.claude/skills/claude-skills/ship           ~/.claude/skills/ship
+ln -s ~/.claude/skills/claude-skills/diagnose       ~/.claude/skills/diagnose
+ln -s ~/.claude/skills/claude-skills/review         ~/.claude/skills/review
+ln -s ~/.claude/skills/claude-skills/triage         ~/.claude/skills/triage
+ln -s ~/.claude/skills/claude-skills/handoff        ~/.claude/skills/handoff
+ln -s ~/.claude/skills/claude-skills/plan-it        ~/.claude/skills/plan-it
+ln -s ~/.claude/skills/claude-skills/write-a-skill  ~/.claude/skills/write-a-skill
+ln -s ~/.claude/skills/claude-skills/delegate       ~/.claude/skills/delegate
+ln -s ~/.claude/skills/claude-skills/improve        ~/.claude/skills/improve
+ln -s ~/.claude/skills/claude-skills/app-baseline   ~/.claude/skills/app-baseline
+ln -s ~/.claude/skills/claude-skills/baseline-check ~/.claude/skills/baseline-check
 ```
 
 `audit`, `full-audit`, and `design-audit` must be installed together — the latter two reference agent definitions from `audit/agents/`. Path is auto-resolved (sibling directory, `~/.claude/skills/audit/`, or mono-repo layout).

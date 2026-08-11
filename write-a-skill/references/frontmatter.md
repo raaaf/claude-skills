@@ -110,8 +110,13 @@ the audit eval harness for months. Put the skill argument in the prompt and ever
 
 ## Repo defaults
 
-- `disable-model-invocation: true` unless auto-triggering is the point (`/find-skills`, `/delegate`)
-  or the skill runs on a schedule (`/live-audit`: the flag would kill the schedule).
+- `disable-model-invocation` is OMITTED on every skill in this repo: all skills are model-invocable.
+  Consider it only if an auto-trigger would spend real money or be otherwise unrecoverable AND the
+  skill has no spend gate of its own (the paid-API skills `/mockup`, `/produktbild`,
+  `/produktvideo` each require an `AskUserQuestion` confirmation before their first paid call, so an
+  auto-trigger can never charge silently). Never set it on a scheduled skill
+  (`/live-audit`: the flag kills the schedule). Every listed skill's `description` + `when_to_use`
+  competes for the shared listing budget, so keep them tight.
 - `model: opus` for orchestrators, worker routing by task type. Omit `model` when the skill should
   ride the session model (`/delegate`).
 - Named `arguments:` over positional `{N}` placeholders.

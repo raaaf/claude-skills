@@ -1,40 +1,34 @@
 # Audit — 2026-07-07 — Branch: main
 
 ## Scope
-- Commits seit origin/main: 1 (076f28a)
-- Geaenderte Dateien: 64 (+2 Audit-Fixes: produktvideo/SKILL.md, CLAUDE.md)
-- HEAD beim Audit: 076f28aeffa5c9b5bfd917d6827a599d065179ce
-- Diff-Size-Gate: HUGE (64 Dateien, 2100 Zeilen) — User-Override: als LARGE auditiert (Opus-Escalation Architektur+Security). Begruendung: reiner Markdown/Bash-Commit, in derselben Session bereits 6-Agent-reviewed.
+- Commits since origin/main: 1 (076f28a)
+- Changed files: 64 (+2 audit fixes: produktvideo/SKILL.md, CLAUDE.md)
+- HEAD at audit time: 076f28aeffa5c9b5bfd917d6827a599d065179ce
+- Diff-size gate: HUGE (64 files, 2100 lines), user override: audited as LARGE (Opus escalation for architecture+security). Reasoning: pure Markdown/Bash commit, already 6-agent-reviewed in the same session.
 
-## Routing
-- Runde 1: lief [architecture,security,code_quality,a11y,ui_design,ux,docs_sync]; uebersprungen [performance:no-reason;seo:no-reason;typography:no-reason;animation:no-reason;copy:no-reason]; Floor-Override [security:code-changed;a11y:frontend;ui_design:frontend;ux:frontend] (Frontend-Signal = Eval-Fixture blade.php; Worker bestaetigten n/a)
+## Result
+- Rounds: 1/3 (Clean after Round 1, early exit)
+- Findings fixed: Critical 0 / Important 1 / Minor 1
+- Critical found/fixed: 0/0
+- Important found/fixed: 1/1 (from Cross-Ref Phase 2.5)
+- Minor found/fixed: 4/1
 
-## Ergebnis
-- Runden: 1/3 (SAUBER nach Runde 1, Early-Exit)
-- Critical gefunden/gefixt: 0/0
-- Important gefunden/gefixt: 1/1 (aus Cross-Ref Phase 2.5)
-- Minor gefunden/gefixt: 4/1
+## Findings per Round
+- Runde 1: [Important][Docs-Sync] CLAUDE.md:41 — check-outdated.sh description said "outdated majors (full-audit only)", stale; it also runs in /audit when a manifest is in the diff (found via Cross-Ref Phase 2.5)
+- Runde 1: [Minor][UX] produktvideo/SKILL.md:53,62 — AskUserQuestion prompts not yet annotated with (single), inconsistent with produktbild
+- Runde 1: [Minor][Security] mockup:167, produktbild:100, produktvideo:106ff (confidence: medium) — API key visible in curl argv via `ps`. Not fixed: single-user machine, low risk per the security worker's assessment, reworking curl config across 3 skills would be complexity without real gain.
+- Runde 1: [Minor][Security] live-audit/agents/site-auditor.md:63 (confidence: low) — PSI key as a URL param is Google's documented method. Not fixed: recommendation lives outside the repo (restrict the key in the Google Console to the PSI API + referrer).
+- Runde 1: [Minor][Architecture] mockup+produktbild (confidence: low) — key-resolution/retry block duplicated. Not fixed: by design, skills are standalone-installable, no shared-lib mechanism.
 
-## Gefixte Issues
-- [UX] produktvideo/SKILL.md:53,62 — AskUserQuestion-Fragen mit (single) annotiert, konsistent mit produktbild (Fix-Verifier: keep)
-- [Docs-Sync/Cross-Ref] CLAUDE.md:41 — check-outdated.sh-Beschreibung "outdated majors (full-audit only)" war stale; laeuft auch in /audit bei Manifest im Diff (gegen Script-Docstring + audit/SKILL.md:76-81 verifiziert)
+## Fixed Issues
+- [Important][Docs-Sync] CLAUDE.md:41 — corrected the check-outdated.sh description against the script docstring and audit/SKILL.md:76-81
+- [Minor][UX] produktvideo/SKILL.md:53,62 — AskUserQuestion prompts annotated with (single), consistent with produktbild (fix-verifier: keep)
 
-## Nicht gefixte Minor (bewusst, kein Issue)
-- [Security] mockup:167, produktbild:100, produktvideo:106ff (confidence: medium) — API-Key in curl-argv via ps sichtbar. Nicht gefixt: Single-User-Maschine, Risiko gering (Einschaetzung Security-Worker), curl-config-Umbau in 3 Skills waere Komplexitaet ohne echten Gewinn.
-- [Security] live-audit/agents/site-auditor.md:63 (confidence: low) — PSI-Key als URL-Param ist Googles dokumentierte Methode. Empfehlung ausserhalb des Repos: Key in der Google Console auf PSI-API + Referrer restringieren.
-- [Architektur] mockup+produktbild (confidence: low) — Key-Resolution/Retry-Block dupliziert. By design: Skills sind standalone installierbar, kein Shared-Lib-Mechanismus.
+## Manual Test Plan
+- n/a (no real visual files changed; the only blade.php in the diff is an eval fixture)
 
-## Pre-Checks
-- Secrets: CLEAN (Repo ist PUBLIC — zusaetzlich diff-weiter Muster-Scan vor Commit: clean)
-- Lockfile-Drift: CLEAN, Binary-Artefakte: CLEAN, i18n: SKIP (keine Locales)
-- Dependency-Check: n/a (kein Manifest im Diff)
+## Open Points
+- n/a (no decision points; the Minor findings above are deliberately unfixed and never become issues)
 
-## Post-Loop
-- 3a Changelog: n/a (kein CHANGELOG-File; README ist die Changelog-Oberflaeche und wurde im Commit aktualisiert)
-- 3b Linter: bash -n auf allen 4 geaenderten .sh-Dateien gruen
-- 3c Tests (diff-scoped): deterministische Checks gruen (verify-agents.sh OK, match-guidelines.sh Live-Lauf konsistent mit Triage). Eval-Suite (run-evals.sh) NICHT gelaufen: shellt in die Live-claude-CLI (Kosten/Laufzeit), dev-only per Docstring.
-- 3d Testplan: n/a (keine echten visuellen Dateien; einzige blade.php ist Eval-Fixture)
-- 3f Offene Punkte: n/a (keine Entscheidungs-Punkte)
-
-## Sauber
-Architektur, Security (Critical/Important), Code Quality, A11y, UI Design, UX (nach Fix), Docs Sync, Cross-Ref (nach Fix)
+## Clean
+Architecture, Security (Critical/Important), Code Quality, A11y, UI Design, UX (after fix), Docs Sync, Cross-Ref (after fix)
