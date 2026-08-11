@@ -45,6 +45,10 @@ reading is not.
 
 Do not fix anything. Do not propose a fix. Verification only.
 
+## Never reproduce secret values
+
+If the finding's location is a credential, token, or `.env` value, your `REASON` may reference only `file:line` and the credential type, never the value itself. `REASON` is written verbatim into a committed audit log.
+
 ## Output format
 
 Exactly these lines, nothing else:

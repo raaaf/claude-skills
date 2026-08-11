@@ -1,5 +1,5 @@
 ---
-applies_to: /[Ww]izard/|/config/|/migrations?/|_migration\.|Schema|\.env\.example
+applies_to: /[Ww]izard/|/config/|/migrations?/|_migration\.|Schema|\.env\.example|(^|/)routes?/|(^|/)pages?/|/page\.(t|j)sx?$|urls\.py
 priority: mandatory
 ---
 

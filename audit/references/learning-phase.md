@@ -14,7 +14,6 @@ Agent(
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
     AUDIT_TYPE=audit",
-  mode: bypassPermissions,
   run_in_background: false
 )
 ```
@@ -23,14 +22,14 @@ Agent(
 
 **Step 2: parse the output**
 
-The agent returns three blocks between `LEARNING_RESULT_START` and `LEARNING_RESULT_END`: `SUPPRESSIONS_TO_ADD` (JSON array), `LEARNING_LOG_ENTRY` (markdown up to `LEARNING_LOG_ENTRY_END`), and `TRENDS_BLOCK` (markdown between `TRENDS_BLOCK_START` and `TRENDS_BLOCK_END`). The suggestions for guideline/agent changes are included as `- [ ]` checkboxes in the `Vorgeschlagene Verbesserungen` section of the `LEARNING_LOG_ENTRY`.
+The agent returns three blocks between `LEARNING_RESULT_START` and `LEARNING_RESULT_END`: `SUPPRESSIONS_TO_ADD` (JSON array), `LEARNING_LOG_ENTRY` (markdown up to `LEARNING_LOG_ENTRY_END`), and `TRENDS_BLOCK` (markdown between `TRENDS_BLOCK_START` and `TRENDS_BLOCK_END`). The suggestions for guideline/agent changes are included as `- [ ]` checkboxes in the `Suggested improvements` section of the `LEARNING_LOG_ENTRY`.
 
 **Step 3: the orchestrator writes**
 
 - append `LEARNING_LOG_ENTRY` to `.claude/audits/learning-log.md` (or create it if this is the first audit)
 - insert `TRENDS_BLOCK` at the top of `learning-log.md` or replace the existing block (do not append — it should stay a top snapshot)
 - before persisting a NEW pattern key via `patterns-store.sh` (`add` or `recur`) or a new suppression, grep the existing store for keys that describe the same thing under a different name; if one exists, reuse or merge instead of creating a twin. Reference case: blade-duplication landed under two names on 2026-08-05 and fragmented the recurrence count.
-- merge `SUPPRESSIONS_TO_ADD` into `.claude/audits/suppressions.json`. **If the file does not exist, create it first** (`{"suppressions": []}`) — any audit run, log, or finding that references a suppression MUST leave a valid `suppressions.json` behind; a dangling reference without the file is an orchestrator bug. **Dedup rule:** run the pattern of every new suppression through `bash "$AUDIT_BIN/normalize-suppression.sh"`, same normalization for existing suppressions. If both produce the same key → keep the existing one, discard the new one. This way "[Security] LIKE injection in scope" and "Like-wildcard injection (security)" are recognized as the same.
+- merge `SUPPRESSIONS_TO_ADD` into `.claude/audits/suppressions.json`. **If the file does not exist, create it first** (`{"suppressions": []}`) — any audit run, log, or finding that references a suppression MUST leave a valid `suppressions.json` behind; a dangling reference without the file is an orchestrator bug. **Dedup rule:** run the pattern of every new suppression through `bash "$AUDIT_BIN/normalize-suppression.sh"`, same normalization for existing suppressions. If both produce the same key → keep the existing one, discard the new one. This way "[Security] LIKE injection in scope" and "Like-wildcard injection (security)" are recognized as the same. **Consent gate (mandatory):** after dedup, present the remaining genuinely-new patterns to the user (chat, or `AskUserQuestion` when available) and write only the ones they approve — `SKILL.md`'s "Allowed orchestrator edits" rule lists `suppressions.json` explicitly as "(with user consent)"; a suppression is LLM-proposed and permanently silences a class of future finding, so it does not get written unasked.
 - show in the chat: number of new suppressions and number of new open backlog points. The user knows they'll be asked at the next `/audit` (or `/full-audit`).
 
 ---

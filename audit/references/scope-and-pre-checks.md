@@ -14,7 +14,7 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 **Delta-scope carve-out at HUGE (official pattern):** a HUGE diff does not have to hard-block when part of it is already covered. A previously audited slice may be excluded from scope if ALL of these hold: (1) the slice was audited clean the SAME day and its audit log under `.claude/audits/` is referenced, (2) the remaining diff contains NO changes to any file of that slice since its audit (verify via `git diff --stat {slice_audit_head}..HEAD -- {slice files}` → empty), (3) the exclusion is documented in the new audit log under `## Scope` (slice name, log reference, file count). If any condition fails, the hard block stands. This keeps "audit in slices, then push everything" workable without silently re-trusting stale results.
 
-**Why only two dimensions escalate:** Architecture (code reasoning across multiple modules) and Security (subtle attack vectors) benefit measurably from Opus. Performance, Code Quality, SEO, A11y, Typography, UI, UX, Animation are predominantly rule- or pattern-based — Sonnet is sufficient. Triage and fix agents stay on Haiku.
+**Why only two dimensions escalate:** Architecture (code reasoning across multiple modules) and Security (subtle attack vectors) benefit measurably from Opus. Performance, A11y and UX need cross-cutting reasoning and default to Sonnet already; Code Quality, SEO, Typography, UI and Animation are predominantly rule- or pattern-based and default to Haiku. Triage stays on Haiku; fix agents run on Sonnet.
 
 ## Output of collect-scope.sh
 
@@ -89,6 +89,8 @@ finding, a hit outside the diff is printed as a hint and nothing more (this is `
 |---|---|---|
 | `check-outdated.sh` (only when a manifest/lockfile is in the diff) | `DEP_SECURITY_RESULT=VULNS` | one **Critical** `[Security]` per reported line. A vulnerable dependency blocks the push like any Critical. |
 | | `DEP_OUTDATED_RESULT=OUTDATED` | one **Minor** `[Dependencies]` per reported line. New version available, not a blocker. |
+| | `DEP_SECURITY_RESULT=TIMEOUT` | **no automatic finding, never treated as clean.** The vulnerability check did not complete within the network timeout. Log a gap note (`Dependency security: skipped, network check timed out`), same class as the full-audit test-runner/build-preflight gap notes, so a repeat accumulates toward an aged-gap escalation instead of silently passing as clean. |
+| | `DEP_OUTDATED_RESULT=TIMEOUT` | same handling as above, lower stakes: gap note `Dependency updates: skipped, network check timed out`. |
 | | `SKIP`/`CLEAN`/`CURRENT` | nothing |
 | `check-i18n-keys.sh` | `I18N_RESULT=MISSING` | one **Important** `[i18n]` per `MISSING {locale}: {key}` line, when the affected keys/files are in the diff |
 | `check-duplicate-array-keys.sh` | `DUPKEY_RESULT=DUPLICATES` | one **Critical** `[Correctness]` per `DUPLICATE {file}:{line}` line. PHP keeps the LAST value on a duplicate key and drops the first silently, so the crash only appears once a code path reads the shadowed key. `php -l` does not catch this. |

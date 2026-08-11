@@ -6,7 +6,7 @@ Reference: [Laws of UX](https://lawsofux.com/) by Jon Yablonski
 
 | # | Law | Actionable Rule | What to Check in Code |
 |---|-----|----------------|----------------------|
-| 1 | Fitts's Law | Interactive targets must be at least 32px; use padding to reach it | `width`/`height` < 32px on buttons/icons; missing `padding` on small interactive elements |
+| 1 | Fitts's Law | Interactive targets must meet the WCAG AA minimum (24px, see Accessibility guidelines); 44px is the recommended comfortable target. Use padding to reach it | `width`/`height` below the accessibility guideline's 24px floor on buttons/icons; missing `padding` on small interactive elements |
 | 2 | Fitts's Law (hit area) | Expand clickable area beyond visible bounds with pseudo-elements or invisible padding | Links/icons without `::before`/`::after` hit-area expansion; `inset: -8px -12px` pattern missing |
 | 3 | Hick's Law | Limit visible choices; use progressive disclosure (`<details>`, collapsibles) | Flat lists rendering `allOptions.map()`; no "Advanced"/"More" grouping for 7+ items |
 | 4 | Miller's Law | Chunk data into groups of 5--9 items; format long strings with spaces | Raw unformatted numbers/IDs; lists > 9 items without visual grouping |
@@ -32,7 +32,7 @@ Reference: [Laws of UX](https://lawsofux.com/) by Jon Yablonski
 
 ### Anti-Patterns Summary
 
-- Touch target < 32px (mobile: < 44px per Apple HIG)
+- Touch target below the WCAG AA minimum of 24px (44px is the recommended comfortable target, see Accessibility guidelines)
 - No immediate feedback on user action (> 400ms gap)
 - Blank screen during loading instead of skeleton/spinner
 - All options dumped at once without progressive disclosure

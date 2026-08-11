@@ -1,5 +1,5 @@
 ---
-applies_to: \.(css|scss|sass|less)$|\.(jsx|tsx|vue|svelte|astro)$|\.blade\.php$|\.(swift|kt|dart)$
+applies_to: \.(css|scss|sass|less|styl)$|\.(jsx|tsx|vue|svelte|astro|html)$|\.blade\.php$|\.(swift|kt|dart)$|\.(js|ts)$
 priority: recommended
 ---
 # UI Animation Checklist

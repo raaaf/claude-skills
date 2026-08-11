@@ -1,6 +1,5 @@
 ---
 name: audit
-disable-model-invocation: true
 description: "Pre-push code audit. Routes the diff to relevant subagents (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. An argument scopes to selected dimensions ('/audit security', '/audit frontend', '/audit ?' for a multi-select prompt) — partial audits fix as usual but never write the push marker. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: dimensions (security | performance,a11y | backend | frontend | design | ?) or scope hint]"
@@ -62,7 +61,7 @@ echo "Effort=$CLAUDE_EFFORT | Diff=$DIFF_CLASS | Runden=$MAX_RUNDEN | FixMinor=$
 | low | 1 | no | skip | high | skipped |
 | medium (default) | 2 | yes | yes | medium | `medium` + `low` confidence |
 | high / xhigh | 3 | yes | yes | low | every Critical/Important |
-| any, `DIFF_CLASS=prose` | 1 | no | yes | medium | `medium` + `low` confidence |
+| any, `DIFF_CLASS=prose` | 1 | no | per effort (low: skip) | medium | `medium` + `low` confidence |
 
 ## Phase 0.6: Dimension scoping via argument (optional partial audit)
 
@@ -224,6 +223,19 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 
 **Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
 
+**Dispatch is rate-limited mid-run (org/session limit).** The skill assumes subagents are always
+available; they are not. When `Agent` calls start failing on a usage limit, do NOT silently drop the
+remaining assignments and do NOT let the orchestrator quietly become the fix agent for the whole
+backlog. Decide by what is left: **few, small, already-verified fixes** -> the orchestrator applies
+them directly and the audit log names every fix it applied itself (the hard "orchestrator never edits
+code" rule yields to the limit, but only for findings that already passed verification). **Anything
+larger** -> stop the wave, write the current state (round, confirmed findings, applied fixes, open
+assignments) into the audit log, report the reset time to the user, and resume from that state when
+dispatch works again. Either way the audit log gets a `## Notes: Dispatch limit` block, because a run
+finished this way is not the same evidence as a run with full worker coverage (2026-08-03: the limit
+hit mid-run, the final cross-ref fixes and three open-point fixes were applied by the orchestrator,
+which no line of the skill covered).
+
 **Liveness is a briefing contract, not a timer.** The Agent tool has no timeout, so nothing outside the agent can cut it off; the only lever is the instruction it carries. Every briefing therefore states a hard tool-call budget and the duty to send a partial report on reaching it (`agents/prompt-template.md` carries this for workers, `fix-agent.md` for fix agents). Keep that line in any briefing you write by hand. A silent agent is then a contract violation you can act on immediately via the failure paths above, instead of a wait of unknown length.
 
 The triage agent is deliberately NOT in this list: it is opt-in, gets no re-prompt, and its silence is a non-event because the deterministic floor already decided the routing (log `TRIAGE=FLOOR_ONLY`).
@@ -383,9 +395,15 @@ For a single file, `git show HEAD:<path>` is enough and touches nothing. Note th
 4a. **Working-tree cross-check after EVERY parallel fix wave (MANDATORY, deterministic).** Do not trust `FIX_RESULT=APPLIED`. Build the set of files you assigned across all fix agents of this wave, then compare against reality:
 
 ```bash
-git status --porcelain | awk '{print $2}' | sort > /tmp/audit-wave-actual.txt
-# expected = every file assigned in this wave, plus files already modified before it
-comm -13 /tmp/audit-wave-actual.txt /tmp/audit-wave-expected.txt   # assigned but NOT modified -> fix lost
+ACTUAL=$(mktemp)
+EXPECTED=$(mktemp)
+
+# Expected = every file assigned to a fix agent in this wave (Step E, "group findings by
+# file"). Populate WAVE_ASSIGNED_FILES yourself, one path per line, BEFORE this runs --
+# it is orchestrator-known state, not carried over from any earlier command.
+echo "$WAVE_ASSIGNED_FILES" | sort > "$EXPECTED"
+git status --porcelain | sed 's/^...//; s/^.* -> //; s/^"//; s/"$//' | sort > "$ACTUAL"   # strip status+space, rename source, and git's quoting of paths with spaces
+comm -13 "$ACTUAL" "$EXPECTED"   # assigned but NOT modified -> fix lost
 
 # Stash-Check: ein Eintrag hier heisst, ein Fix-Agent hat trotz Verbot gestasht.
 # Unabhaengig von jeder Selbstauskunft — der 2026-07-22-Verstoss wurde nur durch

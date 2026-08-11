@@ -1,6 +1,6 @@
 # Prompt Template for Subagents
 
-This template is passed to every subagent. Placeholders are replaced by the audit skill.
+This template is passed to the dimension workers (agents 1-12), for both /audit and /full-audit. Other subagents — finding-verifier, fix-verifier, cross-reference, fix-agent, triage, learning-agent — are dispatched from `SKILL.md` with only named fields, not this file, and carry their own copies of the rules that apply to them. Placeholders are replaced by the audit skill.
 
 ## For /audit (diff-based)
 

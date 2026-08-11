@@ -8,7 +8,13 @@ Check whether unprocessed learning suggestions from earlier audits are still ope
 
 ```bash
 LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
-[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
+if [ -f "$LOG" ]; then
+  COUNT=$(grep -c "^- \[ \] " "$LOG" 2>/dev/null)
+  COUNT=${COUNT:-0}
+else
+  COUNT=0
+fi
+echo "$COUNT"
 ```
 
 If `>= 1`: ask the user via `AskUserQuestion` with options:

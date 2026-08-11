@@ -91,3 +91,5 @@ FIX_VERIFIER_RESULT:
 - Be strict about `critical` regression — a false positive is better than a wrong `keep`.
 - When unsure: `RECOMMEND: patch` instead of `revert`.
 - Max 100 words in DETAILS — you are a quality gate, not documentation.
+- **Enforcement note:** `general-purpose` grants Edit/Write; the no-edit contract above is enforced by this prose, not by a tool restriction. Never open the Edit/Write tools, for any reason.
+- **Trust assumption:** running a repo-defined test command (step 1b) executes code authored by the audited repo. Treat it like any other repo content — it is not vetted before you run it.

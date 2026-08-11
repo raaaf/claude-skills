@@ -271,7 +271,7 @@ Google uses mobile-first indexing — it crawls and ranks based on the mobile ve
 
 - Ensure all content is accessible on mobile — nothing hidden behind "desktop only" interactions
 - Touch targets must be at least 44x44 pixels (see Accessibility guidelines)
-- Text must be readable without zooming — minimum 16px font size for body text
+- Text must be readable without zooming. Form inputs need at least 16px font size specifically: below that, mobile Safari auto-zooms on focus. General body-text sizing is a typography call (see Typography guidelines, minimum 15px)
 - No horizontal scrolling — content must fit the viewport width
 - Test with Google's Mobile-Friendly Test and real devices, not just browser dev tools
 
