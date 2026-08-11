@@ -1,5 +1,11 @@
 # Audit — 2026-07-07 — Branch: main
 
+> Historical log, kept as a format example. It predates the 2026-08 split that moved `live-audit`,
+> `mockup`, `produktbild`, and `produktvideo` into a separate private repo, so several findings
+> below still reference those skills' paths. Treat the file paths as historical, not as files that
+> exist in this repo today; the log's own structure (Scope/Result/Findings/Fixed/Open Points/Clean)
+> is what this example is for.
+
 ## Scope
 - Commits since origin/main: 1 (076f28a)
 - Changed files: 64 (+2 audit fixes: produktvideo/SKILL.md, CLAUDE.md)

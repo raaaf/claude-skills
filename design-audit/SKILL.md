@@ -1,6 +1,6 @@
 ---
 name: design-audit
-description: "Purely visual design audit that dissects the entire frontend surface (or a scoped path) file by file: typography, UI visual design incl. OKLCH color system, visual UX patterns, animation, visual a11y (contrast, focus, target sizes). Reports defects AND gated elevation opportunities (consistency, distinctiveness, polish; optional Mobbin reference grounding), then lets the user pick what gets fixed — nothing is changed without selection. Use when the user runs /design-audit or wants the existing UI made better, more consistent, more distinctive. NOT for ARIA/semantics/copy/SEO (use /audit), NOT a push gate, NOT a live-site check (use /live-audit)."
+description: "Purely visual design audit that dissects the entire frontend surface (or a scoped path) file by file: typography, UI visual design incl. OKLCH color system, visual UX patterns, animation, visual a11y (contrast, focus, target sizes). Reports defects AND gated elevation opportunities (consistency, distinctiveness, polish; optional Mobbin reference grounding), then lets the user pick what gets fixed — nothing is changed without selection. Use when the user runs /design-audit or wants the existing UI made better, more consistent, more distinctive. NOT for ARIA/semantics/copy/SEO (use /audit), NOT a push gate, NOT a live-site check (code only)."
 when_to_use: "/design-audit, Design-Audit, UI-Qualitaet pruefen, Design konsistenter machen, Frontend polieren, UI einzigartiger machen"
 argument-hint: "[optional: path scope, e.g. resources/views/checkout]"
 model: opus
@@ -223,5 +223,5 @@ No push marker is written — /design-audit is not a push gate. If the user want
 - No fixes without Phase 5 selection — including "obvious" one-liners.
 - No new dependencies, no framework or styling-system migrations as elevation.
 - No gradients/glow/decorative-blur suggestions (slop heuristics apply to OUR suggestions too).
-- No screenshot/live-rendering claims — this skill reads code; rendered-state checks belong to /live-audit.
+- No screenshot/live-rendering claims: this skill reads code, not a running site; rendered-state checks are out of scope here.
 - Never `AUDIT_STATUS:` lines (that marker belongs to /audit's Stop hook contract).
