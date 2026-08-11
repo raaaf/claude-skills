@@ -1,0 +1,19 @@
+{
+  "fixture": "security/destructive-git-guard.sh",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 21,
+      "matches": ["whole command string", "whole string", "entire command", "each segment", "per segment", "anywhere in the command", "disarms the guard", "same line", "before the destructive check"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 27,
+      "reason": "the destructive pattern itself (stash/checkout --/reset/clean/revert) is correctly shaped; the defect is upstream in the exemption check, not in this list"
+    }
+  ],
+  "notes": "READONLY_RE is tested against the WHOLE command string ($cmd), not per logical segment. 'git stash list && git stash pop' contains a read-only 'stash list' anywhere in the string, so the exemption matches and the function exits 0 before DESTRUCTIVE_RE is ever evaluated -- the mutating 'stash pop' right next to it never gets checked. Same shape via ';' instead of '&&', and via 'git checkout -b tmp && git checkout -- .' matching the '-b' exemption. This defeats the guard's entire purpose (a fix agent's read-only command anywhere in a chained line disarms protection for a mutating command elsewhere on the same line) and is Critical for that reason. A worker that only checks whether DESTRUCTIVE_RE's alternation list is complete has missed the actual defect: the list is fine, the evaluation scope (whole string vs. per-segment) is wrong."
+}

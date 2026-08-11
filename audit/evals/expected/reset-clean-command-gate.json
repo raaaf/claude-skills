@@ -1,0 +1,18 @@
+{
+  "fixture": "quality/reset-clean-command-gate.sh",
+  "must_find": [
+    {
+      "dimension": "quality",
+      "line": 7,
+      "matches": ["case table", "considered complete", "own case", "own test", "xargs", "find -exec", "which git", "untested bypass", "blind spot", "not covered by the pattern", "never tested"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no untrusted external input reaches this script beyond the command string it is designed to inspect; the defect is a coverage gap in the guard's own verification, not an injection or credential issue"
+    }
+  ],
+  "notes": "The case table (lines 10-19) is self-authored and self-referential: every row it lists is a shape PATTERN (line 25) already handles (case variation, sudo/env prefix, subshell paren, trailing chain operator), so the table can only ever confirm what the author already thought of. It never exercises `xargs -n1 git reset --hard`, `find . -exec git reset --hard \\;`, `$(which git) reset --hard`, or `\\git reset --hard` -- and PATTERN genuinely does not match any of the four: none of xargs, -exec, a which-substitution, or a backslash-escaped binary name puts `git` in a position the anchor/wrapper grammar recognizes. The header's 'considered complete and closed' claim is validated only against the table the same author wrote, so a real, demonstrable bypass ships as reported-green. Mirrors the real incident this fixture is modeled on: a guard hardened twice, each round verified only against its own case list, until a cross-reference pass (not the author) reproduced six further holes in exactly this class of untested shape."
+}
