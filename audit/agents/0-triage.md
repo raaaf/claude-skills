@@ -1,7 +1,7 @@
 # Subagent 0: Triage
 
 - **subagent_type:** `general-purpose`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `7`
 
 ## Purpose

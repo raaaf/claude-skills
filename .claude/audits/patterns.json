@@ -5,7 +5,8 @@
   "recurrences": {
     "cat:docs|meta doc drift claude readme skill|skill feature changes": 7,
     "cat:process|fix agent self-designed test table clean|finds real defect": 3,
-    "cat:architecture|audit-owned infrastructure (hooks, guidelines, bin scripts)|only found incidentally": 4,
-    "cat:security|guard exemption grepped whole command string instead per segment": 1
+    "cat:architecture|audit-owned infrastructure (hooks, guidelines, bin scripts)|only found incidentally": 5,
+    "cat:security|guard exemption grepped whole command string instead per segment": 1,
+    "cat:process|measurement harness under-reports, green zero number|until instrument checked": 1
   }
 }

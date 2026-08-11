@@ -197,7 +197,7 @@ When opted in (round 1 only; from round 2 reuse `TRIAGE_RESULT`):
 ```
 Agent(
   subagent_type: general-purpose,
-  model: haiku,
+  model: sonnet,
   prompt: "Read agents/0-triage.md and run the triage.
     UNIFIED_DIFF: {UNIFIED_DIFF}
     FRONTEND_DATEIEN: {FRONTEND_DATEIEN}

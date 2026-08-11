@@ -1,7 +1,7 @@
 # Subagent 5: SEO & Semantic HTML
 
 - **subagent_type:** `seo-auditor`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `10`
 
 ## Focus

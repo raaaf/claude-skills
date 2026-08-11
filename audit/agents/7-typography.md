@@ -1,7 +1,7 @@
 # Subagent 7: Typography
 
 - **subagent_type:** `ui-ux-reviewer`
-- **model:** `haiku`
+- **model:** `sonnet`
 - **maxTurns:** `10`
 
 ## Focus
