@@ -15,7 +15,7 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented); Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
 3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching so workers load only guidelines whose `applies_to` glob matches the diff)
-4. Phase 2: Audit-loop with triage routing (haiku triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 12 specialized workers reporting for coverage rather than self-filtering, hallucination validator (file and line exist), finding verification by fresh-context verifiers that are prompted to refute (only confirmed findings reach the fix stage; refuted ones are discarded before a file is touched, inconclusive ones are listed as unverified), fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
+4. Phase 2: Audit-loop with triage routing (sonnet triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 12 specialized workers reporting for coverage rather than self-filtering, hallucination validator (file and line exist), finding verification by fresh-context verifiers that are prompted to refute (only confirmed findings reach the fix stage; refuted ones are discarded before a file is touched, inconclusive ones are listed as unverified), fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
 7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
@@ -26,19 +26,21 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 
 | # | Dimension | Model |
 |---|---|---|
-| 0 | Triage | haiku |
+| 0 | Triage | sonnet |
 | 1 | Architecture | sonnet |
 | 2 | Security | opus |
 | 3 | Performance | sonnet |
-| 4 | Code Quality | haiku |
-| 5 | SEO | haiku |
+| 4 | Code Quality | sonnet |
+| 5 | SEO | sonnet |
 | 6 | A11y (WCAG 2.2) | sonnet |
-| 7 | Typography | haiku |
-| 8 | UI Visual Design | haiku |
+| 7 | Typography | sonnet |
+| 8 | UI Visual Design | sonnet |
 | 9 | UX Patterns | sonnet |
-| 10 | Animation | haiku |
+| 10 | Animation | sonnet |
 | 11 | Docs Sync | sonnet |
 | 12 | Copy & UX-Writing | sonnet |
+
+Every worker runs on Sonnet except Security (Opus, for exploit reasoning). Haiku is no longer used: a full-audit run once had a Haiku code-quality batch produce five findings that the validator discarded as impossible or hallucinated, while Sonnet workers in the same run produced zero — and a cheaper model's wrong finding still costs a verifier round and a fix wave, which erases the savings.
 
 Triage routes the diff to relevant workers only; workers receive triage-marked hotspots, never the full diff. Saves 40-60% input tokens per worker.
 
@@ -81,8 +83,8 @@ an aborted run. If a GitHub remote exists, it offers (once, opt-in) to file the 
 
 **Loop contract:** every turn ends with a machine-checkable status line
 (`AUDIT_STATUS total=… with_story=… tested=… passing=… failing=… needs_review=… test_exit=…`).
-Both the counts and `test_exit` are **computed by Bash helpers** (`bin/status-line.sh` parses the
-table, `bin/run-tests.sh` reports the real process exit code), never self-reported by the model, so
+Both the counts and `test_exit` are **computed by Bash helpers** (`feature-audit/bin/status-line.sh` parses the
+table, `feature-audit/bin/run-tests.sh` reports the real process exit code), never self-reported by the model, so
 completion is objectively checkable. State lives in the committed `FEATURE_AUDIT.md`, so the loop
 survives interruption and resumes. Commits per passing feature (branch-first on the default
 branch, scoped staging — never `git add -A`). Stops after 3 consecutive identical failures or 50
@@ -287,8 +289,8 @@ All three skills respect `CLAUDE_EFFORT`:
 | Level | /audit | /full-audit | /plan-it |
 |---|---|---|---|
 | low | 1 round, no Minor, no Learning | 1 round/batch, no Cross-Ref, no Learning | 3 challenges, no eval, no learning |
-| medium | 2 rounds, fix Minor, floor=medium | 2 rounds/batch, fix Minor, Cross-Ref BATCHED-only | 4 challenges, no eval |
-| high / xhigh (default) | 3 rounds, fix Minor, floor=low | 3 rounds/batch, Cross-Ref always, fix Minor | 5 challenges, full eval |
+| medium | 2 rounds, fix Minor, floor=medium (default) | 2 rounds/batch, fix Minor, Cross-Ref BATCHED-only | 4 challenges, no eval |
+| high / xhigh | 3 rounds, fix Minor, floor=low | 3 rounds/batch, Cross-Ref always, fix Minor (default) | 5 challenges, full eval (default) |
 
 ```bash
 CLAUDE_EFFORT=low claude /audit              # quick WIP-Push check
@@ -316,7 +318,7 @@ SKILL.md (orchestrator)
 - **Descriptions are model triggers** — third-person, written for *when* to invoke, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need (SKILL.md under 500 lines, references one level deep)
 - **Worker isolation** — subagents receive only triage-routed hotspots, read files on-demand (max 5 per run)
-- **Per-worker model tuning** — Haiku for pattern-matching dimensions, Sonnet for reasoning-heavy dimensions
+- **Per-worker model routing** — Sonnet for every worker, Opus for Security only (exploit reasoning is worth the cost, and a cheaper model's wrong finding still costs a verifier round and a fix wave)
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Orchestrator-only `.claude/` writes** — subagents are blocked by hardcoded path protection; they return structured output, orchestrator parses and writes
 - **Semantic suppression dedup** — `bin/normalize-suppression.sh` produces stable keys so paraphrased dismissals collapse into one
@@ -344,7 +346,7 @@ Every skill dispatches a learning agent (Sonnet) after each run.
 bash audit/evals/run-evals.sh --only security --scoped --timeout 900
 ```
 
-Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. As of 2026-08-05: 54 scorable fixtures (matched against `expected/<base>.json`) across 9 categories (a11y, architecture, correctness, docs, performance, quality, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug, and over time the eval becomes a real benchmark.
+Fixtures live under `audit/evals/fixtures/{category}/`, expected findings under `audit/evals/expected/`. As of 2026-08-11: 64 scorable fixtures (matched against `expected/<base>.json`) across 11 categories (a11y, animation, architecture, correctness, docs, performance, quality, reliability, security, ui, ux) ship with the repo. Add a new fixture every time the audit misses a real-world bug, and over time the eval becomes a real benchmark.
 
 **Know the cost before you start one.** A fixture is a single file, but an unscoped `/audit` still dispatches around ten workers that read dozens of guideline files. Measured on 2026-08-04, one security fixture at `--effort low`: 896 seconds, 41 turns, 6.93 USD. The full set is hours and triple-digit dollars.
 
