@@ -77,6 +77,9 @@ AUDIT_AGENTS_DIR="${CLAUDE_SKILL_DIR}/agents"
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
+# Run-ledger start marker (see run-log.sh header) — before any real work
+bash "$AUDIT_BIN/run-log.sh" --start --skill audit
+
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 for h in pretooluse-bash block-unsafe-push block-worktree-wide-git; do [ -f "${CLAUDE_SKILL_DIR}/hooks/$h.sh" ] || echo "WARNING: hook script missing: ${CLAUDE_SKILL_DIR}/hooks/$h.sh (push gate / worktree guard fails open by design, not blocking)"; done
 bash "$AUDIT_BIN/collect-scope.sh"

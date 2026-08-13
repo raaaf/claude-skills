@@ -34,6 +34,18 @@ The task is `$ARGUMENTS` (free text, plus an optional `--worktree` flag; empty w
 | Normal | clear task, 1-5 files, no architecture decision | full flow |
 | Large / architectural | new data model, > ~5 files, unclear framing, multiple valid approaches, breaking change | **AskUserQuestion:** "/plan-it first (Recommended — plan + challenges, then /plan-it execute)" vs. "Implement directly via /delegate". If plan-it: leave the skill, /plan-it takes over. |
 
+Once classified as Trivial, Normal, or Large-with-delegate-chosen (i.e. this run is actually going to implement something, not leaving the skill), before Phase 1 or Phase 3 begins — run-ledger start marker (see audit/bin/run-log.sh header):
+
+```bash
+RUN_LOG=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+done
+[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill delegate
+```
+
 ## Phase 1: Analysis (orchestrator, expensive)
 
 - Translate the task into a verifiable goal ("add validation" → "tests for invalid inputs, then green").

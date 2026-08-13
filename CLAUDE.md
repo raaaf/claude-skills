@@ -52,7 +52,7 @@ Key invariants:
 | `bash audit/bin/test-lock.sh <cmd...>` | Serialize test runs across parallel fix-verifiers (mkdir spinlock, per-repo, 15min TTL; exit 75 on lock timeout) |
 | `bash app-baseline/bin/baseline-scan.sh [root]` | Deterministic baseline scan: one `D<n>\|check\|PASS\|FAIL\|UNVERIFIED\|evidence` line per check (shared by /app-baseline and /baseline-check) |
 | `bash audit/bin/check-docs-claims.sh [root]` | Mechanical doc-drift check: CLAUDE.md/README.md/`*/SKILL.md` claims (script paths, repo paths, skill roster) verified against what actually exists on disk right now |
-| `bash audit/bin/run-log.sh --skill <name> --outcome <str> [--duration <sec>] [--counts k=v,...] [--gate <str>] [--note <str>]` | Appends one JSON line to `$HOME/.claude/skill-runs.jsonl` (timestamp/project/head/branch derived automatically); never fails the calling skill, even internally |
+| `bash audit/bin/run-log.sh --start --skill <name>` \| `bash audit/bin/run-log.sh --skill <name> --outcome <str> [--duration <sec>] [--counts k=v,...] [--gate <str>] [--note <str>]` | `--start` touches a marker so a later call in a fresh shell can derive `duration_s` (3h staleness ceiling; explicit `--duration` still wins); terminal call appends one JSON line to `$HOME/.claude/skill-runs.jsonl` (timestamp/project/head/branch derived automatically); never fails the calling skill, even internally |
 | `bash audit/bin/run-stats.sh` | Reports run-ledger anomalies as `RUNSTAT <key>: <detail>` lines plus `RUNSTATS_RESULT=OK\|ANOMALIES (N)\|SKIP (reason)`; read by the learning phase (see Gotchas) |
 
 ## Conventions

@@ -77,6 +77,18 @@ case "$CLAUDE_EFFORT" in
     ;;
 esac
 echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run) | Learning=$([ $SKIP_LEARNING -eq 1 ] && echo skip || echo run)"
+
+# Run-ledger start marker (see audit/bin/run-log.sh header) — before any real
+# work. Re-resolved here independently of the Phase 4 lookup: each SKILL.md
+# Bash block is a fresh shell, so a path found in one block does not survive
+# into another.
+RUN_LOG=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/audit/bin/run-log.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+done
+[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill plan-it
 ```
 
 | Level | Challenges | Codebase Scan | Evaluation | Learning |

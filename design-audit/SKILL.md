@@ -55,6 +55,9 @@ bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "ERROR: missing age
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
+# Run-ledger start marker (see run-log.sh header) — before any real work
+bash "$AUDIT_BIN/run-log.sh" --start --skill design-audit
+
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"
 case "$CLAUDE_EFFORT" in
   low)    MAX_ELEVATION=3;  BATCH_SIZE=60; VERIFY_FIXES=0 ;;

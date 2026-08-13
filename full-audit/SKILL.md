@@ -62,6 +62,11 @@ AUDIT_REFS="$AUDIT_ROOT/references"
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
+# Run-ledger start marker (see run-log.sh header) — before any real work.
+# Re-fires on every resumed invocation too, so a resumed run's duration
+# measures that invocation's own elapsed time, not time spent paused.
+bash "$AUDIT_BIN/run-log.sh" --start --skill full-audit
+
 # Eigene Scripts + persistenter Goal-Loop-State (Format/Resume: references/state-file.md)
 FULL_AUDIT_BIN="${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/full-audit}/bin"
 STATE_FILE="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-state.md"

@@ -169,6 +169,8 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
          "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
+# Run-ledger start marker — this is the true beginning of the run, before commit/audit/test/push/deploy.
+[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill ship
 ```
 
 Every later "run the log call" below means: `[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
