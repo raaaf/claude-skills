@@ -29,6 +29,23 @@ set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 input=$(cat)
 
+# Fast path: this dispatcher runs on EVERY Bash tool call, and each guard it
+# invokes spawns a shell plus a `jq` and a `sed` of its own -- four processes
+# to decide that `ls` is not a git command. Both guards can only ever match a
+# command containing the literal substring `git` (either a bare `git` word or
+# the `$(which git)` idiom they normalize; neither recognizes an indirection
+# like `g=git; $g push`, by their own documented limits). So if the raw
+# payload contains no `git` at all, neither guard can fire and both are
+# skipped without parsing anything.
+#
+# The check runs against the unparsed JSON, which over-matches slightly: a cwd
+# or an unrelated argument containing `git` (or `.github`, `digit`, ...) falls
+# through to the full checks. That is the safe direction -- over-matching
+# costs the old code path, under-matching would skip a guard.
+if ! printf '%s' "$input" | grep -q 'git'; then
+  exit 0
+fi
+
 WORKTREE_GUARD="$DIR/block-worktree-wide-git.sh"
 PUSH_GUARD="$DIR/block-unsafe-push.sh"
 

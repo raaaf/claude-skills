@@ -52,8 +52,11 @@ echo "---FILES---"
 # --- 4. Classify: frontend + translation ----------------------------------
 # "Frontend" = files that render UI. Native UI files (Swift, Kotlin, Dart)
 # count too, so the a11y/UI/UX/animation workers run on native apps.
+# Pattern lives in lib-git-base.sh so this list and check-skips.sh's routing
+# floor cannot drift apart again (they had).
+FE_RE="${FRONTEND_EXT_RE:-\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$}"
 FRONTEND=""
-[ -n "$FILES" ] && FRONTEND=$(printf '%s\n' "$FILES" | grep -E '\.(blade\.php|html|vue|tsx?|jsx?|css|scss|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$' | grep -vE '(^|/)(build|\.gradle)/' || true)
+[ -n "$FILES" ] && FRONTEND=$(printf '%s\n' "$FILES" | grep -E "$FE_RE" | grep -vE '(^|/)(build|\.gradle)/' || true)
 echo "---FRONTEND---"
 [ -n "$FRONTEND" ] && printf '%s\n' "$FRONTEND"
 

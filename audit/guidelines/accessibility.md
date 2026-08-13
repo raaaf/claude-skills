@@ -1,3 +1,7 @@
+---
+applies_to: \.(jsx|tsx|js|ts|mjs|cjs|vue|svelte|astro|html?)$|\.blade\.php$|\.(twig|erb|hbs|ejs|liquid)$|\.(css|scss|sass|less|styl)$|tailwind\.config|\.(swift|kt|kts|dart)$|\.(storyboard|xib)$|/values[^/]*/strings\.xml$|/components?/|/pages/|/views?/
+priority: recommended
+---
 # Accessibility Guidelines
 
 Accessibility is not a checklist you run before launch — it is a design constraint that shapes every decision from the first wireframe to the last line of CSS. When you build for accessibility, you build better software for everyone: keyboard users, screen reader users, people with low vision, motor impairments, cognitive differences, and situational limitations like a broken arm or bright sunlight.

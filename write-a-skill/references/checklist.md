@@ -40,7 +40,7 @@ If any answer is "no" or "maybe", rewrite.
 
 Per agents/*.md file:
 - [ ] `subagent_type` named (general-purpose or specific)
-- [ ] `model` set per task (Haiku for pattern-matching, Sonnet for reasoning, Opus only for genuine reasoning hardness like security)
+- [ ] `model` set per task (Sonnet for anything producing findings, Opus only for genuine reasoning hardness like security; Haiku only for mechanically consumed output, never for findings — see `references/subagents.md`, "Model routing")
 - [ ] `maxTurns` realistic
 - [ ] Focus is one aspect, not "do everything"
 - [ ] Output format is strict (table, JSON-schema, or fixed-line-format), not free prose

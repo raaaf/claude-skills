@@ -246,7 +246,7 @@ SINGLE: `Full-Audit Round {RUNDE}/{MAX_RUNDEN_PRO_BATCH} — {TOTAL_FILES} files
 
 TodoWrite: `Round {RUNDE} — dispatch subagents` (in_progress), `Round {RUNDE} — fix findings` (pending).
 
-**Step A — dispatch subagents in parallel**
+**Step A.2 — dispatch subagents in parallel**
 
 MANDATORY: dispatch ALL subagents contained in `SELECTED_DIMENSIONS` (from Phase 0.5) in EVERY round. Non-selected dimensions are skipped entirely — not caught up in later rounds either. Fixes can introduce issues in the selected dimensions.
 

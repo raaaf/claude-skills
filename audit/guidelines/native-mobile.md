@@ -16,6 +16,13 @@ Platform-specific audit rules for native and cross-platform apps. Only relevant 
 - VI. Release Hygiene
 - VII. Audit Checklist
 - VIII. Deprecated APIs (Apple / Android)
+- IX. Test Runner & Test Determinism (iOS)
+- X. SwiftUI Accessibility (a11y)
+- XI. Async SwiftUI Views: Loading, Error, Empty State (Mandatory)
+- XII. Lock State on Secondary Surfaces (Widget, Notification, Watch)
+- XIII. Cancellation Before Persisting Side Effects (Swift Concurrency)
+- XIV. Day Boundary: State That Outlives the Screen
+- XV. Prove an Animation Renders Before Tuning It
 
 ## I. Accessibility (VoiceOver / TalkBack)
 

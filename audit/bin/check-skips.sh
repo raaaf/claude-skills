@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deterministic sanity-floor over the (haiku) triage routing for /audit.
+# Deterministic sanity-floor over the triage routing for /audit.
 #
 # The triage agent proposes relevance.{dim}.run; the cheapest model decides what
 # every expensive worker sees. This script does NOT trust that: it derives file-type
@@ -31,7 +31,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 [ -r "$SCRIPT_DIR/lib-git-base.sh" ] && source "$SCRIPT_DIR/lib-git-base.sh"
 FRAMEWORK="${1:-}"
-DIMS="architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy"
+# Fall back to literal defaults when lib-git-base.sh was missing above, so the
+# floor still routes rather than collapsing to "no dimensions".
+DIMS="${AUDIT_DIMS:-architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy}"
+FE_RE="${FRONTEND_EXT_RE:-\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$}"
 
 json=$(cat)
 # Strip markdown code fences (```json ... ```) that LLM triage output may carry.
@@ -75,7 +78,7 @@ changed=$(collect_changed_files | grep -vE '(^|/)audit/evals/fixtures/')
 
 match(){ printf '%s\n' "$changed" | grep -qiE "$1"; }
 
-has_frontend=0; match '\.(blade\.php|vue|jsx|tsx|svelte|astro|html?|css|scss|sass|less|swift|kt|kts|dart)$' && has_frontend=1
+has_frontend=0; match "$FE_RE" && has_frontend=1
 has_trans=0;    match '(/lang/.+\.(json|php)$|\.po$|\.pot$|\.arb$|\.strings$|/values[^/]*/strings\.xml$|/locales?/)' && has_trans=1
 has_mig=0;      match '(/migrations?/|/migrate/|\.migration\.)' && has_mig=1
 has_code=0;     printf '%s\n' "$changed" | grep -qvE '\.(md|txt|json|ya?ml|po|pot|arb|strings|xml|lock|toml|ini|cfg)$' && [ -n "$changed" ] && has_code=1

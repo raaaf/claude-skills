@@ -108,7 +108,7 @@ The description is **the only thing the model sees** when picking which skill to
 
 Add a subagent when at least one applies:
 - Aspect is independent of others (security vs performance vs a11y) and benefits from parallel dispatch
-- Worker needs a different model than orchestrator (e.g. Haiku for pattern-matching, Opus for security reasoning)
+- Worker needs a different model than orchestrator (e.g. Opus for security reasoning)
 - Worker needs an isolated context (no conversation pollution, no parent-context bias)
 
 See `references/subagents.md` for the agents/-folder pattern, prompt-template, model routing.

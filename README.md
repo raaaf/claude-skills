@@ -318,7 +318,7 @@ SKILL.md (orchestrator)
 - **Descriptions are model triggers** — third-person, written for *when* to invoke, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need (SKILL.md under 500 lines, references one level deep)
 - **Worker isolation** — subagents receive only triage-routed hotspots, read files on-demand (max 5 per run)
-- **Per-worker model routing** — Sonnet for every worker, Opus for Security only (exploit reasoning is worth the cost, and a cheaper model's wrong finding still costs a verifier round and a fix wave)
+- **Per-worker model routing** — Sonnet for every worker, Opus for Security only (rationale under the worker table above)
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Orchestrator-only `.claude/` writes** — subagents are blocked by hardcoded path protection; they return structured output, orchestrator parses and writes
 - **Semantic suppression dedup** — `bin/normalize-suppression.sh` produces stable keys so paraphrased dismissals collapse into one

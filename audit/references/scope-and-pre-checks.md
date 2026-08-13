@@ -25,7 +25,7 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 **Delta-scope carve-out at HUGE (official pattern):** a HUGE diff does not have to hard-block when part of it is already covered. A previously audited slice may be excluded from scope if ALL of these hold: (1) the slice was audited clean the SAME day and its audit log under `.claude/audits/` is referenced, (2) the remaining diff contains NO changes to any file of that slice since its audit (verify via `git diff --stat {slice_audit_head}..HEAD -- {slice files}` → empty), (3) the exclusion is documented in the new audit log under `## Scope` (slice name, log reference, file count). If any condition fails, the hard block stands. This keeps "audit in slices, then push everything" workable without silently re-trusting stale results.
 
-**Why only two dimensions escalate:** Architecture (code reasoning across multiple modules) and Security (subtle attack vectors) benefit measurably from Opus. Performance, A11y and UX need cross-cutting reasoning and default to Sonnet already; Code Quality, SEO, Typography, UI and Animation are predominantly rule- or pattern-based and default to Haiku. Triage stays on Haiku; fix agents run on Sonnet.
+**Why only Architecture escalates:** Architecture (code reasoning across multiple modules) benefits measurably from Opus on a LARGE diff. Security also runs on Opus, but unconditionally rather than on escalation, so it is not part of the override. Every other worker, triage and the fix agents included, runs on Sonnet: Haiku was dropped repo-wide on 2026-08-11 (see CLAUDE.md, "Worker model routing").
 
 ## Output of collect-scope.sh
 

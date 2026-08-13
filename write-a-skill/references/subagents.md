@@ -17,7 +17,7 @@ Do NOT add a subagent for sequential single-purpose work that is small. Direct e
 # Subagent N: Name
 
 - **subagent_type:** `general-purpose`     # or specific: code-reviewer, security-auditor, etc.
-- **model:** `haiku`                        # haiku | sonnet | opus
+- **model:** `sonnet`                       # haiku | sonnet | opus
 - **maxTurns:** `10`
 
 ## Focus
@@ -80,10 +80,19 @@ a decision returns it as structured output and lets the orchestrator ask.
 
 ## Model routing
 
-- Pattern-matching, classification, simple typography/SEO: `haiku`
-- Code review, reasoning over control flow, WCAG semantics: `sonnet` (default)
+- Everything that reports findings someone will act on: `sonnet` (default)
 - OWASP / security with deep reasoning: `opus`
 - Always: orchestrator on `opus` if it dispatches multiple workers and needs to consolidate
+
+**Do not route a finding-producing worker to `haiku` without measuring first.** The obvious split
+(cheap model for "pattern-matching" dimensions like typography, SEO, code quality) is what this repo
+ran until 2026-08-11, and it lost money rather than saving it: in the full-audit of 2026-08-06 a
+`haiku` code-quality batch produced five findings the hallucination validator discarded as
+impossible (a parameter that does not exist, an unreachable control-flow state, a misread language
+idiom), while `sonnet` workers in the same run produced zero. A wrong finding is not free. It costs
+a verifier round, and one that survives verification costs a whole fix wave, which is far more than
+the token difference. `haiku` is still reasonable for work whose output is consumed mechanically
+rather than acted on, such as classification into a fixed set of labels.
 
 ## Output format discipline
 

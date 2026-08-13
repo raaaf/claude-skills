@@ -258,7 +258,7 @@ which no line of the skill covered).
 
 The triage agent is deliberately NOT in this list: it is opt-in, gets no re-prompt, and its silence is a non-event because the deterministic floor already decided the routing (log `TRIAGE=FLOOR_ONLY`).
 
-**Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Agent 1 (Architecture) and Agent 2 (Security) explicitly on Opus. Other agents use their `agents/*.md` default.
+**Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Agent 1 (Architecture) explicitly on Opus. Agent 2 (Security) already runs on Opus unconditionally via its `agents/2-security.md` default, so it needs no override. Other agents use their `agents/*.md` default.
 
 | # | Agent | Short name |
 |---|---|---|

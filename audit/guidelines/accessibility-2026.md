@@ -1,3 +1,7 @@
+---
+applies_to: \.(jsx|tsx|js|ts|mjs|cjs|vue|svelte|astro|html?)$|\.blade\.php$|\.(twig|erb|hbs|ejs|liquid)$|\.(css|scss|sass|less|styl)$|tailwind\.config|\.(swift|kt|kts|dart)$|\.(storyboard|xib)$|/values[^/]*/strings\.xml$|/components?/|/pages/|/views?/
+priority: recommended
+---
 # Accessibility: 2026 Additions
 
 Continuation of accessibility.md (section XII). Always read together with accessibility.md.

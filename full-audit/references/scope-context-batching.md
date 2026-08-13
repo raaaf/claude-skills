@@ -12,8 +12,6 @@ Detail bash and batching heuristic for Phase 1 (Scope & Context) and Phase 1.5 (
 - Concurrent tree check (detail)
 - Intent docs / decided tradeoffs (DECIDED_TRADEOFFS)
 
-Content: Phase 1 scope bash · context building · optional pre-checks · Phase 1.5 batching · concurrent tree check
-
 ## Phase 1: Scope & Context — Bash
 
 ```bash

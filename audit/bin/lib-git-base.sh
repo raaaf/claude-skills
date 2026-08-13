@@ -80,6 +80,33 @@ collect_changed_files() {
   } | sort -u
 }
 
+# Canonical "is this a frontend file" extension pattern (grep -E form).
+# Shared by collect-scope.sh (which files land in the FRONTEND scope list) and
+# check-skips.sh (which dimensions the routing floor forces back on).
+#
+# These two were written independently and drifted: collect-scope knew
+# xml/storyboard/xib but not sass/less, check-skips knew sass/less but not
+# xml/storyboard/xib. So a changed .sass file forced a11y/ui/ux/animation on
+# but never appeared in the frontend file list those workers were handed, and
+# a changed .storyboard did the reverse. This is the union of both, defined
+# once so the two can no longer disagree.
+#
+# Swift/Kotlin/Dart count as frontend on purpose: native projects need the
+# a11y/UI/UX/animation workers too (see PLATFORM in detect-framework.sh).
+# Over-matching is the safe direction here — an extra dimension running costs
+# a worker, a missed one costs coverage.
+FRONTEND_EXT_RE='\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$'
+
+# The 12 audit dimensions in worker order. Shared by check-skips.sh (routing
+# floor) and referenced by verify-agents.sh's agent-file list. Keep in sync
+# with audit/agents/{1..12}-*.md.
+AUDIT_DIMS="architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy"
+
+# Dependency, build and tooling directories that no audit check should walk
+# into (grep -E form, matches a path segment). Consumers that use `find`
+# translate this into their own -prune arguments.
+VENDOR_DIR_RE='(^|/)(node_modules|vendor|\.git|dist|build|\.next|\.nuxt|target|Pods|\.venv|venv|__pycache__)/'
+
 # Shared with cache-write.sh and cache-check.sh: sha256 of a file, with a
 # shasum fallback for systems without sha256sum. Do not change the hashing
 # behaviour, cache keys depend on it staying identical across both callers.
