@@ -55,7 +55,9 @@ If your verification touches a credential, token, or `.env` value, `DETAILS` may
 
 3e. **Repeatedly patched scanners and parsers — escalation, MANDATORY:** if the SAME hand-written
    scanner or parser function is being patched a second time in one audit run (quote handling,
-   escape handling, delimiter search, tag boundaries), do not approve a third inline patch. Each
+   escape handling, delimiter search, tag boundaries), OR a SECOND hand-written scanner/parser
+   appears in the same file (same extraction reflex, different function — it dodges the same-name
+   trigger while duplicating the same fragility), do not approve a third inline patch. Each
    of those patches fixes one input class and regresses another: the run that produced this rule
    spent three rounds on one Blade tag scanner, where the quote-aware skip broke on `}}` inside a
    string and the escape-aware fix broke on `\'`, an input the first naive version had handled.

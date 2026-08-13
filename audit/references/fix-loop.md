@@ -36,7 +36,9 @@ Minor findings never go through D.7: they are only fixed at high/medium confiden
 
 **At `floor=low`, confirming a finding yourself by grep is not a substitute for D.7**, however mechanical it looks ("is the key I just deleted gone?", "does that line really say what the worker claims?"). A verifier costs one grep there too, so there is no cost advantage that would justify the skip. The run that produced this rule waved five of six Important findings through on self-confirmation and sent only the one product judgement to a verifier — which is exactly where the single genuine misjudgement of the set sat. Mechanical certainty is not the property that predicts a correct finding.
 
-**Dispatch** one `finding-verifier.md` subagent (sonnet) per finding, all in one message block, max 10 in parallel:
+**Dispatch** one `finding-verifier.md` subagent (sonnet) per finding, all in one message block, max 10 in parallel.
+
+**Bundling above roughly 20 findings.** One agent per finding is the default and stays the default for ordinary rounds. Past about 20 findings in a round it stops being affordable: a large run (2026-08-13, 33 findings and around 50 fixes) would have meant over 80 dispatches, and the orchestrator improvised the bundling instead of following the text, which is worse than having a rule for it. So: above that size you MAY group several findings that share a file or a risk area into ONE verifier call, provided both properties that make D.7 work are preserved — the verifier still has a fresh context, and it is never the agent that produced the finding. Grouping by file is the natural cut, because the verifier reads that file once either way. Requirements when you bundle: the briefing lists each finding separately with its own identifier, the reply carries one complete verdict block per finding (never one verdict for the group), and the audit log's `## Scope` block names the resulting agent-to-verdict ratio, e.g. "10 finding-verifier for 49 verdicts". A bundled run is not the same evidence as one agent per finding, and the log has to let a reader see which one happened. The same allowance applies to Step E.5.
 
 ```
 Agent(
@@ -145,7 +147,7 @@ Any assigned file that is NOT modified means the fix never landed or was destroy
 
 ## Step E.5 — Fix verification (MANDATORY for medium/high/xhigh effort, SKIP for low)
 
-For every `FIX_RESULT=APPLIED` or `FIX_RESULT=PARTIAL`, dispatch a fix-verifier subagent (sonnet):
+For every `FIX_RESULT=APPLIED` or `FIX_RESULT=PARTIAL`, dispatch a fix-verifier subagent (sonnet). Above roughly 20 fixes in a round the same bundling allowance as Step D.7 applies (group by file or risk area, one verdict block per fix, ratio named in the log); read it there before using it.
 
 ```
 Agent(

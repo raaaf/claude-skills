@@ -205,6 +205,23 @@ Every value that is read again after a relaunch, after a background stretch, or 
 
 Confidence: a day-scoped flag stored as a Bool -> Important. A layout/routing rule reading state that outlives its view, with no midnight handling -> Important. Day bucketing before interval merge -> Critical when it feeds a user-visible number.
 
+### The fix side: what your rollover destroys
+
+Everything above is the AUDIT side, and it was written after five findings. Two more arrived on 2026-08-13, and the second one is the reason this subsection exists.
+
+**Sixth case, the continuously-foregrounded path.** A digest gate rescheduled its recheck timer only while the gate was closed. Once it opened, no timer ran for the rest of the night. Backgrounding or relaunching triggered a day reset, so the bug was invisible in every normal test; an app simply left open past midnight kept yesterday's step forever. The bullet above ("a process that stays alive across midnight never runs the launch-time recomputation") named the class, but nobody had walked the specific path where the recomputation is scheduled and then stops scheduling itself.
+
+**Seventh case, and it was the FIX for the sixth.** The repair added a midnight-aware timer that reran the setup path. It could now fire while the user was mid-sentence in the composer: the reset cleared the pending recap and hid the input, defeating a documented cross-midnight protection elsewhere in the same file and dating the in-progress entry to the new day. The fix was strictly worse than the bug, and only the fix-verifier caught it.
+
+So the rule has a second half, and it belongs to whoever writes the fix, not to whoever finds the bug:
+
+- **A midnight reset needs a definition of "busy".** Before adding one, enumerate the in-progress states on that screen: unsaved input, an active edit of existing content, an open sheet, a playback in progress. Derive "busy" from the code, not from a guess, and name which state you used.
+- **Defer, never skip.** A reset suppressed while busy must run once the work is committed or abandoned, otherwise the original bug is back in a narrower window. Point at the exact place where the deferred reset fires.
+- **The protection may already exist somewhere else.** Before writing a new guard, grep the persistence path: a cross-midnight correction in the save function is a contract your reset can violate from the outside. Defer to it rather than duplicating it.
+- **Check that exactly one timer is alive.** A self-rescheduling task plus a lifecycle observer that also schedules is the standard way to end up with two, and the second one is invisible until it fires at the wrong moment.
+
+Confidence: a newly added rollover, reset or scheduled recomputation that can fire during an unsaved user action -> Critical when text or an entry's date is at stake, Important otherwise. This is the class the audit's own fix agents have now produced once; `agents/fix-agent.md` completion self-check 4 is the pre-flight for it.
+
 ## XV. Prove an Animation Renders Before Tuning It
 
 Three consecutive rounds were spent adjusting the values of an animation that never ran (2026-07-27): a scale factor, then a sequenced swap, then a keyboard delay, each time reported as "I don't see it". The cause was structural, not aesthetic — the start state was set and overwritten inside the same main-actor cycle, so SwiftUI never rendered a frame with it. Two of the three rounds were value tuning on a no-op.

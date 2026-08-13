@@ -68,7 +68,15 @@ echo "Effort=$CLAUDE_EFFORT | MaxElevation=$MAX_ELEVATION | BatchSize=$BATCH_SIZ
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-bash "$AUDIT_BIN/detect-framework.sh"   # FRAMEWORK, PLATFORM read below; SOURCE_DIRS is a per-directory %q-quoted, space-joined list, unused here (no downstream reference in this skill)
+# Capture and parse rather than just printing: the native scope filter below
+# BRANCHES on $PLATFORM, and an unset variable there would apply the native
+# path narrowing to a web project and gut its scope. SOURCE_DIRS is a
+# per-directory %q-quoted, space-joined list and stays unused here, so pull the
+# keys out individually instead of eval'ing the whole output.
+FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
+FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
+PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
+echo "FRAMEWORK=$FRAMEWORK PLATFORM=$PLATFORM"
 
 # Frontend surface: whole repo (tracked files), NOT the diff.
 # Optional argument narrows to a path prefix.
@@ -78,10 +86,26 @@ FRONTEND_FILES=$(git -C "$PROJECT_ROOT" ls-files -- ${SCOPE_PREFIX:+"$SCOPE_PREF
   | grep -E '\.(css|scss|sass|less|styl|html|blade\.php|vue|svelte|astro|jsx|tsx|swift|kt|dart)$|tailwind\.config' \
   | grep -vE '(^|/)(node_modules|vendor|dist|build|\.next|storage)/' \
   | grep -vE '(^|/)audit/evals/fixtures/')
+# Native projects: the extension list is not a scope.
+#
+# In a web framework a frontend extension IS the surface — nothing but a view
+# ever ends in .vue, .blade.php or .tsx. Swift, Kotlin and Dart have no such
+# split: services, models, providers and tests share one extension with the
+# views, so the glob above hands a "frontend" audit the entire source tree. On
+# 2026-08-13 that was 197 files where the visual surface was 59, and the
+# orchestrator narrowed it by hand. Narrow it here instead, by path.
+if [ "$PLATFORM" != "web" ]; then
+  FRONTEND_FILES=$(printf '%s\n' "$FRONTEND_FILES" \
+    | grep -E '(^|/)(Views?|Components?|Screens?|UI|Widgets?|DesignSystem|Theme|Styles?)/|(^|/)[A-Za-z]+(App|View|Screen|Widget)\.(swift|kt|dart)$' \
+    | grep -vE '(^|/)([Tt]ests?|Models?|Services?|Repositories|Networking|Persistence|Data)/' || true)
+fi
+
 FRONTEND_COUNT=$(echo "$FRONTEND_FILES" | grep -c . || echo 0)
 echo "Frontend surface: $FRONTEND_COUNT files"
 [ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"; exit 0; }
 ```
+
+The path filter is a heuristic, not a contract: a project that keeps views somewhere else loses them here. Print the resulting list and eyeball it before Phase 2 — a count that collapses to a handful on a real app means the convention did not match, and the fix is to widen the pattern for that project, not to audit five files and call the surface covered.
 
 **Context for all workers (assemble now):**
 
@@ -117,10 +141,10 @@ Dispatch in **one message block** via the Agent tool (`run_in_background: false`
 
 | Agent file | Model | Dimension (visual slice) |
 |---|---|---|
-| `7-typography.md` | haiku | Typography: scale, hierarchy, spacing, rendering |
-| `8-ui-design.md` | haiku | UI visual design: color system, surfaces, shadows, radii, layout, tokens |
+| `7-typography.md` | sonnet | Typography: scale, hierarchy, spacing, rendering |
+| `8-ui-design.md` | sonnet | UI visual design: color system, surfaces, shadows, radii, layout, tokens |
 | `9-ux.md` | sonnet | Visual UX patterns: hierarchy, affordances, hit areas, density, empty/loading states |
-| `10-animation.md` | haiku | Animation & motion: easing, duration, physicality, cohesion |
+| `10-animation.md` | sonnet | Animation & motion: easing, duration, physicality, cohesion |
 | `6-a11y.md` | sonnet | **Visual a11y ONLY**: contrast ratios, focus visibility, target sizes, reduced-motion/transparency. Explicitly OUT of scope in this mode: ARIA, semantics, forms, keyboard handlers — tell the agent so in the briefing |
 
 `12-copy.md` deliberately does NOT run — words are not visuals; /audit covers copy.
@@ -202,7 +226,9 @@ Via `AskUserQuestion` (multiSelect where <= 4 groups, otherwise a collective que
 
 Same machinery as /audit Phase 2 E/E.5:
 
-1. Group selected items by file, dispatch `$AUDIT_AGENTS/fix-agent.md` (sonnet, `run_in_background: false`) in parallel — one agent per file, bundles for multiple findings in one file. Fix agents follow their styling-system rule and the motion remedial hierarchy.
+0. **Foundation first, alone.** Before the parallel wave, scan the selected items for fixes that CREATE a shared thing other selected fixes need: a new design token, a shared `ViewModifier`/`ButtonStyle`/mixin, a helper promoted out of one component into the design system. Those go in their own wave, dispatched ALONE, and the wave is confirmed green before anything else runs. Two reasons, both hit in the same run (2026-08-13). The consumer agents have to be briefed with the exact names the foundation created, and those names do not exist until it has run. And in an xcodegen or similarly generated project, `fix-agent.md` forbids creating new source files during a parallel wave, so a shared helper has to be routed into an existing file by an agent that owns it exclusively. That run needed one foundation agent, then seventeen consumers in two batches, and the orchestrator had to invent the sequencing on the spot. Report the foundation wave's public API verbatim (`NEW_API:` block) and paste it into every consumer briefing.
+
+1. Group the remaining selected items by file, dispatch `$AUDIT_AGENTS/fix-agent.md` (sonnet, `run_in_background: false`) in parallel — one agent per file, bundles for multiple findings in one file. Fix agents follow their styling-system rule and the motion remedial hierarchy. Every briefing names the files that agent owns AND states that siblings own the rest, so nobody edits a file another agent is holding.
 2. Elevation fixes get the elevation text as the finding message plus: "Implement within the existing styling system and tokens. If the change needs a design decision the report did not settle, FIX_RESULT=FAILED with the question instead of improvising."
 3. `VERIFY_FIXES=1` → fix-verifier (sonnet, `run_in_background: false`) per applied fix, `RECOMMEND=keep|patch|revert` handling as in /audit (revert → `git checkout {file}` + finding back to open).
 4. Post-fix: re-run the linter step from `$AUDIT_ROOT/references/linters-and-tests.md` (formatter + linter only, diff-scoped; no test suites unless the project's `.claude/audit-guidelines.md` names one).

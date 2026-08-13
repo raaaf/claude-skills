@@ -38,10 +38,36 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || {
 
 # Same scope the audit itself uses: unstaged + staged + untracked, plus commits
 # not yet on the remote.
+#
+# `@{u}` only resolves on a branch that HAS an upstream. A fresh local branch
+# has none, so `@{u}..HEAD` fails, the `|| true` swallows it, and the commits
+# vanish from the classification. On 2026-08-13 that turned a 46-file Swift
+# commit on a just-created branch into DIFF_CLASS=prose, because the only thing
+# left to look at was nine markdown files in the working tree. A prose verdict
+# cuts the audit to one round with no Minor fixes, so the misclassification
+# silently guts the run. Fall back to the default branch when there is no
+# upstream: that is the base `collect-scope.sh` uses anyway.
+# Every git call here is `|| true`-guarded: the script runs under `set -e`, and
+# a bare `VAR=$(git ...)` that fails aborts it silently, which is the exact
+# failure mode this block exists to remove.
+UPSTREAM_RANGE=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)
+if [ -n "$UPSTREAM_RANGE" ]; then
+  COMMIT_RANGE="@{u}..HEAD"
+else
+  DEFAULT_BRANCH=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+  [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=$(git config --get init.defaultBranch 2>/dev/null || true)
+  [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=main
+  if git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null 2>&1; then
+    COMMIT_RANGE="origin/$DEFAULT_BRANCH..HEAD"
+  else
+    COMMIT_RANGE="$DEFAULT_BRANCH..HEAD"
+  fi
+fi
+
 FILES=$(
   {
     git status --porcelain 2>/dev/null | sed 's/^...//; s/^.* -> //'
-    git diff --name-only @{u}..HEAD 2>/dev/null || true
+    git diff --name-only "$COMMIT_RANGE" 2>/dev/null || true
   } | sed 's/^"//; s/"$//' | sort -u | grep -v '^$' || true
 )
 
