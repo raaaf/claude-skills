@@ -13,7 +13,15 @@
 #   bash patterns-store.sh should-suggest {pattern} # exit 0 if >=3 dismissals
 #   bash patterns-store.sh recur {pattern}         # count this finding pattern, echoes new count
 #   bash patterns-store.sh recur --force {pattern} # skip near-duplicate folding, always record as a new/own key
-#   bash patterns-store.sh recurrences             # list patterns seen >=2 times, most frequent first
+#   bash patterns-store.sh recurrences             # list patterns seen >=2 times, most frequent first,
+#                                                   # with last-seen date and a dormancy marker
+#
+# recurrences values are stored as {"count": N, "last_seen": "YYYY-MM-DD"}.
+# Stores written before this existed hold a bare number instead -- read as a
+# count with an unknown last_seen, never rewritten just to migrate the
+# format. `recur` upgrades a touched entry to the object form as a side
+# effect of the write it was already doing; an entry that is never `recur`-ed
+# again stays a bare number forever, and that is fine.
 set -euo pipefail
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
@@ -70,6 +78,21 @@ normalize_pattern() {
 # (which just reproduces pre-fix behavior), so both thresholds lean strict.
 NEARDUP_MIN_OVERLAP_COEFF_X1000=500   # 0.50, integer math (bash has no floats)
 NEARDUP_MIN_INTERSECT=3               # absolute floor, ignores coefficient below this
+
+# --- Dormancy threshold (recurrences display only) ---
+#
+# A bare counter can't tell "still happening" from "accumulated months ago
+# and never recurred since" -- that's the whole defect this schema change
+# fixes. RECURRENCE_DORMANT_DAYS draws the line between the two for display.
+# Chosen against this machine's real stores: last-seen dates (once tracked)
+# span March through August, and audits run roughly weekly but with real
+# gaps (vacations, quiet weeks, projects not touched for a stretch). 30 days
+# comfortably absorbs a normal gap between runs -- a pattern silent for one
+# missed week is not "dormant" -- while anything genuinely untouched for a
+# month or more is exactly the "accumulated, no longer urgent" case the
+# events-app 15x pattern turned out to be (two consecutive logged runs said
+# "unchanged, no new occurrence" before this fix existed to say so directly).
+RECURRENCE_DORMANT_DAYS=30
 
 # Tokenize a normalized pattern/key into a sorted, unique, newline-separated
 # word list: strip a leading "cat:xxx|" category prefix and any "|" section
@@ -214,13 +237,54 @@ case "$CMD" in
       fi
     fi
 
-    jq --arg p "$TARGET_KEY" '.recurrences[$p] = ((.recurrences[$p] // 0) + 1)' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
-    jq -r --arg p "$TARGET_KEY" '.recurrences[$p]' "$STORE"
+    # The target entry may be a legacy bare number, an existing {count,
+    # last_seen} object, or absent entirely (new key). Whichever it is, this
+    # write always produces the object form, count preserved and last_seen
+    # set to today -- the migration for that one entry, done as a side
+    # effect of the write instead of a separate pass over the store.
+    TODAY=$(date -u +%Y-%m-%d)
+    jq --arg p "$TARGET_KEY" --arg today "$TODAY" '
+      (.recurrences[$p]
+        | if type == "number" then .
+          elif type == "object" then (.count // 0)
+          else 0
+          end) as $prev_count
+      | .recurrences[$p] = {count: ($prev_count + 1), last_seen: $today}
+    ' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
+    jq -r --arg p "$TARGET_KEY" '.recurrences[$p].count' "$STORE"
     ;;
   recurrences)
     # Nur was mindestens zweimal auftrat, haeufigste zuerst. Einmalige Findings
     # sind Rauschen; ab zwei wird es ein Muster, das eine Guideline verdient.
-    jq -r '.recurrences | to_entries | map(select(.value >= 2)) | sort_by(-.value) | .[] | "\(.value)x \(.key)"' "$STORE" 2>/dev/null || true
+    #
+    # Read-only migration: a legacy bare-number entry is displayed as count
+    # with an unknown last_seen, never rewritten here (only `recur` upgrades
+    # the on-disk format, and only for the entry it touches).
+    NOW_EPOCH=$(date -u +%s)
+    jq -r --argjson now "$NOW_EPOCH" --argjson dormant_days "$RECURRENCE_DORMANT_DAYS" '
+      .recurrences
+      | to_entries
+      | map(
+          (.value | if type == "number" then {count: ., last_seen: null}
+                    else {count: (.count // 0), last_seen: (.last_seen // null)}
+                    end) as $v
+          | select($v.count >= 2)
+          | {
+              key: .key,
+              count: $v.count,
+              last_seen: $v.last_seen,
+              days_ago: (if $v.last_seen then (($now - ($v.last_seen + "T00:00:00Z" | fromdateiso8601)) / 86400 | floor) else null end)
+            }
+        )
+      | sort_by(-.count)
+      | .[]
+      | "\(.count)x \(.key) -- last seen: " + (
+          if .last_seen == null then "unknown (legacy entry, predates last-seen tracking)"
+          elif .days_ago >= $dormant_days then "\(.last_seen) (\(.days_ago)d ago, DORMANT)"
+          else "\(.last_seen) (\(.days_ago)d ago)"
+          end
+        )
+    ' "$STORE" 2>/dev/null || true
     ;;
   should-suggest)
     PATTERN="${2:-}"

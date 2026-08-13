@@ -31,17 +31,21 @@ Extract from past audit log files (`.claude/audits/*-*.md`) and have the orchest
 - Last 3 audits: important counts → trend
 - Most frequent finding category over the last 5 audits
 - Average findings/audit (last 5)
-- "Repeat offenders": findings that appear in >= 3 audits (candidate for a guideline update)
+- "Repeat offenders": findings that appear in >= 3 audits AND are not marked `DORMANT` by `patterns-store.sh recurrences` (candidate for a guideline update)
 
 **Full-audit batch runs distort the windows.** A full-audit's batched scans produce finding counts one to two orders of magnitude above a regular audit. Compute last-3/last-5 and the average over regular audits only, and report any full-audit run in the window as a separately annotated outlier, never blended into the trend or the average.
 
 **Use the counter, do not eyeball the logs.** Recurrence is tracked persistently, so it survives log rotation and stays consistent between `/audit` and `/full-audit`. **You do not populate it yourself:** the orchestrator already called `patterns-store.sh recur {pattern}` for every `CONFIRMED` finding (and at Step E for `floor=high` runs, see `SKILL.md`) while the audit ran, with a normalized pattern (short, no file/line, so the same problem elsewhere in the codebase collapses into it). By the time you run, `patterns.json` already reflects this run — you only read it:
 
 ```bash
-bash "$AUDIT_BIN/patterns-store.sh" recurrences   # "4x widget reads lock state only once"
+bash "$AUDIT_BIN/patterns-store.sh" recurrences
+# "4x widget reads lock state only once -- last seen: 2026-08-10 (3d ago)"
+# "15x sibling call-site duplication -- last seen: 2026-04-13 (122d ago, DORMANT)"
 ```
 
 If a run's patterns are conspicuously absent from the store (e.g. zero movement after an audit that clearly had confirmed findings), say so in the retro instead of silently back-filling with your own `recur` calls — a gap here means the live feed broke somewhere in the loop, which is itself worth a line in "What went poorly."
+
+**Report the last-seen date and dormancy the store gives you, never guess at recency from the count alone.** A bare count cannot tell "still happening" from "accumulated a while ago and never recurred since" — that used to force phrasing like "counter unchanged for several runs, candidate" as a workaround for missing data. The store now carries the real signal: a line marked `DORMANT` was last seen more than `RECURRENCE_DORMANT_DAYS` (30) days ago and is not an active repeat offender, no matter how high its count — report it as dormant (worth noting as likely resolved, not worth a new guideline update) instead of listing it alongside genuinely active patterns. A line with no `DORMANT` marker and a recent last-seen date is the one to propose a guideline update for. A line reading "last seen: unknown (legacy entry, predates last-seen tracking)" has no date to reason about yet — say exactly that, don't infer activity or dormancy from its count alone; it will get a real date the next time `recur` touches it.
 
 Normalize the pattern the same way `normalize-suppression.sh` does, otherwise "Widget-Lock nur punktuell geprueft" and "widget reads lock state only once" count as two different things and the counter never reaches the threshold. A pattern at >= 3 belongs in the improvement list with its count named explicitly ("4th audit in a row"), not as a fresh suggestion.
 
@@ -61,10 +65,11 @@ Format of the metrics block:
 | Avg findings/audit | {X} |
 
 **Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
-- {N}x {Pattern} -- candidate for guideline update
+- {N}x {Pattern} -- last seen {date or "unknown"} -- candidate for guideline update
+- {N}x {Pattern} -- last seen {date} (DORMANT) -- no longer active, likely resolved, not a candidate
 ```
 
-**Every repeat-offender line must come from this run's `patterns-store.sh recurrences` output.** Do not carry a pattern or its count forward from the previous trends block, and do not restate a count from memory of an earlier run: the store is the only place the number exists, and a count that no longer appears there means the pattern stopped recurring or was dismissed, which is exactly the signal the block is supposed to show. If a pattern the previous block named is absent from the current output, say so explicitly ("{Pattern} stand im vorigen Block mit {M}x, taucht in `recurrences` nicht mehr auf") instead of repeating the old figure. Same failure mode as the total-audits drift above, one line lower.
+**Every repeat-offender line must come from this run's `patterns-store.sh recurrences` output**, last-seen date and `DORMANT` marker included verbatim, not paraphrased. Do not carry a pattern or its count forward from the previous trends block, and do not restate a count from memory of an earlier run: the store is the only place the number exists, and a count that no longer appears there means the pattern stopped recurring or was dismissed, which is exactly the signal the block is supposed to show. If a pattern the previous block named is absent from the current output, say so explicitly ("{Pattern} stand im vorigen Block mit {M}x, taucht in `recurrences` nicht mehr auf") instead of repeating the old figure. Same failure mode as the total-audits drift above, one line lower.
 
 ### 3. Pattern detection
 
@@ -155,7 +160,8 @@ TRENDS_BLOCK_START
 | Avg findings/audit | {X} |
 
 **Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
-- {N}x {Pattern} -- candidate for guideline update
+- {N}x {Pattern} -- last seen {date or "unknown"} -- candidate for guideline update
+- {N}x {Pattern} -- last seen {date} (DORMANT) -- no longer active, likely resolved, not a candidate
 TRENDS_BLOCK_END
 
 LEARNING_RESULT_END
