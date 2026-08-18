@@ -11,7 +11,39 @@ Add a subagent for an aspect when at least one applies:
 
 Do NOT add a subagent for sequential single-purpose work that is small. Direct execution in the orchestrator is cheaper and clearer.
 
-## Worker file pattern
+## Two different things are both called "an agent file"
+
+Know which one you are writing before you copy a template. They are not interchangeable.
+
+| | Orchestrator-dispatched worker spec | Claude Code subagent definition |
+|---|---|---|
+| Lives in | `<skill>/agents/*.md` | `.claude/agents/*.md` |
+| Read by | the skill orchestrator, as plain Markdown | Claude Code itself, as YAML frontmatter |
+| Header format | Markdown bullet list (below) | `---` YAML frontmatter |
+| Who dispatches | the orchestrator, passing these values to the Agent tool | Claude Code, on `subagent_type: <name>` |
+| `subagent_type` | a field you write, naming which built-in agent to dispatch | NOT a field; the file's `name` IS the type |
+
+Everything in this repo is the first kind. That is deliberate: the orchestrator stays in control of
+dispatch, and a worker spec can carry prose the Agent tool has no field for. But do not describe it
+as "frontmatter" and do not expect Claude Code to auto-register it.
+
+### Claude Code subagent definition (`.claude/agents/*.md`)
+
+Real YAML frontmatter, `name` and `description` required. Full supported field set:
+`name`, `description`, `tools`, `disallowedTools`, `model`, `permissionMode`, `maxTurns`, `skills`,
+`mcpServers`, `hooks`, `memory`, `background`, `effort`, `isolation`, `color`, `initialPrompt`.
+
+Two worth knowing about, both easy to miss:
+- `skills:` preloads a skill's FULL content into the subagent at startup, not just its description.
+  An alternative to instructing a worker to read guideline files itself.
+- `memory:` (`user` | `project` | `local`) gives the subagent persistent memory across sessions,
+  under `.claude/agent-memory/<agent>/` for `project`. Note this cuts against the
+  "orchestrator writes, subagents return" rule this repo follows, so it is a real architectural
+  choice, not a free upgrade.
+
+Field list verified against `code.claude.com/docs/en/sub-agents`, August 2026.
+
+### Orchestrator-dispatched worker spec (`<skill>/agents/*.md`)
 
 ```md
 # Subagent N: Name
