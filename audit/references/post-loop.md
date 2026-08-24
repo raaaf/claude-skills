@@ -40,12 +40,16 @@ This gives the user the complete result including the test plan at a glance.
 
 **If `## Open Points` is empty:** skip 3f entirely, log `3f: n/a (no open points)`.
 
-**Step 1 — User decision via AskUserQuestion:**
+**Step 1 — decide, do not ask:**
 
-List all open points compactly (dimension, file:line, 1-sentence question). Then ask — for <= 4 points, one question per point (bundled as multiSelect-capable), for more a collective question with options:
-- **Decide + fix now** — user gives the direction per point (1 sentence is enough), orchestrator dispatches fix agents with the decision as context. Fix-verifier checks as usual.
-- **Defer as issue** — only these points become issues (step 2).
-- **Discard** — point is discarded + `patterns-store.sh dismissed`; on repeated discards, the learning agent proposes a suppression.
+List all open points compactly (dimension, file:line, 1-sentence question). Then decide each one
+yourself and act on it, instead of putting a menu in front of the user:
+- **Default: decide + fix now** — pick the better direction from the repo's own evidence (existing patterns, `DECIDED_TRADEOFFS`, CLAUDE.md, the surrounding code) and dispatch fix agents with that decision as context. Fix-verifier checks as usual.
+- **Discard** — for a point the evidence refutes; `patterns-store.sh dismissed`, on repeated discards the learning agent proposes a suppression.
+- **Defer as issue** — only for a point that is genuinely undecidable here: it needs information outside the repo (a product tradeoff nobody wrote down, an external dependency, a user-facing behavior change with no precedent). This is the exception, not a menu item.
+
+Report the decisions as one line per point (decision + one-sentence reason). Use `AskUserQuestion`
+only for points in the third bucket — a point you can reason about is a point you decide.
 
 **Step 2 — Issues ONLY for explicitly deferred points:**
 

@@ -17,11 +17,9 @@ fi
 echo "$COUNT"
 ```
 
-If `>= 1`: ask the user via `AskUserQuestion` with options:
+If `>= 1`: apply the open suggestions without asking, then continue the audit with Phase 1. List in one line which ones were applied. **IMPORTANT — edit the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose contents get overwritten. Before the first edit, resolve the source (`readlink` or find the skill source repo, e.g. `~/Local Sites/claude-skills`) and edit THERE — edits in the unpacked copy are lost on the next sync. After applying: change `[ ]` to `[x]` in learning-log.md.
 
-- **Apply suggestions now** → list the suggestions, user picks which ones, orchestrator dispatches matching changes to `audit/guidelines/*.md` or `audit/agents/*.md`. **IMPORTANT — edit the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose contents get overwritten. Before the first edit, resolve the source (`readlink` or find the skill source repo, e.g. `~/Local Sites/claude-skills`) and edit THERE — edits in the unpacked copy are lost on the next sync. After applying: change `[ ]` to `[x]` in learning-log.md. Then continue the audit with Phase 1.
-- **Later, audit now** → start Phase 1, suggestions stay open.
-- **Never ask again for these audits** → append a `[skip]` marker to the affected lines, they no longer count.
+Leave a suggestion open (and name it) only when applying it would need a decision the log does not contain. Do not put the list up for selection.
 
 If `0`: continue without asking.
 
@@ -34,10 +32,9 @@ if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep 
 fi
 ```
 
-**Open `audit-finding` issues present?** → AskUserQuestion (show the list compactly):
+**Open `audit-finding` issues present?** → show the list compactly, then fix them along with this run without asking: they are fed into round 1 as verified findings (fix agent + fix-verifier as usual). After a successful fix: `gh issue close {N} --comment "Fixed in audit {DATUM}, commit folgt im naechsten Push."`
 
-- **Fix along with this run** — selected issues are fed into round 1 as verified findings (fix agent + fix-verifier as usual). After a successful fix: `gh issue close {N} --comment "Fixed in audit {DATUM}, commit folgt im naechsten Push."`
-- **Leave open** — issues stay, audit runs normally.
+Leave an issue open only when it touches files outside the current diff's scope, or when its resolution needs a decision the repo cannot answer. Name those, do not ask which ones to take.
 
 **`OPEN_PRS` not empty?** → note as context (no question):
 

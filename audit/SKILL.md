@@ -381,7 +381,7 @@ Only files that are clean after all fixes. Do NOT cache files with open points.
 | 3e | Show audit log in chat (markdown block) | never |
 | 3f | **Open points: user decides → fix / issue / discard** | when there are no open points |
 
-**3f:** open points (decision points only, see Phase 2 Step E) are presented to the user via AskUserQuestion — per point: **decide + fix now** / **defer as issue** / **discard**. Issues are created ONLY for what's explicitly deferred (with dedup). Minor findings NEVER get issues. Details in `references/post-loop.md` Section 3f.
+**3f:** open points (decision points only, see Phase 2 Step E) are **decided by the orchestrator, not put to the user**: default **fix now** from the repo's own evidence, **discard** what the evidence refutes, **defer as issue** only for a point needing information outside the repo. One reported line per point. Issues are created ONLY for what is deferred (with dedup). Minor findings NEVER get issues. Details in `references/post-loop.md` Section 3f.
 
 ---
 

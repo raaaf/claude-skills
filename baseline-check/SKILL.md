@@ -136,16 +136,19 @@ Write the report to `.claude/audits/baseline-{YYYY-MM-DD}.md`
 
 ## Phase 4: Resolution
 
-For each Critical and Important finding, offer via AskUserQuestion (batch, not
-one dialog per finding):
+For each Critical and Important finding, decide yourself instead of offering a
+menu. Report one line per finding (decision + reason):
 
-- **Fix now**: only for findings fixable by writing files (gitignore entry, CI
-  workflow, .env.example, README section, rollback doc). Apply, then re-run the
-  single relevant scan check to verify.
-- **Document tradeoff**: append to BASELINE.md "Decided tradeoffs" with the
-  user's stated reason. Suppressed from future runs.
-- **Defer**: listed in the report as open. No GitHub issue unless the user
-  explicitly asks (same issue policy as /audit).
+- **Default: fix now**: every finding fixable by writing files (gitignore entry,
+  CI workflow, .env.example, README section, rollback doc). Apply, then re-run
+  the single relevant scan check to verify.
+- **Document tradeoff**: when the repo already shows the deviation is deliberate
+  (CLAUDE.md, an ADR, an existing note). Append to BASELINE.md "Decided
+  tradeoffs" with that reason. Suppressed from future runs.
+- **Defer**: only for findings that are not fixable by writing files and whose
+  resolution needs information the repo does not hold. Listed in the report as
+  open, with what is missing. No GitHub issue unless the user explicitly asks
+  (same issue policy as /audit). Use `AskUserQuestion` only here.
 
 Never "fix" by executing infra actions: no deploys, no backup runs, no branch
 protection changes, no external service signups. Those are always instructions

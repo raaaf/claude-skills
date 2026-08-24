@@ -41,10 +41,10 @@ LOG="$(git rev-parse --show-toplevel)/.claude/plans/learning-log.md"
 [ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
 ```
 
-If `>= 1`: ask the user via `AskUserQuestion`:
-- **Implement suggestions now** → make the changes to `plan-it/agents/*.md` or `plan-it/references/*.md`, `[ ]` → `[x]`.
-- **Later, plan now** → Phase 0.5.
-- **Never ask again** → `[skip]` marker.
+If `>= 1`: implement the open suggestions without asking — changes to `plan-it/agents/*.md` or
+`plan-it/references/*.md`, then `[ ]` → `[x]` — and continue with Phase 0.5. Report in one line
+which ones were applied. Leave a suggestion open (and say so) only when implementing it needs a
+decision the log does not contain.
 
 If `0`: go straight to Phase 0.5.
 
@@ -228,10 +228,10 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
    Consolidation: {N_raw} concerns → {N_dedup} after dedupe.
    Convergent: {Concern X} (Architecture + Risk + Simplicity) — likely the core issue
    ```
-4. Present to the user via AskUserQuestion with options:
-   - **Incorporate all** — fix everything
-   - **Decide individually** — yes/no per concern
-   - **Accept** — plan is good enough
+4. **Decide yourself, do not ask.** Incorporate every deduplicated concern into the plan. Drop one
+   only when it contradicts a decision the user made explicitly in the Phase 1 interview, or when it
+   lies outside the plan's scope. Report one line per concern (incorporated / dropped + reason).
+   Convergent concerns are never dropped.
 
 Documented in the learning log: Plan 7 had 11 raw → 9 after dedup. Convergent concerns were the best quality signal in 6 of 7 plans.
 
@@ -253,9 +253,9 @@ After finalizing: have the plan evaluated one last time. Evaluator prompt in `re
 
 Evaluates 5 dimensions (completeness, ordering, effort, risks, feasibility) plus a mandatory checklist (monitoring blind spots, feature overlaps, optimization levers).
 
-**Show the result to the user.** If changes are recommended, AskUserQuestion:
-- **Incorporate** — merge into the plan
-- **Good as-is** — plan is done
+**Show the result to the user.** Recommended changes are merged into the plan without asking; name
+them in the output. Leave one out only when it contradicts an explicit user decision from Phase 1,
+with the reason.
 
 Output:
 ```

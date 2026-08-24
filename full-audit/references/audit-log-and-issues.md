@@ -63,12 +63,14 @@ Audit Log: {LOGFILE}
 
 Issues are the exception, not the default. Open points are only genuine decision points now — fixable items were fixed in the loop, unconfirmed ones were discarded. **Minor findings NEVER get issues** (they stay in the log).
 
-**Step 1 — user decision (AskUserQuestion), MANDATORY when open points exist:**
+**Step 1 — decide, do not ask. MANDATORY when open points exist:**
 
-List the points compactly (dimension, file:line, 1-sentence question), then per point or in aggregate:
-- **Decide + fix now** — user gives the direction (1 sentence), fix agents implement, fix verifier checks
-- **Defer as issue** — only these become issues (step 2)
-- **Discard** — discard + add to the dismissed-pattern store; repeated discarding → learning agent proposes a suppression
+List the points compactly (dimension, file:line, 1-sentence question), then decide each one yourself:
+- **Default: decide + fix now** — pick the better direction from the repo's own evidence (existing patterns, `DECIDED_TRADEOFFS`, CLAUDE.md, surrounding code), fix agents implement, fix verifier checks
+- **Discard** — for a point the evidence refutes; add to the dismissed-pattern store, repeated discarding → learning agent proposes a suppression
+- **Defer as issue** — only for a point that needs information outside the repo (an undocumented product tradeoff, an external dependency, a user-facing behavior change with no precedent). Exception, not a menu item.
+
+Report one line per point (decision + one-sentence reason). `AskUserQuestion` only for the third bucket.
 
 **Step 2 — issues ONLY for explicitly deferred items:**
 

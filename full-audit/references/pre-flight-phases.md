@@ -11,10 +11,9 @@ LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
 [ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
 ```
 
-If `>= 1`: ask the user via `AskUserQuestion` with options:
-- **Implement suggestions now** → list the suggestions, user picks which ones, orchestrator dispatches matching changes to `audit/guidelines/*.md` or `audit/agents/*.md` (these are the GLOBAL skill files affecting all projects). **IMPORTANT — edit in the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose content gets overwritten. Before the first edit, resolve the source: check `readlink` or find the skill source repo (e.g. `~/Local Sites/claude-skills`) and edit THERE. Edits in the unpacked copy are lost on the next sync. After implementing: change `[ ]` to `[x]` in learning-log.md. Then continue Full-Audit with Phase 0.5.
-- **Later, run Full-Audit now** → start Phase 0.5, suggestions stay open.
-- **Never ask again for these items** → append a `[skip]` marker to the affected rows, they no longer count.
+If `>= 1`: implement the open suggestions without asking, then continue Full-Audit with Phase 0.5. List in one line which ones were applied. Changes go to `audit/guidelines/*.md` or `audit/agents/*.md` (these are the GLOBAL skill files affecting all projects). **IMPORTANT — edit in the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose content gets overwritten. Before the first edit, resolve the source: check `readlink` or find the skill source repo (e.g. `~/Local Sites/claude-skills`) and edit THERE. Edits in the unpacked copy are lost on the next sync. After implementing: change `[ ]` to `[x]` in learning-log.md.
+
+Leave a suggestion open (and name it) only when implementing it would need a decision the log does not contain. Do not put the list up for selection.
 
 If `0`: continue without asking.
 
@@ -27,7 +26,7 @@ if gh repo view >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep 
 fi
 ```
 
-Open `audit-finding` issues → AskUserQuestion: **Fix now too** (feed in as verified findings in batch 1, after the fix `gh issue close` with a comment) / **Leave open**. `OPEN_PRS` as context: Phase 4 dedup checks against it, PR file overlaps go into the log as a note.
+Open `audit-finding` issues → fix them along with this run without asking: feed in as verified findings in batch 1, after the fix `gh issue close` with a comment. Leave one open only when its resolution needs a decision the repo cannot answer, and name it. `OPEN_PRS` as context: Phase 4 dedup checks against it, PR file overlaps go into the log as a note.
 
 **Skip this phase when:** ENV `AUDIT_SKIP_LEARNING_CHECK=1` OR `FULL_AUDIT_SKIP_LEARNING_CHECK=1` is set (for CI/batch runs).
 

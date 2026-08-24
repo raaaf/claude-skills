@@ -177,7 +177,7 @@ Rules:
 - Spec mismatches must be fixed or the spec updated. A divergence without a decision is a bug waiting to happen.
 - Minor findings: listed, no resolution required.
 
-Use AskUserQuestion when there are multiple Critical/Important findings to decide at once.
+**Decide, do not ask.** Resolve Critical/Important findings yourself from the repo's own evidence and report one line per finding (decision + reason). Use `AskUserQuestion` only for a finding whose resolution needs information the repo does not hold — an undocumented product tradeoff, not a technical call you can make.
 
 ## Phase 4: Output
 
