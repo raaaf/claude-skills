@@ -109,7 +109,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 1. Read the full `git diff`; judge against the goal + conventions (does it read like the rest of the repo?).
 2. Re-run every done criterion yourself (Bash).
 3. Scope: `git diff --stat` against the affected-files list. A file outside it = fail.
-4. READ new tests: does the test assert something meaningful, or does it game the criterion?
+4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the fix line when in doubt (2026-08-23: a capacity-full branch shipped untested behind a green happy-path test).
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
 **Verdict:**
