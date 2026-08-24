@@ -403,3 +403,30 @@ Head-arithmetic is not enough here and the failure is documented: on 2026-07-27 
 Platform specifics and the five precedent cases: `guidelines/native-mobile.md`, section XIV.
 
 Confidence: layout/routing rule reading view-outliving state with none of the three cases handled -> Important. The same rule with no test pinning it -> name it as an open point even when the logic is right.
+
+## XX. Declarative Config Runtimes Have No Abstraction Primitives
+
+Home Assistant automations, Ansible playbooks, k8s manifests and CI workflows are executing logic written in a language that mostly cannot factor itself. YAML anchors are unavailable or ignored in most of these runtimes (Home Assistant strips them inside `automation:` blocks), there are no functions, no loops over heterogeneous shapes, and no imports.
+
+The consequence workers keep re-discovering: repeated blocks in such a file are frequently the ONLY expressible form, not carelessness. Reporting them as DRY violations produces a finding the user cannot act on, every single audit.
+
+Before flagging repetition in a declarative config runtime, establish that an extraction target actually exists:
+
+1. Does the runtime offer a callable unit (Home Assistant `script:`, Ansible `roles`/`include_tasks`, k8s kustomize bases, GitHub Actions reusable workflows)?
+2. Does the repeated block have identical semantics, or does it merely look similar while differing in the entity/host/namespace it acts on?
+3. Would the extraction survive the runtime's parameter model — Home Assistant script fields take scalars and objects but a service call still accepts only one target per invocation, so a "loop over rooms" may need a `repeat` inside the script rather than a flat call.
+
+All three yes -> a real finding, and name the callable unit in the fix. Any no -> not a finding. Say so once in the audit log under accepted trade-offs rather than raising it again.
+
+Confidence: repetition WITH an available callable unit and identical semantics -> Minor (Important only when the copies have already drifted apart). Repetition with no extraction target -> not reported.
+
+## XXI. Drifted Copies Outrank Duplication
+
+When the same block appears more than twice, stop counting copies and start diffing them against each other. Duplication costs maintenance; a copy that has silently diverged is a live defect that the duplication merely hid.
+
+Two outcomes, and they are graded very differently:
+
+- The copies are identical -> ordinary duplication, graded per XX.
+- The copies differ -> Important, and the finding is the difference, not the repetition. Name which copy is wrong and why, because one of them is.
+
+The trap to avoid: divergence is not automatically a bug. Copies attached to different branches of the same state machine often SHOULD differ, each omitting what its own branch already handled. On 2026-08-19 three copies of a volume-priority template were reported as drifted; each branch deliberately left out the scene that had just ended, and all three were correct. Establish which branch each copy belongs to before calling a difference a defect.

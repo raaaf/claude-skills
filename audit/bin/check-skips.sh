@@ -79,10 +79,21 @@ changed=$(collect_changed_files | grep -vE '(^|/)audit/evals/fixtures/')
 match(){ printf '%s\n' "$changed" | grep -qiE "$1"; }
 
 has_frontend=0; match "$FE_RE" && has_frontend=1
+# Path-based on purpose: value-only edits to EXISTING lang keys must route
+# copy/typography exactly like new keys (learning 2026-08: value-only diffs in
+# lang/*.php went unrouted under an earlier key-based check). Any change to a
+# matched file sets the signal — do not narrow this to added keys.
 has_trans=0;    match '(/lang/.+\.(json|php)$|\.po$|\.pot$|\.arb$|\.strings$|/values[^/]*/strings\.xml$|/locales?/)' && has_trans=1
 has_mig=0;      match '(/migrations?/|/migrate/|\.migration\.)' && has_mig=1
 has_code=0;     printf '%s\n' "$changed" | grep -qvE '\.(md|txt|json|ya?ml|po|pot|arb|strings|xml|lock|toml|ini|cfg)$' && [ -n "$changed" ] && has_code=1
 has_docs=0;     match '\.md$|(^|/)docs/|(^|/)\.env\.example$' && has_docs=1
+# Runtime-consumed YAML (Home Assistant automations/scripts, Ansible playbooks,
+# k8s manifests, CI workflows) is executing logic, not prose: it has triggers,
+# conditions, templates and service calls. has_code excludes *.yaml wholesale, so
+# a repo whose entire codebase is YAML used to produce an empty ROUTING_RUN and
+# needed a manual override every run (learning 2026-08-19).
+has_config_logic=0
+match '(^|/)(automations?|scripts?|packages|playbooks|roles|manifests)/.*\.ya?ml$|(^|/)\.github/workflows/.*\.ya?ml$|(^|/)(configuration|scripts|automations|scenes|sensors|binary_sensors|lights|climates|groups|timers|notifies)\.ya?ml$' && has_config_logic=1
 has_seo=0;      match '\.(blade\.php|vue|svelte|astro|html?)$|(^|/)routes?/|sitemap(\.[a-zA-Z]+)?$|robots\.txt$' && has_seo=1
 
 is_native=0; case "$FRAMEWORK" in ios|android|react-native|flutter|native) is_native=1;; esac
@@ -92,12 +103,12 @@ floor_signal(){
   case "$1" in
     a11y|ui_design|ux) [ "$has_frontend" = 1 ] && echo "frontend" ;;
     copy|typography)   [ "$has_trans" = 1 ] && echo "translation" ;;
-    architecture)      [ "$has_mig" = 1 ] && echo "migration" ;;
-    code_quality)      [ "$has_code" = 1 ] && echo "code-changed" ;;
-    security)          [ "$has_code" = 1 ] && echo "code-changed" ;;
+    architecture)      { [ "$has_mig" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "migration" ;;
+    code_quality)      { [ "$has_code" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "code-changed" ;;
+    security)          { [ "$has_code" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "code-changed" ;;
     docs_sync)         [ "$has_docs" = 1 ] && echo "docs" ;;
     seo)               [ "$has_seo" = 1 ] && echo "template" ;;
-    performance)        { [ "$has_code" = 1 ] || [ "$has_mig" = 1 ]; } && echo "code-changed" ;;
+    performance)        { [ "$has_code" = 1 ] || [ "$has_mig" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "code-changed" ;;
     animation)          [ "$has_frontend" = 1 ] && echo "frontend" ;;
   esac
 }
@@ -143,3 +154,10 @@ line="Routing: lief [$run_csv]"
 [ -n "$skip_csv" ] && line="$line; uebersprungen [$skip_csv]"
 [ -n "$over_csv" ] && line="$line; Floor-Override [$over_csv]"
 echo "$line"
+
+# Every skip must carry a logged reason; a "no-reason" skip is itself an
+# anomaly (learning backlog 2026-08): surface it instead of letting the
+# dimension vanish silently.
+case "$skip_csv" in
+  *":no-reason"*) echo "WARN: Dimension-Skip ohne protokollierten Grund (no-reason) -- als Anomalie behandeln, Skip-Quelle pruefen." ;;
+esac

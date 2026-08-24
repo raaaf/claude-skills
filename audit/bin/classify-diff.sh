@@ -81,22 +81,31 @@ fi
 EXEC_RE='\.(sh|bash|zsh|ps1|php|js|mjs|cjs|jsx|ts|tsx|vue|svelte|py|rb|go|rs|java|kt|kts|swift|m|mm|c|h|cpp|cs|sql|graphql|prisma)$'
 CONF_RE='(^|/)(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Gemfile(\.lock)?|go\.(mod|sum)|Cargo\.(toml|lock)|Podfile(\.lock)?|Package\.swift|pubspec\.(yaml|lock)|build\.gradle.*|Makefile|Dockerfile.*|docker-compose.*\.ya?ml|\.github/workflows/.*|\.gitlab-ci\.yml|vite\.config\..*|webpack\.config\..*|tsconfig.*\.json|\.env\.example)$'
 TPL_RE='\.(blade\.php|twig|erb|hbs|ejs|liquid|html|htm|css|scss|sass|less)$'
+# Runtime-consumed YAML: Home Assistant automations/scripts, Ansible playbooks,
+# k8s manifests. These carry triggers, conditions, Jinja templates and service
+# calls, so they execute in every sense the gate cares about. Without this a repo
+# whose whole codebase is YAML classifies as prose and the gate silently guts
+# itself to one round (learning 2026-08-19: ~300 changed lines of automation
+# logic came back "none of them executing").
+RUNTIME_YAML_RE='(^|/)(automations?|scripts?|packages|playbooks|roles|manifests)/.*\.ya?ml$|(^|/)(configuration|scripts|automations|scenes|sensors|binary_sensors|lights|climates|groups|timers|notifies)\.ya?ml$'
 
 EXEC_HITS=$(printf '%s\n' "$FILES" | grep -Ei "$EXEC_RE" || true)
 CONF_HITS=$(printf '%s\n' "$FILES" | grep -E "$CONF_RE" || true)
 TPL_HITS=$(printf '%s\n' "$FILES" | grep -Ei "$TPL_RE" || true)
+YAML_HITS=$(printf '%s\n' "$FILES" | grep -Ei "$RUNTIME_YAML_RE" || true)
 
 # Eval fixtures are deliberately-broken test data, never shipped and never
 # findings (see the repo's Audit Context). A fixture does not make a diff
 # code-class, otherwise adding a test case re-triggers the full gate.
 EXEC_HITS=$(printf '%s\n' "$EXEC_HITS" | grep -v '/evals/fixtures/' || true)
 TPL_HITS=$(printf '%s\n' "$TPL_HITS" | grep -v '/evals/fixtures/' || true)
+YAML_HITS=$(printf '%s\n' "$YAML_HITS" | grep -v '/evals/fixtures/' || true)
 
 HAS_EXEC=0
-[ -n "$(printf '%s' "$EXEC_HITS$CONF_HITS$TPL_HITS" | tr -d '[:space:]')" ] && HAS_EXEC=1
+[ -n "$(printf '%s' "$EXEC_HITS$CONF_HITS$TPL_HITS$YAML_HITS" | tr -d '[:space:]')" ] && HAS_EXEC=1
 
 if [ "$HAS_EXEC" -eq 1 ]; then
-  FIRST=$(printf '%s\n' "$EXEC_HITS$CONF_HITS$TPL_HITS" | grep -v '^$' | head -1)
+  FIRST=$(printf '%s\n' "$EXEC_HITS$CONF_HITS$TPL_HITS$YAML_HITS" | grep -v '^$' | head -1)
   TOTAL=$(printf '%s\n' "$FILES" | grep -c . || echo 0)
   printf 'DIFF_CLASS=%q\n' code
   printf 'DIFF_CLASS_REASON=%q\n' "executing or build-relevant file in the diff (e.g. $FIRST), $TOTAL files total"

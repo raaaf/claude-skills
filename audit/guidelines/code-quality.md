@@ -490,6 +490,16 @@ managerEmail = employee.getManagerEmail()
 
 **Whitespace inside `@if`/`@endif` bodies is rendered.** Blade strips the directives but keeps every character between them, including indentation and newlines. Whitespace inside a conditional is therefore never automatically "insignificant": inside `<pre>`, inline-flex gaps, `:empty` selectors, or space-sensitive inline contexts it changes rendering. Do not flag "redundant whitespace" in Blade conditionals as cleanup, and when adding conditionals into space-sensitive markup, keep the body flush.
 
+## Changed Values Leave Stale Comments Behind
+
+When the diff changes a config value, a threshold, a list or a limit, grep the SAME file for comments, log strings, aliases and docstrings that name the old value. The code is now right and the prose beside it lies, which is worse than no comment: the next reader trusts it.
+
+Cheap and mechanical: take the old value from the diff's `-` line, search the file for it, and check every hit that is not the changed line itself. Widen to sibling files when the value is a documented constant (a README table, a CLAUDE.md reference section, a summary log line that enumerates per-item values).
+
+This has now hit three separate audits: a summary `logbook.log` message enumerating per-room brightness values after one room's value moved (2026-08-19, caught), and twice before that in doc tables. The pattern is always the same — the value lives in two places and only one is a variable.
+
+Confidence: stale comment or log string naming a value the same diff changed -> Minor (Important when it is user-facing output or documentation another automation reads).
+
 ---
 
 Continued: sections XVI (2026 Type-Safety Patterns), XVII (Deprecated APIs), and XVIII (Tooling That Audits Other Code Needs Its Own Evidence), plus Text-Parser Line-Ending Discipline, Paired Resource Calls, and Self-Referential Guard Tests, live in code-quality-2026.md.

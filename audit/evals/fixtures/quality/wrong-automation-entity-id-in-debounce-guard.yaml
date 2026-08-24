@@ -1,0 +1,25 @@
+# Home Assistant automation. The debounce condition reads last_triggered from an
+# automation entity_id that does not exist in this config: the alias is
+# "Notifications » Heizung > 4 Stunden" but the slug below says "8_stunden".
+# state_attr() on an unknown entity returns None, `last is none` is therefore
+# always true, and the 12h debounce never suppresses anything.
+- id: '1697018634962'
+  alias: Notifications » Heizung > 4 Stunden
+  description: Warnt wenn Heizungen laenger als 4 Stunden aktiv sind
+  triggers:
+  - entity_id:
+    - sensor.heizung_schlafzimmer_an
+    - sensor.heizung_wohnzimmer_an
+    above: 4
+    trigger: numeric_state
+  conditions:
+  - condition: template
+    value_template: >
+      {% set last = state_attr('automation.notifications_heizung_8_stunden', 'last_triggered') %}
+      {{ last is none or (now() - last).total_seconds() > 12 * 60 * 60 }}
+  actions:
+  - action: notify.rafael
+    data:
+      title: Heizung laeuft lange
+      message: Eine Heizung ist seit ueber 4 Stunden an.
+  mode: single

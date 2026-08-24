@@ -64,7 +64,7 @@ Agent(
 
 A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass.
 
-**Feed the store DURING the run, not only at the final retro.** The `recur`/`dismissed` calls above are the orchestrator's job, right where the verdict is decided — not a step reserved for the learning agent's end-of-run pass over the finished log. At `floor=high`, D.7 is skipped entirely (see the effort table above), so there is no verdict to hang `recur` on: call it instead at Step E when the finding enters the fix queue (same `{pattern}` string used for `patterns-store.sh add`, see Step E.7). Either way, `patterns.json` should already show this run's patterns by the time the learning agent reads it — the learning agent's own trends-block pass then only reports `recurrences`, it does not populate them from scratch.
+**Feed the store DURING the run, not only at the final retro — and in EVERY round.** The verdict table above runs each round, and so do its `recur`/`dismissed` calls: a `CONFIRMED` in round 2 or 3 is counted at its verdict exactly like one in round 1. (2026-08 run: 7/7 R1 confirms were counted, 0/2 R2 confirms — back-filled by hand; the per-round duty was implicit and lost.) The `recur`/`dismissed` calls above are the orchestrator's job, right where the verdict is decided — not a step reserved for the learning agent's end-of-run pass over the finished log. At `floor=high`, D.7 is skipped entirely (see the effort table above), so there is no verdict to hang `recur` on: call it instead at Step E when the finding enters the fix queue (same `{pattern}` string used for `patterns-store.sh add`, see Step E.7). Either way, `patterns.json` should already show this run's patterns by the time the learning agent reads it — the learning agent's own trends-block pass then only reports `recurrences`, it does not populate them from scratch.
 
 Print after the step: `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
 
@@ -159,10 +159,16 @@ Agent(
     FIX_DIFF: {diff_des_fix_agents}
     FIX_DATEI: {datei}
     REMAINING: {remaining text from the agent, if PARTIAL}
-    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}",
+    PROJECT_GUIDELINES: {PROJECT_GUIDELINES}
+    AUDIT_BIN: {AUDIT_BIN}
+    TEST RULE (repeat, binding): any test command runs ONLY wrapped in
+    bash \"{AUDIT_BIN}/test-lock.sh\" {command} — never unlocked. Lock
+    timeout (exit 75) -> report in DETAILS, do not run unlocked.",
   run_in_background: false
 )
 ```
+
+The TEST RULE line is part of EVERY verifier briefing, verbatim — also in hand-written or bundled briefings. It already stands in `agents/fix-verifier.md`, but a prose rule that only lives in the agent definition does not survive parallel waves (7th occurrence of this failure class, 2026-08: this time on the verifier side); the briefing repeats it so each dispatched context carries it explicitly.
 
 Evaluation of `FIX_VERIFIER_RESULT`:
 - `RECOMMEND=keep` → fix stays, continue

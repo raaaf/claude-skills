@@ -1,0 +1,21 @@
+{
+  "fixture": "quality/wrong-automation-entity-id-in-debounce-guard.yaml",
+  "must_find": [
+    {
+      "dimension": "quality",
+      "line": 19,
+      "matches": ["notifications_heizung_8_stunden", "does not exist", "last_triggered", "debounce", "never"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "quality",
+      "reason": "the repeated numeric_state entity list is the only expressible form in HA YAML, not a DRY violation"
+    },
+    {
+      "dimension": "security",
+      "reason": "no user input, no credentials, local notification only"
+    }
+  ]
+}
