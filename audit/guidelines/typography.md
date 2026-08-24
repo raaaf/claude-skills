@@ -249,3 +249,28 @@ Web font format: `.ttf`/`.otf` served on the web is a finding; use `.woff2`.
 **Logical properties for direction.** In any codebase with RTL ambitions (i18n present, `dir` attribute anywhere): `margin-left`/`padding-right`/`text-align: left` are findings; use `margin-inline-start`, `padding-inline-end`, `text-align: start`. Set `lang` so browsers pick correct quotes and hyphenation.
 
 **Truncation must not destroy content.** `truncate`/`line-clamp` on values that matter (names, IDs, amounts) needs the full value reachable somewhere — tooltip, title attribute, or expanded view. Truncation with no escape hatch is a finding.
+
+## XIV. Overflow and Descender-Safe Underlines (2026)
+
+**Unbreakable strings need an explicit escape.** A long word, URL, file path, hash, or user-supplied ID has no break opportunity, so it overflows its container or forces a horizontal scrollbar on the whole page. Any container that can receive such a value needs `overflow-wrap: break-word` (the modern name; `word-wrap` is the legacy alias). This is a finding wherever user-generated or machine-generated strings render into a fixed-width box: comment bodies, email addresses in table cells, breadcrumb paths, error messages carrying a stack frame.
+
+```css
+.comment-body, .breadcrumb, .cell-id {
+  overflow-wrap: break-word;
+}
+```
+
+The mirror image is just as common: **labels, badges, chips and buttons that must never wrap.** A two-word badge breaking onto a second line silently changes row heights and breaks alignment across a list. Use `white-space: nowrap` there, and pair it with a truncation strategy if the value can grow (see section XIII, truncation must stay reachable).
+
+Do not apply `overflow-wrap: break-word` globally at `:root`. It also breaks ordinary prose at awkward points once a line is tight, and hides the layout bug instead of fixing it.
+
+**Descender-safe underlines, the precise form.** Section X gives `text-underline-offset` as the blunt instrument: it pushes every underline down by a fixed amount, whether the line contains descenders or not. Two properties do it properly:
+
+```css
+a {
+  text-underline-position: from-font;   /* use the font's own underline metric */
+  text-decoration-skip-ink: auto;       /* interrupt the line around g, p, y, j */
+}
+```
+
+`from-font` reads the position the type designer specified instead of guessing, and `skip-ink: auto` (the default in current browsers, worth stating explicitly so a reset cannot silently disable it) breaks the stroke around descenders rather than striking through them. Prefer these over a hand-tuned offset; keep `text-underline-offset` only where a specific design calls for more air than the font metric gives.

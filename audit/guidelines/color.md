@@ -67,7 +67,36 @@ Check: convert each palette step to OKLCH, compare H values. Spread > 10 degrees
 - Tailwind v4 defines its palette in OKLCH. Hex values in `@theme` blocks are a finding (Minor): convert to `oklch()`.
 - Opacity modifiers (`bg-brand-500/50`) work with OKLCH tokens; no reason to keep hex for alpha.
 
-## VII. What NOT to Flag
+## VII. Gradient Interpolation Space
+
+A gradient without a declared interpolation space is interpolated in sRGB, which is why the classic blue-to-yellow gradient runs through a muddy grey midpoint: sRGB interpolation does not preserve perceived lightness. Declare the space when the endpoints differ much in hue or lightness:
+
+```css
+/* even perceived brightness across the ramp */
+background: linear-gradient(in oklab, var(--from), var(--to));
+
+/* keeps midtones vivid instead of desaturating them */
+background: linear-gradient(in oklch, var(--from), var(--to));
+```
+
+Rule of thumb: `in oklab` when an even brightness ramp matters (overlays, scrims, chart fills), `in oklch` when the midpoint should stay saturated (brand gradients, accent surfaces). Plain sRGB is a deliberate choice, not a default to fall into.
+
+Only a finding when the muddy midpoint is actually visible: a two-stop gradient between distant hues with no `in <space>`. A subtle same-hue gradient (light blue to slightly darker blue) is fine in sRGB and must not be flagged.
+
+## VIII. One Theme Mechanism, Not Two
+
+Dark mode is switched either by the OS query or by a class on the root, never by both in the same codebase:
+
+```css
+/* mechanism A */  @media (prefers-color-scheme: dark) { :root { --bg: #111; } }
+/* mechanism B */  .dark { --bg: #111; }
+```
+
+Mixing them is a real defect, not a style preference: a user who picks "light" explicitly still matches `prefers-color-scheme: dark`, so half the tokens flip and half do not, and the result is unreadable text in exactly one of the four combinations. It usually appears when a manual toggle is added later to a codebase that started with the media query.
+
+Finding (Important) when both appear and the media-query block is not guarded, e.g. `:root:not(.light)`. A codebase using only one of the two is correct either way. Note the mechanism choice also decides whether a server-rendered page can avoid the first-paint flash, which is a separate concern from consistency.
+
+## IX. What NOT to Flag
 
 - Existing hex/rgb/hsl in an established codebase is NOT a finding by itself. Only flag color-space issues when they cause a checkable defect (drift, failed contrast, missing P3 fallback, hex inside a v4 `@theme`).
 - CSS keywords (`currentColor`, `transparent`, `inherit`) are never conversion candidates.
