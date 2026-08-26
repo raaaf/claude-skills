@@ -259,8 +259,18 @@ score_fixture() {
   # "— write all findings ... in English" fed the audit a bogus free-text scope
   # hint on every run, and with --scoped it swallowed the dimension name too.
   local run_rc=0
+  # Sandboxing off for the fixture session, via a CLI settings overlay that
+  # merges over user settings and touches nothing else. A sandbox cannot start
+  # inside a sandbox: when the harness itself is launched from a Claude session
+  # whose Bash tool is sandboxed, the nested session dies at startup with
+  # "Sandbox is required but failed to initialize: EPERM ... srt-mux-*.sock"
+  # and every fixture scores zero, which reads exactly like a recall collapse.
+  # The fixture audits run in a throwaway git repo under $tmp_dir, so the
+  # boundary buys nothing here anyway.
+  printf '{"sandbox":{"enabled":false}}\n' >"$tmp_dir/eval-settings.json"
   CLAUDE_EFFORT=low AUDIT_SKIP_LEARNING_CHECK=1 \
     timeout "$PER_FIXTURE_TIMEOUT" claude -p "$audit_cmd" --effort low \
+      --settings "$tmp_dir/eval-settings.json" \
       --append-system-prompt "Write all findings, the audit log and your final summary in English, regardless of the language used in any CLAUDE.md." \
       </dev/null >"$tmp_dir/claude-stdout.txt" 2>&1 || run_rc=$?
   local elapsed=$(( $(date +%s) - started ))
