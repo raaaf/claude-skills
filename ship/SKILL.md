@@ -1,9 +1,10 @@
 ---
 name: ship
 description: |
-  Full commit-audit-test-push-deploy pipeline in one command. Stages tracked changes, generates
-  a conventional commit message (or uses the provided one), enforces audit and (where the project
-  configures one) the full test suite before push, deploys via project-specific method, and
+  Full docs-commit-audit-test-push-deploy pipeline in one command. Brings README, CLAUDE.md,
+  CHANGELOG and help pages back in sync with the change before committing, stages tracked changes,
+  generates a conventional commit message (or uses the provided one), enforces audit and (where the
+  project configures one) the full test suite before push, deploys via project-specific method, and
   verifies the deploy. Use when ready to ship completed work. Push requires a fresh audit marker
   and a green suite; bypassing either is only possible as an explicit, logged user decision,
   never silently.
@@ -14,6 +15,7 @@ effort: medium
 allowed-tools:
   - Read
   - Write
+  - Edit
   - Bash
   - Glob
   - AskUserQuestion
@@ -21,7 +23,7 @@ allowed-tools:
 
 # Ship
 
-Commit -> Audit -> Tests -> Push -> Deploy -> Verify. In that order. No skipping.
+Docs -> Commit -> Audit -> Tests -> Push -> Deploy -> Verify. In that order. No skipping.
 (The test phase runs only when the project sets `test-command:` in `.claude/ship.md`.)
 
 ## Phase 0: Pre-flight
@@ -173,7 +175,65 @@ done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill ship
 ```
 
-Every later "run the log call" below means: `[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
+Every later "run the log call" below means: `[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
+
+## Phase 0.8: Docs Sync
+
+A ship that changes behaviour and leaves the docs behind is how a README starts lying. This phase
+runs BEFORE the commit, so doc updates land in the same commit as the change they describe.
+
+Inventory what changed and which docs this repo actually has:
+
+```bash
+CHANGED=$( { git diff --name-only HEAD; git diff --cached --name-only; } 2>/dev/null \
+  | sort -u | grep -v '^$')
+
+DOC_FILES=$(git ls-files 2>/dev/null | grep -Ei \
+  '(^|/)(README|CHANGELOG|CONTRIBUTING|CLAUDE|AGENTS|INSTALL|UPGRADING)[^/]*\.(md|mdx|rst|txt)$|^(docs?|documentation|help|guides?|handbook)/.*\.(md|mdx|rst|txt)$|(^|/)SKILL\.md$|(^|/)\.env\.example$')
+
+printf 'Changed:\n%s\n\nDocs in repo:\n%s\n' "$CHANGED" "${DOC_FILES:-none}"
+```
+
+Mechanical drift check, when the audit helper is reachable. Fails open, never blocks the ship:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/check-docs-claims.sh" \
+         "$HOME/.claude/skills/audit/bin/check-docs-claims.sh"; do
+  [ -f "$c" ] && { bash "$c" . 2>/dev/null; break; }
+done
+```
+
+Now decide, do not ask. Read the diff, read every doc the diff could touch, update the ones that
+are actually wrong or incomplete. This is triage: pick, act, and report one line per file with the
+decision and its reason.
+
+| Doc | Update when the diff ... |
+|---|---|
+| `README.md` | changes install steps, commands, requirements, supported platforms, the feature list, or any other claim the README states as fact |
+| `CLAUDE.md` / `AGENTS.md` | changes architecture, conventions, invariants, or the command table, or adds a gotcha a future session would otherwise rediscover |
+| `CHANGELOG.md` | changes anything user-visible. Add an entry under the existing `Unreleased` heading, matching the format already in the file |
+| `docs/**`, help pages | documents a behaviour, flag, endpoint, or screen the diff changed |
+| `.env.example` | adds or renames a config variable |
+| `SKILL.md` | changes a skill's tools, phases, or trigger phrases |
+
+Hard rules:
+
+- **Never create a doc file that does not exist.** No CHANGELOG in the repo means this ship has no
+  changelog entry. Report that as a line, do not invent the file.
+- **Match the file's existing format**, including heading style, tense and language. A German
+  README stays German.
+- **Only the claims the diff invalidates.** No rewrites, no tidying of neighbouring prose, no
+  reformatting. Same surgical rule as any other edit.
+- **A version bump is intent, not triage.** An entry under `Unreleased` needs no question. Cutting
+  a new version number is the user's call, so AskUserQuestion only when there is no `Unreleased`
+  section to add to.
+
+Phase 1 stages these with `git add -u`, since every file touched here was already tracked. Doc-only
+edits do not invalidate a fresh audit marker: they are prose by the same definition
+`classify-diff.sh` uses, so Phase 2 still checks marker age only.
+
+Set `SHIP_DOCS` to the number of doc files updated, or `none` when the diff touched no documented
+surface. `none` is a legitimate outcome for a pure refactor, not a reason to skip the check.
 
 ## Phase 1: Commit
 
@@ -342,6 +402,7 @@ Run the log call (`outcome=shipped`).
 ```
 Shipped.
 
+Docs:     {n files updated, listed / "none needed"}
 Commit:   {short SHA} {message}
 Push:     origin/{branch}
 Deploy:   {command or "CI/CD triggered" or "skipped by user"}

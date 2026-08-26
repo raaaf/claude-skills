@@ -142,22 +142,24 @@ autonomously. Requires `gh` CLI and a GitHub remote.
 `ready-for-agent` issues get an executor-grade agent brief: task description, likely files, out-of-scope list, checkable acceptance
 criteria, exact verification commands, STOP conditions, a planned-at commit for drift detection, and suggested skills.
 
-### `/ship` — Commit, Audit, Push, Deploy
+### `/ship` — Docs, Commit, Audit, Push, Deploy
 
-Full pipeline from "changes ready" to "live in production." Generates a conventional commit
-message from the diff (or uses the one you provide), enforces the audit marker before push,
-runs the project-specific deploy command, and verifies with a health check.
+Full pipeline from "changes ready" to "live in production." Brings the docs back in sync with the
+change, generates a conventional commit message from the diff (or uses the one you provide),
+enforces the audit marker before push, runs the project-specific deploy command, and verifies with
+a health check.
 
 **Pipeline:**
 
 1. Phase 0: Pre-flight (git status, detect deploy method from `fly.toml`/`vapor.yml`/`deploy.sh`/`.vercel`/CI, or save to `.claude/ship.md` on first run)
-2. Phase 1: Commit (diff summary, generate conventional commit message, AskUserQuestion to confirm or edit, `git add -u`, sensitive-file check, `git commit`)
-3. Phase 2: Audit gate (marker fresh < 30 min? skip. Stale or missing? AskUserQuestion: run `/audit` now or bypass explicitly)
-4. Phase 2b: Test gate (runs `test-command:` from `.claude/ship.md` if set, skipped silently otherwise; red suite stops the push)
-5. Phase 3: Push (`git push`, auto-handles no-upstream and diverged branches)
-6. Phase 4: Deploy (run detected command; skip if CI/CD deploys on push)
-7. Phase 5: Verify (`gh run list` + health check if URL configured)
-8. Phase 6: Failure handling (last 20 lines of output + `/diagnose` pointer)
+2. Phase 0.8: Docs sync (inventory the repo's README/CLAUDE.md/CHANGELOG/`docs/**`/help pages/`.env.example`, run `check-docs-claims.sh`, update every doc the diff invalidates so the fix and its documentation land in one commit. Never creates a doc file that does not exist)
+3. Phase 1: Commit (diff summary, generate conventional commit message, AskUserQuestion to confirm or edit, `git add -u`, sensitive-file check, `git commit`)
+4. Phase 2: Audit gate (marker fresh < 30 min? skip. Stale or missing? AskUserQuestion: run `/audit` now or bypass explicitly)
+5. Phase 2b: Test gate (runs `test-command:` from `.claude/ship.md` if set, skipped silently otherwise; red suite stops the push)
+6. Phase 3: Push (`git push`, auto-handles no-upstream and diverged branches)
+7. Phase 4: Deploy (run detected command; skip if CI/CD deploys on push)
+8. Phase 5: Verify (`gh run list` + health check if URL configured)
+9. Phase 6: Failure handling (last 20 lines of output + `/diagnose` pointer)
 
 **Arguments:**
 ```bash
