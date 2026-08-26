@@ -1,0 +1,33 @@
+{
+  "fixture": "security/assent-gate-substring-bypass.ts",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 21,
+      "matches": ["startsWith", "substring", "prefix", "word boundary", "eine"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "security",
+      "line": 18,
+      "matches": ["assent", "affirmative", "negation", "nein", "ohne", "-frei", "term presence"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "security",
+      "line": 29,
+      "matches": ["scope", "trigger class", "whole class", "exempt"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "backend logic, no markup"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}

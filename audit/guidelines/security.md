@@ -480,3 +480,25 @@ The sink list for one new field, all in one pass:
 A field that is legitimately excluded from a sink says so in a comment at the filter, naming the rule (a store policy, a platform guideline), so the next audit does not have to re-derive whether the omission was deliberate.
 
 Confidence: a new sensitive field filtered at one sink while another sink in this list carries it -> Critical. All sinks covered but none documented -> Minor.
+
+## XVIII. User-Confirmation Gates over Model Behavior
+
+A user-confirmation gate lets the model bypass a safety rule (allergy guard, destructive action,
+policy override) only after explicit user assent. Every such gate gets THREE checks, in one pass —
+one audit found all three gaps in the same feature, spread over three rounds because each round
+stopped at the first hit:
+
+1. **Word-boundary matching, never prefix/substring.** A `startsWith`/`includes` check for "does
+   the user's text mention the term" is bypassable by unrelated words that contain the term
+   ("Ei" matches "eine", "Nuss" matches "Nussbaum-Furnier"). Match on token boundaries against
+   the same normalization (folding, casing) the guard itself uses.
+2. **Real yes/no assent, not term presence.** "The confirmed term appears in the user's reply" is
+   not assent. The reply must contain an affirmative token AND no negation that scopes to the
+   term ("nein, bitte ohne Milch" mentions Milch and denies it; "milchfrei" negates via suffix).
+   Compound negation morphemes (-frei, -los, ohne-) count as negation, not as mention.
+3. **Scope limitation.** A confirmed single term exempts THAT term, never its whole trigger
+   class. Confirming "Parmesan trotzdem" must not exempt every dairy trigger; the guard re-checks
+   the remaining class members after the exemption.
+
+Confidence: any one of the three missing on a health/safety or destructive-action gate -> Critical.
+On a reversible convenience gate -> Important.
