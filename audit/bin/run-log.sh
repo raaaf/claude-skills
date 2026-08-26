@@ -2,10 +2,14 @@
 #
 # run-log.sh — append one JSON line per skill run to the personal run ledger.
 #
-# The ledger lives at $HOME/.claude/skill-runs.jsonl, deliberately NOT inside
-# any repo: project paths are personal (absolute filesystem paths) and this
-# repo (claude-skills) is public on GitHub. Never write the ledger under a
-# repo directory.
+# The ledger lives at $HOME/.local/state/claude/skill-runs.jsonl, deliberately
+# NOT inside any repo: project paths are personal (absolute filesystem paths)
+# and this repo (claude-skills) is public on GitHub. Never write the ledger
+# under a repo directory.
+#
+# It also lives outside $HOME/.claude on purpose: the Bash sandbox treats that
+# directory as a protected path and denies writes to it with no way to opt out,
+# so a ledger there would silently stop recording the moment sandboxing is on.
 #
 # Usage:
 #   bash run-log.sh --start --skill <name>
@@ -38,12 +42,13 @@
 # single real run legitimately finishes well inside a workday, so a marker
 # older than that is a crashed/abandoned session, not a slow run, and letting
 # it through would poison the ledger with a fictional multi-hour (or
-# multi-day) duration that then corrupts the median `duration-outlier`
-# compares against. No marker, or a stale one: `duration_s` is omitted
-# exactly as before `--start` existed, never invented.
+# multi-day) duration. No marker, or a stale one: `duration_s` is omitted
+# exactly as before `--start` existed, never invented. (`run-stats.sh` had a
+# `duration-outlier` condition reading this field; it was deleted on
+# 2026-08-26 after 0 fires in 45 runs, so `duration_s` is now history only.)
 #
 # THIS SCRIPT MUST NEVER BREAK THE CALLING SKILL. Every failure path — jq
-# missing, not a git repo, $HOME/.claude not writable, malformed arguments —
+# missing, not a git repo, the ledger directory not writable, malformed arguments —
 # exits 0 silently and simply skips the write. A logging helper that can fail
 # a skill run is worse than no logging at all; this is the one script in the
 # repo where "fail silently" is the deliberately correct behaviour, not a
@@ -57,7 +62,7 @@
 # skills in the same project) running in parallel never share a marker.
 set +e
 
-LEDGER_DIR="$HOME/.claude"
+LEDGER_DIR="$HOME/.local/state/claude"
 LEDGER_FILE="$LEDGER_DIR/skill-runs.jsonl"
 
 command -v jq >/dev/null 2>&1 || exit 0

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# run-stats.sh — read the personal run ledger ($HOME/.claude/skill-runs.jsonl,
+# run-stats.sh — read the personal run ledger
+# ($HOME/.local/state/claude/skill-runs.jsonl,
 # written by run-log.sh) and report ANOMALY conditions. This is a ledger plus
 # a small set of checks, not a dashboard: the point is not "here are your
 # stats", it is "here is a metric that looks off and might be lying to you",
@@ -9,34 +10,42 @@
 # Usage:
 #   bash run-stats.sh [--days N] [--skill <name>] [--raw]
 #
-# --skill restricts the four skill-scoped conditions (1, 3, 4; and narrows 2
-#   to just that skill) to one skill. --raw additionally prints the exact
-#   ledger rows backing each reported anomaly, prefixed "  RAW ", so every
-#   number in this report can be checked by hand instead of trusted blind —
-#   the whole reason this script exists is that three separate "green"
-#   numbers turned out to be false in one session, and a number nobody can
-#   trace back to its rows is exactly how that happens again.
+# --skill restricts the skill-scoped condition (gate-never-blocked) to one
+#   skill. --raw additionally prints the exact ledger rows backing each
+#   reported anomaly, prefixed "  RAW ", so every number in this report can be
+#   checked by hand instead of trusted blind — the whole reason this script
+#   exists is that three separate "green" numbers turned out to be false in
+#   one session, and a number nobody can trace back to its rows is exactly how
+#   that happens again.
 #
 # --days N is deliberately narrow in scope: it overrides ONLY the
-# ledger-stale window (condition 5, default LEDGER_STALE_DAYS below). It does
-# NOT day-filter conditions 1/3/4 — condition 1 is defined as "last N runs",
-# not "runs in the last N days", and 3/4 need full history for a trustworthy
-# median/count. Day-filtering those would silently hide the very data the
-# condition needs. This is a deliberate scope choice, not an oversight.
+# ledger-stale window (default LEDGER_STALE_DAYS below). gate-never-blocked
+# needs full history for a trustworthy count, so day-filtering it would
+# silently hide the very data the condition needs. Deliberate, not an
+# oversight.
 #
-# ---- Thresholds (first guess, tune freely) ----
-# A condition that has fired repeatedly without ever leading to an action is
-# itself a defect and should be deleted from this script, same as any other
-# noisy check in this repo.
-ZERO_FINDINGS_STREAK_N=5      # how many of a skill's most recent runs must all show zero findings
-DURATION_OUTLIER_MULT=3       # a run counts as an outlier above this multiple of its skill's median
-DURATION_OUTLIER_MIN_RUNS=5   # minimum runs of a skill before its median is trusted at all
-LEDGER_STALE_DAYS=7           # default "no entry in the last N days" window for condition 5
+# ---- Calibration outcome (2026-08-26, 45 logged runs over two weeks) ----
+# Two scheduled calibration checks ran (08-19, 08-26) under the rule that a
+# condition which fires repeatedly without ever leading to an action is itself
+# a defect and should be deleted. Three of the original five were deleted:
+#   zero-findings-streak: 0 fires in 45 runs, and no run in the ledger has
+#     ever reported zero findings, so it could not fire by construction.
+#   never-triggered:      fired 9x per run, every time for skills that carry
+#     no run-log.sh call at all and therefore can never have an entry. Its one
+#     real signal (/ship silent for months) was closed when the German trigger
+#     phrases added on 08-11 made /ship fire on 08-21 and 08-22. Restricted to
+#     instrumented skills it would be permanently silent.
+#   duration-outlier:     0 fires in 45 runs, on 24/45 rows that carry a
+#     duration at all; `--start` fires per session rather than per run in
+#     delegate/plan-it, so the median was structurally blind.
+# The two survivors are below.
+LEDGER_STALE_DAYS=7           # "no entry for this repo in the last N days" window
+GATE_MIN_RUNS=10              # gated runs a skill needs before "never blocked" means anything
 GATE_SKILLS="ship audit"      # the only skills expected to occasionally NOT pass their gate
 
 set +e
 
-LEDGER_FILE="$HOME/.claude/skill-runs.jsonl"
+LEDGER_FILE="$HOME/.local/state/claude/skill-runs.jsonl"
 
 command -v jq >/dev/null 2>&1 || { echo "RUNSTATS_RESULT=SKIP (jq not available)"; exit 0; }
 
@@ -74,12 +83,6 @@ if [ "$TOTAL" -eq 0 ]; then
   exit 0
 fi
 
-if [ -n "$SKILL_FILTER" ]; then
-  SCOPED_JSON=$(printf '%s' "$ALL_JSON" | jq -c --arg sk "$SKILL_FILTER" '[.[] | select(.skill == $sk)]')
-else
-  SCOPED_JSON="$ALL_JSON"
-fi
-
 ANOM=0
 
 print_raw() {
@@ -89,66 +92,22 @@ print_raw() {
   printf '%s' "$1" | jq -c '.[]' 2>/dev/null | sed 's/^/  RAW /'
 }
 
-# ---- Condition 1: zero-findings-streak ----
-# A skill's last N runs all reported zero findings (sum of all .counts
-# values except "rounds", which is a loop counter, not a finding count).
-# Runs with no .counts data at all are not eligible — "zero findings" must
-# be something the run actually reported, not the absence of a report.
-SKILLS=$(printf '%s' "$SCOPED_JSON" | jq -r '[.[].skill] | unique | .[]')
-for sk in $SKILLS; do
-  [ -n "$sk" ] || continue
-  LAST_N=$(printf '%s' "$SCOPED_JSON" | jq -c --arg sk "$sk" --argjson n "$ZERO_FINDINGS_STREAK_N" \
-    '[.[] | select(.skill == $sk)] | sort_by(.ts) | reverse | .[0:$n]')
-  N_HAVE=$(printf '%s' "$LAST_N" | jq 'length')
-  [ "$N_HAVE" -ge "$ZERO_FINDINGS_STREAK_N" ] || continue
-
-  ALL_ZERO=$(printf '%s' "$LAST_N" | jq '
-    [.[] | ((.counts // {}) | length > 0)] as $have
-    | [.[] | ((.counts // {}) | to_entries | map(select(.key != "rounds")) | map(.value) | map(if type == "number" then . else 0 end) | add // 0)] as $sums
-    | ($have | all) and ($sums | all(. == 0))')
-
-  if [ "$ALL_ZERO" = "true" ]; then
-    echo "RUNSTAT zero-findings-streak: skill '$sk' reported zero findings in its last $ZERO_FINDINGS_STREAK_N runs"
-    print_raw "$LAST_N"
-    ANOM=$((ANOM + 1))
-  fi
-done
-
-# ---- Condition 2: never-triggered ----
-# A skill directory exists on disk (has a SKILL.md) but has zero ledger
-# entries ever, regardless of --days. Derived from the repo run-stats.sh is
-# invoked in, same convention check-docs-claims.sh uses for its own scan.
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -n "$ROOT" ]; then
-  DISK_SKILLS=$(find "$ROOT" -mindepth 2 -maxdepth 2 -name 'SKILL.md' \
-    -not -path '*/node_modules/*' -not -path '*/vendor/*' -not -path '*/.git/*' 2>/dev/null \
-    | sed "s|^${ROOT}/||" | sed 's|/SKILL\.md$||' | sort -u)
-  if [ -n "$SKILL_FILTER" ]; then
-    DISK_SKILLS=$(printf '%s\n' "$DISK_SKILLS" | grep -xF "$SKILL_FILTER" || true)
-  fi
-  while IFS= read -r sk; do
-    [ -n "$sk" ] || continue
-    HAVE=$(printf '%s' "$ALL_JSON" | jq --arg sk "$sk" '[.[] | select(.skill == $sk)] | length')
-    if [ "$HAVE" = "0" ]; then
-      echo "RUNSTAT never-triggered: skill '$sk' exists on disk ($ROOT/$sk/SKILL.md) but has no ledger entry at all"
-      ANOM=$((ANOM + 1))
-    fi
-  done <<DISKEOF
-$DISK_SKILLS
-DISKEOF
-fi
 
-# ---- Condition 3: gate-never-blocked ----
-# 'ship' or 'audit' logged runs, but every non-empty .gate value was
-# "passed" — a gate that never fires may be dead. Entries with no .gate
-# logged at all (empty string) are not counted as evidence either way.
+# ---- Condition 1: gate-never-blocked ----
+# 'ship' or 'audit' logged at least GATE_MIN_RUNS gated runs, but every
+# non-empty .gate value was "passed". A gate that never fires may be dead.
+# Entries with no .gate logged at all (empty string) are not counted as
+# evidence either way. The minimum exists because the 08-26 calibration saw
+# this fire on 'ship' after exactly 2 gated runs, where "never blocked" is not
+# an observation about the gate, only about the sample size.
 for sk in $GATE_SKILLS; do
   if [ -n "$SKILL_FILTER" ] && [ "$SKILL_FILTER" != "$sk" ]; then
     continue
   fi
   GATED=$(printf '%s' "$ALL_JSON" | jq -c --arg sk "$sk" '[.[] | select(.skill == $sk) | select((.gate // "") != "")]')
   N_GATED=$(printf '%s' "$GATED" | jq 'length')
-  [ "$N_GATED" -gt 0 ] || continue
+  [ "$N_GATED" -ge "$GATE_MIN_RUNS" ] || continue
   ALL_PASSED=$(printf '%s' "$GATED" | jq '[.[].gate] | all(. == "passed")')
   if [ "$ALL_PASSED" = "true" ]; then
     echo "RUNSTAT gate-never-blocked: skill '$sk' logged $N_GATED gated run(s), 'gate' was never anything but 'passed'"
@@ -157,43 +116,14 @@ for sk in $GATE_SKILLS; do
   fi
 done
 
-# ---- Condition 4: duration-outlier ----
-# A single run whose duration_s is more than DURATION_OUTLIER_MULT times its
-# skill's median, needing at least DURATION_OUTLIER_MIN_RUNS runs of that
-# skill (with duration data) before the median is trusted.
-for sk in $SKILLS; do
-  [ -n "$sk" ] || continue
-  DURS=$(printf '%s' "$SCOPED_JSON" | jq -c --arg sk "$sk" '[.[] | select(.skill == $sk) | select(.duration_s != null)]')
-  N_DUR=$(printf '%s' "$DURS" | jq 'length')
-  [ "$N_DUR" -ge "$DURATION_OUTLIER_MIN_RUNS" ] || continue
-
-  MEDIAN=$(printf '%s' "$DURS" | jq '[.[].duration_s] | sort as $s | ($s | length) as $len
-    | if ($len % 2) == 1 then $s[($len / 2 | floor)]
-      else (($s[($len / 2) - 1] + $s[($len / 2)]) / 2)
-      end')
-
-  OUTLIERS=$(printf '%s' "$DURS" | jq -c --argjson med "$MEDIAN" --argjson mult "$DURATION_OUTLIER_MULT" \
-    '[.[] | select(.duration_s > ($med * $mult))]')
-  N_OUT=$(printf '%s' "$OUTLIERS" | jq 'length')
-  if [ "$N_OUT" -gt 0 ]; then
-    printf '%s' "$OUTLIERS" | jq -c '.[]' | while IFS= read -r row; do
-      [ -n "$row" ] || continue
-      D=$(printf '%s' "$row" | jq -r '.duration_s')
-      T=$(printf '%s' "$row" | jq -r '.ts')
-      echo "RUNSTAT duration-outlier: skill '$sk' run at $T took ${D}s, more than ${DURATION_OUTLIER_MULT}x the median (${MEDIAN}s over $N_DUR runs)"
-      [ "$RAW" -eq 1 ] && printf '%s\n' "$row" | sed 's/^/  RAW /'
-    done
-    ANOM=$((ANOM + N_OUT))
-  fi
-done
-
-# ---- Condition 5: ledger-stale ----
-# No ledger entry for THIS repo in the last $DAYS days, although this repo
-# has commits in that window. This is the self-check: it means the LOGGING
-# is broken (run-log.sh not wired into a skill, or silently failing), not
-# that the code is clean. Scoped to the current repo (project_path match)
-# on purpose — a green ledger from some other project proves nothing about
-# whether this repo's skills are logging.
+# ---- Condition 2: ledger-stale ----
+# No ledger entry for THIS repo in the last $DAYS days, although this repo has
+# commits in that window. Scoped to the current repo (project_path match) on
+# purpose, since a green ledger from some other project proves nothing about
+# this one. The message deliberately states the observation and NOT a cause: both
+# calibration checks found the facts correct and the original wording ("logging
+# is likely broken") wrong: the real explanation each time was that commits had
+# landed here without anyone running an audit.
 if [ -n "$ROOT" ]; then
   COMMITS=$(git -C "$ROOT" log --since="${DAYS} days ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
   if [ "${COMMITS:-0}" -gt 0 ]; then
@@ -201,7 +131,7 @@ if [ -n "$ROOT" ]; then
       '(now - ($days * 86400)) as $cutoff | [.[] | select(.project_path == $root) | select((.ts | try fromdateiso8601 catch 0) >= $cutoff)]')
     N_RECENT=$(printf '%s' "$RECENT" | jq 'length')
     if [ "${N_RECENT:-0}" = "0" ]; then
-      echo "RUNSTAT ledger-stale: no ledger entry for $ROOT in the last $DAYS days, but $COMMITS commit(s) landed in that window — logging is likely broken, not the code"
+      echo "RUNSTAT ledger-stale: $COMMITS commit(s) landed in $ROOT in the last $DAYS days, but no run was logged for this repo in that window (either no audit ran before those commits, or run-log.sh is not firing here)"
       ANOM=$((ANOM + 1))
     fi
   fi
