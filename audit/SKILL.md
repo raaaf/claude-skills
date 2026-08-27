@@ -73,9 +73,17 @@ echo "Effort=$CLAUDE_EFFORT | Diff=$DIFF_CLASS | Runden=$MAX_RUNDEN | FixMinor=$
 AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
 AUDIT_AGENTS_DIR="${CLAUDE_SKILL_DIR}/agents"
 
-# PreCompact-Schutz: blockiert Auto-Compaction waehrend des Audit-Runs
+# PreCompact-Schutz: wave-scoped, NICHT run-scoped. Gesetzt in Step C (Dispatch),
+# freigegeben in "After each round", sobald die Runde im Audit-Log steht.
+# Begruendung + Messung: references/context-budget.md (R4).
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+COMPACT_MARKER="/tmp/claude-audit-in-progress-${CWD_HASH}"
+rm -f "$COMPACT_MARKER"
+
+# Wave-shared Briefing-Bloecke (context-budget.md R1). Bewusst ausserhalb des Repos:
+# Subagents duerfen es lesen, es darf nie in einen Commit geraten.
+AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-${CWD_HASH}"
+mkdir -p "$AUDIT_TMP"
 
 # Run-ledger start marker (see run-log.sh header) — before any real work
 bash "$AUDIT_BIN/run-log.sh" --start --skill audit
@@ -230,10 +238,22 @@ It derives file signals itself from git and overrides obvious wrong skips (front
 
 Dispatch only agents from `ROUTING_RUN` (Step C.0.5: the deterministic floor, refined by triage only if it was opted into). Security almost always. All non-skipped agents in EVERY round.
 
+**Read `references/context-budget.md` once, before this first dispatch, and apply R1-R4 for the
+whole run.** Claim the compaction block for this wave (R4) — it is released again in
+"After each round", not at the end of the run — and write the wave constants ONCE (R1):
+
+```bash
+touch "$COMPACT_MARKER"
+WAVE_SHARED="$AUDIT_TMP/wave-${RUNDE}-shared.md"   # layout: context-budget.md R1
+```
+
+A 12-worker wave that inlines those constants per agent pays for the same block twelve times, in
+the one context that gets re-read on every remaining turn of the run.
+
 Dispatch in **one message block** via the Agent tool. Pass ONLY:
+- `$WAVE_SHARED` (the path — carries `DATEILISTE`, `GUIDELINE_MATCHES`, `SUPPRESSIONS`, `PROJECT_GUIDELINES`, `DECIDED_TRADEOFFS`, `WAVE_HEAD`, `BEREITS_GEFIXT`; the worker reads it itself and loads only the listed guidelines, see prompt-template)
 - `TRIAGE_SUMMARY` (1-2 lines)
-- `HOTSPOTS` (marked locations, exact file:line)
-- `DATEILISTE` + `GUIDELINE_MATCHES` (for orientation; the worker loads only the listed guidelines, see prompt-template)
+- `HOTSPOTS` (marked locations, exact file:line) — per-agent, stays in the briefing
 
 **NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
 
@@ -329,6 +349,15 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 ```
 
 ### After each round
+
+**Release the compaction block FIRST (R4, MANDATORY):**
+
+```bash
+rm -f "$COMPACT_MARKER"   # re-claimed by the next round's Step C
+```
+
+The round's findings are in the audit log at this point, so compaction can no longer lose them.
+The block protects the window where findings live only in context, not the whole run.
 
 | Result | Action |
 |---|---|

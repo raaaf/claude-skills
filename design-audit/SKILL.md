@@ -51,9 +51,17 @@ AUDIT_GUIDELINES="$AUDIT_ROOT/guidelines"
 
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "ERROR: missing agent files in $AUDIT_AGENTS."; exit 1; }
 
-# PreCompact protection (same marker family as /audit, WITH newline hash)
+# PreCompact protection (same marker family as /audit, WITH newline hash).
+# Wave-scoped, not run-scoped: claimed at the Phase 2 dispatch, released once Phase 3 has written
+# the report. Rationale + measurement: $AUDIT_ROOT/references/context-budget.md (R4).
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+COMPACT_MARKER="/tmp/claude-audit-in-progress-${CWD_HASH}"
+rm -f "$COMPACT_MARKER"
+
+# Wave-shared briefing block (context-budget.md R1). Outside the repo on purpose:
+# subagents may read it, it must never land in a commit.
+AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-${CWD_HASH}"
+mkdir -p "$AUDIT_TMP"
 
 # Run-ledger start marker (see run-log.sh header) — before any real work
 bash "$AUDIT_BIN/run-log.sh" --start --skill design-audit
@@ -105,7 +113,7 @@ fi
 
 FRONTEND_COUNT=$(echo "$FRONTEND_FILES" | grep -c . || echo 0)
 echo "Frontend surface: $FRONTEND_COUNT files"
-[ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"; exit 0; }
+[ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; rm -f "$COMPACT_MARKER"; exit 0; }
 ```
 
 The path filter is a heuristic, not a contract: a project that keeps views somewhere else loses them here. Print the resulting list and eyeball it before Phase 2 — a count that collapses to a handful on a real app means the convention did not match, and the fix is to widen the pattern for that project, not to audit five files and call the surface covered.
@@ -139,6 +147,19 @@ Consumption:
 - Every `SURFACES_MISSING` entry is an **Elevation candidate** with purpose `completeness` (valid for surface-coverage candidates only), anchored `file:line` to the route/navigation file where the surface would attach — a missing surface has no file of its own, and the Phase 3 hallucination validator requires an existing anchor. It passes the normal Gate and competes for the `MAX_ELEVATION` cap. Never a Defect.
 
 ## Phase 2: Worker wave (fixed dimensions, no triage)
+
+**Read `$AUDIT_ROOT/references/context-budget.md` once before this dispatch and apply R1-R4.**
+Claim the compaction block for the wave and write the wave constants ONCE:
+
+```bash
+touch "$COMPACT_MARKER"                             # released after Phase 3 has written the report
+WAVE_SHARED="$AUDIT_TMP/wave-design-shared.md"      # PROJECT_CONTEXT, PROJECT_GUIDELINES,
+                                                    # DECIDED_TRADEOFFS, SUPPRESSIONS,
+                                                    # FRONTEND_FILES, surface map — layout: R1
+```
+
+Pass `$WAVE_SHARED` as a path; inlining those constants per agent means paying for the same block
+once per dimension, in the context that gets re-read on every remaining turn.
 
 Dispatch in **one message block** via the Agent tool (`run_in_background: false` on every agent — Phase 3 consolidation needs all results this same turn) — the design slice of the audit roster, each reading its own definition from `$AUDIT_AGENTS`:
 
@@ -214,6 +235,13 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 ```
 
 Write the same content to `.claude/audits/design-{date +%Y-%m-%d_%H%M%S}-{branch}.md` (severity+dimension dual tags per line, log conventions from `$AUDIT_ROOT/references/audit-log-template.md`).
+
+**Then release the compaction block (R4, MANDATORY)** — the findings are on disk now, so compaction
+can no longer lose them, and the selection/fix phases below must not carry the wave's peak context:
+
+```bash
+rm -f "$COMPACT_MARKER"
+```
 
 ## Phase 5: User selection — nothing is fixed without it
 
