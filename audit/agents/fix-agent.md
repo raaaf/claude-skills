@@ -162,6 +162,10 @@ For every color or design-token replace (e.g. `indigo` → `blue`, old token →
 
 Never change domain business values (SKR03 account numbers, tax rates, chart of accounts, statutory deadlines) without a verifiable source. When in doubt, report as a finding instead of fixing: `FIX_RESULT=FAILED` with a note that the value needs a verifiable source.
 
+## Special case: exemption lists / allowlists (allergen, diet, safety, auth)
+
+If the fix touches an exemption list, allowlist, or skip-list that gates a safety- or trust-relevant check (allergen/diet exemptions, seasoning allowlists, auth bypass lists, sanitizer skip patterns), fixing the reported line is not the whole job: the list's SCOPE is the finding. State explicitly in the `FIX_RESULT` line whether the change NARROWS or WIDENS the exempted class, and name the entries added or removed: `FIX_RESULT=APPLIED | {file}:{line} | narrows exemption: removed "huehnerbruehe" from meat-free allowlist`. A widening that was not asked for by the finding is a failed fix, report it as `FIX_RESULT=FAILED` with the reason instead of applying it. Reference case (2026-08-26): a fix for one false positive added an entry to a diet-exemption list and thereby exempted a whole ingredient class; only the next round's re-check caught it.
+
 ## Special case: role="button" (keyboard access)
 
 If a finding concerns `role="button"` at a new or changed location, MANDATORY before the fix:

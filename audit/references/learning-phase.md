@@ -12,6 +12,18 @@ bash "$AUDIT_BIN/run-stats.sh"
 
 `RUNSTATS_RESULT=OK` or `SKIP (reason)`: no action, go to Step 1. `RUNSTATS_RESULT=ANOMALIES (N)`: append every `RUNSTAT <key>: <detail>` line to the current audit log's `## Open Points` section (create the heading if the log has none yet), tagged `AGED` and placed at the top of that section — the same escalation `full-audit/SKILL.md` Phase 4 already applies to a recurring open point or gap, labelled "open/present 3x+ — decision overdue": `run-stats.sh` only reports a condition once it has recurred, so every anomaly it surfaces already qualifies.
 
+**Step 0.5: verify the recurrence feed was fed (mandatory, before dispatching the learning agent).** The per-verdict `patterns-store.sh recur` duty in `fix-loop.md` (Step D.7, or Step E at `floor=high`) is what populates `patterns.json`; the learning agent only reads it. On 2026-08-26 a run confirmed 10 findings and wrote 0 store entries, and nothing noticed until the retro. Check it here, deterministically:
+
+```bash
+TODAY=$(date +%Y-%m-%d)
+CONFIRMED_N={number of CONFIRMED findings this run, from the audit log}
+FED_N=$(jq -r --arg d "$TODAY" '[.recurrences[] | objects | select(.last_seen == $d)] | length' \
+  "$(git rev-parse --show-toplevel)/.claude/audits/patterns.json" 2>/dev/null || echo 0)
+echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
+```
+
+`FED_N >= CONFIRMED_N` (or `CONFIRMED_N=0`): go to Step 1. `FED_N < CONFIRMED_N`: back-fill NOW, before the agent runs: call `patterns-store.sh recur {pattern}` once per confirmed finding that has no entry yet (same normalized pattern string the verdict table would have used), re-run the check, and write one line under `## Notes` in the current audit log (`Recurrence feed: {CONFIRMED_N - FED_N}/{CONFIRMED_N} confirmed findings back-filled at Phase 5, per-verdict recur was skipped`). A back-fill is a process failure worth recording, not a silent repair: the learning agent must see the note so the retro can name it.
+
 **Step 1: dispatch the learning agent**
 
 ```

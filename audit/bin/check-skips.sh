@@ -12,6 +12,8 @@
 #   ROUTING_RUN=architecture,security,...     effective dims to dispatch (triage-run UNION floor)
 #   ROUTING_SKIPPED=performance:reason;ux:...  still off after the floor (with triage reason)
 #   ROUTING_OVERRIDE=a11y:frontend;ux:frontend dims the floor forced back on (dim:signal)
+#   Backend-only diffs (every file under BACKEND_PREFIX_RE) skip the visual dims
+#   deterministically as {dim}:backend-only-prefix, overriding triage.
 #   Routing: lief [...]; uebersprungen [...]; Floor-Override [...]
 #
 # Input normalization: markdown code fences are stripped (LLMs wrap JSON), and
@@ -78,7 +80,21 @@ changed=$(collect_changed_files | grep -vE '(^|/)audit/evals/fixtures/')
 
 match(){ printf '%s\n' "$changed" | grep -qiE "$1"; }
 
-has_frontend=0; match "$FE_RE" && has_frontend=1
+# Path-prefix pre-check (learning 2026-08-26): a backend-only diff must not
+# route the visual dimensions. FE_RE matches *.ts/*.js by extension, so a
+# Bun/Node/Hono service under backend/ used to count as "frontend" and the
+# floor force-dispatched a11y/ui_design/ux/animation on a diff with zero view
+# files; only a manual orchestrator override caught it. The frontend and SEO
+# signals are therefore derived from the files OUTSIDE known backend prefixes,
+# and when every changed file sits under such a prefix the visual dimensions
+# are skipped deterministically, even if triage opted them in.
+BACKEND_PREFIX_RE="${BACKEND_PREFIX_RE:-^(backend|server|api|cmd|internal|workers?|functions|lambda)/}"
+fe_changed=$(printf '%s\n' "$changed" | grep -vE "$BACKEND_PREFIX_RE")
+match_fe(){ printf '%s\n' "$fe_changed" | grep -qiE "$1"; }
+backend_only=0
+[ -n "$changed" ] && [ -z "$(printf '%s' "$fe_changed" | tr -d '[:space:]')" ] && backend_only=1
+
+has_frontend=0; match_fe "$FE_RE" && has_frontend=1
 # Path-based on purpose: value-only edits to EXISTING lang keys must route
 # copy/typography exactly like new keys (learning 2026-08: value-only diffs in
 # lang/*.php went unrouted under an earlier key-based check). Any change to a
@@ -94,7 +110,7 @@ has_docs=0;     match '\.md$|(^|/)docs/|(^|/)\.env\.example$' && has_docs=1
 # needed a manual override every run (learning 2026-08-19).
 has_config_logic=0
 match '(^|/)(automations?|scripts?|packages|playbooks|roles|manifests)/.*\.ya?ml$|(^|/)\.github/workflows/.*\.ya?ml$|(^|/)(configuration|scripts|automations|scenes|sensors|binary_sensors|lights|climates|groups|timers|notifies)\.ya?ml$' && has_config_logic=1
-has_seo=0;      match '\.(blade\.php|vue|svelte|astro|html?)$|(^|/)routes?/|sitemap(\.[a-zA-Z]+)?$|robots\.txt$' && has_seo=1
+has_seo=0;      match_fe '\.(blade\.php|vue|svelte|astro|html?)$|(^|/)routes?/|sitemap(\.[a-zA-Z]+)?$|robots\.txt$' && has_seo=1
 
 is_native=0; case "$FRAMEWORK" in ios|android|react-native|flutter|native) is_native=1;; esac
 
@@ -118,9 +134,17 @@ app(){ # app <csv> <item> [sep]
   if [ -z "$1" ]; then printf '%s' "$2"; else printf '%s%s%s' "$1" "$sep" "$2"; fi
 }
 
+is_visual(){ case "$1" in seo|a11y|ui_design|ux|animation) return 0;; *) return 1;; esac; }
+
 run_csv=""; skip_csv=""; over_csv=""
 for d in $DIMS; do
   r=$(printf '%s' "$json" | jq -r --arg d "$d" '.relevance[$d].run // false')
+  # Deterministic prefix skip wins over triage for the visual dimensions:
+  # no file outside a backend prefix changed, so there is nothing to look at.
+  if [ "$backend_only" = 1 ] && is_visual "$d"; then
+    skip_csv=$(app "$skip_csv" "$d:backend-only-prefix" ";")
+    continue
+  fi
   if [ "$r" = "true" ]; then
     run_csv=$(app "$run_csv" "$d")
   else
@@ -153,6 +177,7 @@ echo "ROUTING_OVERRIDE=$over_csv"
 line="Routing: lief [$run_csv]"
 [ -n "$skip_csv" ] && line="$line; uebersprungen [$skip_csv]"
 [ -n "$over_csv" ] && line="$line; Floor-Override [$over_csv]"
+[ "$backend_only" = 1 ] && line="$line; Prefix-Skip [nur Backend-Pfade geaendert, visuelle Dimensionen aus]"
 echo "$line"
 
 # Every skip must carry a logged reason; a "no-reason" skip is itself an
