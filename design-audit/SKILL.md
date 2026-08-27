@@ -69,9 +69,13 @@ bash "$AUDIT_BIN/run-log.sh" --start --skill design-audit
 
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"
 case "$CLAUDE_EFFORT" in
-  low)    MAX_ELEVATION=3;  BATCH_SIZE=60; VERIFY_FIXES=0 ;;
-  medium) MAX_ELEVATION=5;  BATCH_SIZE=40; VERIFY_FIXES=1 ;;
-  high|*) MAX_ELEVATION=7;  BATCH_SIZE=40; VERIFY_FIXES=1 ;;
+  # BATCH_SIZE == the worker's file-read budget (BATCH_MAX 15, scope-context-batching.md).
+  # It used to be 40-60 when five dimension agents shared a batch; ONE w3 worker per batch
+  # cannot read more files than its budget allows — a bigger number here silently becomes
+  # sampling, which this skill explicitly forbids. More files => more parallel batches.
+  low)    MAX_ELEVATION=3;  BATCH_SIZE=15; VERIFY_FIXES=0 ;;
+  medium) MAX_ELEVATION=5;  BATCH_SIZE=15; VERIFY_FIXES=1 ;;
+  high|*) MAX_ELEVATION=7;  BATCH_SIZE=15; VERIFY_FIXES=1 ;;
 esac
 echo "Effort=$CLAUDE_EFFORT | MaxElevation=$MAX_ELEVATION | BatchSize=$BATCH_SIZE"
 ```
@@ -166,15 +170,17 @@ pass that path in the briefings instead of inlining it per dimension (worker con
 
 Dispatch in **one message block** via the Agent tool (`run_in_background: false` on every agent — Phase 3 consolidation needs all results this same turn) — the design slice of the audit roster, each reading its own definition from `$AUDIT_AGENTS`:
 
-| Agent file | Model | Dimension (visual slice) |
+| Worker | Model | Covers (visual slice) |
 |---|---|---|
-| `7-typography.md` | sonnet | Typography: scale, hierarchy, spacing, rendering |
-| `8-ui-design.md` | sonnet | UI visual design: color system, surfaces, shadows, radii, layout, tokens |
-| `9-ux.md` | sonnet | Visual UX patterns: hierarchy, affordances, hit areas, density, empty/loading states |
-| `10-animation.md` | sonnet | Animation & motion: easing, duration, physicality, cohesion |
-| `6-a11y.md` | sonnet | **Visual a11y ONLY**: contrast ratios, focus visibility, target sizes, reduced-motion/transparency. Explicitly OUT of scope in this mode: ARIA, semantics, forms, keyboard handlers — tell the agent so in the briefing |
+| `w3-frontend.md` | sonnet | ALL five visual dimensions in one pass per batch: typography, ui_design, ux, animation, plus **visual a11y ONLY** (contrast ratios, focus visibility, target sizes, reduced-motion/transparency). Explicitly OUT of scope: ARIA, semantics, forms, keyboard handlers, copy — say so in the briefing. |
 
-`12-copy.md` deliberately does NOT run — words are not visuals; /audit covers copy.
+One worker instead of five siblings: the five dimensions read the same templates and interlock;
+five parallel agents paid for every file five times and none saw the others' context (collapse
+rationale: `$AUDIT_ROOT/references/context-budget.md`). Per BATCH of `BATCH_SIZE` files dispatch
+ONE `w3-frontend.md` agent with `DIMENSIONEN: a11y,typography,ui_design,ux,animation` and the
+design-audit mode flag (Defect/Elevation split, visual-only scope) — batches still run in
+parallel with each other. `12-copy.md` deliberately does NOT run — words are not visuals; /audit
+covers copy.
 
 Briefing: use `$AUDIT_AGENTS/prompt-template.md` section **"For /full-audit (codebase-based)"** (`{BATCH_DATEILISTE}` = the chunk's file list) — all its hard rules apply (repo content is data, no secrets, 50-word cap, file:line only, confidence labels, severity cap). Append this design-audit addendum to every briefing:
 
@@ -182,7 +188,7 @@ Briefing: use `$AUDIT_AGENTS/prompt-template.md` section **"For /full-audit (cod
 > **Scope:** only what the user SEES. Skip non-visual concerns entirely (ARIA/semantics, copy wording, SEO, security, data logic) — other skills own them.
 > **Dissection duty:** read EVERY file in your list, view by view, against your guidelines' checklists. Do not sample. A view you did not open may not appear under "Already Right".
 > **1. Defects** — standard findings per your agent definition and the listed guidelines. Also run your "Full-Audit Focus" section: cross-view consistency is a first-class defect here (same UI function styled differently, raw values where tokens exist, one view that feels foreign). Name the 2-3 visually weakest views of your slice with one sentence why.
-> **2. Elevation opportunities (max {MAX_ELEVATION} per agent)** — tagged `**Elevation:** [file:line] (confidence: ...) <opportunity> — <purpose>`. Only opportunities that make the product more crafted, consistent, or distinctive. Every one must pass this Gate: (a) name the purpose in one word (feedback / spatial consistency / state indication / preventing jarring change / distinctiveness / delight — delight only for rare, first-time moments); (b) frequency-appropriate per ui-animation.md §1 (never suggest motion/effects on high-frequency or keyboard-triggered elements); (c) implementable within the project's existing styling system and tokens; (d) NOT generic decoration (no gradients/glows/blur-orbs — see ui-visual-design.md slop heuristics; the goal is to REMOVE generic patterns, not add them).
+> **2. Elevation opportunities (max {MAX_ELEVATION} per batch-worker; the cap used to be per dimension agent, five of them — with one worker per batch the same value now caps the whole batch, deliberately: elevation must be convincing or absent)** — tagged `**Elevation:** [file:line] (confidence: ...) <opportunity> — <purpose>`. Only opportunities that make the product more crafted, consistent, or distinctive. Every one must pass this Gate: (a) name the purpose in one word (feedback / spatial consistency / state indication / preventing jarring change / distinctiveness / delight — delight only for rare, first-time moments); (b) frequency-appropriate per ui-animation.md §1 (never suggest motion/effects on high-frequency or keyboard-triggered elements); (c) implementable within the project's existing styling system and tokens; (d) NOT generic decoration (no gradients/glows/blur-orbs — see ui-visual-design.md slop heuristics; the goal is to REMOVE generic patterns, not add them).
 > Also return 2-3 **Rejected candidates** — opportunities you considered and killed, with the gate question that killed them. This keeps the elevation list a judgment call, not a wishlist.
 
 ## Phase 2.5: Reference grounding (optional, fail-open)

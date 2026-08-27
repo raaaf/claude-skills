@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs up to 12 parallel subagents per batch (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
+description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs 4 collapsed workers per batch covering 12 dimensions (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, ganzes projekt prüfen, komplette codebase auditen, gesamten code einmal durchchecken, neues projekt komplett prüfen, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
 model: opus
@@ -167,6 +167,45 @@ From here on, `{MAX_RUNDEN_PRO_BATCH}` refers to the value set here.
 
 Bash logic (framework detection, ALLE_DATEIEN, frontend list, translation list, PROJECT_CONTEXT, SUPPRESSIONS, intent docs/ADRs) and ARCHITEKTUR-NOTIZ creation in `references/scope-context-batching.md`. Resulting variables: `TOTAL_FILES`, `ALLE_DATEIEN`, `VISUELL_RELEVANTE_DATEIEN`, `TRANSLATION_DATEIEN`, `PROJECT_CONTEXT`, `FRAMEWORK`, `SOURCE_DIRS`, `SUPPRESSIONS`, `DECIDED_TRADEOFFS`, `ARCHITEKTUR-NOTIZ`. `DECIDED_TRADEOFFS` is passed to all workers (prompt-template placeholder).
 
+**Incremental is the DEFAULT (runs after the scope collection; the plausibility assert inside the
+collection bash has already validated the FULL scope, which is correct — plausibility is about
+collection, the cache only shrinks what gets re-audited):**
+
+```bash
+if [ "${FULL_AUDIT_FORCE:-0}" != "1" ] && [ -f "$(git rev-parse --show-toplevel)/.claude/audits/cache.json" ]; then
+  # Paths in the list are repo-root-relative (the collection bash cd'd to PROJECT_ROOT) — exactly
+  # what cache-check.sh resolves against. A single xargs invocation is expected; if the list is so
+  # large that xargs splits it, union the repeated CACHED_FILES/CACHED_FINDINGS blocks.
+  tr '\n' '\0' < /tmp/full-audit-files.txt | xargs -0 bash "$AUDIT_BIN/cache-check.sh" > /tmp/full-audit-cache-out.txt
+  awk '/^CACHED_FILES<<END$/{f=1;next} /^END$/{f=0} f&&NF' /tmp/full-audit-cache-out.txt | sort -u > /tmp/full-audit-cached.txt
+  comm -23 /tmp/full-audit-files.txt /tmp/full-audit-cached.txt > /tmp/full-audit-remainder.txt
+  mv /tmp/full-audit-remainder.txt /tmp/full-audit-files.txt
+  TOTAL_REMAINING=$(wc -l < /tmp/full-audit-files.txt | tr -d ' ')
+  echo "Incremental: $(wc -l < /tmp/full-audit-cached.txt | tr -d ' ') of $TOTAL_FILES files unchanged since last clean audit — auditing $TOTAL_REMAINING"
+else
+  TOTAL_REMAINING=$TOTAL_FILES
+fi
+```
+
+The `awk` parse matches cache-check.sh's actual heredoc contract (`CACHED_FILES<<END` ... `END`),
+verified against the script. If the split reports zero cached on a repo with a fresh cache.json,
+suspect a path-form mismatch (list must be repo-root-relative) and say so in the log — never let a
+parse failure silently disable the cache. `CACHED_FINDINGS` are
+carried into the report as prior context. Log the split under `## Scope`. **Phase 1.5's
+SINGLE/BATCHED decision and all batch building run on `TOTAL_REMAINING` / the shrunken list**, not
+on the pre-cache `TOTAL_FILES` (which the plausibility assert already consumed). Re-auditing a
+file whose content has not changed since a clean audit re-buys findings the cache already holds.
+
+Boundaries, stated in the log whenever the cache skipped anything:
+- The cache keys FILE CONTENT, not rules. After guideline/skill/suppression changes, or when a
+  finding class was newly learned, run `FULL_AUDIT_FORCE=1` once so the new rules see every file.
+- Cross-file findings are not cached; Phase 2.5 (cross-ref) always runs over its normal trigger.
+  **When a Phase 2.5 or open-point finding lands in a file the cache holds, evict that file:**
+  `jq 'del(.entries["path/to/file"])' cache.json > tmp && mv tmp cache.json` — otherwise the file
+  stays skipped on every future run while carrying a known issue.
+- An EMPTY remainder is a valid result: report "no files changed since last clean audit", do not
+  invent a batch.
+
 **Scope plausibility assert (MANDATORY, runs inside that same bash, before Phase 1.5 or any batch dispatch):** abort loudly if `TOTAL_FILES` is zero, or implausibly small against `git ls-files` — see `references/scope-context-batching.md`. A wrong scope must never produce a clean-looking audit over files nobody enumerated.
 
 Optional pre-checks (only with a local diff): run `pre-checks.sh`.
@@ -219,7 +258,7 @@ Deviation in either → warning into the audit log (`## Notes: Tree changed duri
 | ≤ 80 | `SINGLE` |
 | > 80 | `BATCHED` |
 
-Batch rules and bash logic in `references/scope-context-batching.md`. Max `BATCH_MAX` (~14) files per batch, derived from the worker tool-call budget — see reference for the arithmetic. Related files together.
+Batch rules and bash logic in `references/scope-context-batching.md`. Max `BATCH_MAX` (~15) files per batch, derived from the worker tool-call budget — see reference for the arithmetic. Related files together.
 
 **Create state file (MANDATORY, before Phase 2):** additionally copy batch file lists to `$BATCH_DIR/batch-NN.txt` (repo-root-relative — /tmp is ephemeral). Then write `$STATE_FILE`: header (`mode`, `effort`, `dimensions`, `batch-dir`, `post-phases` all pending, `started`) plus one table row per batch with status `pending` (SINGLE mode = exactly one row). Format: `references/state-file.md`.
 
@@ -268,22 +307,19 @@ touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/
 
 Then write ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files** ONCE to `{AUDIT_TMP}/wave-{BATCH}-{RUNDE}-shared.md` — **with the Write tool and the literal path from Phase 0, never a bash heredoc** (shell variables from Phase 0/1 are dead here). Briefings pass that path plus only per-agent fields (dimension, per-dimension file list when `UNCOVERED_BY_DIM` rescoped it); the worker-side read contract is in `{AUDIT_AGENTS}/prompt-template.md`. On the Phase 0 `AUDIT_TMP` WARN: inline the constants as before and skip claim/release (marker stays run-scoped for this run). Dispatch all in a single message block. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
 
-Agent definitions: `{AUDIT_AGENTS}/*.md`.
+Agent definitions: `{AUDIT_AGENTS}/*.md`. **Dimensions route, workers execute** (collapse
+rationale + measurement: `$AUDIT_REFS/context-budget.md`): `SELECTED_DIMENSIONS` and the skip
+rules keep speaking in the 12 dimensions; dispatch collapses them onto 4 workers. A worker is
+dispatched iff at least one of its dimensions is selected AND not skipped for this batch, and its
+briefing carries exactly that active subset as `{DIMENSIONEN}`. The numbered `{N}-*.md` files stay
+authoritative as dimension modules the workers read.
 
-| # | Agent | Short name |
+| Worker | Definition | Covers dimensions |
 |---|---|---|
-| 1 | `1-architecture.md` | Architecture & Code Reuse |
-| 2 | `2-security.md` | Security |
-| 3 | `3-performance.md` | Performance |
-| 4 | `4-code-quality.md` | Code Quality |
-| 5 | `5-seo.md` | SEO |
-| 6 | `6-a11y.md` | Accessibility (WCAG) |
-| 7 | `7-typography.md` | Typography |
-| 8 | `8-ui-design.md` | UI Visual Design |
-| 9 | `9-ux.md` | UX Patterns |
-| 10 | `10-animation.md` | Animation |
-| 11 | `11-docs-sync.md` | Docs Sync & Style |
-| 12 | `12-copy.md` | Copy & UX-Writing |
+| W1 Code | `w1-code.md` | architecture, performance, code_quality |
+| W2 Security | `2-security.md` | security |
+| W3 Frontend | `w3-frontend.md` | a11y, typography, ui_design, ux, animation |
+| W4 Content | `w4-content.md` | seo, docs_sync, copy |
 
 Prompt template: `{AUDIT_AGENTS}/prompt-template.md` → section "For /full-audit (codebase-based)".
 
@@ -307,14 +343,15 @@ which no line of the skill covered).
 
 **Idle rate is a run-level signal, not just a per-agent nuisance.** Count every agent that needed the re-prompt, per wave and for the run as a whole. The per-agent recovery above handles the individual case and demonstrably works — on 2026-08-06 roughly 40% of the fleet went idle without a report and every single one delivered after exactly one re-prompt. What was missing was that nobody recorded the RATE, so a systemic prompt-delivery problem read as a series of unrelated hiccups. Therefore: when the re-prompted share of a wave reaches one third or more, write one line under `## Notes` in the audit log (`Idle-without-report: K/N agents in wave {X} needed the re-prompt`) and carry it into Phase 5 as a process observation. Do not change the recovery path because of it and do not add a second re-prompt: the number is evidence for the next prompt-template revision, not a new retry budget.
 
-**Skip rules:**
-- Dimension NOT in `SELECTED_DIMENSIONS` → don't dispatch the agent at all
-- **5 (SEO): skip project-wide if the project has no web frontend at all.** Check once per Full-Audit: `find . -path ./node_modules -prune -o \( -name '*.html' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' -o -name '*.astro' -o -name '*.blade.php' \) -print -quit` returns nothing → pure native/CLI/JSON-API project (e.g. only Swift + bun backend), SEO has no attack surface → never dispatch agent 5 (no wasted tokens). On a hit, decide normally per batch content.
+**Skip rules (dimension-level; a worker is dispatched only with its surviving dimensions, and not
+at all when none survive):**
+- Dimension NOT in `SELECTED_DIMENSIONS` → the dimension is never passed to its worker
+- **5 (SEO): skip project-wide if the project has no web frontend at all.** Check once per Full-Audit: `find . -path ./node_modules -prune -o \( -name '*.html' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' -o -name '*.astro' -o -name '*.blade.php' \) -print -quit` returns nothing → pure native/CLI/JSON-API project (e.g. only Swift + bun backend), SEO has no attack surface → never route the seo dimension (no wasted tokens). On a hit, decide normally per batch content.
 - 5 (SEO), 6 (A11y), 8 (UI Design), 9 (UX), 10 (Animation): no frontend files in the batch
 - 7 (Typography), 12 (Copy): neither frontend nor translation files in the batch
-- 11 (Docs Sync): runs exactly once per Full-Audit (in the first batch or as its own final pass after Phase 2.5) — not per batch.
+- 11 (Docs Sync): runs exactly once per Full-Audit (in the first batch or as its own final pass after Phase 2.5) — not per batch. **Scope caveat:** docs_sync's targets (README, CLAUDE.md, docs/, help pages) are mostly OUTSIDE the code-extension batch lists. When W4 carries docs_sync, its briefing ADDS the docs file list (README.md, CLAUDE.md, docs/**, *.md help/landing sources) to the batch files, and the out-of-scope reporting rule does not apply to those docs targets — otherwise every docs_sync finding lands in the OUT_OF_SCOPE channel instead of the report.
 
-Agents 5-10 run for ALL frontend files — including app-internal views.
+The frontend + seo dimensions run for ALL frontend files — including app-internal views.
 
 **Step B — consolidate**
 
@@ -333,7 +370,7 @@ Check YOURSELF (round 1, batch 1 only):
 - Tests: important services/commands without tests?
 - Mobile apps: `bash "$AUDIT_BIN/detect-mobile.sh"` — on a hit, impact matrix from `{AUDIT_REFS}/mobile-impact.md`.
 
-(Note: documentation runs as agent 11 — its own pass, no orchestrator check.)
+(Note: documentation runs as the docs_sync dimension on W4, once per full-audit — no orchestrator check.)
 
 Output:
 ```
@@ -389,7 +426,7 @@ the harness compact between waves instead of carrying the peak context through t
 
 | Result | ROUND | Action |
 |---|---|---|
-| `CLEAN`, `UNCOVERED_BY_DIM` empty | — | row → clean + HEAD; next pending batch (or Phase 2.5) |
+| `CLEAN`, `UNCOVERED_BY_DIM` empty | — | row → clean + HEAD; **feed the incremental cache**: `echo '{"files": [...], "findings": [...]}' | bash "$AUDIT_BIN/cache-write.sh"` with this batch's files and their surviving findings — this applies to EVERY row/path that ends the batch as clean, including a final `FIXES_APPLIED` round whose fixes verified green (fixed files have new content, so their new hash is what gets cached; without these writes the incremental default in Phase 1 never has data). NO_CONVERGENCE/blocked batches are never cached. Next pending batch (or Phase 2.5) |
 | `CLEAN`, `UNCOVERED_BY_DIM` non-empty | < {MAX_RUNDEN_PRO_BATCH} | Not actually done: ROUND+1, re-dispatch only the affected dimensions against their unread files |
 | `CLEAN`, `UNCOVERED_BY_DIM` non-empty | = {MAX_RUNDEN_PRO_BATCH} | row → blocked + bullet under `## Blocked / Needs review` naming dimension + unread files (never fully covered) |
 | `FIXES_APPLIED` | < {MAX_RUNDEN_PRO_BATCH} | convergence check; else ROUND+1 (carries `UNCOVERED_BY_DIM` per above if present) |

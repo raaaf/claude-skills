@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Routes the diff to relevant subagents (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. An argument scopes to selected dimensions ('/audit security', '/audit frontend', '/audit ?' for a multi-select prompt) — partial audits fix as usual but never write the push marker. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Routes the diff to 4 collapsed workers covering 12 dimensions (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. An argument scopes to selected dimensions ('/audit security', '/audit frontend', '/audit ?' for a multi-select prompt) — partial audits fix as usual but never write the push marker. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: dimensions (security | performance,a11y | backend | frontend | design | ?) or scope hint]"
 model: opus
@@ -249,7 +249,7 @@ It derives file signals itself from git and overrides obvious wrong skips (front
 
 **Step C — Dispatch specialized subagents in parallel**
 
-Dispatch only agents from `ROUTING_RUN` (Step C.0.5: the deterministic floor, refined by triage only if it was opted into). Security almost always. All non-skipped agents in EVERY round.
+Dispatch only workers with at least one dimension in `ROUTING_RUN` (Step C.0.5: the deterministic floor, refined by triage only if it was opted into). Security almost always. Every such worker in EVERY round, briefed with its active dimension subset.
 
 **Before the dispatch — claim the compaction block and write the wave constants (context-budget.md):**
 
@@ -272,7 +272,7 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 - `TRIAGE_SUMMARY` (1-2 lines)
 - `HOTSPOTS` (marked locations, exact file:line) — per-agent, stays in the briefing
 
-**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
+**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 8 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
 
 **Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
 
@@ -295,22 +295,24 @@ which no line of the skill covered).
 
 The triage agent is deliberately NOT in this list: it is opt-in, gets no re-prompt, and its silence is a non-event because the deterministic floor already decided the routing (log `TRIAGE=FLOOR_ONLY`).
 
-**Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Agent 1 (Architecture) explicitly on Opus. Agent 2 (Security) already runs on Opus unconditionally via its `agents/2-security.md` default, so it needs no override. Other agents use their `agents/*.md` default.
+**Model override on escalation:** if `HEAVY_REASONING_OVERRIDE=opus` from Phase 1 is set (LARGE diff), dispatch Worker 1 (Code) explicitly on Opus. Worker 2 (Security) already runs on Opus unconditionally via `agents/2-security.md`, no override needed.
 
-| # | Agent | Short name |
+**Dimensions route, workers execute.** Routing (`ROUTING_RUN`, partial audits, finding tags,
+suppressions) keeps speaking in the 12 dimensions. Execution collapses them onto 4 workers — the
+same files were being read up to five times by siblings that could not see each other's context
+(rationale + measurement: `references/context-budget.md`). Dispatch a worker iff at least one of
+its dimensions is in `ROUTING_RUN`, and pass EXACTLY that active subset as `{DIMENSIONEN}`; the
+worker reads only the dimension modules for its active subset.
+
+| Worker | Definition | Covers dimensions |
 |---|---|---|
-| 1 | `agents/1-architecture.md` | Architecture & Code Reuse |
-| 2 | `agents/2-security.md` | Security |
-| 3 | `agents/3-performance.md` | Performance |
-| 4 | `agents/4-code-quality.md` | Code Quality |
-| 5 | `agents/5-seo.md` | SEO |
-| 6 | `agents/6-a11y.md` | A11y (WCAG) |
-| 7 | `agents/7-typography.md` | Typography |
-| 8 | `agents/8-ui-design.md` | UI Design |
-| 9 | `agents/9-ux.md` | UX Patterns |
-| 10 | `agents/10-animation.md` | Animation |
-| 11 | `agents/11-docs-sync.md` | Docs Sync & Style |
-| 12 | `agents/12-copy.md` | Copy & UX-Writing |
+| W1 Code | `agents/w1-code.md` | architecture, performance, code_quality |
+| W2 Security | `agents/2-security.md` | security |
+| W3 Frontend | `agents/w3-frontend.md` | a11y, typography, ui_design, ux, animation |
+| W4 Content | `agents/w4-content.md` | seo, docs_sync, copy |
+
+The numbered `agents/{N}-*.md` files stay authoritative as dimension MODULES (run-hardened rules);
+workers read them, the orchestrator no longer dispatches them individually.
 
 Prompt template: `agents/prompt-template.md`, section "For /audit (diff-based)".
 
@@ -323,7 +325,7 @@ Check yourself (round 1 only; in `PARTIAL_AUDIT=1` only the checks whose governi
 - Tests: changed logic without tests?
 - Mobile apps: `bash "$AUDIT_BIN/detect-mobile.sh"` → on match, impact from `references/mobile-impact.md`
 
-(Note: docs sync runs as Agent 11 — no separate orchestrator check needed.)
+(Note: docs sync runs as the docs_sync dimension on Worker W4 — no separate orchestrator check needed.)
 
 Insert own findings as Important.
 

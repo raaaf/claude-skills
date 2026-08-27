@@ -38,15 +38,16 @@ Re-measure after any change here: aggregate `cache_read_input_tokens` per sessio
 
 The per-wave constants (`SUPPRESSIONS`, `PROJECT_GUIDELINES`, `PROJECT_CONTEXT`,
 `DECIDED_TRADEOFFS`, `GUIDELINE_MATCHES`, `WAVE_HEAD`, `BEREITS_GEFIXT`, the file list) are
-identical for every worker in a wave. Inlining them per briefing pays for the same block twelve
-times in the one context that is re-read every remaining turn. So: the orchestrator writes them
+identical for every worker in a wave. Inlining them per briefing pays for the same block once per
+worker — twelve times before the collapse (R5), four after — in the one context that is re-read
+every remaining turn. So: the orchestrator writes them
 ONCE to `{AUDIT_TMP}/wave-*-shared.md` — **with the Write tool, never a bash heredoc, because the
 shell variables holding those values are dead outside their own block** — and the briefing passes
 the path plus only per-agent fields (dimension, hotspots, rescoped file lists).
 
 Worker side: `agents/prompt-template.md` ("Wave-shared file") makes reading it the worker's first
-Read. That read costs a tool call, which is why `BATCH_MAX = 20 - 6 = 14`
-(`full-audit/references/scope-context-batching.md` — the two constants are coupled).
+Read. That read costs a tool call and is part of the reserve in the `BATCH_MAX` derivation
+(`full-audit/references/scope-context-batching.md` — worker budget and `BATCH_MAX` are coupled).
 
 ### R2 — Bash results are context, cap them
 
@@ -88,6 +89,40 @@ construction. Mechanics:
 Releasing between waves is NOT "stopping because of context" (full-audit's "Running long" rule
 stands): it lets the harness compact between waves instead of carrying the peak context through
 thousands of turns. R4 attacks the number of times context is paid for; R1-R3 attack its size.
+
+## R5 — Dimensions route, workers execute (collapse, 2026-08-27)
+
+The 12 dimensions used to be 12 separate worker dispatches per wave. The three code dimensions
+read the same source files, the five visual dimensions read the same templates — every file was
+paid for up to five times by siblings that could not see each other's findings. 2026 evaluations
+consistently show a single reader with the merged rubric matching parallel specialists for
+standard review under an equal budget, with security as the one domain where specialization
+demonstrably pays. Hence four workers:
+
+| Worker | Dimensions | Model |
+|---|---|---|
+| `w1-code.md` | architecture, performance, code_quality | sonnet |
+| `2-security.md` | security | opus |
+| `w3-frontend.md` | a11y, typography, ui_design, ux, animation | sonnet |
+| `w4-content.md` | seo, docs_sync, copy | sonnet |
+
+Invariants: routing, partial audits, finding tags, suppressions and skip rules keep speaking in
+the 12 dimensions; a worker gets exactly the active subset as `{DIMENSIONEN}`. The numbered
+`agents/{N}-*.md` files remain the authoritative dimension modules (run-hardened rules) — workers
+read them, nothing dispatches them. Verification (D.5/D.7/E/E.5) is unchanged; quality is
+preserved by keeping the rules and the verifiers, not the process count. Worker budget is 30
+calls, `BATCH_MAX = 30 - 12 - 3 = 15` (derivation incl. investigation margin in
+`scope-context-batching.md`).
+
+## R6 — Incremental is the default for /full-audit (2026-08-27)
+
+Repeated full audits re-bought findings for files that had not changed since they were last
+audited clean. `cache-check.sh` (content-hash keyed) now runs in Phase 1 by default and removes
+unchanged-since-clean files from the batching input; every clean batch feeds `cache-write.sh`.
+`FULL_AUDIT_FORCE=1` audits everything — mandatory once after guideline/skill/suppression changes,
+because the cache keys file content, not rules. Cross-file analysis (Phase 2.5) never uses the
+cache. For a mature codebase this turns the Nth full audit from "everything again" into "what
+actually changed", which is the largest single saving available at whole-repo scale.
 
 ## Why v1 failed (each defect is now a rule above)
 

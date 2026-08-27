@@ -309,7 +309,7 @@ Only useful when a local diff exists. Skip on a greenfield audit.
 
 | TOTAL_FILES | Mode | Rationale |
 |---|---|---|
-| ≤ `BATCH_MAX` (~14, see below) | `SINGLE` | One worker wave covers it inside the tool-call budget |
+| ≤ `BATCH_MAX` (~15, see below) | `SINGLE` | One worker wave covers it inside the tool-call budget |
 | > `BATCH_MAX` | `BATCHED` | Split into batches of `BATCH_MAX` so every batch stays coverable |
 
 `SINGLE` mode dispatches all `TOTAL_FILES` to one worker wave with no batch boundary, so its threshold is not independent of the per-batch max below — it IS the per-batch max. A `SINGLE` run over 79 files would have the exact same worker-budget contradiction as an oversized batch, just without a second round to rescue it.
@@ -349,10 +349,10 @@ for dir in $(find "${SOURCE_DIRS_ARR[@]}" -mindepth 1 -maxdepth 2 -type d 2>/dev
 done | sort -rn
 ```
 
-**`BATCH_MAX`, derived from the worker tool-call budget, not picked independently:** `audit/agents/prompt-template.md` caps each dimension worker at 20 tool calls total ("Deliver something, always, and inside your budget... You have at most 20 tool calls") and separately instructs it to "Read EVERY file in the list. Skip none." Those two rules only both hold if the batch fits the budget. Reserve ~6 calls for the mandatory non-file reads every worker also does (`CLAUDE.md` in full, the wave-shared briefing file from Step A.2, plus up to ~4 `guidelines/*.md` files for the heaviest worker, architecture) — that leaves `BATCH_MAX = 20 - 6 = 14` file-reads per batch. This replaces the old "max ~30-40", which no worker could finish by construction: batch 1 of the run that motivated this rule had 31 files and workers stopped near 19, leaving the rest with zero coverage. **If the tool-call number in `prompt-template.md`'s worker-budget line changes, recompute `BATCH_MAX` with it — the two are coupled, not independent constants.**
+**`BATCH_MAX`, derived from the worker tool-call budget, not picked independently:** `audit/agents/prompt-template.md` caps each worker at 30 tool calls total and separately instructs it to "Read EVERY file in the list. Skip none." Those two rules only both hold if the batch fits the budget. Reserve ~12 calls for the mandatory non-file reads of the heaviest collapsed worker (`CLAUDE.md` in full, the wave-shared briefing file from Step A.2, up to 5 dimension modules for W3 Frontend, up to 5 matched `guidelines/*.md`) plus ~3 calls investigation margin (the modules mandate `git log`/`git blame`/greps per finding, which are calls too) — that leaves `BATCH_MAX = 30 - 12 - 3 = 15` file-reads per batch. This replaces the old "max ~30-40", which no worker could finish by construction: batch 1 of the run that motivated this rule had 31 files and workers stopped near 19, leaving the rest with zero coverage. **If the tool-call number in `prompt-template.md`'s worker-budget line changes, recompute `BATCH_MAX` with it — the two are coupled, not independent constants.**
 
 **Batch rules:**
-- Max `BATCH_MAX` (~14) files per batch
+- Max `BATCH_MAX` (~15) files per batch
 - Related items in the same batch (component + template)
 - Directory with >`BATCH_MAX` files: split into subdirectories
 - Directory with <5 files: merge with a related one

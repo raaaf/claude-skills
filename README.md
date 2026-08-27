@@ -15,31 +15,27 @@ Audits all uncommitted and unpushed changes before every push. A triage agent ro
 1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented); Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
 2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
 3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching so workers load only guidelines whose `applies_to` glob matches the diff)
-4. Phase 2: Audit-loop with triage routing (sonnet triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 12 specialized workers reporting for coverage rather than self-filtering, hallucination validator (file and line exist), finding verification by fresh-context verifiers that are prompted to refute (only confirmed findings reach the fix stage; refuted ones are discarded before a file is touched, inconclusive ones are listed as unverified), fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
+4. Phase 2: Audit-loop with triage routing (sonnet triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 4 collapsed workers covering the 12 dimensions (w1 code, security, w3 frontend, w4 content — dimensions route, workers execute) reporting for coverage rather than self-filtering, hallucination validator (file and line exist), finding verification by fresh-context verifiers that are prompted to refute (only confirmed findings reach the fix stage; refuted ones are discarded before a file is touched, inconclusive ones are listed as unverified), fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
 5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
 6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
 7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
 8. Phase 5: Learning (subagent returns structured output, orchestrator writes `learning-log.md` and `suppressions.json`)
 9. Phase 6: PR creation if applicable
 
-**Worker dispatch (12 dimensions, parallel):**
+**Worker dispatch (12 dimensions routed onto 4 collapsed workers, parallel):**
 
-| # | Dimension | Model |
+| Worker | Covers dimensions | Model |
 |---|---|---|
-| 0 | Triage | sonnet |
-| 1 | Architecture | sonnet |
-| 2 | Security | opus |
-| 3 | Performance | sonnet |
-| 4 | Code Quality | sonnet |
-| 5 | SEO | sonnet |
-| 6 | A11y (WCAG 2.2) | sonnet |
-| 7 | Typography | sonnet |
-| 8 | UI Visual Design | sonnet |
-| 9 | UX Patterns | sonnet |
-| 10 | Animation | sonnet |
-| 11 | Docs Sync | sonnet |
-| 12 | Copy & UX-Writing | sonnet |
+| Triage (`0-triage.md`, opt-in) | routing hotspots | sonnet |
+| W1 Code (`w1-code.md`) | architecture, performance, code_quality | sonnet |
+| W2 Security (`2-security.md`) | security | opus |
+| W3 Frontend (`w3-frontend.md`) | a11y (WCAG 2.2), typography, ui_design, ux, animation | sonnet |
+| W4 Content (`w4-content.md`) | seo, docs_sync, copy | sonnet |
 
+Dimensions route (partial audits, finding tags, suppressions and skip rules all keep speaking in
+the 12 dimensions), workers execute: correlated dimensions read the same files, so one reader with
+the merged rubric replaces up to five siblings that each paid for every file separately. The
+numbered `agents/{N}-*.md` files remain the run-hardened dimension modules the workers read.
 Every worker runs on Sonnet except Security (Opus, for exploit reasoning). Haiku is no longer used: a full-audit run once had a Haiku code-quality batch produce five findings that the validator discarded as impossible or hallucinated, while Sonnet workers in the same run produced zero — and a cheaper model's wrong finding still costs a verifier round and a fix wave, which erases the savings.
 
 Triage routes the diff to relevant workers only; workers receive triage-marked hotspots, never the full diff. Saves 40-60% input tokens per worker.
@@ -56,7 +52,7 @@ Comprehensive one-time audit of an entire codebase. Auto-detects framework, batc
 
 Runs as a persistent goal-loop: batch progress lives in `.claude/audits/full-audit-state.md` (matrix + deterministic `FULL_AUDIT_STATUS` line from `full-audit/bin/status-line.sh`), so an interrupted run resumes at the first pending batch instead of starting over — clean batches are only re-audited when `resume-check.sh` detects their files changed since completion. For very large codebases it can be driven turn-by-turn via `/loop /full-audit`.
 
-Same 12 worker definitions as `/audit` (`audit/agents/*.md` are the single source of truth).
+Same 4 worker definitions as `/audit` (`audit/agents/w*.md` + `2-security.md`; the numbered `agents/{N}-*.md` files are the dimension modules workers read — single source of truth). Incremental by default: files unchanged since their last clean audit are skipped via `.claude/audits/cache.json`; `FULL_AUDIT_FORCE=1` audits everything (mandatory once after guideline changes).
 
 ### `/design-audit` — Design Pass Over the Whole Frontend
 
