@@ -2,6 +2,14 @@
 
 Runs every round, after Step D (consolidate). Four steps in order: D.5 discards hallucinated findings mechanically, D.7 verifies the rest semantically, E applies the fix, E.5 verifies the fix. Read by the orchestrator every round; this is the block that grows whenever the loop gains a rule.
 
+**Re-claim the compaction marker before EVERY agent dispatch in this loop** (D.7 verifiers, E fix
+agents, E.5 fix verifiers, cross-ref) — same inline command as Step C:
+`touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"`.
+The hook's stale window is sized for the gap between two dispatches, not for a whole round
+(defect 3, context-budget.md); a round that stops re-touching gets silently compactable mid-round.
+On the Phase 1 `AUDIT_TMP` WARN the re-touch is unnecessary (the run-scoped marker from Phase 1
+is standing) but harmless — when in doubt, touch.
+
 ## Contents
 
 - Step D.5 — Hallucination validator

@@ -2,6 +2,18 @@
 
 This template is passed to the dimension workers (agents 1-12), for both /audit and /full-audit. Other subagents — finding-verifier, fix-verifier, cross-reference, fix-agent, triage, learning-agent — are dispatched from `SKILL.md` with only named fields, not this file, and carry their own copies of the rules that apply to them. Placeholders are replaced by the audit skill.
 
+**Wave-shared file (both sections):** when your briefing names a `wave-*-shared.md` path instead of
+inlining the shared values, Read that file FIRST — before any source file. It carries the shared
+placeholders (`WAVE_HEAD`, `DATEILISTE`/batch file list, `GUIDELINE_MATCHES`, `SUPPRESSIONS`,
+`PROJECT_GUIDELINES`, `PROJECT_CONTEXT`, `DECIDED_TRADEOFFS`, `BEREITS_GEFIXT`, for design-audit
+the surface map) under `KEY:` headings; every rule below that references one of these placeholders
+means the value from that file. The read counts against your tool-call budget — it is why the
+full-audit batch size reserves six non-file calls, not five (`BATCH_MAX` derivation in
+`full-audit/references/scope-context-batching.md`) — but NOT against the /audit section's
+"max 5 files" allowance: that allowance counts source files you choose to open, and the
+wave-shared file is briefing, not source. Only fields your briefing states directly
+(dimension, hotspots, a rescoped file list) override the file's values.
+
 ## For /audit (diff-based)
 
 Audit the following changes for {DIMENSIONEN}.

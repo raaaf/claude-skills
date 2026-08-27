@@ -51,9 +51,18 @@ AUDIT_GUIDELINES="$AUDIT_ROOT/guidelines"
 
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "ERROR: missing agent files in $AUDIT_AGENTS."; exit 1; }
 
-# PreCompact protection (same marker family as /audit, WITH newline hash)
-CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+# PreCompact protection is WAVE-scoped (same marker family as /audit): no marker here. Claimed at
+# the Phase 2 dispatch, released once Phase 3 has written the report to .claude/audits/ — from
+# there the selection/fix phases can survive a compaction. Rationale + the first attempt's
+# defects: $AUDIT_ROOT/references/context-budget.md. Hash inline at every site (defect 1).
+AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+if mkdir -p "$AUDIT_TMP" 2>/dev/null && [ -w "$AUDIT_TMP" ]; then
+  echo "AUDIT_TMP=$AUDIT_TMP"
+else
+  # Fallback = run-scoped: Marker EINMAL jetzt claimen, Release erst am Run-Ende-Cleanup.
+  echo "WARN: AUDIT_TMP nicht beschreibbar — wave-shared-Datei auslassen, Konstanten inline briefen, Marker laeuft run-scoped"
+  touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+fi
 
 # Run-ledger start marker (see run-log.sh header) — before any real work
 bash "$AUDIT_BIN/run-log.sh" --start --skill design-audit
@@ -105,7 +114,7 @@ fi
 
 FRONTEND_COUNT=$(echo "$FRONTEND_FILES" | grep -c . || echo 0)
 echo "Frontend surface: $FRONTEND_COUNT files"
-[ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"; exit 0; }
+[ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; exit 0; }   # kein Marker-Cleanup noetig: geclaimt wird erst in Phase 2
 ```
 
 The path filter is a heuristic, not a contract: a project that keeps views somewhere else loses them here. Print the resulting list and eyeball it before Phase 2 — a count that collapses to a handful on a real app means the convention did not match, and the fix is to widen the pattern for that project, not to audit five files and call the surface covered.
@@ -139,6 +148,21 @@ Consumption:
 - Every `SURFACES_MISSING` entry is an **Elevation candidate** with purpose `completeness` (valid for surface-coverage candidates only), anchored `file:line` to the route/navigation file where the surface would attach — a missing surface has no file of its own, and the Phase 3 hallucination validator requires an existing anchor. It passes the normal Gate and competes for the `MAX_ELEVATION` cap. Never a Defect.
 
 ## Phase 2: Worker wave (fixed dimensions, no triage)
+
+**Claim the compaction block (inline hash, released after the Phase 3 report is on disk) — and
+RE-claim with the same command before every later agent dispatch inside the audit part (Phase 2.5
+reference-verdict agents, Phase 3 finding-verifier wave): the hook's 45-minute stale window covers
+the gap between two dispatches, not the whole audit part.**
+
+```bash
+touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+```
+
+Write the shared worker context (`PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `DECIDED_TRADEOFFS`,
+`SUPPRESSIONS`, the frontend file list, the surface map) ONCE to
+`{AUDIT_TMP}/wave-design-shared.md` — Write tool, literal path from Phase 0, no bash heredoc — and
+pass that path in the briefings instead of inlining it per dimension (worker contract:
+`$AUDIT_AGENTS/prompt-template.md`). On the Phase 0 WARN: inline as before, no claim/release.
 
 Dispatch in **one message block** via the Agent tool (`run_in_background: false` on every agent — Phase 3 consolidation needs all results this same turn) — the design slice of the audit roster, each reading its own definition from `$AUDIT_AGENTS`:
 
@@ -215,6 +239,13 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 
 Write the same content to `.claude/audits/design-{date +%Y-%m-%d_%H%M%S}-{branch}.md` (severity+dimension dual tags per line, log conventions from `$AUDIT_ROOT/references/audit-log-template.md`).
 
+**Then release the compaction block** — the findings are on disk now, and the selection/fix phases
+must not carry the wave's peak context (inline hash):
+
+```bash
+rm -f "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+```
+
 ## Phase 5: User selection — nothing is fixed without it
 
 Via `AskUserQuestion` (multiSelect where <= 4 groups, otherwise a collective question):
@@ -253,7 +284,8 @@ done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill design-audit --outcome "{fixed|reported_only}" \
   --counts "critical={N},important={N},minor={N},elevation_offered={N},selected={N},fixed={N}"
 
-rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"
+# Belt-and-braces fuer Abbruchpfade; Hash inline, ${CWD_HASH} aus Phase 0 ist hier laengst tot:
+rm -f "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
 ```
 
 No push marker is written — /design-audit is not a push gate. If the user wants to push afterwards, /audit runs as usual (its diff will contain the design fixes).

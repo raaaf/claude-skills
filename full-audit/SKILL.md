@@ -58,9 +58,19 @@ AUDIT_AGENTS="$AUDIT_ROOT/agents"
 AUDIT_BIN="$AUDIT_ROOT/bin"
 AUDIT_REFS="$AUDIT_ROOT/references"
 
-# PreCompact-Schutz: blockiert Auto-Compaction waehrend des Full-Audit-Runs
-CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+# PreCompact-Schutz ist WAVE-scoped, nicht run-scoped: kein Marker hier. Geclaimt bei jedem
+# Dispatch (Step A.2 + fix-loop.md), freigegeben am Rundenende NACH dem Persistieren.
+# Messung (2860 Turns x 503k Kontext = 1440M cache-read) und die vier Defekte des ersten
+# Versuchs: $AUDIT_REFS/context-budget.md. Hash an jeder Stelle INLINE (Defekt 1).
+AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+if mkdir -p "$AUDIT_TMP" 2>/dev/null && [ -w "$AUDIT_TMP" ]; then
+  echo "AUDIT_TMP=$AUDIT_TMP"
+else
+  # Fallback = alter run-scoped Modus: Marker EINMAL jetzt claimen, Release erst am Run-Ende.
+  # Ohne diesen Touch haette der WARN-Pfad gar keinen Compaction-Schutz.
+  echo "WARN: AUDIT_TMP nicht beschreibbar — R1/R4 auslassen, Marker laeuft run-scoped"
+  touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+fi
 
 # Run-ledger start marker (see run-log.sh header) — before any real work.
 # Re-fires on every resumed invocation too, so a resumed run's duration
@@ -209,7 +219,7 @@ Deviation in either → warning into the audit log (`## Notes: Tree changed duri
 | ≤ 80 | `SINGLE` |
 | > 80 | `BATCHED` |
 
-Batch rules and bash logic in `references/scope-context-batching.md`. Max `BATCH_MAX` (~15) files per batch, derived from the worker tool-call budget — see reference for the arithmetic. Related files together.
+Batch rules and bash logic in `references/scope-context-batching.md`. Max `BATCH_MAX` (~14) files per batch, derived from the worker tool-call budget — see reference for the arithmetic. Related files together.
 
 **Create state file (MANDATORY, before Phase 2):** additionally copy batch file lists to `$BATCH_DIR/batch-NN.txt` (repo-root-relative — /tmp is ephemeral). Then write `$STATE_FILE`: header (`mode`, `effort`, `dimensions`, `batch-dir`, `post-phases` all pending, `started`) plus one table row per batch with status `pending` (SINGLE mode = exactly one row). Format: `references/state-file.md`.
 
@@ -217,7 +227,7 @@ Batch rules and bash logic in `references/scope-context-batching.md`. Max `BATCH
 
 ## Phase 2: Audit Loop
 
-**Loop state lives in `$STATE_FILE`, not in context.** Only `BEREITS_GEFIXT` and `FINDINGS_VORHERIGE_RUNDE` stay round-local (reset per batch). **MANDATORY after EVERY round:** update the batch row (rounds consumed, C/I/M accumulated) — crash-safe, a session death costs at most the batch in progress.
+**Loop state lives in `$STATE_FILE`, not in context.** Only `BEREITS_GEFIXT` and `FINDINGS_VORHERIGE_RUNDE` stay round-local (reset per batch) — and BECAUSE they are round-local and the compaction block is wave-scoped, they go into `{AUDIT_TMP}/round-state.md` at every round end together with `FINDINGS_NAECHSTE_RUNDE` (PARTIAL remainders) and `UNCOVERED_BY_DIM`, BEFORE the marker release (see "After every round"). The state file survives session death; `round-state.md` survives compaction between rounds of the SAME batch. **MANDATORY after EVERY round:** update the batch row (rounds consumed, C/I/M accumulated) — crash-safe, a session death costs at most the batch in progress.
 
 **Non-determinism:** findings are LLM judgments, not reproducible tests. `clean` means "audited and fixed in this run", never "re-verifiably green". Clean batches are NEVER re-audited for confirmation — re-audit only via `resume-check.sh` when files changed.
 
@@ -250,7 +260,13 @@ TodoWrite: `Round {RUNDE} — dispatch subagents` (in_progress), `Round {RUNDE} 
 
 MANDATORY: dispatch ALL subagents contained in `SELECTED_DIMENSIONS` (from Phase 0.5) in EVERY round. Non-selected dimensions are skipped entirely — not caught up in later rounds either. Fixes can introduce issues in the selected dimensions.
 
-Dispatch all in a single message block. Pass ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files**. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
+**Claim the compaction block first (inline hash, `$AUDIT_REFS/context-budget.md`):**
+
+```bash
+touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+```
+
+Then write ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files** ONCE to `{AUDIT_TMP}/wave-{BATCH}-{RUNDE}-shared.md` — **with the Write tool and the literal path from Phase 0, never a bash heredoc** (shell variables from Phase 0/1 are dead here). Briefings pass that path plus only per-agent fields (dimension, per-dimension file list when `UNCOVERED_BY_DIM` rescoped it); the worker-side read contract is in `{AUDIT_AGENTS}/prompt-template.md`. On the Phase 0 `AUDIT_TMP` WARN: inline the constants as before and skip claim/release (marker stays run-scoped for this run). Dispatch all in a single message block. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
 
 Agent definitions: `{AUDIT_AGENTS}/*.md`.
 
@@ -350,6 +366,26 @@ Output the line verbatim as the last line. Completion is decided ONLY from this 
 Runs after Step C, before the next round: a deterministic `git diff` grep for the same top-level declaration added in `>= 2` files by parallel fix agents that could not see each other's edits — the per-agent grep in `fix-agent.md` only sees one agent's own diff. **MANDATORY: read `references/fix-loop.md` (section "Per-round dedup sweep") and execute it.**
 
 ### After every round (update the state row, then:)
+
+**Persist, then release (order is the point — defect 2, context-budget.md):**
+
+1. Write the round-local loop state to `{AUDIT_TMP}/round-state.md` (Write tool, literal path from
+   Phase 0; replaces the previous round's file): `BATCH`, `RUNDE`, `BEREITS_GEFIXT`,
+   `FINDINGS_VORHERIGE_RUNDE`, `FINDINGS_NAECHSTE_RUNDE`, `UNCOVERED_BY_DIM`, plus this round's
+   findings. The state row (already updated above) has the counts; this file has the content.
+2. Release the compaction block, inline hash:
+   `rm -f "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"`
+3. At the start of the next round's Step A.2, after a compaction: re-derive the directory
+   (`echo "${TMPDIR:-/tmp}/claude-audit-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"`
+   — the Phase 0 literal may be gone from a compacted context) and Read `round-state.md` back
+   before trusting any remembered loop variable — the file is authoritative, the summary is not.
+   `round-state.md` is session-local (compaction recovery only); cross-SESSION resume relies on
+   `$STATE_FILE` alone and re-audits the batch in progress from scratch, as ever.
+
+On the Phase 0 `AUDIT_TMP` WARN both steps are skipped; Phase 0 claimed the marker run-scoped
+there, and only the run-end cleanup releases it.
+Releasing between waves is NOT "stopping because of context" ("Running long" above stands): it lets
+the harness compact between waves instead of carrying the peak context through thousands of turns.
 
 | Result | ROUND | Action |
 |---|---|---|

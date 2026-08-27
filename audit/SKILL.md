@@ -73,9 +73,23 @@ echo "Effort=$CLAUDE_EFFORT | Diff=$DIFF_CLASS | Runden=$MAX_RUNDEN | FixMinor=$
 AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
 AUDIT_AGENTS_DIR="${CLAUDE_SKILL_DIR}/agents"
 
-# PreCompact-Schutz: blockiert Auto-Compaction waehrend des Audit-Runs
-CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+# PreCompact-Schutz ist WAVE-scoped, nicht run-scoped: kein Marker hier. Geclaimt wird beim
+# Dispatch (Step C, plus Re-Claim bei jedem Dispatch in fix-loop.md), freigegeben am Rundenende,
+# NACHDEM der Rundenstand auf Platte ist. Messung + die vier Defekte des ersten Versuchs:
+# references/context-budget.md. Jede Claim-/Release-Stelle rechnet den Hash INLINE — Shell-
+# Variablen ueberleben zwischen Bash-Bloecken nicht (Defekt 1).
+# Run-State-Verzeichnis (Rundenstand + wave-shared Briefing-Konstanten), Pfad JETZT ausgeben,
+# der Orchestrator braucht das Literal fuer Write-Tool-Aufrufe:
+AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+if mkdir -p "$AUDIT_TMP" 2>/dev/null && [ -w "$AUDIT_TMP" ]; then
+  echo "AUDIT_TMP=$AUDIT_TMP"
+else
+  # Fallback = alter run-scoped Modus: Marker EINMAL jetzt claimen, Release erst am Run-Ende
+  # (Phase 6 / Hard-Block). Teuer, aber nie halb verdrahtet — ohne diesen Touch gaebe es auf
+  # dem WARN-Pfad gar keinen Compaction-Schutz.
+  echo "WARN: AUDIT_TMP nicht beschreibbar — R1/R4 auslassen, Marker laeuft run-scoped"
+  touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+fi
 
 # Run-ledger start marker (see run-log.sh header) — before any real work
 bash "$AUDIT_BIN/run-log.sh" --start --skill audit
@@ -161,6 +175,13 @@ Output: `Audit round {RUNDE}/{MAX_RUNDEN}`. TodoWrite: `Dispatch subagents` (in_
 
 **Step B — Update scope (from round 2)**
 
+**Compaction recovery first:** if the context was compacted since the last round (the summary
+replaced the transcript, loop variables feel reconstructed rather than remembered), do not guess —
+re-derive the state directory (`echo "${TMPDIR:-/tmp}/claude-audit-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"`)
+and Read `round-state.md` from it. It carries `RUNDE`, `BEREITS_GEFIXT`,
+`FINDINGS_NAECHSTE_RUNDE`, `UNCOVERED_BY_DIM` and the previous findings — authoritative over any
+summarized memory of them.
+
 `collect-scope.sh` again. `ALLE_DATEIEN` and `FRONTEND_DATEIEN` stay identical. The diff again goes only to triage if it runs again (see C.0). Workers continue to get only hotspots.
 
 **Step B.5 — Incremental cache**
@@ -230,10 +251,26 @@ It derives file signals itself from git and overrides obvious wrong skips (front
 
 Dispatch only agents from `ROUTING_RUN` (Step C.0.5: the deterministic floor, refined by triage only if it was opted into). Security almost always. All non-skipped agents in EVERY round.
 
+**Before the dispatch — claim the compaction block and write the wave constants (context-budget.md):**
+
+```bash
+# Claim (R4). Hash INLINE — never a variable from an earlier block:
+touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+```
+
+Then write the wave constants ONCE to `{AUDIT_TMP}/wave-{RUNDE}-shared.md` — **with the Write tool
+and the literal path printed in Phase 1, never via a bash heredoc** (the `$SUPPRESSIONS`-style
+variables are dead in a later bash block; the orchestrator holds their values in context and writes
+them out itself). Content: `WAVE_HEAD`, `DATEILISTE`, `GUIDELINE_MATCHES`, `SUPPRESSIONS`,
+`PROJECT_GUIDELINES`, `PROJECT_CONTEXT`, `DECIDED_TRADEOFFS`, `BEREITS_GEFIXT`, each under a
+`KEY:` heading. Workers read it themselves (contract in `agents/prompt-template.md`); a 12-worker
+wave that inlines these pays for the same block twelve times in the orchestrator's own context.
+If Phase 1 printed the `AUDIT_TMP` WARN, skip the file and inline the constants as before.
+
 Dispatch in **one message block** via the Agent tool. Pass ONLY:
+- the `wave-{RUNDE}-shared.md` path (replaces the shared placeholders; see prompt-template)
 - `TRIAGE_SUMMARY` (1-2 lines)
-- `HOTSPOTS` (marked locations, exact file:line)
-- `DATEILISTE` + `GUIDELINE_MATCHES` (for orientation; the worker loads only the listed guidelines, see prompt-template)
+- `HOTSPOTS` (marked locations, exact file:line) — per-agent, stays in the briefing
 
 **NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 5 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
 
@@ -330,6 +367,28 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 
 ### After each round
 
+**1. Persist the round FIRST (MANDATORY — the release below is only safe after this).** `/audit` has
+no state file and writes its log only after the loop, so between rounds the loop state lives
+nowhere but context (defect 2, context-budget.md). Write — with the Write tool, to the literal
+`{AUDIT_TMP}/round-state.md` path from Phase 1 — the complete current loop state, replacing the
+previous round's file: `RUNDE`, this round's findings table (including `Unverified` and
+`Coverage gaps`), `BEREITS_GEFIXT`, `FINDINGS_NAECHSTE_RUNDE` (PARTIAL remainders),
+`UNCOVERED_BY_DIM`, `AUDIT_BASE_HEAD`, the per-round `Routing:` lines so far, AND the run's gate
+state from Phase 0/1: `PARTIAL_AUDIT` + `SELECTED_DIMENSIONS`, `MAX_RUNDEN`, `CONFIDENCE_FLOOR`,
+`SECRET_SCAN_RESULT`. The gate state matters most: a compaction that loses `PARTIAL_AUDIT=1`
+would let a partial audit write the push marker in Phase 4.
+
+**2. Then release the compaction block (inline hash, same reason as the claim):**
+
+```bash
+rm -f "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+```
+
+If auto-compaction fires now, nothing is lost: Step B of the next round restores the loop state
+from `round-state.md`. Skipping step 1 and releasing anyway is the first attempt's Critical.
+If Phase 1 printed the `AUDIT_TMP` WARN, skip BOTH steps — Phase 1 already claimed the marker
+run-scoped there, and only the run-end cleanup (Phase 6 / Hard-Block) releases it.
+
 | Result | Action |
 |---|---|
 | `SAUBER`, `UNCOVERED_BY_DIM` empty | Loop ends → Phase 2.5 (if multi-file) → Phase 3 |
@@ -348,6 +407,11 @@ AUDIT_STATUS: NO_CONVERGENCE | RUNDE {RUNDE}/{MAX_RUNDEN}
 the cross-ref subagent (sonnet, cross-file problems only). Its findings run through the same confidence
 gate, the same Step D.7 verification and the same fix path as worker findings.
 
+This phase runs AFTER the last round's marker release, so it re-claims for itself: the inline
+`touch` before the cross-ref dispatch (and before its D.7/fix dispatches, per fix-loop.md), and
+the release comes right after the audit log below is written — from then on everything is on disk.
+On the Phase 1 `AUDIT_TMP` WARN: no re-claim needed, the run-scoped marker is still standing.
+
 ---
 
 ### Write audit log (after loop ends)
@@ -359,6 +423,9 @@ LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/
 ```
 
 Format template: `references/audit-log-template.md`. This way, multiple audits on the same day/branch don't overwrite each other.
+
+If Phase 2.5 ran and re-claimed the marker, release it now (inline `rm -f`, same command as the
+round-end release) — the log this step just wrote is the persistence that makes it safe.
 
 **Update cache** (after loop ends):
 ```bash
@@ -412,7 +479,7 @@ Never in the same Bash call as the marker `touch` or `git push`. `run-log.sh` fa
 
 **Hard block (never push):**
 - `SECRET_SCAN_RESULT=FINDINGS` → abort push, remove secrets + clean history (BFG / `git filter-repo`).
-- Unfixable Critical/Important, linter errors, tests red → `BLOCKED: Push aborted.` + list. NO marker file. Run **Run log** above (`gate=blocked`), then stop.
+- Unfixable Critical/Important, linter errors, tests red → `BLOCKED: Push aborted.` + list. NO marker file. Run **Run log** above (`gate=blocked`), then release the compaction marker (same inline `rm -f` as the round-end release — this path never reaches Phase 6's cleanup) and stop.
 
 **`PARTIAL_AUDIT=1`: STOP here — no marker, no push.** Print: `Teilaudit ({SELECTED_DIMENSIONS}) — kein Push-Gate. Fuer den Push /audit ohne Argument ausfuehren.` Run **Run log** above (`gate=partial`), then continue with Phase 5 (learning runs normally).
 
