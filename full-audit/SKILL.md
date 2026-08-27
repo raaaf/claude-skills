@@ -32,7 +32,7 @@ This audit runs for many turns, usually with nobody watching. Three rules for th
 
 - **Don't end a turn on an intention.** If your last paragraph is a plan, a question, a list of next steps, or a promise ("I'll now audit batch 3"), do that work now with tool calls instead. End the turn only when the batch matrix is complete or you are blocked on something only the user can decide.
 - **Every progress claim needs a tool result from this turn.** "Batch 4 clean" means `status-line.sh` printed it in this turn, not that you remember fixing it. Unverified state is reported as unverified.
-- **Context is not a reason to stop.** Do not summarize early, hand off, propose a fresh session, or shrink the audit scope because the session is long. The state file plus `resume-check.sh` exist exactly so a run can be picked up later, use them, don't pre-empt them. Letting the harness auto-compact between waves is NOT stopping and is required (`$AUDIT_REFS/context-budget.md` R4): the block on compaction is claimed per wave and released as soon as the round is persisted.
+- **Context is not a reason to stop.** Do not summarize early, hand off, propose a fresh session, or shrink the audit scope because the session is long. The state file plus `resume-check.sh` exist exactly so a run can be picked up later, use them, don't pre-empt them.
 
 ---
 
@@ -58,18 +58,9 @@ AUDIT_AGENTS="$AUDIT_ROOT/agents"
 AUDIT_BIN="$AUDIT_ROOT/bin"
 AUDIT_REFS="$AUDIT_ROOT/references"
 
-# PreCompact-Schutz: wave-scoped, NICHT run-scoped. Gesetzt pro Wave (Step A.2), freigegeben
-# sobald die Runde in Log + State-File steht ("After every round"). Ein run-scoped Marker
-# blockierte Compaction ueber Stunden: der Kontext wuchs auf 989k und wurde 2860x neu gelesen
-# (1440M cache-read fuer 4M output). Messung + Regeln: $AUDIT_REFS/context-budget.md (R4).
+# PreCompact-Schutz: blockiert Auto-Compaction waehrend des Full-Audit-Runs
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-COMPACT_MARKER="/tmp/claude-audit-in-progress-${CWD_HASH}"
-rm -f "$COMPACT_MARKER"
-
-# Wave-shared Briefing-Bloecke (context-budget.md R1). Bewusst ausserhalb des Repos:
-# Subagents duerfen es lesen, es darf nie in einen Commit geraten.
-AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-${CWD_HASH}"
-mkdir -p "$AUDIT_TMP"
+touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
 
 # Run-ledger start marker (see run-log.sh header) — before any real work.
 # Re-fires on every resumed invocation too, so a resumed run's duration
@@ -259,17 +250,7 @@ TodoWrite: `Round {RUNDE} — dispatch subagents` (in_progress), `Round {RUNDE} 
 
 MANDATORY: dispatch ALL subagents contained in `SELECTED_DIMENSIONS` (from Phase 0.5) in EVERY round. Non-selected dimensions are skipped entirely — not caught up in later rounds either. Fixes can introduce issues in the selected dimensions.
 
-**Read `$AUDIT_REFS/context-budget.md` once, before the first dispatch of the run, and apply R1-R4
-for the whole run.** This skill is why that file exists: a 46-batch run in one session re-reads its
-accumulated context on every one of its thousands of turns. Claim the compaction block for this
-wave (R4) and write the wave constants ONCE (R1):
-
-```bash
-touch "$COMPACT_MARKER"                                       # released in "After every round"
-WAVE_SHARED="$AUDIT_TMP/wave-${AKTUELLER_BATCH}-${RUNDE}-shared.md"   # layout: context-budget.md R1
-```
-
-Dispatch all in a single message block. Write ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files** into `$WAVE_SHARED` and pass that path; only per-agent fields stay in the briefing. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
+Dispatch all in a single message block. Pass ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files**. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
 
 Agent definitions: `{AUDIT_AGENTS}/*.md`.
 
@@ -369,17 +350,6 @@ Output the line verbatim as the last line. Completion is decided ONLY from this 
 Runs after Step C, before the next round: a deterministic `git diff` grep for the same top-level declaration added in `>= 2` files by parallel fix agents that could not see each other's edits — the per-agent grep in `fix-agent.md` only sees one agent's own diff. **MANDATORY: read `references/fix-loop.md` (section "Per-round dedup sweep") and execute it.**
 
 ### After every round (update the state row, then:)
-
-**Release the compaction block FIRST (R4, MANDATORY).** The state row and the audit log are written
-at this point, so the findings no longer live only in context and compaction cannot lose anything:
-
-```bash
-rm -f "$COMPACT_MARKER"   # re-claimed by the next wave's Step A.2
-```
-
-This is not "stopping because of context" (see "Running long") — it is the opposite. It lets the
-run stay long cheaply, by letting the harness compact between waves instead of carrying the peak
-context to the end and paying for it on every remaining turn.
 
 | Result | ROUND | Action |
 |---|---|---|

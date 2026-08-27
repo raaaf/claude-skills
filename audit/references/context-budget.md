@@ -1,13 +1,15 @@
-# Context Budget
+# Context Budget — measurement and open work
 
-Shared by `/audit`, `/full-audit` and `/design-audit`. The orchestrator reads this once per run,
-at the first dispatch step, and applies it for the whole run.
+**Status: ANALYSIS ONLY. Nothing here is wired into the skills.** A first implementation was written
+on 2026-08-27, audited, found defective, and reverted the same day. The measurement below stands and
+is the reason to try again; the "Attempted and reverted" section is why the obvious implementation
+does not work. Read that section before writing the second attempt.
 
-## Why this file exists
+## The measurement
 
 An orchestrator pays for its context on EVERY turn, not once. Cache-read cost is
 `context_size x turns`, so a context that is never allowed to shrink makes a long run quadratic.
-Measured on a real audit run (2026-08-27, one project, one session):
+Measured on a real `/full-audit` run (2026-08-27, one project, one session):
 
 | | |
 |---|---|
@@ -17,149 +19,77 @@ Measured on a real audit run (2026-08-27, one project, one session):
 | cache-read total | 1440M token |
 | output total | 4M token |
 
-360 read tokens per written token. The run was not expensive because it dispatched many agents;
-it was expensive because everything those agents said, and everything the orchestrator wrote to
-them, stayed in one context that got re-read 2860 times and was forbidden to compact.
+360 read tokens per written token. The run was not expensive because it dispatched many agents; it
+was expensive because nothing it accumulated was ever allowed to shrink.
 
 Composition of that context at the end (4.0M characters total):
 
-| Share | Source | Lever |
-|---|---|---|
-| 35% | agent final reports arriving as messages | R3 (already partly covered by the 50-word rule) |
-| 26% | agent briefings the orchestrator writes | **R1** — they are ~90% identical within a wave |
-| 19% | Bash tool results | **R2** |
-| 5% | orchestrator prose + thinking | — |
+| Share | Source |
+|---|---|
+| 35% | agent final reports arriving as messages |
+| 26% | agent briefings the orchestrator writes |
+| 19% | Bash tool results |
+| 5% | orchestrator prose + thinking |
 
-And above all of it: **R4** — nothing was ever allowed to shrink.
+417 agent dispatches, median briefing 2456 characters, 444 Bash calls at median 1074 characters.
 
-417 agent dispatches, median briefing 2456 characters. The per-wave constants
-(`SUPPRESSIONS`, `PROJECT_GUIDELINES`, `DECIDED_TRADEOFFS`, `DATEILISTE`/`BATCH_DATEILISTE`,
-`GUIDELINE_MATCHES`, `WAVE_HEAD`, `BEREITS_GEFIXT`, `ARCHITEKTUR-NOTIZ`, `PROJECT_CONTEXT`) are
-**identical for every worker in the same wave** and were written once per worker, so a 12-worker
-wave paid for them twelve times in the orchestrator's own context and then re-read all twelve
-copies on every subsequent turn.
+**The root cause is `hooks/pre-compact.sh`.** It blocks auto-compaction whenever
+`/tmp/claude-audit-in-progress-{cwd-hash}` exists, and all three audit skills `touch` that marker
+once at run start, remove it at run end, with a 3-hour stale window. For `/audit` that is minutes.
+For `/full-audit` it means the context is forbidden to shrink for the entire run.
 
-## R1 — Wave constants go to disk, briefings carry the path (MANDATORY)
+Reproduce the number before and after any fix: aggregate `cache_read_input_tokens` per session from
+`~/.claude/projects/**/*.jsonl` and compare against the 503k average.
 
-Before dispatching a wave, write the constants ONCE:
+## Attempted and reverted (2026-08-27)
 
-```bash
-WAVE_SHARED="$AUDIT_TMP/wave-${WAVE_ID}-shared.md"   # WAVE_ID = round, or batch-round in /full-audit
-cat > "$WAVE_SHARED" <<EOF
-WAVE_HEAD: ${WAVE_HEAD}
-FRAMEWORK: ${FRAMEWORK}
-PROJECT_CONTEXT: ${PROJECT_CONTEXT}
-SOURCE_DIRS: ${SOURCE_DIRS}
-ARCHITEKTUR-NOTIZ: ${ARCHITEKTUR_NOTIZ}
-SUPPRESSIONS:
-${SUPPRESSIONS}
-PROJECT_GUIDELINES:
-${PROJECT_GUIDELINES}
-DECIDED_TRADEOFFS:
-${DECIDED_TRADEOFFS}
-GUIDELINE_MATCHES:
-${GUIDELINE_MATCHES}
-BEREITS_GEFIXT:
-${BEREITS_GEFIXT}
-DATEILISTE:
-${DATEILISTE}
-EOF
-echo "wave-shared: $WAVE_SHARED ($(wc -c < "$WAVE_SHARED") bytes)"
-```
+The attempt scoped the marker to a wave: claim at dispatch, release once the round is persisted,
+stale window 20 minutes. Its own audit found three Critical and seven Important. The four that any
+second attempt has to answer:
 
-The briefing then names the file instead of inlining its content:
+1. **Shell state does not survive between Bash tool calls.** The attempt set `COMPACT_MARKER=...` in
+   the Phase 1 block and wrote `touch "$COMPACT_MARKER"` in the dispatch block. Different
+   invocation, empty variable, `touch ""` — the marker was never created, so the change did not
+   scope the block, it silently removed it. Every claim and release site must recompute the hash
+   inline, the way the existing run-end cleanups already do. This is also why the existing code
+   repeats that `pwd | md5` expression instead of factoring it out; that repetition is load-bearing.
+2. **`/audit` has no per-round persistence.** Its audit log is written after the loop ends
+   (`audit/SKILL.md`, "Write audit log (after loop ends)"), so rounds 1..N-1 exist only as chat
+   output. Releasing the block after each round can lose them. `/full-audit` has a state file, but
+   it explicitly keeps `BEREITS_GEFIXT` and `FINDINGS_VORHERIGE_RUNDE` round-local, and
+   `FINDINGS_NAECHSTE_RUNDE` (the `FIX_RESULT=PARTIAL` remainders) is persisted nowhere at all. A
+   release point is only safe once these are on disk.
+3. **A wave is longer than 20 minutes.** Twelve workers plus D.5/D.7/E/E.5 routinely exceed that, so
+   a short stale window makes the hook self-release in the middle of exactly the window it is meant
+   to protect. Either the marker is refreshed while the wave runs, or the window is sized to a real
+   wave rather than an optimistic one.
+4. **A briefing that names a shared file needs a worker contract.** Moving the wave constants to
+   disk only helps if `agents/prompt-template.md` tells workers to read that file; the attempt
+   changed the dispatch text and not the template, leaving the placeholders unfilled. And the read
+   costs a tool call: `full-audit/references/scope-context-batching.md` derives `BATCH_MAX = 20 - 5`
+   from an exactly-allocated reserve, so a sixth mandatory read means `BATCH_MAX` drops to 14. Those
+   two constants are coupled by that file's own rule.
 
-```
-Agent(
-  subagent_type: {type}, model: {model},
-  prompt: "Read {AUDIT_AGENTS}/prompt-template.md, section '{SECTION}', and your definition
-    {AUDIT_AGENTS}/{N}-{dim}.md. All shared placeholder values for this wave are in
-    {WAVE_SHARED} — read it FIRST, it replaces every placeholder except the ones below.
-    DIMENSIONEN: {DIMENSIONEN}
-    HOTSPOTS: {HOTSPOTS}
-    Report in the template's format."
-)
-```
+Two documentation defects from the same attempt, worth not repeating: the hook is registered in
+`~/.claude/settings.json` by a single hard-coded path, not by the fail-open probe the audit skill
+uses for its PreToolUse hook, and `sync-skills.sh` only writes into `~/.claude/skills/`, never into
+`~/.claude/hooks/`. A copy of the hook shipped inside the skill is therefore NOT the one that runs.
 
-Only genuinely per-agent fields (`DIMENSIONEN`, `HOTSPOTS`, and in `/full-audit` a per-dimension
-file list when `UNCOVERED_BY_DIM` rescoped it) stay in the briefing. Everything else is one path.
-The worker's own reads are free to the orchestrator: they happen in the subagent's context, which
-is discarded when it finishes.
+## Candidate rules for the second attempt
 
-**The two reads count against the worker's tool-call budget.** `prompt-template.md` reserves
-~5 calls for non-file reads; `wave-shared.md` fits in that reserve, it does not lower `BATCH_MAX`.
+Unimplemented. Listed so the analysis is not lost, not as instructions to follow today.
 
-**Do not use this to smuggle more content to workers.** The point is to stop paying for the same
-block twelve times, not to make the block bigger. If `wave-shared.md` exceeds 20k characters, that
-is a signal the constants themselves need trimming (usually `SUPPRESSIONS` or `DECIDED_TRADEOFFS`
-grown into prose), not a reason to raise the limit.
+- **Wave-scoped compaction block.** The window that needs protection is between dispatching a wave
+  and persisting that round, not the whole run. Prerequisites: defects 1, 2 and 3 above.
+- **Wave constants written once to disk** instead of once per worker. The per-wave constants
+  (`SUPPRESSIONS`, `PROJECT_GUIDELINES`, `DECIDED_TRADEOFFS`, the file list, `GUIDELINE_MATCHES`,
+  `WAVE_HEAD`, `BEREITS_GEFIXT`) are identical for all twelve workers and are currently paid for
+  twelve times in the one context that gets re-read every turn. Prerequisite: defect 4.
+- **Capped Bash output.** A command whose result is only checked prints a verdict, not data
+  (`wc -l`, `grep -c`, `&& echo OK`); one whose result is read is capped (`| tail -40`,
+  `--porcelain`, `git diff --stat`). 0.48M characters of Bash output sat in the measured context.
+- **The report format is a budget.** The 50-word and no-code-snippet rules in `prompt-template.md`
+  already exist; the cost of a violation is that report re-read on every remaining turn.
 
-## R2 — Bash results are context, cap them (MANDATORY)
-
-444 Bash calls in the measured run, median 1074 characters, 0.48M characters total. Every one of
-them is re-read on every later turn. Rules for every Bash call the loop makes:
-
-- A command whose output the orchestrator only needs to *check* prints a verdict, not data:
-  `... | wc -l`, `... && echo OK || echo FAIL`, `grep -c` instead of `grep`.
-- A command whose output it needs to *read* is capped: `| tail -40`, `| head -40`, `--quiet`,
-  `--porcelain`, `-q`. Test runs: `--stop-on-failure` or the runner's compact reporter.
-- Never `cat` a file the orchestrator will not act on line by line. `wc -c` plus the path is enough
-  to hand it to an agent.
-- `git diff` in the loop: `--stat` by default. The full hunks belong in a worker, not here.
-
-## R3 — Reports stay inside their contract
-
-The 50-word-per-finding and no-code-snippets rules in `prompt-template.md` are a context budget,
-not a style preference. When a worker exceeds them the cost is not that one report — it is that
-report re-read on every remaining turn of the run. A reply that ignores the format gets one
-re-prompt with the format, exactly like an idle agent.
-
-## R4 — The compaction block is wave-scoped, never run-scoped (MANDATORY)
-
-This was the single most expensive line in the audit system, and it was one `touch`.
-
-`~/.claude/hooks/pre-compact.sh` blocks auto-compaction whenever
-`/tmp/claude-audit-in-progress-{cwd-hash}` exists. All three audit skills used to `touch` that
-marker once at run start and remove it at run end, with a 3-hour stale window. For `/audit` that is
-minutes. For `/full-audit` it meant the context was forbidden to shrink for the entire run: it grew
-to 989k token, averaged 503k across 2860 turns, and every single turn paid for the peak.
-
-The window that genuinely needs protection is narrow: between dispatching a wave and writing that
-round's results to the audit log and state file, the findings exist ONLY in context, and a
-compaction there could drop them. Once the round is persisted, compaction is safe by
-construction — `references/state-file.md` says so explicitly ("survives session death, context
-compaction, and interruptions").
-
-So:
-
-- **Claim** at the dispatch step: `touch "$COMPACT_MARKER"`
-- **Release** immediately after the round is written to log + state: `rm -f "$COMPACT_MARKER"`
-- Never hold it across a batch boundary, a user question, or a test run.
-- The hook's own stale window is 20 minutes (`MAX_WAVE_AGE`). A marker older than that is a leak
-  from a crashed run, and the hook releases it by itself.
-
-A run that holds the block from start to finish is not "safer". It converts a linear cost into a
-quadratic one and buys protection for a window the state file already covered.
-
-**This does not license stopping early.** `/full-audit`'s "Running long" rule stands unchanged: do
-not summarize early, do not hand off, do not propose a fresh session, do not shrink scope because
-the session is long. R4 is the opposite of that — it lets a long run stay long *cheaply*, by
-letting the harness compact between waves instead of forcing the orchestrator to carry the peak to
-the end. Compaction is invisible to the loop; the state file and the audit log are the memory.
-
-## Expected effect
-
-Against the measured baseline (1440M cache-read token in one run):
-
-| Rule | Attacks | Rough share |
-|---|---|---|
-| R4 | context was never allowed to shrink | the bulk — after a compaction, turns restart from a small context instead of paying the peak |
-| R1 | 26% of context is duplicated briefing constants | most of that 26% |
-| R2 | 19% is uncapped Bash output | about half of that 19% |
-| R3 | 35% is worker reports | only the part already violating the format |
-
-R4 and R1 are the two that matter. R2 and R3 are hygiene that keeps the win from eroding.
-
-Re-measure after a run instead of trusting these numbers: aggregate
-`cache_read_input_tokens` per session from `~/.claude/projects/**/*.jsonl` and compare against the
-503k average above.
+Of these, the compaction block is the one that matters. The other three attack the size of the
+context; only that one attacks the number of times it is paid for.
