@@ -106,10 +106,7 @@ File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
 - {Question} → {user's answer or "assessment confirmed"}
 
 ## Challenge Result
-- Concerns total: {N}
-- Incorporated: {X}
-- Accepted: {Y}
-- Rejected: {Z}
+- Concerns: {N_raw} raw -> {N_dedup} after dedupe -> {X} incorporated / {Y} accepted / {Z} rejected (always all five numbers, `0` written out)
 
 ## Notable
 - {Pattern or surprise, e.g. "user rejected all design concerns"}

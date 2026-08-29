@@ -16,6 +16,7 @@ What to scan, depending on the topic:
 | Legal / tax question ("can the app do X for country Y") | Codebase scan is not enough. Websearch the rule **before** the plan is written, especially the triggering event (payment received vs. invoice issued). Never answer from intuition. |
 | Time/trigger-based concept (daily digest, recap, reminder) | Check WHEN the relevant data generation actually happens in code (BGTask/cron/gate timing) before interview round 1 — the trigger moment usually decides the design. |
 | Field extension / new model attribute | Grep **every** form variant that writes the model, not just the one named in the request (e.g. invoice + quote + recurring). One missed variant is a silent data gap. |
+| Re-implementing or relocating something that once existed | `git log -S`/`git blame` the old spot first: find out why it was removed or moved before drafting v1. A removed feature usually died for a reason the plan has to answer. |
 
 **Output format:** Short codebase map (3-8 bullet points) as a factual basis before the questions:
 
