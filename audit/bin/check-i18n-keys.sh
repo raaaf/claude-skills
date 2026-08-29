@@ -74,7 +74,7 @@ if [ "${#LOCALE_DIRS[@]}" -ge 2 ]; then
   REF_NAME=$(basename "$REF")
 
   # 1) file-level diff in both directions
-  I18N_FILE_GAPS_TMP=$(mktemp) || exit 1
+  I18N_FILE_GAPS_TMP=$(mktemp "${TMPDIR:-/tmp}/i18n-XXXXXX") || exit 1
   trap 'rm -f "$I18N_FILE_GAPS_TMP"' EXIT
   for dir in "${LOCALE_DIRS[@]}"; do
     [ "$dir" = "$REF" ] && continue
