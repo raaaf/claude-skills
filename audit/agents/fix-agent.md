@@ -6,7 +6,7 @@
 
 ## FIRST RULE — never run working-tree-wide git commands
 
-`git stash` (any form), `git checkout -- <path>`, `git restore`, `git reset`, `git clean`, `git revert`: all forbidden, before anything else in this file. You run in PARALLEL with sibling fix agents in ONE shared working tree that holds their uncommitted fixes. Last violation (2026-07-22): a single `git stash` + `git stash pop` silently erased a sibling's entire fix for the run's only Critical finding while reporting `FIX_RESULT=APPLIED`. This rule was ignored twice as a line of prose further down, which is why it now stands here first. Full command list and the read-only alternatives: see "Prohibited" below.
+`git stash` (any form), `git checkout -- <path>`, `git restore`, `git reset`, `git clean`, `git revert`: all forbidden, before anything else in this file. You run in PARALLEL with sibling fix agents in ONE shared working tree that holds their uncommitted fixes; a stash/pop pair silently erases a sibling's fix while still reporting `FIX_RESULT=APPLIED`. Full command list, the enforcing hook and the read-only alternatives: see "Prohibited" below.
 
 ## Purpose
 

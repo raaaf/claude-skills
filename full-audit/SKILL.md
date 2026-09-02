@@ -20,7 +20,7 @@ allowed-tools:
 
 # Full Codebase Audit
 
-**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with Phase 0.**
+**Start directly with Phase 0; there is nothing to confirm first.**
 
 > **Architecture note:** This skill has NO worker agents of its own. It uses the definitions from `../audit/agents/*.md` (referenced in the skill via `{AUDIT_AGENTS}`). If you want to change worker configuration, edit there. prompt-template.md has two sections ("For /audit" and "For /full-audit (codebase-based)") — workers dispatch the matching section depending on the skill.
 
@@ -305,7 +305,7 @@ MANDATORY: dispatch ALL subagents contained in `SELECTED_DIMENSIONS` (from Phase
 touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
 ```
 
-Then write ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files** ONCE to `{AUDIT_TMP}/wave-{BATCH}-{RUNDE}-shared.md` — **with the Write tool and the literal path from Phase 0, never a bash heredoc** (shell variables from Phase 0/1 are dead here). Briefings pass that path plus only per-agent fields (dimension, per-dimension file list when `UNCOVERED_BY_DIM` rescoped it); the worker-side read contract is in `{AUDIT_AGENTS}/prompt-template.md`. On the Phase 0 `AUDIT_TMP` WARN: inline the constants as before and skip claim/release (marker stays run-scoped for this run). Dispatch all in a single message block. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn.
+Then write ARCHITEKTUR-NOTIZ + PROJECT_CONTEXT + FRAMEWORK + SOURCE_DIRS + SUPPRESSIONS + TRANSLATION_DATEIEN + **only the batch files** ONCE to `{AUDIT_TMP}/wave-{BATCH}-{RUNDE}-shared.md` — **with the Write tool and the literal path from Phase 0, never a bash heredoc** (shell variables from Phase 0/1 are dead here). Briefings pass that path plus only per-agent fields (dimension, per-dimension file list when `UNCOVERED_BY_DIM` rescoped it); the worker-side read contract is in `{AUDIT_AGENTS}/prompt-template.md`. On the Phase 0 `AUDIT_TMP` WARN: inline the constants as before and skip claim/release (marker stays run-scoped for this run). Dispatch all in a single message block. Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, cross-ref) with `run_in_background: false`; background is the default and returns only in a later turn.
 
 Agent definitions: `{AUDIT_AGENTS}/*.md`. **Dimensions route, workers execute** (collapse
 rationale + measurement: `$AUDIT_REFS/context-budget.md`): `SELECTED_DIMENSIONS` and the skip
@@ -341,7 +341,7 @@ hit mid-run, the final cross-ref fixes and three open-point fixes were applied b
 which no line of the skill covered).
 
 
-**Idle rate is a run-level signal, not just a per-agent nuisance.** Count every agent that needed the re-prompt, per wave and for the run as a whole. The per-agent recovery above handles the individual case and demonstrably works — on 2026-08-06 roughly 40% of the fleet went idle without a report and every single one delivered after exactly one re-prompt. What was missing was that nobody recorded the RATE, so a systemic prompt-delivery problem read as a series of unrelated hiccups. Therefore: when the re-prompted share of a wave reaches one third or more, write one line under `## Notes` in the audit log (`Idle-without-report: K/N agents in wave {X} needed the re-prompt`) and carry it into Phase 5 as a process observation. Do not change the recovery path because of it and do not add a second re-prompt: the number is evidence for the next prompt-template revision, not a new retry budget.
+**Idle rate is a run-level signal, not just a per-agent nuisance.** Count every agent that needed the re-prompt, per wave and for the run as a whole. The per-agent recovery above handles the individual case; without the rate, a systemic prompt-delivery problem reads as a series of unrelated hiccups. Therefore: when the re-prompted share of a wave reaches one third or more, write one line under `## Notes` in the audit log (`Idle-without-report: K/N agents in wave {X} needed the re-prompt`) and carry it into Phase 5 as a process observation. Do not change the recovery path because of it and do not add a second re-prompt: the number is evidence for the next prompt-template revision, not a new retry budget.
 
 **Skip rules (dimension-level; a worker is dispatched only with its surviving dimensions, and not
 at all when none survive):**
@@ -518,7 +518,7 @@ Agent(
 )
 ```
 
-**Foreground mode matters, and it has to be requested explicitly.** Since Claude Code v2.1.198 subagents run in the background by default, so omitting `run_in_background: false` backgrounds the learning agent, its result then arrives as a completion notification in a later turn, after the orchestrator has already finished the wrap-up, and the learning pass is silently lost. On top of that, background subagents cannot write `.claude/audits/learning-log.md` themselves (hardcoded `.claude/` protection that also applies under `bypassPermissions`, and they cannot prompt the user). Foreground costs ~5-10s at the end.
+**Foreground mode matters, and it has to be requested explicitly.** Subagents run in the background by default, so omitting `run_in_background: false` backgrounds the learning agent, its result then arrives as a completion notification in a later turn, after the orchestrator has already finished the wrap-up, and the learning pass is silently lost. On top of that, background subagents cannot write `.claude/audits/learning-log.md` themselves (hardcoded `.claude/` protection that also applies under `bypassPermissions`, and they cannot prompt the user). Foreground costs ~5-10s at the end.
 
 ---
 

@@ -75,7 +75,7 @@ The line-number value returned by `grep -n` is the source-file line. Only that v
 
 ## Routing is deterministic. This agent is optional.
 
-**Status since 2026-07-22 (escalation policy executed after the 6th confirmed idle incident):** deterministic floor routing via `bin/check-skips.sh` is the PRIMARY path. It derives run/skip purely from git file signals, cannot go idle, and produced zero audit failures across all six incidents. The orchestrator routes from it unconditionally.
+**Deterministic floor routing via `bin/check-skips.sh` is the primary path.** It derives run/skip purely from git file signals and cannot go idle. The orchestrator routes from it unconditionally.
 
 This LLM triage is therefore **not dispatched by default**. Its only added value over the floor was hotspot extraction, and workers locate hotspots themselves from the file list well enough that six audits ran without them.
 

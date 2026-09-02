@@ -23,10 +23,7 @@ You are a sharp sparring partner. Not a form, not a bureaucracy bot — an exper
 
 ## Anti-Patterns
 
-- "Let me first explain what I'm planning to do..." → WRONG. Start directly.
-- Generic questions that don't help → WRONG. Only ask what's missing.
-- 20 questions in a row → WRONG. Max 3 per round, phrased naturally.
-- Robotic tone ("Re-grounding context...") → WRONG. Talk like a human.
+Start directly, without announcing the plan. Ask only what is missing, at most 3 questions per round, phrased the way a colleague would ask them (not "Re-grounding context...").
 
 Tone + examples in `references/interview-guide.md`.
 
@@ -135,15 +132,11 @@ Before we compare — what's the actual goal?
 → My take: {likely goal based on context}
 ```
 
-Documented in the learning log: 2 of 7 plans were saved by framing clarification (Plan 5/7: the Reverb question was actually a notification-pipeline problem).
-
 ### Step B: Codebase Scan (MANDATORY for every plan, skip if `SKIP_CODEBASE_SCAN=1`)
 
 Before asking the first clarifying question, **scan the codebase**. Many questions answer themselves this way.
 
 Scan table per topic and output format in `references/interview-guide.md`. Short version: show the user 3-8 bullet points as a facts map BEFORE asking questions.
-
-Documented in the learning log: 5 of 7 plans showed that a grep audit finds more than clarifying questions.
 
 ### Principle: Decision Tree, Not Checklist
 
@@ -233,8 +226,6 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
    lies outside the plan's scope. Report one line per concern (incorporated / dropped + reason).
    Convergent concerns are never dropped.
 
-Documented in the learning log: Plan 7 had 11 raw → 9 after dedup. Convergent concerns were the best quality signal in 6 of 7 plans.
-
 ### Finalize the Plan
 
 When incorporating a "provider too expensive/risky" concern: explicitly look for a permission-free/cost-free alternative first, before merely simplifying or deferring the provider.
@@ -311,7 +302,7 @@ Agent(
 )
 ```
 
-The agent returns **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection). The orchestrator parses it and writes it itself, which only works if the agent runs in the foreground. Since Claude Code v2.1.198 subagents background by default and return in a later turn, so `run_in_background: false` is what keeps the parse step in this turn.
+The agent returns **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection). The orchestrator parses it and writes it itself, which only works if the agent runs in the foreground. Subagents background by default and return in a later turn; `run_in_background: false` keeps the parse step in this turn.
 
 ### Parse the Output
 

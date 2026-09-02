@@ -24,7 +24,7 @@ allowed-tools:
 
 # Improve: Discover product potential
 
-**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with step 1.**
+**Start directly with step 1; there is nothing to confirm first.**
 
 ## Distinction from /audit
 

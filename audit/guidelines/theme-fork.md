@@ -60,7 +60,7 @@ Do all three, in this order:
    ```
    Without it Composer resolves against the developer's local PHP. On a machine running 8.5, a declared constraint of `^8.2` happily accepts packages requiring 8.4, because 8.4 satisfies `^8.2`. The lock then records `"platform": "^8.2"` while `vendor/composer/platform_check.php` enforces `>= 80401`, and the site fatals on the production host before a single line of theme code runs.
 
-2. **Downgrade the inherited dependency majors to versions the target PHP supports.** Check every `require` and `require-dev` entry, not just the runtime ones. Concretely, at the time of writing: `illuminate/*` 13 and `symfony/*` 8 both require PHP 8.3+ or 8.4+; the 8.2-compatible line is `illuminate/*` 12 and `symfony/*` 7.
+2. **Downgrade the inherited dependency majors to versions the target PHP supports.** Check every `require` and `require-dev` entry, not just the runtime ones. Read each package's own PHP requirement (`require.php` in its composer.json, or Packagist) rather than assuming, and pick the highest major line whose minimum the target host satisfies.
 
 3. **Pin dev dependencies to versions the target PHP supports too.** This is the one that gets missed, because dev dependencies feel like they cannot reach production. They reach it two ways: a `composer install` that forgets `--no-dev` ships them, and `platform_check.php` is generated from everything actually installed. Exact pins are especially prone to this: `"symfony/process": "8.0.5.0"` looks locked down and safe, and requires PHP 8.4.
 

@@ -20,7 +20,7 @@ allowed-tools:
 
 # Design Audit: Elevate the Existing Frontend
 
-**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with Phase 0.**
+**Start directly with Phase 0; there is nothing to confirm first.**
 
 > **Architecture note:** This skill has NO worker agents of its own. It uses the definitions from `../audit/agents/*.md` and the guidelines from `../audit/guidelines/*.md` (single source of truth — edit there). Unlike /audit it is NOT diff-scoped and NOT a push gate: it sweeps the whole frontend surface, reports, and fixes only what the user selects.
 
@@ -276,7 +276,7 @@ Same machinery as /audit Phase 2 E/E.5:
 
 ## Phase 7: Learning + cleanup
 
-Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background: false`, because the default has been background since Claude Code v2.1.198, and a backgrounded learning agent returns after the orchestrator is done, so the pass is lost) with `AUDIT_TYPE=design-audit` and the design log; orchestrator writes learning-log/suppressions exactly as /audit Phase 5 (subagents cannot write under `.claude/`).
+Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background: false`, because a backgrounded learning agent returns after the orchestrator is done, so the pass is lost) with `AUDIT_TYPE=design-audit` and the design log; orchestrator writes learning-log/suppressions exactly as /audit Phase 5 (subagents cannot write under `.claude/`).
 
 **Run log (fires here — every run reaches Phase 7 regardless of what Phase 5 selected):**
 

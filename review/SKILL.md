@@ -112,7 +112,7 @@ cat .claude/audit-guidelines.md 2>/dev/null | head -100
 
 ## Phase 1: Parallel Review
 
-Dispatch both agents simultaneously (`run_in_background: false` on both — Phase 2 consolidation needs both results this same turn; background is the default since Claude Code v2.1.198 and would return the result only in a later turn).
+Dispatch both agents simultaneously (`run_in_background: false` on both — Phase 2 consolidation needs both results this same turn; background is the default and would return the result only in a later turn).
 
 ### Standards Agent (agents/standards-reviewer.md)
 

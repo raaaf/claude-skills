@@ -50,7 +50,7 @@ Determine ZENTRALE_PATTERNS:
 
 Subagents in parallel, only the dimensions included in `CHALLENGE_DIMS` (Phase 0.5) (low=3, medium=4, high/xhigh=5).
 
-**Dispatch them with `run_in_background: false`.** Since Claude Code v2.1.198 subagents background by
+**Dispatch them with `run_in_background: false`.** Subagents background by
 default, and a background subagent returns its result as a completion notification in a *later*
 turn. The consolidation step right after this one has to see all challenger outputs at once in order
 to deduplicate convergent concerns, which is where the value of the panel sits. A backgrounded
@@ -119,7 +119,7 @@ Agent(
 
     1. Completeness — Are steps missing? Gaps between 'what the plan says' and 'what actually needs to be done'?
     2. Ordering — Is the sequence right? Dependencies wrong or not considered at all?
-    3. Effort — Re-estimate the effort yourself from the step list, independently; do NOT just sanity-check the author's number (3 of 4 past plans had to revise the initial estimate upward). Name the biggest item and say where your estimate differs from the plan's.
+    3. Effort — Re-estimate the effort yourself from the step list, independently; do NOT just sanity-check the author's number. Name the biggest item and say where your estimate differs from the plan's.
     4. Risks — What is the biggest risk the plan doesn't address?
     5. Actionability — Can a developer take the plan and start right away? Does every step have a checkable verify criterion?
 

@@ -17,7 +17,7 @@ allowed-tools:
 
 # Delegate: Analysis (expensive) → Implementation (Sonnet) → Review (expensive)
 
-**EXECUTE IMMEDIATELY — start directly with Phase 0.**
+**Start directly with Phase 0.**
 
 > Frontmatter deliberately has NO `model:` field and NO `disable-model-invocation` (both documented exceptions to the repo convention): the skill inherits the session model (Fable/Opus) so analysis and review run on the strongest available model — `model: opus` would downgrade a Fable session. Auto-trigger on implementation tasks is intentional, this is the default working mode.
 
@@ -90,7 +90,7 @@ Agent(
 )
 ```
 
-The executor runs in the background (default since Claude Code v2.1.198) and its report arrives as a completion notification. That is fine here, but **test authority follows the executor**: while it runs, the orchestrator does not start its own test run. Phase 5 verification begins after the report has arrived, not alongside it.
+The executor runs in the background (the default) and its report arrives as a completion notification. That is fine here, but **test authority follows the executor**: while it runs, the orchestrator does not start its own test run. Phase 5 verification begins after the report has arrived, not alongside it.
 
 Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, respect STOP conditions instead of improvising, check every report claim against a real tool result, same-diff duplication self-check at block level before reporting (identical guard/resolver/logic blocks in two places of the executor's own diff → extract, even inside otherwise different method bodies — the audit-side check cannot catch executor duplicates early), exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 
@@ -109,7 +109,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 1. Read the full `git diff`; judge against the goal + conventions (does it read like the rest of the repo?).
 2. Re-run every done criterion yourself (Bash).
 3. Scope: `git diff --stat` against the affected-files list. A file outside it = fail.
-4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the fix line when in doubt (2026-08-23: a capacity-full branch shipped untested behind a green happy-path test).
+4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the fix line when in doubt (a happy-path test stays green while the new branch ships untested).
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
 **Verdict:**

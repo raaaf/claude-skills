@@ -6,12 +6,11 @@ Read this file when the rules in the main skill aren't top of mind. Each line ma
 
 - **"I'm waiting for user confirmation before starting the next round"** → WRONG. The loop runs autonomously. No user input between rounds.
 - **"One round is enough"** → WRONG. The loop only ends at `AUDIT_STATUS: SAUBER`. `FIXES_APPLIED` + `RUNDE < {MAX_RUNDEN}` → immediately start the next round.
-- **"Let me explain the plan now"** → WRONG. Execute directly.
 - **"Findings stayed the same, I'll try one more round"** → WRONG. On `NO_CONVERGENCE` (round ≥ 2 and findings aren't decreasing): end the loop immediately.
 
 ## Subagent Discipline
 
-- **"In round 2, Architecture and Code Quality are enough"** → WRONG. In EVERY round, ALL subagents marked relevant by triage are dispatched. A security fix can introduce a performance problem. An architecture refactor can break a11y.
+- **"In round 2, Architecture and Code Quality are enough"** → WRONG. In EVERY round, every worker with at least one dimension in `ROUTING_RUN` is dispatched. A security fix can introduce a performance problem. An architecture refactor can break a11y.
 - **"The validator is overkill, I trust the subagents"** → WRONG. LLM findings hallucinate file paths, line numbers, and API signatures. Step D.5 is mandatory.
 - **"This finding looks off, I'll just fix it anyway"** → WRONG. Hallucination validator first. If the file/line doesn't exist: discard the finding.
 - **"An agent went idle without a report, I'll wait / keep nudging it"** → WRONG. The official recovery path is: exactly ONE re-prompt via SendMessage, then the per-agent-type failure path from SKILL.md Step C (triage → floor routing, worker → skip dimension, fix agent → check `git diff` then re-dispatch once, verifier → `RECOMMEND=patch`). Prevention (REPORT_DELIVERY block in the prompt template) demonstrably does not catch every case — recovery is part of the loop, not an exception.

@@ -120,4 +120,4 @@ File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
 | Medium | 3 | Data model overhaul, multi-channel feature, complex policy question |
 | High | 4+ | Framing needs clarification, initial pivot (e.g. "Should we do X?" → actually Y) |
 
-Backed by the learning log (8 plans, avg. 2.86 rounds): Plan 1 (2 rounds, simple), Plan 7 (4 rounds, pivot). For data model overhauls, the third pass almost always pays off.
+For data model overhauls, the third pass almost always pays off.

@@ -6,7 +6,7 @@ priority: recommended
 
 Accessibility is not a checklist you run before launch — it is a design constraint that shapes every decision from the first wireframe to the last line of CSS. When you build for accessibility, you build better software for everyone: keyboard users, screen reader users, people with low vision, motor impairments, cognitive differences, and situational limitations like a broken arm or bright sunlight.
 
-The target is WCAG 2.1 Level AA compliance. This is both a legal baseline in many jurisdictions and a practical standard that catches the most impactful issues.
+The target is WCAG 2.2 Level AA compliance (section XI lists the criteria added over 2.1). This is both a legal baseline in many jurisdictions and a practical standard that catches the most impactful issues.
 
 ## Contents
 - I. Semantic HTML

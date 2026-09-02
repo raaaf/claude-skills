@@ -199,7 +199,7 @@ Confidence: persisting write behind an `await` in a cancellable task without a g
 
 ## XIV. Day Boundary: State That Outlives the Screen
 
-**The most frequent correctness class in this project's history — five findings, never a guideline until now.** Precedents: `reminderHour = 0` treated as "not set" (2026-05-21), a widget lock deadline compared against build time (2026-06-23), a pending-anchor dead end at midnight (2026-07-22), sleep samples bucketed before overlapping intervals were merged so a night ending at 00:30 landed in the wrong day (2026-07-27 morning), a `chatStep` that survived the day change because the view was never rebuilt (2026-07-27 evening). Each was found on its own, filed as a one-off, and the class never escalated.
+**State that outlives the screen is one recurring correctness class, not a series of one-offs.** Its shapes: a `reminderHour = 0` treated as "not set", a widget lock deadline compared against build time, a pending anchor that dead-ends at midnight, sleep samples bucketed before overlapping intervals were merged so a night ending at 00:30 lands in the wrong day, a `chatStep` that survives the day change because the view was never rebuilt. Audit them as one class.
 
 Every value that is read again after a relaunch, after a background stretch, or when a view reappears gets one question: **does it survive midnight, and should it?**
 
@@ -214,11 +214,11 @@ Confidence: a day-scoped flag stored as a Bool -> Important. A layout/routing ru
 
 ### The fix side: what your rollover destroys
 
-Everything above is the AUDIT side, and it was written after five findings. Two more arrived on 2026-08-13, and the second one is the reason this subsection exists.
+Everything above is the AUDIT side. Two more shapes belong to whoever writes the fix.
 
-**Sixth case, the continuously-foregrounded path.** A digest gate rescheduled its recheck timer only while the gate was closed. Once it opened, no timer ran for the rest of the night. Backgrounding or relaunching triggered a day reset, so the bug was invisible in every normal test; an app simply left open past midnight kept yesterday's step forever. The bullet above ("a process that stays alive across midnight never runs the launch-time recomputation") named the class, but nobody had walked the specific path where the recomputation is scheduled and then stops scheduling itself.
+**The continuously-foregrounded path.** A gate that reschedules its recheck timer only while closed stops rescheduling once it opens; an app left open past midnight keeps yesterday's step forever. Backgrounding or relaunching triggers a day reset, so every normal test passes. Walk the specific path where the recomputation is scheduled and then stops scheduling itself.
 
-**Seventh case, and it was the FIX for the sixth.** The repair added a midnight-aware timer that reran the setup path. It could now fire while the user was mid-sentence in the composer: the reset cleared the pending recap and hid the input, defeating a documented cross-midnight protection elsewhere in the same file and dating the in-progress entry to the new day. The fix was strictly worse than the bug, and only the fix-verifier caught it.
+**The fix that is worse than the bug.** A midnight-aware timer that reruns the setup path can fire while the user is mid-sentence in the composer: the reset clears the pending input, defeats a cross-midnight protection elsewhere in the same file, and dates the in-progress entry to the new day.
 
 So the rule has a second half, and it belongs to whoever writes the fix, not to whoever finds the bug:
 

@@ -95,7 +95,7 @@ If 3+ workers share the same prompt structure, extract a single `agents/prompt-t
 
 ## Foreground or background
 
-Since Claude Code v2.1.198 dispatched subagents run in the **background by default**. That is the
+Dispatched subagents run in the **background by default**. That is the
 right default for a parallel worker fan-out, but it changes two things a skill can depend on:
 
 - A background subagent's result arrives as a completion notification in a **later turn**. Any step

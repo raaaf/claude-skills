@@ -38,7 +38,7 @@ Agent(
 )
 ```
 
-**`run_in_background: false` is mandatory, not decoration.** Since Claude Code v2.1.198 subagents run in the background by default, and a background subagent's result only arrives as a completion notification in a *later* turn. Phase 5 has to parse that output and write the log in *this* turn, before Phase 6 writes the push marker, a backgrounded learning agent silently loses the whole learning pass. Foreground costs 5-10s and is not push-blocking.
+**`run_in_background: false` is mandatory, not decoration.** Subagents run in the background by default, and a background subagent's result only arrives as a completion notification in a *later* turn. Phase 5 has to parse that output and write the log in *this* turn, before Phase 6 writes the push marker, a backgrounded learning agent silently loses the whole learning pass. Foreground costs 5-10s and is not push-blocking.
 
 **Step 2: parse the output**
 

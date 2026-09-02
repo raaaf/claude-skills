@@ -72,4 +72,4 @@ Dispatch ONE worker, scoped to the files the final round's fix agents actually t
 
 Findings from this pass are fixed like any other. It does NOT open a new round and does not extend `{MAX_RUNDEN_PRO_BATCH}`; on findings it cannot resolve, the row goes `blocked` rather than `clean`.
 
-Why this is not optional: in the run that produced this rule, two of six Critical findings were regressions introduced by the audit's own fixes, and both were caught only because the orchestrator improvised exactly this pass. Parallel fix agents with disjoint file boundaries are fast and blind to each other; something has to look at the seam.
+Why this is not optional: parallel fix agents with disjoint file boundaries are fast and blind to each other, and the regressions they introduce are caught only by a pass that looks at the seam.

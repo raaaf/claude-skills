@@ -22,7 +22,7 @@ Read (read only, never write):
 
 ### 2. Compute metrics
 
-From the logs:
+From the logs, with shell commands (`grep -c`, `wc -l`, `awk`) over the log files, never by counting in your head:
 - Total number of plans
 - Last 3 plans: rounds in Phase 1 → trend (decreasing/stable/increasing)
 - Last 3 plans: total concerns → trend

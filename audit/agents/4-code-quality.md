@@ -4,11 +4,9 @@
 - **model:** `sonnet`
 - **maxTurns:** `15`
 
-## Why this dimension runs on sonnet (historical note)
+## Model
 
-This dimension used to default to `haiku` with an escalation rule to `sonnet` for large or algorithmically dense assignments. It now runs on `sonnet` unconditionally, per the repo-wide 2026-08-11 decision to move every audit worker off `haiku` (see CLAUDE.md, "Worker model routing").
-
-Evidence that motivated the original escalation rule, and now motivates dropping `haiku` entirely: full-audit 2026-08-06 (denkpause, 7 batches). The Signals batch on `haiku` produced 5 findings the validator discarded as impossible or hallucinated (a parameter that does not exist, a control-flow state that cannot be reached, a misread language idiom). `sonnet` workers produced zero hallucinations anywhere in the same run. This dimension is cheap to run and expensive to get wrong: every hallucinated finding costs a verifier round, and a plausible one that survives costs a fix wave.
+Runs on `sonnet`, never `haiku` (repo-wide routing: CLAUDE.md, "Worker model routing"). Evidence: in a seven-batch full-audit, one batch of this dimension on `haiku` produced 5 findings the validator discarded as impossible or hallucinated (a parameter that does not exist, a control-flow state that cannot be reached, a misread language idiom). `sonnet` workers produced zero hallucinations anywhere in the same run. This dimension is cheap to run and expensive to get wrong: every hallucinated finding costs a verifier round, and a plausible one that survives costs a fix wave.
 
 ## Focus
 

@@ -63,7 +63,7 @@ Per agents/*.md file:
 
 ## Self-Learning (if learning agent)
 
-- [ ] Foreground dispatch, spelled out as `run_in_background: false`: omitting it backgrounds the agent (default since Claude Code v2.1.198), and a background agent both can't write to `.claude/` and returns too late for the orchestrator to write for it
+- [ ] Foreground dispatch, spelled out as `run_in_background: false`: omitting it backgrounds the agent (the default), and a background agent both can't write to `.claude/` and returns too late for the orchestrator to write for it
 - [ ] Writes to `.claude/<skill>/learning-log.md`
 - [ ] Suggestions, not auto-apply
 - [ ] Reads recent N runs, not entire history each time

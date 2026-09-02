@@ -125,10 +125,9 @@ Schweregrad: Minor solange funktional; Important wenn Removal in der naechsten M
 
 A script whose job is to decide, route, score or gate has a failure mode ordinary code does not: when
 it is wrong, it produces a confident answer instead of an error, and nothing downstream contradicts
-it. Every long-lived defect found so far in this repo's own `audit/bin/*.sh` and `audit/evals/*.sh`
-sat there for months and was found by accident, never by a check.
+it. Such defects sit for months and are found by accident, never by a check.
 
-Concretely, three that shipped and stayed:
+Three shapes of the failure:
 
 - a routing floor that left four dimensions to a triage step that had meanwhile become opt-in, so
   those dimensions ran on no default audit at all
@@ -147,11 +146,10 @@ read the code.
 
 The class is defined by the failure mode, not by the directory. It covers `audit/bin/*.sh`,
 `audit/evals/*.sh`, `audit/hooks/*.sh`, `*/bin/*.sh` in any skill, and the `hooks:` declarations in
-skill frontmatter. That last one is not a script at all, which is exactly why it was missed: on
-2026-08-05 both of `/audit`'s PreToolUse guards turned out to be inert because the frontmatter used
-a key the schema rejects, and because the scripts blocked with `exit 1` where only `exit 2` blocks.
-This section had been written the day before for the same failure mode and did not catch it, because
-its scope named two directories instead of the shape of the problem.
+skill frontmatter. That last one is not a script at all, which is exactly why it gets missed: a
+PreToolUse guard is inert when the frontmatter uses a key the schema rejects, or when the script
+blocks with `exit 1` where only `exit 2` blocks. The scope is the shape of the problem, not a
+directory list.
 
 **A control declared in configuration needs evidence that the configuration was accepted.** Testing
 the script it points at proves the script works, never that anything invokes it. What an auditor can

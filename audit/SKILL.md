@@ -30,7 +30,7 @@ hooks:
 
 # Audit: Review of all open changes
 
-**EXECUTE IMMEDIATELY — do not explain, do not announce. Start directly with Phase 0.**
+**Start directly with Phase 0. This is a pre-push gate the user is waiting on; there is nothing to confirm first.**
 
 Anti-patterns / common mistakes in the loop: `references/anti-patterns.md`.
 
@@ -272,7 +272,7 @@ Dispatch in **one message block** via the Agent tool. Pass ONLY:
 - `TRIAGE_SUMMARY` (1-2 lines)
 - `HOTSPOTS` (marked locations, exact file:line) — per-agent, stays in the briefing
 
-**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 8 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default since v2.1.198 and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
+**NO UNIFIED_DIFF.** Workers read code via the Read tool if needed (max 8 files per agent per round). Dispatch every agent whose output this turn must consume (workers, finding verifiers, fix agents, fix verifiers, cross-ref) with `run_in_background: false`; background is the default and returns only in a later turn. The opt-in triage is the exception, its silence is a non-event.
 
 **Idle watchdog (applies to ALL dispatched agents — workers, fix agents, verifiers):** an agent that goes idle WITHOUT having delivered its report (idle notification but no findings/FIX_RESULT message) gets exactly ONE automatic re-prompt via SendMessage ("You went idle without delivering your findings/report. Send it now via SendMessage to \"main\" in the requested format."). Still nothing after that → failure path per agent type: **worker** → note in the audit log, continue without the dimension; **fix agent** → check `git diff` on its files first (changes present = APPLIED + mandatory verifier), otherwise re-dispatch once; **verifier** → treat as `RECOMMEND=patch` (fix stays, finding carries to next round). Do not wait indefinitely and do not re-prompt more than once (2026-07-09: three agents needed manual nudging in one run).
 
@@ -512,8 +512,7 @@ Run **Run log** above (`gate=passed`). Then: print `Audit passed.`, continue wit
 ## Phase 5: Learning
 
 Skipped entirely when `SKIP_LEARNING=1` (low effort): go directly to Phase 6. Otherwise read `references/learning-phase.md` and execute it: dispatch the learning agent with
-`run_in_background: false` (mandatory, the default has been background since v2.1.198 and a
-backgrounded agent returns after this turn is over), parse its three output blocks, and write
+`run_in_background: false` (mandatory: a backgrounded agent returns after this turn is over), parse its three output blocks, and write
 learning-log, trends block and suppressions yourself. Subagents cannot write under `.claude/`.
 
 ## Phase 6: Create PR (after push)

@@ -55,13 +55,12 @@ Report exactly what you ran, what came back, and what you expected. Ask the user
 the missing context. Do not proceed to Phase 2 with an unconfirmed repro.
 
 **Rule out the tool before you believe the symptom.** A repro attempt that fails or
-hangs is evidence about your setup until proven otherwise. One logout hunt burned an
-evening on three independent tooling artifacts, each of which looked exactly like the
-reported bug: browser-extension clicks that fire no page events (the button "does
-nothing"), a text locator that silently waits on a hidden duplicate of the element and
-times out, and a simulator serving a cached page after a rebuild (the fix "has no
-effect"). Only a test seam that injected the hanging dependency isolated the real
-defect.
+hangs is evidence about your setup until proven otherwise. Tooling artifacts that look
+exactly like a reported bug: browser-extension clicks that fire no page events (the button
+"does nothing"), a text locator that silently waits on a hidden duplicate of the element
+and times out, a simulator serving a cached page after a rebuild (the fix "has no
+effect"). A test seam that injects the suspect dependency isolates the real defect where
+a UI-level repro cannot.
 
 So before a failed repro becomes a hypothesis: reproduce the same step through a second,
 independent mechanism (a trusted-click browser test instead of an extension, a
@@ -124,8 +123,6 @@ Add targeted instrumentation to test the top hypothesis:
 Outcome:
 - Hypothesis confirmed: proceed to Phase 5
 - Hypothesis disproved: return to Phase 3 with the next hypothesis
-
-Never add more than 3 instrumentation points per iteration.
 
 ## Phase 5: Fix
 

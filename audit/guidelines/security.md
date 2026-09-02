@@ -462,7 +462,7 @@ quoted/entity-prone value: Important [Correctness]; user-influenced value with
 
 When a diff adds a field that can reach a persistent or shared sink — anything CloudKit-mirrored, exported, backed up, indexed, or rendered outside the locked app — the audit checks ALL of its sinks in the SAME round. Fixing the first sink found and discovering the rest over the following rounds is the documented failure mode, not a thorough process.
 
-Real case (2026-08-06): a health-card filter was added to the write path in round 1. The widget render path and the legacy-entry scrub path carried the same data and were only found in rounds 2 and 3. Same field, same rule, three rounds, and between round 1 and round 3 the fix looked complete.
+Example: a filter added to the write path in round 1 while the widget render path and the legacy-entry scrub path carry the same data and surface only in later rounds. Same field, same rule, three rounds, and after round 1 the fix looked complete.
 
 The sink list for one new field, all in one pass:
 
