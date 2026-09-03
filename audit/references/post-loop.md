@@ -20,6 +20,40 @@ Detection tables and commands are in `linters-and-tests.md`. Order: Formatter �
 
 If visual files are in the diff (FRONTEND_DATEIEN or VISUELL_RELEVANTE_DATEIEN not empty), generate a test plan per `testplan.md`: template, URL derivation per framework, rules. Max 10 steps, only for actually changed spots. Write it into the audit log under `## Manual Test Plan` AND output it in chat.
 
+## 3d.5. Post-Log-Check (mandatory, before 3e)
+
+Two mechanical checks on the log file just written, both deterministic — no judgment call, just
+grep/date-compare:
+
+1. **Severity tags restricted to `{Critical, Important, Minor}`.** Run
+   `grep -noE '\[[A-Za-z]+\]' {LOGFILE} | grep -viE '\[(Critical|Important|Minor|[A-Za-z]+)\]'`
+   is not enough on its own since dimension tags also use brackets — instead check every
+   `[SeverityCandidate]` token that sits in the position the audit-log-template puts severity
+   (immediately after `- ` at the start of a finding line): it MUST be one of the three. A
+   non-canonical tag (`[Major]`, `[Blocker]`, `[Note]`, ...) is a bug in the line that wrote it —
+   fix the line to the correct one of the three, do not invent a fourth category. Reference case
+   (2026-08-13): a log used `[Major]` twice, which is not a severity this skill defines, and the
+   learning run had to reconstruct severities by hand afterwards. Same check for the dimension tag
+   that follows the severity: it MUST be one of the 12 canonical ids `architecture`, `security`,
+   `performance`, `code_quality`, `seo`, `a11y`, `typography`, `ui_design`, `ux`, `animation`,
+   `docs_sync`, `copy` (case and spelling exactly as here, the display form `[Docs]`/`[A11y]`
+   from the log template maps 1:1 onto these). Free variants (`accessibility`, `A11Y`, `Code
+   Quality`, `docs`) have broken the "top category" metric since 2026-08-06; normalize the
+   line, do not leave the variant standing.
+2. **`Findings fixed: Critical N / Important N / Minor N` line present.** If `## Result` is missing
+   it, write it now per `audit-log-template.md`'s "Mandatory Field" section (recompute by counting
+   the itemized bullets, never hand-tally) before moving on. A log without this line breaks the
+   learning log's trend computation for this run.
+3. **If any `CONFIRMED` verdict occurred this run, `patterns.json` must be newer than the log file
+   you are about to write.** Compare `stat -f %m` (or `date -r`) on
+   `{PROJECT_ROOT}/.claude/audits/patterns.json` against the log's own write time; if the store is
+   older (or the file does not exist), the per-verdict `patterns-store.sh recur` calls from
+   `fix-loop.md` did not actually run. Do not silently back-fill and move on — write one line under
+   `## Notes`: `Post-Log-Check: patterns.json stale/missing after N CONFIRMED findings, recur calls
+   did not fire during the loop.` This is a sharper version of the Phase-5 `learning-phase.md` Step
+   0.5 check (which also back-fills): catching it here, right after the loop, names the failure at
+   the point it happened instead of only at the very end of the run.
+
 ## 3e. Display Audit Log in Chat (MANDATORY — after test plan)
 
 After completing 3a-3d, load the complete content of the log file (including the test plan) via the Read tool and output it as a markdown code block in chat:
@@ -68,7 +102,7 @@ EOF
    gh issue list --state open --search "[audit] $FP" --json number,title
    ```
    If an issue with this `[Dimension] datei:zeile` already exists, **skip**.
-1b. **Dedup against open PRs:** check `OPEN_PRS` from Phase 0.2, fallback:
+1b. **Dedup against open PRs:** check `OPEN_PRS` from Phase 0 (`pre-flight-checks.md`, open issues & PRs check), fallback:
    ```bash
    read -r DATEI <<'EOF'
 {datei}

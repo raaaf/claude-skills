@@ -1,0 +1,18 @@
+{
+  "fixture": "ux/article-section-audio-playback.swift",
+  "must_find": [
+    {
+      "dimension": "ux",
+      "line": 25,
+      "matches": ["cancelled", "isCancelled", "double audio", "concurrent", "race", "overlap"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "narration fetch and speech synthesis, no auth or data handling"
+    }
+  ],
+  "notes": "Modeled on a 2026-09 audit finding: a cancelled network task fell through to an on-device speech fallback without checking Task.isCancelled, so the fallback voice for one section played on top of the next section's network audio."
+}

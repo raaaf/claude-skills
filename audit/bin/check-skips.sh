@@ -10,7 +10,8 @@
 # Arg 1:  FRAMEWORK (optional, e.g. ios/android/react-native/flutter/laravel/...).
 # Output (stdout), parseable + human:
 #   ROUTING_RUN=architecture,security,...     effective dims to dispatch (triage-run UNION floor)
-#   ROUTING_SKIPPED=performance:reason;ux:...  still off after the floor (with triage reason)
+#   ROUTING_SKIPPED=performance:reason;ux:...  still off after the floor (triage reason, or
+#                                              `floor:no-signal` when triage did not run)
 #   ROUTING_OVERRIDE=a11y:frontend;ux:frontend dims the floor forced back on (dim:signal)
 #   Backend-only diffs (every file under BACKEND_PREFIX_RE) skip the visual dims
 #   deterministically as {dim}:backend-only-prefix, overriding triage.
@@ -99,8 +100,19 @@ has_frontend=0; match_fe "$FE_RE" && has_frontend=1
 # copy/typography exactly like new keys (learning 2026-08: value-only diffs in
 # lang/*.php went unrouted under an earlier key-based check). Any change to a
 # matched file sets the signal — do not narrow this to added keys.
-has_trans=0;    match '(/lang/.+\.(json|php)$|\.po$|\.pot$|\.arb$|\.strings$|/values[^/]*/strings\.xml$|/locales?/)' && has_trans=1
-has_mig=0;      match '(/migrations?/|/migrate/|\.migration\.)' && has_mig=1
+# `(^|/)` on purpose, not a bare `/`: git prints paths repo-relative, so a
+# top-level `lang/de/messages.php` (Laravel 11+ default) or `locales/de.json`
+# has NO leading slash and a `/lang/` pattern never matched it. That was the
+# root cause of the copy/typography "no-reason" skips on translation diffs
+# documented from 2026-08-21 to 2026-09-02 (learning log, events project).
+has_trans=0;    match '((^|/)lang/.+\.(json|php)$|\.po$|\.pot$|\.arb$|\.strings$|/values[^/]*/strings\.xml$|(^|/)locales?/)' && has_trans=1
+has_mig=0;      match '((^|/)migrations?/|(^|/)migrate/|\.migration\.)' && has_mig=1
+# New source files are an architecture signal on their own (placement, naming,
+# duplication of an existing helper): a diff that only adds files used to
+# route through `architecture:no-reason` unless a migration was in it
+# (learning 2026-08-11). Same code-extension filter as has_code below.
+new_files=$( { git diff --name-only --diff-filter=A "$(resolve_base_ref "$(resolve_default_branch)")"...HEAD 2>/dev/null; git diff --name-only --diff-filter=A HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u | grep -vE '(^|/)audit/evals/fixtures/' || true)
+has_new_code=0; [ -n "$new_files" ] && printf '%s\n' "$new_files" | grep -qvE '\.(md|txt|json|ya?ml|po|pot|arb|strings|xml|lock|toml|ini|cfg)$' && has_new_code=1
 has_code=0;     printf '%s\n' "$changed" | grep -qvE '\.(md|txt|json|ya?ml|po|pot|arb|strings|xml|lock|toml|ini|cfg)$' && [ -n "$changed" ] && has_code=1
 has_docs=0;     match '\.md$|(^|/)docs/|(^|/)\.env\.example$' && has_docs=1
 # Runtime-consumed YAML (Home Assistant automations/scripts, Ansible playbooks,
@@ -119,7 +131,7 @@ floor_signal(){
   case "$1" in
     a11y|ui_design|ux) [ "$has_frontend" = 1 ] && echo "frontend" ;;
     copy|typography)   [ "$has_trans" = 1 ] && echo "translation" ;;
-    architecture)      { [ "$has_mig" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "migration" ;;
+    architecture)      if [ "$has_mig" = 1 ] || [ "$has_config_logic" = 1 ]; then echo "migration"; elif [ "$has_new_code" = 1 ]; then echo "new-file"; fi ;;
     code_quality)      { [ "$has_code" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "code-changed" ;;
     security)          { [ "$has_code" = 1 ] || [ "$has_config_logic" = 1 ]; } && echo "code-changed" ;;
     docs_sync)         [ "$has_docs" = 1 ] && echo "docs" ;;
@@ -154,7 +166,18 @@ for d in $DIMS; do
       run_csv=$(app "$run_csv" "$d")
       over_csv=$(app "$over_csv" "$d:$sig" ";")
     else
-      reason=$(printf '%s' "$json" | jq -r --arg d "$d" '.relevance[$d].reason // "no-reason"')
+      # Without a triage run there is no LLM reason to quote: the skip is the
+      # floor's own deterministic verdict (no git signal for this dim) and gets
+      # labelled as such. "no-reason" is reserved for a triage that ran and
+      # left the reason out, which is the only case that is an anomaly.
+      # Before this split every floor-only run (the default since triage became
+      # opt-in) printed the WARN below for each skipped dim, and the learning
+      # log carried that as an unexplained recurring anomaly for two weeks.
+      if [ "$floor_only" = 1 ]; then
+        reason="floor:no-signal"
+      else
+        reason=$(printf '%s' "$json" | jq -r --arg d "$d" '.relevance[$d].reason // "no-reason"')
+      fi
       skip_csv=$(app "$skip_csv" "$d:$reason" ";")
     fi
   fi

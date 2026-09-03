@@ -66,13 +66,12 @@ Agent(
 
     PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}",
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: plan-challenger,
   run_in_background: false
 )
 ```
 
-**Architecture, Risk** additionally receive the codebase context:
+**Architecture, Risk** additionally receive the codebase context and the drift-check rule:
 ```
 Agent(
   prompt: "Read agents/challenge-{dimension}.md and review this plan:
@@ -84,9 +83,13 @@ Agent(
     Codebase context:
     FILE STRUCTURE: {DATEISTRUKTUR}
     CORE PATTERNS: {ZENTRALE_PATTERNS}
-    FRAMEWORK: {FRAMEWORK}",
-  subagent_type: general-purpose,
-  model: sonnet,
+    FRAMEWORK: {FRAMEWORK}
+
+    DRIFT CHECK: compare the plan's claims against the WORKING TREE, not only
+    committed history. Run `git status --short` and `git diff --stat` (uncommitted)
+    in addition to `git diff --stat {PLANNED_AT_SHA}..HEAD`. Report 'no drift'
+    only when all three are empty for in-scope paths.",
+  subagent_type: plan-challenger,
   run_in_background: false
 )
 ```

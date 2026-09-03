@@ -430,3 +430,21 @@ Two outcomes, and they are graded very differently:
 - The copies differ -> Important, and the finding is the difference, not the repetition. Name which copy is wrong and why, because one of them is.
 
 The trap to avoid: divergence is not automatically a bug. Copies attached to different branches of the same state machine often SHOULD differ, each omitting what its own branch already handled. On 2026-08-19 three copies of a volume-priority template were reported as drifted; each branch deliberately left out the scene that had just ended, and all three were correct. Establish which branch each copy belongs to before calling a difference a defect.
+
+## XXII. A Fact With a New Source Has Old Consumers
+
+When an "is X active / available / allowed" fact gains a second source (a flag OR the existence of data, a setting OR a role, a config value OR an env override), every consumer of the old, narrower check is now wrong in the same way. In the same change, grep for all of them: settings-section `isAvailableFor()`-style predicates, Blade/JSX gates, navigation and tour services, notification triggers, exports. One missed consumer produces the split state that recurred 15 times in one project: the drawer hides a section while the host CTA links to it (2026-08-27). Confidence: widened fact with a consumer still on the narrow check in the diff scope -> Important; the consumer is a security gate -> Critical.
+
+## XXIII. Touching an Existing Helper Means Touching Its Call Sites
+
+A fix that changes the signature, return shape, or semantics of an EXISTING shared helper (`sentryEnabled()`, `capturingClient`, a formatter, a scope) is incomplete until every call site was read and adjusted; grep them before the edit, list them in the fix report. The same rule as XVII for new utilities, applied to changed ones. Two audits in a row (2026-08-27, 2026-08-28) had a helper fix leave a call site on the old contract.
+
+## XXIV. A New Model or DTO Field Has Serialized Copies
+
+Adding a field to a model, DTO or catalog record is not done when the model compiles: every place that copies the record into another representation must carry it too, or the copy is silently stale. Grep for the serialization sites explicitly: widget/extension shared stores (`SharedStore`, App Group plists), intents (`WidgetIntents`), caches, exports, API resources, search indexes, seeders. Second occurrence of this gap class on 2026-09-03. Confidence: new field missing from a copy that renders it (widget, export) -> Important.
+
+## XXV. Configuration Access and Failure Isolation
+
+- **No `env()` outside `config/*.php`** (Laravel) and no direct environment reads outside the config layer in other stacks: config caching makes `env()` return null at runtime, and scattered reads make the value set unauditable. Read from `config()`.
+- **External API clients are centralized:** one client class per provider with base URL, headers, timeout, retry policy and endpoint/model names from config; call sites never build HTTP requests or headers themselves.
+- **Notifications and other best-effort side effects are isolated from the user action:** wrap `Notification::send`/mail/push calls inside a service in `try/catch` + `report($e)` so a provider outage cannot abort a save, a checkout or a signup. A user action that fails because a notification failed is a finding (2026-06-11).

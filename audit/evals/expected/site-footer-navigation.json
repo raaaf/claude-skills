@@ -1,0 +1,18 @@
+{
+  "fixture": "a11y/site-footer-navigation.html",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 14,
+      "matches": ["aria-current", "color alone", "active page", "1.4.1", "current page"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "static footer markup, five links, no perf concern"
+    }
+  ],
+  "notes": "Modeled on a 2026-07 finding: an active-state utility class shipped without aria-current, so the a11y worker had to catch a color-only state signal rather than a missing-attribute grep hit."
+}

@@ -3,7 +3,7 @@ name: delegate
 description: "Default working mode for implementation tasks: the expensive session model (Fable/Opus) analyzes the task, asks clarifying questions on genuine ambiguities, writes an executor-ready mini-spec, and hands off implementation to a Sonnet executor. Afterward the expensive model reviews the result like a tech lead (reads the diff, re-runs criteria itself) and renders a verdict. Use when the user asks to implement, build, fix, change, or refactor code (even without typing /delegate). NOT for: questions/explanations (answer directly), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
 when_to_use: "/delegate, implementiere, baue, aendere, fixe, setz das um, refactor this, build this feature"
 argument-hint: "[Task in your own words; optional --worktree]"
-effort: high
+effort: medium
 allowed-tools:
   - Agent
   - Bash
@@ -83,8 +83,7 @@ Default: directly in the working tree (review happens before every commit). Isol
 
 ```
 Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: spec-executor,
   prompt: "{Executor preamble + report format from plan-it/references/execute-review.md, section Dispatch}
     {MINI_SPEC inline}"
 )
@@ -116,7 +115,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 
 | Verdict | Action |
 |---|---|
-| APPROVE | Result report to the user (below). No commit — committing stays with the user (or /ship). |
+| APPROVE | First stop the executor explicitly: `SendMessage` to it with "APPROVED. Stop now: no further edits, test runs, or process kills." and wait for its acknowledgement before anything else runs in this tree. On 2026-08-29 an executor that was never told to stop kept running into the `/audit` that followed and killed the audit's own test processes. Then the result report to the user (below). No commit — committing stays with the user (or /ship). |
 | REVISE | SendMessage to the SAME executor with a concrete finding ("criterion 3 red: X; api.ts:90 swallows the error — result pattern per spec"). Max 2 rounds, then BLOCK. |
 | BLOCK | Changes in the working tree: `git checkout` the affected files after asking the user, or leave them + finding. Finding + corrected spec to the user. |
 

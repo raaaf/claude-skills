@@ -114,14 +114,14 @@ cat .claude/audit-guidelines.md 2>/dev/null | head -100
 
 Dispatch both agents simultaneously (`run_in_background: false` on both — Phase 2 consolidation needs both results this same turn; background is the default and would return the result only in a later turn).
 
-### Standards Agent (agents/standards-reviewer.md)
+### Standards Agent (`subagent_type: review-standards-agent`, agents/standards-reviewer.md)
 
 Input:
 - Changed file list (with paths)
 - Content of `.claude/audit-guidelines.md` (if exists, first 100 lines)
 - Instructions to read each changed file and check it against visible conventions
 
-### Spec Agent (agents/spec-reviewer.md)
+### Spec Agent (`subagent_type: review-spec-agent`, agents/spec-reviewer.md)
 
 Input:
 - Issue/PR body (the spec)

@@ -50,17 +50,26 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || {
 # Every git call here is `|| true`-guarded: the script runs under `set -e`, and
 # a bare `VAR=$(git ...)` that fails aborts it silently, which is the exact
 # failure mode this block exists to remove.
-UPSTREAM_RANGE=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)
-if [ -n "$UPSTREAM_RANGE" ]; then
-  COMMIT_RANGE="@{u}..HEAD"
+# AUDIT_BASE_REF override: same escape hatch as lib-git-base.sh's
+# resolve_base_ref(). A caller that already substituted the diff base takes
+# precedence over this script's own upstream/default-branch derivation, so
+# the two never disagree on what "the base" is. Falls through when unset,
+# empty, or invalid.
+if [ -n "${AUDIT_BASE_REF:-}" ] && git rev-parse --verify "$AUDIT_BASE_REF" >/dev/null 2>&1; then
+  COMMIT_RANGE="${AUDIT_BASE_REF}..HEAD"
 else
-  DEFAULT_BRANCH=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
-  [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=$(git config --get init.defaultBranch 2>/dev/null || true)
-  [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=main
-  if git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null 2>&1; then
-    COMMIT_RANGE="origin/$DEFAULT_BRANCH..HEAD"
+  UPSTREAM_RANGE=$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)
+  if [ -n "$UPSTREAM_RANGE" ]; then
+    COMMIT_RANGE="@{u}..HEAD"
   else
-    COMMIT_RANGE="$DEFAULT_BRANCH..HEAD"
+    DEFAULT_BRANCH=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+    [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=$(git config --get init.defaultBranch 2>/dev/null || true)
+    [ -n "$DEFAULT_BRANCH" ] || DEFAULT_BRANCH=main
+    if git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null 2>&1; then
+      COMMIT_RANGE="origin/$DEFAULT_BRANCH..HEAD"
+    else
+      COMMIT_RANGE="$DEFAULT_BRANCH..HEAD"
+    fi
   fi
 fi
 

@@ -274,3 +274,7 @@ a {
 ```
 
 `from-font` reads the position the type designer specified instead of guessing, and `skip-ink: auto` (the default in current browsers, worth stating explicitly so a reset cannot silently disable it) breaks the stroke around descenders rather than striking through them. Prefer these over a hand-tuned offset; keep `text-underline-offset` only where a specific design calls for more air than the font metric gives.
+
+## XV. Token Classes Over Raw Utilities (2026)
+
+When the project defines typographic token classes (`.heading-1`, `.text-body`, `@apply`-composed or CSS-variable-based scales), a heading or body element styled with raw size/weight/leading utilities (`text-2xl font-semibold leading-tight`) is an anti-pattern: it forks the scale, drifts on the next token change, and is invisible to a design-token audit. Report the raw utility stack on any element the token system covers as Minor (Important when the values differ from the token they imitate). A project without a token system is out of scope for this rule (2026-08-29).

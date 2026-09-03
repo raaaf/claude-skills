@@ -1,0 +1,18 @@
+{
+  "fixture": "quality/quick-attendance-status-classifier.php",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 21,
+      "matches": ["happy path", "branch", "capacity", "waitlist", "untested", "coverage"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "pure integer comparison, no user input or side effects"
+    }
+  ],
+  "notes": "Regression fixture modeled on 2026-08 audits in a Laravel events app. classify() has two branches, spots available returns confirmed and spots full returns waitlist, but the only test in the file exercises the open-spot case. The full-capacity branch that should return waitlist is never asserted, so a regression there would ship silently."
+}

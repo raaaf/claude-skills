@@ -268,6 +268,9 @@ Think in two designer parameters instead of the physics triplet: **damping ratio
 | Scroll listener drives animation | Scroll/View Timelines or IntersectionObserver |
 | Looping animation runs off-screen | Pause via IntersectionObserver / `animation-play-state` |
 | Layout read+write interleaved per frame | Batch reads, then writes (FLIP) |
+| `requestAnimationFrame`/`setTimeout`/`setInterval` loop with an `AbortController` | Every iteration checks `signal.aborted` before scheduling the next tick AND before touching the DOM; the abort listener clears the pending timer. At audit start, grep all timer sites in the diff scope once (`rAF\|setTimeout\|setInterval`) instead of finding them round by round (2026-07-02) |
+
+**Severity anchors (static sites and marketing pages especially):** Critical only for a `prefers-reduced-motion` violation (motion that cannot be turned off) or autoplaying motion/video without a stop control. Important for WCAG 2.3.3-class problems (flashing, blinking, motion that keeps running while the user reads). Everything about timing taste (220ms vs 600ms, easing choice, stagger) is Minor at most; a subjective timing note reported as Important is a severity inflation, not a finding (2026-06-11).
 
 ## 14. Debugging
 

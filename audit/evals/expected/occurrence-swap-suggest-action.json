@@ -1,0 +1,18 @@
+{
+  "fixture": "security/occurrence-swap-suggest-action/",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 5,
+      "matches": ["gate", "guard", "server", "403", "visible", "mismatch", "wider"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "no query loop or N+1 concern in either file"
+    }
+  ],
+  "notes": "Laravel/Livewire audits, 2026-06 to 2026-09: a Blade view gated a button on broader series membership than the server action's guest-row check, so some members saw a button whose click silently 403s."
+}

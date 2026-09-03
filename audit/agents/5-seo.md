@@ -1,6 +1,6 @@
 # Subagent 5: SEO & Semantic HTML
 
-- **subagent_type:** `seo-auditor`
+- **subagent_type:** `audit-content-worker` (this module is read BY w4-content.md, never dispatched on its own; `seo-auditor` here was a stale reference to a type that was never registered)
 - **model:** `sonnet`
 - **maxTurns:** `10`
 

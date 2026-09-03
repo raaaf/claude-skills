@@ -7,7 +7,18 @@
 #   bash "$AUDIT_BIN/test-lock.sh" php artisan test --compact tests/Unit/FooTest.php
 #
 # Portable mkdir spinlock (flock is not available on stock macOS). Lock is
-# per-repo (hash of toplevel), TTL 15 min against stale locks from killed runs.
+# per-repo, TTL 15 min against stale locks from killed runs.
+#
+# The lock dir lives under the repo's shared git dir (`--git-common-dir`),
+# NOT under $TMPDIR: every subagent runs in its own sandbox with its own
+# TMPDIR, so a TMPDIR lock was private to each agent and serialized nothing.
+# Three parallel fix agents collided on the same test database on
+# 2026-08-31 and again on 2026-09-02 with the lock "in place" (learning log:
+# "test-lock.sh trotz Pflicht kollidiert", root cause found 2026-09-03). The
+# common git dir is the one path every agent of a repo shares, across
+# linked worktrees too, which is right because worktrees usually share the
+# test database as well. $TMPDIR stays only as the fallback outside a repo
+# or when the git dir is not writable.
 # A background heartbeat touches the lock dir every 60s while the wrapped
 # command runs, so a legitimately slow run keeps refreshing its own mtime and
 # is never mistaken for an orphan. WAIT_MAX is kept >= TTL_SECONDS so a waiter
@@ -26,7 +37,12 @@ set -u
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 HASH=$(printf '%s' "$REPO_ROOT" | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
-LOCK_DIR="${TMPDIR:-/tmp}/claude-audit-test-lock-${HASH}"
+GIT_COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+if [ -n "$GIT_COMMON" ] && [ -d "$GIT_COMMON" ] && [ -w "$GIT_COMMON" ]; then
+  LOCK_DIR="$GIT_COMMON/claude-audit-test-lock"
+else
+  LOCK_DIR="${TMPDIR:-/tmp}/claude-audit-test-lock-${HASH}"
+fi
 OWNER_FILE="$LOCK_DIR/owner"
 TTL_SECONDS=900
 WAIT_MAX=960

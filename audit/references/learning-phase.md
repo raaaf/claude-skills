@@ -18,7 +18,7 @@ bash "$AUDIT_BIN/run-stats.sh"
 TODAY=$(date +%Y-%m-%d)
 CONFIRMED_N={number of CONFIRMED findings this run, from the audit log}
 FED_N=$(jq -r --arg d "$TODAY" '[.recurrences[] | objects | select(.last_seen == $d)] | length' \
-  "$(git rev-parse --show-toplevel)/.claude/audits/patterns.json" 2>/dev/null || echo 0)
+  "$(git rev-parse --path-format=absolute --git-common-dir | sed 's|/\.git$||')/.claude/audits/patterns.json" 2>/dev/null || echo 0)
 echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
 ```
 
@@ -28,8 +28,7 @@ echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
 
 ```
 Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: audit-learning-agent,
   prompt: "Read agents/learning-agent.md and run the process.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}

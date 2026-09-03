@@ -1,0 +1,19 @@
+{
+  "fixture": "security/profile-favorite-movie-guard.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 38,
+      "matches": ["false positive", "benign", "overreach", "degrade", "block list", "existing content"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "line": 30,
+      "reason": "the bio field is a genuine free-text case for a hard block; only extending the same guard to favoriteMovie is the defect"
+    }
+  ],
+  "notes": "Swift audit, 2026-07: a stage-1 content guard built for a free-text field was extended to a curated preference field without distinguishing block-worthy from degrade-worthy fields, hard-blocking benign real titles."
+}

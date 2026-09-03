@@ -296,7 +296,7 @@ fi
 ```
 
 If marker missing or stale: AskUserQuestion:
-- "Run /audit now" → invoke the audit skill (`/audit`), then re-check marker. `SHIP_GATE=passed` on success. On failure: `SHIP_GATE=blocked`, run the log call (`outcome=audit_failed`), then stop.
+- "Run /audit now" → invoke the audit skill (`/audit`), then re-check marker. `SHIP_GATE=passed-after-rerun` on success (not `passed`: the gate DID fire, the ledger must show that, otherwise `run-stats.sh` reports a gate that never blocks even when it blocked-and-reran every time; 17 such runs on 2026-08-28). On failure: `SHIP_GATE=blocked`, run the log call (`outcome=audit_failed`), then stop.
 - "Push without audit (risky)" → `SHIP_GATE=bypassed`, log the bypass and continue with a warning in the output
 
 Never silently skip the audit. The bypass must be an explicit user choice.

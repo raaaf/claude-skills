@@ -11,7 +11,7 @@ when_to_use: "/triage, triage issues, process new issues, classify issues, needs
 argument-hint: "[optional: issue number]"
 arguments: [issue]
 model: sonnet
-effort: medium
+effort: low
 allowed-tools:
   - Read
   - Bash

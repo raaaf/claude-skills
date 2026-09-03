@@ -24,7 +24,22 @@
 # again stays a bare number forever, and that is fine.
 set -euo pipefail
 
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
+# Resolve the MAIN checkout, not whichever worktree this call happens to run
+# in. `--show-toplevel` resolves to the worktree's own root, so a run from a
+# linked worktree (e.g. `open-issues/`) wrote its patterns.json under
+# `open-issues/.claude/audits/` -- a separate, mostly-empty store that never
+# saw the main checkout's history and vice versa (reproduced 2026-08-21:
+# `recurrences` from a worktree run reported an empty store next to 157 real
+# entries one directory up). `--git-common-dir` always points at the shared
+# `.git` regardless of which worktree asks, so deriving the root from it
+# gives every worktree the same store and the same history.
+GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; }
+case "$GIT_COMMON_DIR" in
+  */.git) PROJECT_ROOT="${GIT_COMMON_DIR%/.git}" ;;
+  # Bare repo or unusual git-dir layout: fall back to the worktree-local
+  # toplevel rather than guessing at a parent directory.
+  *) PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "NOT_A_REPO"; exit 1; } ;;
+esac
 STORE_DIR="$PROJECT_ROOT/.claude/audits"
 STORE="$STORE_DIR/patterns.json"
 mkdir -p "$STORE_DIR"

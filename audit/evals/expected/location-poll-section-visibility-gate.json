@@ -1,0 +1,18 @@
+{
+  "fixture": "architecture/location-poll-section-visibility-gate/",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 24,
+      "matches": ["consumer", "narrow", "widened", "isAvailableFor", "out of sync", "drift", "second source"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "a boolean flag check and a single hasMany exists() query, no perf concern"
+    }
+  ],
+  "notes": "Regression fixture modeled on 2026-08 audits in a Laravel events app. Event::hasLocationPoll() was widened to also accept real poll rows so imported events with polls but no flipped flag still show the feature, and every consumer was updated to call it, except LocationPollSection::isAvailableFor(), which still reads the old narrow flag directly. Result: the settings drawer hides the section for these events while the host dashboard CTA, built from the widened hasLocationPoll(), still links to it, producing a 404. The point of the fixture is a second source of truth left behind when a check widens: the audit must recognize isAvailableFor() as a stale narrow copy of hasLocationPoll(), not just note that the two methods differ."
+}

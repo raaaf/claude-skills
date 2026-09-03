@@ -1,8 +1,8 @@
 # Subagent 0: Triage
 
-- **subagent_type:** `general-purpose`
+- **subagent_type:** `audit-triage`
 - **model:** `sonnet`
-- **maxTurns:** `7`
+- **maxTurns:** `12` (raised from 7 on 2026-09-03: one `grep -n` per hotspot across 12 dimensions on the large diffs this agent is meant for exceeded 7)
 
 ## Purpose
 

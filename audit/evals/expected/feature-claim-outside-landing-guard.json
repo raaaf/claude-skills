@@ -1,0 +1,18 @@
+{
+  "fixture": "copy/feature-claim-outside-landing-guard/",
+  "must_find": [
+    {
+      "dimension": "copy",
+      "line": 6,
+      "matches": ["PDF", "automatic", "not real", "does not exist", "false claim", "not built"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "seo",
+      "reason": "lang/*.php strings are not indexed content; this is a false product claim, not an SEO defect"
+    }
+  ],
+  "notes": "Regression fixture for a product-claim guard test that only covers one directory. Models the 2026-08-13 incident: lang/de/tax.php promised an 'Hochrechnung' feature that does not exist, while LandingProductClaimsTest only scans resources/landing and never saw it. Here lang/en/reports.php claims automatic nightly PDF export, which CLAUDE.md explicitly says is NOT real, and the same CLAUDE.md excerpt states the guard test's blind spot outright. The point of the fixture is that a copy/content worker must catch a false feature claim regardless of which directory it lives in, not rely on the (incomplete) deterministic guard alone."
+}

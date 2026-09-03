@@ -92,11 +92,20 @@ print_raw() {
   printf '%s' "$1" | jq -c '.[]' 2>/dev/null | sed 's/^/  RAW /'
 }
 
+# Main checkout, same derivation as run-log.sh's project_path, so a run logged
+# from a linked worktree still counts for this repo (learning 2026-09-02).
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+case "$COMMON" in */.git) ROOT="${COMMON%/.git}" ;; esac
 
 # ---- Condition 1: gate-never-blocked ----
 # 'ship' or 'audit' logged at least GATE_MIN_RUNS gated runs, but every
 # non-empty .gate value was "passed". A gate that never fires may be dead.
+# /ship logs `passed-after-rerun` when the marker was missing/stale and the
+# audit had to run first: that IS the gate firing, and it counts as evidence
+# here because it is not the literal "passed" (learning 2026-08-28: 17 gated
+# runs, all "passed", while the gate had in fact blocked-and-rerun several
+# times without leaving a trace in the ledger).
 # Entries with no .gate logged at all (empty string) are not counted as
 # evidence either way. The minimum exists because the 08-26 calibration saw
 # this fire on 'ship' after exactly 2 gated runs, where "never blocked" is not
@@ -125,7 +134,7 @@ done
 # is likely broken") wrong: the real explanation each time was that commits had
 # landed here without anyone running an audit.
 if [ -n "$ROOT" ]; then
-  COMMITS=$(git -C "$ROOT" log --since="${DAYS} days ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
+  COMMITS=$(git log --since="${DAYS} days ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
   if [ "${COMMITS:-0}" -gt 0 ]; then
     RECENT=$(printf '%s' "$ALL_JSON" | jq -c --arg root "$ROOT" --argjson days "$DAYS" \
       '(now - ($days * 86400)) as $cutoff | [.[] | select(.project_path == $root) | select((.ts | try fromdateiso8601 catch 0) >= $cutoff)]')

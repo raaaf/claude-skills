@@ -12,6 +12,11 @@ Opt-in. Active only when a measurement command is declared:
 - line in `.claude/audit-guidelines.md`:  `perf-measure: <command>`
 
 The command MUST print exactly one line `PERF_METRIC=<number>` (lower = better).
+If the metric is a transfer size measured over HTTP, the command must request the
+encodings the real client gets (`curl -H 'Accept-Encoding: gzip, br' ...` and read
+`Content-Length`/`size_download` of the compressed response); a plain `curl` measures
+the uncompressed body and a Brotli-only server reads as a regression (issue #513,
+2026-08-21). The skill does not fix this for you: the command is project-owned.
 Examples:
 - Bundle budget:  `perf-measure: npx size-limit --json | jq -r '"PERF_METRIC=\([.[].size]|add)"'`
 - Build time:     `perf-measure: { /usr/bin/time -p npm run build; } 2>&1 | awk '/^real/{print "PERF_METRIC="$2}'`

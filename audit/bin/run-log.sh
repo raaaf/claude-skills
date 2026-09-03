@@ -18,6 +18,11 @@
 #
 # Derived fields (not passed in): ts, project, project_path, head, branch.
 # Outside a git repo these are empty strings, never a failure.
+# `project_path` is the MAIN checkout (via `--git-common-dir`), not the
+# worktree the run happened in: run-stats.sh keys its per-repo conditions on
+# this field, and a worktree-keyed ledger reported `ledger-stale` for a repo
+# that had been audited daily from a linked worktree (learning 2026-09-02).
+# `head`/`branch` still describe the worktree the run actually audited.
 #
 # --counts parses comma-separated k=v pairs into a nested JSON object.
 # A value matching an integer/decimal pattern becomes a JSON number, anything
@@ -139,9 +144,11 @@ TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null) || exit 0
 
 TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null)
 if [ -n "$TOPLEVEL" ]; then
+  COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  case "$COMMON" in */.git) TOPLEVEL="${COMMON%/.git}" ;; esac
   PROJECT=$(basename "$TOPLEVEL")
-  HEAD=$(git -C "$TOPLEVEL" rev-parse --short HEAD 2>/dev/null)
-  BRANCH=$(git -C "$TOPLEVEL" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  HEAD=$(git rev-parse --short HEAD 2>/dev/null)
+  BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 else
   PROJECT=""
   TOPLEVEL=""

@@ -1,0 +1,18 @@
+{
+  "fixture": "ux/advisory-landing-hero.html",
+  "must_find": [
+    {
+      "dimension": "ux",
+      "line": 14,
+      "matches": ["fallback", "wrong", "internal", "booking", "href", "mismatch"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "static markup, no form submission, no auth or data handling on this page"
+    }
+  ],
+  "notes": "Based on a 2026-06 incident: a landing CTA's hardcoded default href pointed at an internal tool URL that had been pasted in during a copy-paste session, while the correct destination sat unused in a nearby data attribute."
+}

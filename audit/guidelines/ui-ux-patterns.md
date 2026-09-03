@@ -165,3 +165,7 @@ list both view sets, compare the changed fragment across them. A change on one
 side without the twin → Important [UX], with all affected twin files named.
 Fix agents: check twins BEFORE reporting done (incident 2026-07: footer-link
 change landed in the HTML shell, 16 plain twins kept the old link).
+
+## Blocking Sheets and Gates Need a Way Out
+
+A full-screen sheet, interstitial or gate that blocks the app until a task is done (a parental math gate, a mandatory review, a consent step, an onboarding quiz) ships with an explicit cancel or back affordance by default: on iOS a `NavigationStack` with a toolbar Cancel item, on web a visible close control plus Escape. Only a gate whose whole purpose is to prevent leaving (a legal consent that must be answered) may omit it, with the reason documented at the view. A blocking view without an exit is an Important [UX] finding, and the fix is the standard toolbar affordance, not a redesign (2026-07-02).

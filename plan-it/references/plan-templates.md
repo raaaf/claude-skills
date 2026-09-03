@@ -10,6 +10,8 @@ File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
 **Executor rule:** The plan is written for an executor WITHOUT session context (a different model, a different session, or a human). Everything needed is in the file: exact paths, current state, conventions with an exemplar file, commands. "As discussed" is a violation.
 
+**Spelling self-check before v1 (German plans):** before showing v1, grep the plan file for `ae|oe|ue|ss` inside German words and replace with real umlauts (ä, ö, ü, ß). Do this on v1, not v2; the v1 draft has shipped in transliteration before and cost a round.
+
 ```markdown
 # {Title}
 

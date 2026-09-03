@@ -57,6 +57,7 @@ Every error message answers THREE questions:
 - **Form of address consistent (DE):** du OR Sie — never mixed within the app. The most common copy bug in German apps.
 - **Tone consistent:** an app that's casual during onboarding and sounds bureaucratic in error messages feels broken.
 - **Same action = same label:** if the save button on page A is called "Speichern", it isn't called "Uebernehmen" on page B.
+- **Feature and screen names are copy too.** A feature called "Challenge", "Streak" or "Boost" in an app whose tone principle rules out pressure and gamification contradicts the principle in the navigation itself. Check names against the project's stated tone (PRODUCT.md/DESIGN.md/CLAUDE.md) and report the conflict as a clear recommendation with a replacement name, not as a parked open point (2026-07-02).
 
 ## VI. Clarity Rules
 

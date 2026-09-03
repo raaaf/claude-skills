@@ -3,8 +3,8 @@ name: full-audit
 description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework (Laravel, Next.js, Nuxt, Django), batches large codebases, runs 4 collapsed workers per batch covering 12 dimensions (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), auto-fixes including Minor, runs a cross-reference pass, generates a manual test plan. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, ganzes projekt prüfen, komplette codebase auditen, gesamten code einmal durchchecken, neues projekt komplett prüfen, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 argument-hint: "[optional: directory scope]"
-model: opus
-effort: xhigh
+model: inherit
+effort: high
 allowed-tools:
   - Agent
   - Bash
@@ -79,8 +79,10 @@ bash "$AUDIT_BIN/run-log.sh" --start --skill full-audit
 
 # Eigene Scripts + persistenter Goal-Loop-State (Format/Resume: references/state-file.md)
 FULL_AUDIT_BIN="${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/full-audit}/bin"
-STATE_FILE="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-state.md"
-BATCH_DIR="$(git rev-parse --show-toplevel)/.claude/audits/full-audit-batches"
+# Store root = main checkout (--git-common-dir), shared across linked worktrees; see audit/SKILL.md "Write audit log".
+AUDIT_STORE_ROOT=$(git rev-parse --path-format=absolute --git-common-dir); case "$AUDIT_STORE_ROOT" in */.git) AUDIT_STORE_ROOT="${AUDIT_STORE_ROOT%/.git}";; *) AUDIT_STORE_ROOT=$(git rev-parse --show-toplevel);; esac
+STATE_FILE="$AUDIT_STORE_ROOT/.claude/audits/full-audit-state.md"
+BATCH_DIR="$AUDIT_STORE_ROOT/.claude/audits/full-audit-batches"
 
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Full-Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 
@@ -172,7 +174,8 @@ collection bash has already validated the FULL scope, which is correct — plaus
 collection, the cache only shrinks what gets re-audited):**
 
 ```bash
-if [ "${FULL_AUDIT_FORCE:-0}" != "1" ] && [ -f "$(git rev-parse --show-toplevel)/.claude/audits/cache.json" ]; then
+AUDIT_STORE_ROOT=$(git rev-parse --path-format=absolute --git-common-dir); case "$AUDIT_STORE_ROOT" in */.git) AUDIT_STORE_ROOT="${AUDIT_STORE_ROOT%/.git}";; *) AUDIT_STORE_ROOT=$(git rev-parse --show-toplevel);; esac
+if [ "${FULL_AUDIT_FORCE:-0}" != "1" ] && [ -f "$AUDIT_STORE_ROOT/.claude/audits/cache.json" ]; then
   # Paths in the list are repo-root-relative (the collection bash cd'd to PROJECT_ROOT) — exactly
   # what cache-check.sh resolves against. A single xargs invocation is expected; if the list is so
   # large that xargs splits it, union the repeated CACHED_FILES/CACHED_FINDINGS blocks.
@@ -504,7 +507,7 @@ Detail in `references/audit-log-and-issues.md`. Briefly:
 
 **Skip when `SKIP_LEARNING=1`** (low effort). Go directly to wrap-up.
 
-**First, the run-ledger check (single source of truth, same as /audit):** read `../audit/references/learning-phase.md` "Step 0" and execute it against the just-written full-audit log (`$AUDIT_BIN` already resolved in Phase 0).
+**First, the run-ledger check (single source of truth, same as /audit):** read `../audit/references/learning-phase.md` "Step 0" AND "Step 0.5" (recurrence-feed verification) and execute both against the just-written full-audit log (`$AUDIT_BIN` already resolved in Phase 0).
 
 ```
 Agent(
@@ -512,8 +515,7 @@ Agent(
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des Audit-Logs}
     AUDIT_TYPE=full-audit",
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: audit-learning-agent,
   run_in_background: false
 )
 ```

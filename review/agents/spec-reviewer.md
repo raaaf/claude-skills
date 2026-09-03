@@ -1,6 +1,7 @@
 ---
-subagent_type: general-purpose
+subagent_type: review-spec-agent
 model: sonnet
+effort: medium
 maxTurns: 8
 ---
 

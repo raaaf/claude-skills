@@ -43,6 +43,17 @@ resolve_default_branch() {
 resolve_base_ref() {
   local DEFAULT_BRANCH="$1"
   local BASE_REF=""
+  # AUDIT_BASE_REF lets a caller that already substituted the diff base
+  # (e.g. because the branch has no upstream and the empty-diff fallback
+  # picked the wrong commit) pass its own answer through instead of every
+  # helper re-deriving origin/main independently. Verified so a stale or
+  # typo'd override does not silently produce an empty BASE_REF; falls
+  # through to the normal resolution order when unset, empty, or invalid.
+  # Manually substituted 5 audits in a row before this override existed.
+  if [ -n "${AUDIT_BASE_REF:-}" ] && git rev-parse --verify "$AUDIT_BASE_REF" >/dev/null 2>&1; then
+    printf '%s' "$AUDIT_BASE_REF"
+    return
+  fi
   if git rev-parse --verify "refs/remotes/origin/$DEFAULT_BRANCH" >/dev/null 2>&1; then
     BASE_REF=$(git merge-base "origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || true)
   fi
@@ -78,6 +89,24 @@ collect_changed_files() {
     git diff --name-only HEAD 2>/dev/null
     git ls-files --others --exclude-standard 2>/dev/null
   } | sort -u
+}
+
+# The root under which the per-repo audit store lives (.claude/audits: logs,
+# learning-log.md, patterns.json, suppressions.json, run markers). Derived from
+# `--git-common-dir`, not `--show-toplevel`: in a linked worktree the toplevel
+# is the worktree's own root, so every store would fork per worktree
+# (reproduced 2026-08-21, patterns.json; 2026-09-03, learning-log and
+# suppressions invisible from a worktree). The common git dir is shared by
+# every worktree of a repo. Bare or unusual layouts fall back to the toplevel.
+# Tracked project files (CLAUDE.md, .claude/audit-guidelines.md) are NOT
+# resolved through this: they legitimately differ per worktree/branch.
+audit_store_root() {
+  local common
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  case "$common" in
+    */.git) printf '%s' "${common%/.git}" ;;
+    *) git rev-parse --show-toplevel 2>/dev/null ;;
+  esac
 }
 
 # Canonical "is this a frontend file" extension pattern (grep -E form).

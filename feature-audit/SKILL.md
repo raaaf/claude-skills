@@ -11,8 +11,8 @@ description: |
 when_to_use: "/feature-audit, build a feature test matrix, verify every feature has a test, test coverage bring-up, what does this repo actually do, feature audit"
 argument-hint: "[optional: scope dir or feature filter]"
 arguments: [scope]
-model: opus
-effort: xhigh
+model: inherit
+effort: high
 allowed-tools:
   - Read
   - Write
@@ -54,7 +54,8 @@ survives interruption; that is what makes stopping early unnecessary.
 Count candidate source files. If the repo is large (rough heuristic: > 150 source files and no
 `$scope`), AskUserQuestion before starting: **whole repo** vs **name a subdir/area**. A full matrix
 over a large repo will not finish inside the turn budget, so scope it or accept a partial, resumable
-run. State which you are doing.
+run. State which you are doing. Unattended (`/loop`, nobody can answer): do not ask, default to the
+partial, resumable run over the whole repo and say so in the header.
 
 ### 0.2 FEATURE_AUDIT.md
 
@@ -88,6 +89,8 @@ should approve):
 - **Install minimal runner:** for the stack (Vite/JS: Vitest + jsdom; else the standard runner),
   wire it into config, record the test command in the header.
 - **Skip, no runner:** set `test_exit=none` and note in the header why a runner was not added.
+- **Unattended (`/loop`, nobody can answer):** never install; take **Skip, no runner** and record the
+  reason in the header, so the run continues instead of stalling on the question.
 
 `test_exit=none` is an escape hatch, not a shortcut: only acceptable when a runner is genuinely
 impossible or the user declined, with the reason documented in the header.
@@ -216,5 +219,5 @@ Stop (do not loop forever):
 - **50 turns** total.
 
 On either stop, before handing back, still run the holistic review on whatever is done so far
-(Phase 5, Gaps especially), write/update `FEATURE_REVIEW.md`, then print the Final digest. A stopped
+(Work order item 5, Gaps especially), write/update `FEATURE_REVIEW.md`, then print the Final digest. A stopped
 run must still leave you the matrix, a partial review, and the digest, not a dead loop.

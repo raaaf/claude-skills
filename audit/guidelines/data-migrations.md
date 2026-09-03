@@ -42,6 +42,7 @@ Rules for database migrations: destructive operations, locking, rollback, deploy
 - **Foreign key on existing data:** clean up orphans BEFORE the constraint (otherwise the migration fails in prod, but not locally with clean test data).
 - **Adding a unique constraint after the fact:** the duplicate check + cleanup strategy must run BEFORE the constraint.
 - **Extend enum/status columns instead of rebuilding them:** adding new values is safe, removing values needs a data check.
+- **Changing an existing column (type, length, nullability, constraint) needs its own upgrade migration.** Editing the original `create` migration only changes what a fresh install gets; every deployed database keeps the old definition. Both files change: the create migration for fresh installs (optional) and a new migration that alters the column in place (mandatory). A diff that edits `Schema::create` for an already-shipped table without a companion `Schema::table` migration -> Important (2026-06-11).
 
 ## V. Deploy Order (Expand-Contract)
 

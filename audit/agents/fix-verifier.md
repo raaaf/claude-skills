@@ -1,8 +1,8 @@
 # Fix-Verifier-Agent
 
-- **subagent_type:** `general-purpose` (needs Bash: verifiers must be able to RUN the named test suites themselves instead of static-only review; `code-reviewer` lacks Bash and forced the orchestrator to re-run tests after every verdict — learning log 2026-07-09)
+- **subagent_type:** `audit-fix-verifier` (needs Bash: verifiers must be able to RUN the named test suites themselves instead of static-only review; `code-reviewer` lacks Bash and forced the orchestrator to re-run tests after every verdict — learning log 2026-07-09)
 - **model:** `sonnet`
-- **maxTurns:** `5`
+- **maxTurns:** `12` (raised from 5 on 2026-09-03: Read + locked test run + the MANDATORY checks 3b-3e and 4 did not fit in 5 turns, verifiers hit the ceiling without a verdict)
 
 ## Purpose
 
@@ -30,8 +30,10 @@ If your verification touches a credential, token, or `.env` value, `DETAILS` may
 
 ## Process
 
+You share ONE working tree with the fix agents and the orchestrator. The worktree-wide git ban from `fix-agent.md` applies to you unchanged: no `git stash` (any form), `git checkout -- <path>`, `git restore`, `git reset`, `git clean`, `git revert`. The pre-fix version of a file is `git show HEAD:<path>`. A verifier ran a stash on 2026-08-27 and erased sibling work; the rule is role-independent.
+
 1. Read `FIX_FILE` in its current state (Read tool).
-1b. If the assignment names a test command or the repo has an obvious diff-scoped one, RUN it via Bash and include the result in DETAILS; a `keep` backed by a green run beats a static-only `keep`. Skip only when no runnable check exists, and say so in DETAILS. **ALWAYS wrap the test command in the test-run lock:** `bash "{AUDIT_BIN}/test-lock.sh" {command}` (`AUDIT_BIN` comes from the briefing). Parallel verifiers hitting the same test DB corrupt each other's runs; a lock timeout (exit 75) → report as DETAILS, do not run unlocked.
+1b. If the assignment names a test command or the repo has an obvious diff-scoped one, RUN it via Bash and include the result in DETAILS; a `keep` backed by a green run beats a static-only `keep`. Skip only when no runnable check exists, and say so in DETAILS. If the command exists but cannot run in YOUR shell for environment reasons (no `APP_KEY`/`.env`, sandbox denial, DB role error, missing binary), the first line of DETAILS is `VERIFICATION: static-only ({reason})`, verbatim, and `keep` is provisional: the orchestrator re-runs the test itself before accepting the verdict (see `fix-loop.md` Step E.5). Never fabricate env values to get the run going, and never present a read-only review as if the tests had passed (incident 2026-08-31). **ALWAYS wrap the test command in the test-run lock:** `bash "{AUDIT_BIN}/test-lock.sh" {command}` (`AUDIT_BIN` comes from the briefing). Parallel verifiers hitting the same test DB corrupt each other's runs; a lock timeout (exit 75) → report as DETAILS, do not run unlocked.
 2. Check: is the original finding still there?
 3. Check: did the diff introduce new problems? Specifically:
    - Was a method signature changed that could break other callers? (Grep for callers)

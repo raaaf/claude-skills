@@ -1,0 +1,18 @@
+{
+  "fixture": "a11y/queue-row-delete-action.swift",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 30,
+      "matches": ["accessibilityActions", "hover", "VoiceOver", "keyboard", "not reachable", "equivalent"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "one row view, no loops or heavy work"
+    }
+  ],
+  "notes": "Distinct from the existing hover-only-failure-reason fixture (a .help() tooltip hiding text): this one hides an entire destructive action behind .onHover with no accessibilityActions or always-visible control, seen in a 2026-08 review of a macOS list view."
+}

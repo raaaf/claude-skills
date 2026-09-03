@@ -241,6 +241,14 @@ Color contrast is a hard requirement, not a design preference. Insufficient cont
 
 Test with a color blindness simulator. Roughly 8% of men have some form of color vision deficiency — your interface will be used by many of them.
 
+**Tertiary and decorative color roles never carry load-bearing text.** A token named for chrome (`tertiary`, `muted`, `placeholder`, `hairline`) is defined for contrast below text thresholds; using it on labels, values or links fails 4.5:1 by design. Selected/active surfaces use the semantic increase-contrast token, not a lighter tint of the brand color. Third occurrence of this family on 2026-07-24; the token layer exists, the bypass is the finding.
+
+**Current page or item is marked semantically, not by color.** The active navigation link carries `aria-current="page"` (`aria-current="true"`/`step` for other current items), not only an accent class; WCAG 1.4.1. Slipped through two audits on a static site (2026-08-29).
+
+### Custom range sliders
+
+A custom slider (`role="slider"`, or a styled `<input type="range">` with its own thumb/track) is checked on four points: `aria-valuenow`/`aria-valuemin`/`aria-valuemax` update on every change; `aria-valuetext` is set on `update()` when the raw number is not what the user hears ("3 of 5 stars", "12 kg"); the accessible name comes from a real `aria-labelledby`/`aria-label`, not from the tooltip; and the visual value label is `aria-hidden="true"` when a live region already announces it, otherwise the value is read twice (2026-07-02).
+
 ## VI. Images & Media
 
 **Content images need descriptive alt text** that conveys the image's purpose in context, not just what it depicts:

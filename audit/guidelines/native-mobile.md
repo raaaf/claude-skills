@@ -240,3 +240,23 @@ Order of questions, and it is not negotiable: **does it run at all** before **is
 - Same trap with a transition on a view that is inserted and removed in one pass, and with `.onAppear` setting the state it is supposed to animate from.
 
 Confidence: animation whose start state cannot be observed in a rendered frame -> Important (it is dead code with a cost). A finding that proposes only new VALUES for an animation, with no statement that it currently renders -> the reviewer sends it back rather than fixing it.
+
+## XVI. SwiftUI Interaction Rules (Hover, Press, Gestures)
+
+- **Hover-only actions need an equivalent path.** A control that only becomes visible or usable under `.onHover` (`.opacity(isHovering ? 1 : 0)`, hover-gated buttons in list rows, menubar UIs) is unreachable for VoiceOver and keyboard users. Required: `.accessibilityActions { ... }` exposing the same action, or an always-visible/keyboard path. This is the standard fix, not a redesign. Confidence: hover-gated action without an equivalent path -> Critical for macOS list/menubar UIs (2026-06-11).
+- **No `DragGesture(minimumDistance: 0)` on a child of a `ScrollView` for press feedback.** It wins gesture priority over the ancestor's scrolling, and its `.onEnded` fires wherever the finger lifts. Use `Button` with a custom `ButtonStyle` reading `configuration.isPressed`: it cancels when the finger slides away and coexists with scrolling (2026-08-10, written by a fix agent).
+- **Fixed frames next to text under Dynamic Type (mandatory check, 3rd occurrence 2026-08-03).** A fixed `frame(width:height:)`, circle or badge sized in points next to text must be `@ScaledMetric` or intrinsic; at accessibility text sizes the text overflows or the badge shrinks relative to it. Confidence: fixed point dimension on a text-bearing or text-adjacent element in a view that uses Dynamic Type -> Important, every time, not an observation.
+
+## XVII. List Rows and Observed Objects
+
+`@ObservedObject`/`@StateObject` of a parent view model inside a `List`/`LazyVStack` row re-renders every row on any published change of the parent. Rows take value props (`let`) and, when they need actions, closures; the observation stays in the parent. Confidence: parent-object observation in a row of a list with more than a handful of items -> Important (2026-06-11).
+
+## XVIII. File-System Watchers and Folder Monitors (macOS)
+
+FSEvents/`DispatchSource` watchers are concurrency code. Check explicitly, because two audits in a row missed it (2026-06-11, 9 watcher fixes):
+- the per-file key is the full `url.path`, unique across all watched folders, not the file name;
+- debounce tasks do not overlap: a new event for the same key cancels the pending task before scheduling the next;
+- `stat`/metadata reads are coalesced per event batch, not repeated per handler;
+- a stability guard (size/mtime unchanged across two ticks) runs before processing a file that may still be written;
+- every `catch` sets a user-visible signal (last activity, error state); a swallowed watcher error looks like "nothing happened".
+Confidence: overlapping debounce tasks or a non-path key -> Important; swallowed errors -> Minor.

@@ -1,6 +1,6 @@
 # Challenge: Design
 
-- **subagent_type:** `general-purpose`
+- **subagent_type:** `plan-challenger` (dispatched via the shared template in references/dispatch-templates.md)
 - **model:** `sonnet`
 - **maxTurns:** `5`
 

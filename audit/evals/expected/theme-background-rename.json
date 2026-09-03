@@ -1,0 +1,18 @@
+{
+  "fixture": "quality/theme-background-rename/",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 17,
+      "matches": ["stale", "hard-coded", "token", "fixture", "snapshot", "literal"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "a color rename with no contrast change and no markup involved"
+    }
+  ],
+  "notes": "Modeled on a 2026-08 review: a design-token rename (linen to parchment) landed cleanly in the theme file, but a snapshot test's first re-record after the change hard-coded the old literal instead of referencing the token, silently locking in the stale color as the new expected value."
+}

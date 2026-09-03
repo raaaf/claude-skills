@@ -5,7 +5,8 @@ Detail for Phase 4 (write audit log and create GitHub issues).
 ## Audit Log Format
 
 ```bash
-AUDIT_DIR="$(git rev-parse --show-toplevel)/.claude/audits"
+AUDIT_STORE_ROOT=$(git rev-parse --path-format=absolute --git-common-dir); case "$AUDIT_STORE_ROOT" in */.git) AUDIT_STORE_ROOT="${AUDIT_STORE_ROOT%/.git}";; *) AUDIT_STORE_ROOT=$(git rev-parse --show-toplevel);; esac
+AUDIT_DIR="$AUDIT_STORE_ROOT/.claude/audits"
 mkdir -p "$AUDIT_DIR"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-full-audit.md"
 ```

@@ -1,6 +1,6 @@
 # Subagent 11: Docs Sync & Style
 
-- **subagent_type:** `general-purpose`
+- **subagent_type:** `audit-content-worker` (this module is read BY w4-content.md, never dispatched on its own)
 - **model:** `sonnet`
 - **maxTurns:** `10`
 
@@ -20,6 +20,7 @@ Keep project documentation current and consistent in style. Check `README.md`, `
 - New top-level dependencies in `package.json`/`composer.json`/`pyproject.toml` → stack section in CLAUDE.md current?
 - Do install/run commands in the README still work (no outdated `npm run dev` if the script was deleted)?
 - Do referenced paths/files still exist?
+- **Design token, palette or brand value changed?** Then test fixtures and snapshot harnesses are drift sites too, not only `DESIGN.md`/`CLAUDE.md`: grep the OLD literal (hex, color name, font name) under `tests/`, `__snapshots__/`, `Snapshots/` and fixture directories. A harness that hard-codes the pre-change value re-records the stale value as the new baseline on the first re-run (2026-09-02).
 - **Anything named, numbered or listed changed? Then every place that repeats it is a drift candidate (3/3 audits hit this).** A new, renamed or removed skill, feature, phase, step, agent file or script never lives in one place. Walk the repeat sites explicitly instead of trusting that the diff touched them:
   - `CLAUDE.md` tables: Commands, "Migrated so far" lists, skill roster, effort-level table, gotchas that name a count ("all N agent files")
   - `README.md`: counts, feature lists, command examples, pipeline diagrams, runtime/version claims

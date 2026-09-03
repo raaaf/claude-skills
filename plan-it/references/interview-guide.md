@@ -17,6 +17,9 @@ What to scan, depending on the topic:
 | Time/trigger-based concept (daily digest, recap, reminder) | Check WHEN the relevant data generation actually happens in code (BGTask/cron/gate timing) before interview round 1 — the trigger moment usually decides the design. |
 | Field extension / new model attribute | Grep **every** form variant that writes the model, not just the one named in the request (e.g. invoice + quote + recurring). One missed variant is a silent data gap. |
 | Re-implementing or relocating something that once existed | `git log -S`/`git blame` the old spot first: find out why it was removed or moved before drafting v1. A removed feature usually died for a reason the plan has to answer. |
+| "Do we already have X?" (assets, settings, uploads, flags) | A service/controller grep is not enough. Check the settings/config model fields directly (`php artisan model:show Setting`, `model:show User`, migration grep on the column name). Evidence: `signature_path` existed on the model and stayed undetected until interview round 3. |
+
+Every fact in the map is verified against the code or schema before it is shown, never quoted from memory.
 
 **Output format:** Short codebase map (3-8 bullet points) as a factual basis before the questions:
 
@@ -40,6 +43,15 @@ Examples:
 - "Who is the user here? → My assessment: Admin — because the route sits behind auth and no onboarding flow exists."
 - "How should errors be handled? → My assessment: Toast notification, since that's the existing pattern in the app."
 - "Do we need a migration? → My assessment: No — the new field is optional and has a default."
+
+## Step A Addendum: Comparing Two Systems
+
+When the question compares two systems, tools, or data sources ("why does A show X and B show Y", "A or B"), ask first whether BOTH have a future before analyzing the difference. A source that is being shut down or replaced turns the whole comparison moot. Evidence: two interview rounds spent on a numeric discrepancy whose second source was being switched off two weeks later.
+
+```
+Do both {A} and {B} stay around, or is one of them going away?
+→ My assessment: {based on cutover plans, migration commands, deprecation markers in the codebase}
+```
 
 ## Mandatory Questions (Red Flags)
 

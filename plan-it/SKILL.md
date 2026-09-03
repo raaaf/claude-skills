@@ -3,8 +3,8 @@ name: plan-it
 description: "Iterative planning sparring partner for features, refactors, and implementation ideas. Interviews user with targeted questions (each with a recommended answer), writes a structured plan to docs/plans/, then challenges it from 5 perspectives (product, architecture, design, risk, simplicity) via parallel subagents. Use when the user runs /plan-it, says 'plan a feature', 'think through an implementation', 'before I build', or wants design/scope review before coding. NOT for code review or post-implementation audit — use /audit or /improve instead."
 when_to_use: "/plan-it, lass uns das erst durchdenken, wie gehen wir das an, feature durchplanen bevor ich baue, konzept vor dem coden, plan bevor ich loslege, plan a feature, think through an implementation, before I build, planning before coding, implementation plan, feature plan"
 argument-hint: "[idea or path to existing plan]"
-model: opus
-effort: xhigh
+model: inherit
+effort: high
 allowed-tools:
   - Agent
   - Bash
@@ -225,6 +225,10 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
    only when it contradicts a decision the user made explicitly in the Phase 1 interview, or when it
    lies outside the plan's scope. Report one line per concern (incorporated / dropped + reason).
    Convergent concerns are never dropped.
+   **Exception, scope cuts:** a concern that says "drop X" or "defer X to a later phase" is NOT
+   applied silently, even when convergent. List it under "Zur Diskussion" with the hook the agents
+   gave, and let the user decide. Users have overruled convergent cut/defer recommendations three
+   plans in a row; applying them unasked costs a round.
 
 ### Finalize the Plan
 
@@ -296,8 +300,7 @@ Agent(
   prompt: "Read agents/learning-agent.md and execute the process.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={content of the plan log just written}",
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: plan-learning-agent,
   run_in_background: false
 )
 ```

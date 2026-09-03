@@ -1,6 +1,6 @@
 # Learning Agent
 
-- **subagent_type:** `general-purpose`
+- **subagent_type:** `audit-learning-agent`
 - **model:** `sonnet`
 - **maxTurns:** `10`
 

@@ -3,7 +3,7 @@ name: audit
 description: "Pre-push code audit. Routes the diff to 4 collapsed workers covering 12 dimensions (architecture incl. migrations and observability, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy), runs secret/lockfile/i18n pre-checks, auto-fixes via parallel fix-agents with peer-review verification, loops until clean, generates a manual test plan, then allows git push. An argument scopes to selected dimensions ('/audit security', '/audit frontend', '/audit ?' for a multi-select prompt) — partial audits fix as usual but never write the push marker. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 argument-hint: "[optional: dimensions (security | performance,a11y | backend | frontend | design | ?) or scope hint]"
-model: opus
+model: inherit
 effort: high
 allowed-tools:
   - Agent
@@ -122,6 +122,7 @@ bash "$AUDIT_BIN/check-i18n-keys.sh"
 bash "$AUDIT_BIN/check-duplicate-array-keys.sh"
 bash "$AUDIT_BIN/check-number-format-locale.sh"
 bash "$AUDIT_BIN/check-swift-deprecations.sh"
+bash "$AUDIT_BIN/check-token-contrast.sh"
 bash "$AUDIT_BIN/check-test-count-drift.sh"
 bash "$AUDIT_BIN/check-docs-path-drift.sh" "$BASE_REF"
 bash "$AUDIT_BIN/check-docs-claims.sh"
@@ -165,7 +166,7 @@ Pass `PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `FRAMEWORK`, `SOURCE_DIRS`, `GUIDE
 
 Maximum **{MAX_RUNDEN} rounds** (from Phase 0.5). Convergence check: if `Critical + Important` of the current round does NOT decrease AND `RUNDE >= 2`, abort the loop with `NO_CONVERGENCE`.
 
-Initialize: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `FINDINGS_VORHERIGE_RUNDE = null`.
+Initialize: `RUNDE = 1`, `BEREITS_GEFIXT = []`, `BEREITS_VERWORFEN = []`, `FINDINGS_VORHERIGE_RUNDE = null`.
 
 ### Procedure AUDIT_RUNDE
 
@@ -220,8 +221,7 @@ When opted in (round 1 only; from round 2 reuse `TRIAGE_RESULT`):
 
 ```
 Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: audit-triage,
   prompt: "Read agents/0-triage.md and run the triage.
     UNIFIED_DIFF: {UNIFIED_DIFF}
     FRONTEND_DATEIEN: {FRONTEND_DATEIEN}
@@ -262,7 +262,9 @@ Then write the wave constants ONCE to `{AUDIT_TMP}/wave-{RUNDE}-shared.md` — *
 and the literal path printed in Phase 1, never via a bash heredoc** (the `$SUPPRESSIONS`-style
 variables are dead in a later bash block; the orchestrator holds their values in context and writes
 them out itself). Content: `WAVE_HEAD`, `DATEILISTE`, `GUIDELINE_MATCHES`, `SUPPRESSIONS`,
-`PROJECT_GUIDELINES`, `PROJECT_CONTEXT`, `DECIDED_TRADEOFFS`, `BEREITS_GEFIXT`, each under a
+`PROJECT_GUIDELINES`, `PROJECT_CONTEXT`, `DECIDED_TRADEOFFS`, `BEREITS_GEFIXT`, `BEREITS_VERWORFEN`
+(findings refuted or discarded in earlier rounds, each with its reason, so workers treat them as
+decided and do not re-report them), each under a
 `KEY:` heading. Workers read it themselves (contract in `agents/prompt-template.md`); a 12-worker
 wave that inlines these pays for the same block twelve times in the orchestrator's own context.
 If Phase 1 printed the `AUDIT_TMP` WARN, skip the file and inline the constants as before.
@@ -331,7 +333,7 @@ Insert own findings as Important.
 
 Output format:
 ```
-## Audit Round {RUNDE}/2 — X files, Y commits since origin/{branch}
+## Audit Round {RUNDE}/{MAX_RUNDEN} — X files, Y commits since origin/{branch}
 
 ### Critical
 - [Critical][Dimension] file:line — Description
@@ -418,8 +420,20 @@ On the Phase 1 `AUDIT_TMP` WARN: no re-claim needed, the run-scoped marker is st
 
 ### Write audit log (after loop ends)
 
+Resolve the audit dir the same way `bin/patterns-store.sh` resolves its store: via `--git-common-dir`,
+not `--show-toplevel`. In a linked worktree, `--show-toplevel` points at the worktree's own root, so
+the log, `learning-log.md` and `patterns.json` would land in three different places depending on
+which worktree the run happened to start in — reproduced 2026-08-21 (log wrote to `open-issues/.claude/audits/`
+while history and `patterns.json` live one directory up in the main checkout). `--git-common-dir` is
+shared across every worktree of the same repo, so every audit run agrees on one location:
+
 ```bash
-AUDIT_DIR="$(git rev-parse --show-toplevel)/.claude/audits"
+GIT_COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir)"
+case "$GIT_COMMON_DIR" in
+  */.git) PROJECT_ROOT="${GIT_COMMON_DIR%/.git}" ;;
+  *) PROJECT_ROOT="$(git rev-parse --show-toplevel)" ;;  # bare/unusual git-dir layout, fall back
+esac
+AUDIT_DIR="$PROJECT_ROOT/.claude/audits"
 mkdir -p "$AUDIT_DIR"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
 ```

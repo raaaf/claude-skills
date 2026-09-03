@@ -1,0 +1,20 @@
+<!--
+  Marketing site footer. The nav repeats the primary sections and highlights
+  whichever page the visitor is on.
+-->
+<footer class="site-footer">
+  <nav aria-label="Footer">
+    <ul class="footer-nav">
+      <li><a href="/">Home</a></li>
+      <li><a href="/pricing">Pricing</a></li>
+      <!-- BUG: this is the page the visitor is currently on. The only signal
+           is the "text-accent" color utility class; there is no
+           aria-current attribute, so screen reader and high-contrast-mode
+           users get no indication which nav item is the current page. -->
+      <li><a href="/docs" class="text-accent">Docs</a></li>
+      <li><a href="/blog">Blog</a></li>
+      <li><a href="/contact">Contact</a></li>
+    </ul>
+  </nav>
+  <p class="copyright">&copy; 2026 Acme Inc.</p>
+</footer>

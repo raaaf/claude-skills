@@ -7,13 +7,12 @@ Three checks that run once at the start of a full audit, before any dimension wo
 Identical to `/audit` Phase 0. Check whether unprocessed learning suggestions from earlier audits are still open:
 
 ```bash
-LOG="$(git rev-parse --show-toplevel)/.claude/audits/learning-log.md"
+AUDIT_STORE_ROOT=$(git rev-parse --path-format=absolute --git-common-dir); case "$AUDIT_STORE_ROOT" in */.git) AUDIT_STORE_ROOT="${AUDIT_STORE_ROOT%/.git}";; *) AUDIT_STORE_ROOT=$(git rev-parse --show-toplevel);; esac
+LOG="$AUDIT_STORE_ROOT/.claude/audits/learning-log.md"
 [ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
 ```
 
-If `>= 1`: implement the open suggestions without asking, then continue Full-Audit with Phase 0.5. List in one line which ones were applied. Changes go to `audit/guidelines/*.md` or `audit/agents/*.md` (these are the GLOBAL skill files affecting all projects). **IMPORTANT — edit in the source repo:** `~/.claude/skills/*` can be a sync target (symlink or unpacked `.skill` bundle) whose content gets overwritten. Before the first edit, resolve the source: check `readlink` or find the skill source repo (e.g. `~/Local Sites/claude-skills`) and edit THERE. Edits in the unpacked copy are lost on the next sync. After implementing: change `[ ]` to `[x]` in learning-log.md.
-
-Leave a suggestion open (and name it) only when implementing it would need a decision the log does not contain. Do not put the list up for selection.
+If `>= 1`: apply the open suggestions exactly as `../audit/references/pre-flight-checks.md` "Learning Backlog Check" prescribes (single source of truth: source-repo resolution, the unwritable-source diff fallback, the auto-commit in the skill repo, the tick format), then continue Full-Audit with Phase 0.5. Read that file now; do not work from memory of it. This section deliberately does not repeat the procedure, a stale copy of it here sent three runs to the sync target instead of the source repo.
 
 If `0`: continue without asking.
 

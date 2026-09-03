@@ -1,0 +1,18 @@
+{
+  "fixture": "docs/stale-numeric-claim/",
+  "must_find": [
+    {
+      "dimension": "docs",
+      "line": 8,
+      "matches": ["8", "9", "curated", "stale", "drift", "count"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "code_quality",
+      "reason": "accounts.json is plain static data, nothing wrong with the file itself; the defect is the stale claim in README.md"
+    }
+  ],
+  "notes": "Regression fixture for numeric-claim drift in prose docs, distinct from test-count-drift (which check-test-count-drift.sh covers mechanically): README.md claims '8 are curated' but accounts.json has 9 entries with curated: true, and the catalogue itself has 12 entries, not the 40 the fixture originally modelled after the real 2026-07 incident (CLAUDE.md said '53 von 663', real 54, later 61). check-docs-claims.sh does not check numbers at all, only path/script existence, so this class of drift is currently only catchable by a worker actually reading and cross-checking the doc against the data file — there is no deterministic check for it yet."
+}

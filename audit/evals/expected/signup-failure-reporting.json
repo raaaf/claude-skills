@@ -1,0 +1,18 @@
+{
+  "fixture": "security/signup-failure-reporting.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 35,
+      "matches": ["leak", "third party", "detail", "forward", "error text", "telemetry", "sink"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "no perf concern, a single reporting call"
+    }
+  ],
+  "notes": "Swift audit, 2026-08: sign-up failure reporting forwarded internal guard reasons and raw provider error text into Sentry extras, leaking implementation detail to a third-party sink."
+}

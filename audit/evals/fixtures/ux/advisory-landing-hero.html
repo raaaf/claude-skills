@@ -1,0 +1,17 @@
+<!--
+  Landing page hero. The booking link is normally filled in by the CMS from
+  the "cta_url" field; this markup carries a hardcoded default for local
+  preview and for the rare case the CMS field is empty.
+-->
+<section class="hero" data-cta-url="https://cal.example.com/advisory/intro">
+  <h1>Grow with a 30-minute strategy call</h1>
+  <p>Talk through your roadmap with our team, no pitch attached.</p>
+
+  <!-- BUG: the href does not match data-cta-url above. It points at the
+       internal time-tracking tool instead of the booking page, so every
+       visitor who clicks lands on a login screen for a tool they have
+       never heard of. -->
+  <a class="button button--primary" href="https://zeit.example.com/">
+    Book a call
+  </a>
+</section>

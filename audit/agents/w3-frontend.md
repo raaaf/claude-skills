@@ -26,6 +26,15 @@ merged rubric sees the interplay and reads each file once. Collapse rationale + 
 3. Read each template/style/component file ONCE, check all active dimensions in that pass.
 4. Report per `prompt-template.md`, each finding tagged with exactly one dimension.
 
+**Severity anchor.** Critical only for data loss or an exploit path. A widget that cannot be
+operated, is mislabeled, or misreads to assistive tech is Important, never Critical (two
+down-gradings in two runs came from this exact inflation).
+
+**Alpine/JS modules in scope:** check the client-server state sync explicitly, not only markup and
+ARIA. Trace every `$wire.set` / `$wire.call` path on select, delete and overwrite: does the server
+property end up holding what the user sees? A visually correct widget whose selection never reaches
+Livewire is a data-loss finding, not a polish note.
+
 **design-audit mode:** when the briefing says the run is /design-audit, apply the visual-only
 scope from that skill (visual a11y only — no ARIA/semantics/forms; no copy) and its
 Defect/Elevation split. The briefing carries those instructions; this file does not repeat them.

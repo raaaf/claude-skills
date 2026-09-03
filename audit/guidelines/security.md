@@ -502,3 +502,25 @@ stopped at the first hit:
 
 Confidence: any one of the three missing on a health/safety or destructive-action gate -> Critical.
 On a reversible convenience gate -> Important.
+
+## XIX. Host and Origin Allowlists: Suffix Checks Need the Dot
+
+`host.hasSuffix("github.com")`, `endsWith(".com")`-style checks without a leading dot accept lookalike hosts: `evilgithub.com` ends with `github.com`. Same for `startsWith` on origins (`https://example.com.attacker.net`). The check is either equality or a dotted-suffix comparison:
+
+```swift
+let ok = host == allowed || host.hasSuffix("." + allowed)
+```
+
+Applies to OAuth callback hosts, deep-link handlers, CSP/CORS origin lists, webhook source checks. Confidence: a trust decision (auth, token exchange, deep-link routing) on a dotless suffix match -> Important; with a token or credential flowing on the match -> Critical (2026-06-11).
+
+## XX. Every Livewire Action Is a Public Endpoint
+
+A Livewire/Filament action method is callable by any client that can render the component, whatever the Blade template shows. Every action that reads or mutates something the viewer does not own starts with the authorization check (`$this->authorize(...)`, `ensureAuthorized()`, `abort_unless(...)`) as its FIRST statement, before any query. A Blade `@if`/`@can` around the button is display logic, not a guard; and the reverse mismatch, a button shown to users the server rejects, is a UX defect worth its own finding (2026-08-27: a propose button was visible to series members whose action the server silently refused). Confidence: mutating action without a first-line authorization check -> Critical; read-only action -> Important; visible control the server rejects -> Important (ux).
+
+## XXI. New Telemetry, Logging or Error-Tracking Sink: Inventory the Forwarded Fields
+
+Wiring a sink (Sentry, Crashlytics, a log shipper, a metrics endpoint) is a data flow to a third party. At wiring time, list every field the call forwards: `extras`, `tags`, breadcrumbs, the raw error object and its `userInfo`/`context`, guard reasons, provider error text, request bodies. Each field is either safe by construction (an enum, a status code, an id) or gets redacted at the call site. Two occurrences across audits (2026-07, 2026-08), both introduced by an earlier fix and caught one audit later. Confidence: raw error objects or free-text detail strings forwarded to a third-party sink -> Important; user content or credentials reachable through them -> Critical. Section XVII's sink table applies to the wiring diff as well.
+
+## XXII. Widening a Content Guard to a New Field
+
+When a fix extends an existing content/keyword guard to an additional field, the guard's false-positive surface grows with it. Before the widening counts as done, run the guard against the EXISTING benign content of the new field (a sample of real rows, the seed data, the fixtures), not only against the example that motivated the fix; and decide per field whether a hit blocks or degrades, because a free-text preferences field is not a chat input (2026-08-03: a stage-1 guard widened to a preferences field hard-blocked "Krieg der Sterne"). Confidence: guard widened without a benign-content check in the same change -> Important.

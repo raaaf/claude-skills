@@ -14,9 +14,9 @@ SHOULD produce. The runner scores precision/recall.
 
 ## Status: growing eval suite
 
-As of 2026-08-05: 54 scorable fixtures (matched against `expected/<base>.json`)
-across 9 categories (a11y, architecture, correctness, docs, performance,
-quality, security, ui, ux) ship with the repo. Not yet a stable benchmark:
+As of 2026-09-03: 82 scorable fixtures (matched against `expected/<base>.json`)
+across 12 categories (a11y, animation, architecture, copy, correctness, docs,
+performance, quality, reliability, security, ui, ux) ship with the repo. Not yet a stable benchmark:
 add a new fixture every time you discover a class of bug the audit missed.
 
 ## Layout

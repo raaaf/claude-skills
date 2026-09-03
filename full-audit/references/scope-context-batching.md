@@ -246,7 +246,10 @@ echo "Scope plausibility: TOTAL_FILES=$TOTAL_FILES vs $REPO_FILE_COUNT tracked f
 
 # Frontend files
 # shellcheck disable=SC2086 -- EXCLUDE only, see note above.
-find "${SOURCE_DIRS_ARR[@]}" \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
+# Native UI files count as frontend (same set as FRONTEND_EXT_RE in audit/bin/lib-git-base.sh):
+# a pure SwiftUI project produced an empty frontend list and skipped agents 5-10 until a manual
+# override (learning 2026-08-03).
+find "${SOURCE_DIRS_ARR[@]}" \( -name "*.blade.php" -o -name "*.css" -o -name "*.scss" -o -name "*.vue" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.svelte" -o -name "*.astro" -o -name "*.html" -o -name "*.swift" -o -name "*.kt" -o -name "*.kts" -o -name "*.dart" -o -name "*.storyboard" -o -name "*.xib" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-frontend.txt
 
 # Translation files
 # shellcheck disable=SC2086 -- EXCLUDE only, see note above.

@@ -1,0 +1,18 @@
+{
+  "fixture": "quality/confirm-hint-alpine-binding/",
+  "must_find": [
+    {
+      "dimension": "code_quality",
+      "line": 4,
+      "matches": ["apostrophe", "single quote", "attribute", "breaks", "escape", "Js::from", "@js"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "the button already has an accessible name via its text content, no aria issue here"
+    }
+  ],
+  "notes": "Regression fixture modeled on 2026-08 audits in a Laravel events app. Blade's {{ }} echoes the raw translation string into a single-quoted JS argument inside an Alpine x-on:click attribute. The English confirm_hint string in lang/en/events.php contains an apostrophe ('You'll'), which closes the JS string early and breaks the click handler for every English-locale visitor. The fix is to escape the value for JS context, for example with Js::from() or the @js Blade directive, not to edit the copy."
+}

@@ -1,0 +1,18 @@
+{
+  "fixture": "security/oauth-callback-host-check.swift",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 17,
+      "matches": ["suffix", "subdomain", "lookalike", "leading dot", "allowlist"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "a single string comparison, no perf concern"
+    }
+  ],
+  "notes": "Swift audits, 2026-06 to 2026-09: a host trust check used hasSuffix without a domain boundary, so an attacker-registered host like evilgithub.com passed. Correct fix: host == \"github.com\" || host.hasSuffix(\".\" + \"github.com\")."
+}

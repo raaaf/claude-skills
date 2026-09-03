@@ -1,0 +1,18 @@
+{
+  "fixture": "architecture/cohost-menu-visibility-gate.php",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 34,
+      "matches": ["effective", "series", "resolution", "own row", "bypass", "inconsistent"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "one relation call plus one property read, no query volume concern"
+    }
+  ],
+  "notes": "Regression fixture modeled on 2026-08 audits in a Laravel events app with multi-date event series. canManageRecap() correctly resolves cohost status across the whole series via effectiveCohostRows(), but showsCohostBadge() in the same class still reads is_cohost off the single session row loaded for this request. A cohost added on another date in the series passes the effective check yet never sees their own badge, an inconsistency visible only by reading both methods together in one file."
+}

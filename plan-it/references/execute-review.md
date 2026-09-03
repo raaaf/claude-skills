@@ -14,7 +14,7 @@ Follow-through for written plans. Core rule stays: the orchestrator never edits 
 
 ### Dispatch
 
-Start ONE executor subagent: `subagent_type: general-purpose`, `isolation: worktree`, model `sonnet` (or whatever the user names: `/plan-it execute {plan} haiku`).
+Start ONE executor subagent: `subagent_type: spec-executor`, `isolation: worktree`. Its own frontmatter defaults to model `sonnet`; pass an explicit `model:` in the Agent() call to override when the user names one (`/plan-it execute {plan} haiku`) — a per-call `model:` overrides the agent's own frontmatter.
 
 The prompt MUST include:
 

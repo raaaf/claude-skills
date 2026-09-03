@@ -66,15 +66,29 @@ Agent(
 
 | `FINDING_VERDICT` | Action |
 |---|---|
-| `CONFIRMED` | goes to Step E, with `SEVERITY_CORRECTION` applied when it is not `none` + `patterns-store.sh recur {pattern}` |
+| `CONFIRMED` | goes to Step E, with `SEVERITY_CORRECTION` applied when it is not `none` + `patterns-store.sh recur {pattern}`. The `recur` call belongs to the verdict, not to the fix: it also happens when the confirmed finding is later discarded in Phase 3f, parked as an open point, or lies outside the diff (a worker's `OUT_OF_SCOPE` block that verification confirmed as the same tracked pattern family). Both paths let the call slip on 2026-08-29 and 2026-09-02; the count measures how often the pattern shows up, not how often it got fixed. |
 | `REFUTED` | discarded before any fix + `patterns-store.sh dismissed {pattern}`, one log line with the verifier's `REASON`. Never becomes an issue. |
 | `UNCERTAIN` | not fixed. Goes into the audit log under `### Unverified` with the `REASON`. A Critical `UNCERTAIN` additionally becomes an open point for the user. Never silently dropped. |
 
 A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass.
 
-**Feed the store DURING the run, not only at the final retro — and in EVERY round.** The verdict table above runs each round, and so do its `recur`/`dismissed` calls: a `CONFIRMED` in round 2 or 3 is counted at its verdict exactly like one in round 1. (2026-08 run: 7/7 R1 confirms were counted, 0/2 R2 confirms — back-filled by hand; the per-round duty was implicit and lost.) The `recur`/`dismissed` calls above are the orchestrator's job, right where the verdict is decided — not a step reserved for the learning agent's end-of-run pass over the finished log. At `floor=high`, D.7 is skipped entirely (see the effort table above), so there is no verdict to hang `recur` on: call it instead at Step E when the finding enters the fix queue (same `{pattern}` string used for `patterns-store.sh add`, see Step E.7). Either way, `patterns.json` should already show this run's patterns by the time the learning agent reads it — the learning agent's own trends-block pass then only reports `recurrences`, it does not populate them from scratch.
+**Feed the store DURING the run, not only at the final retro — and in EVERY round.** The verdict table above runs each round, and so do its `recur`/`dismissed` calls: a `CONFIRMED` in round 2 or 3 is counted at its verdict exactly like one in round 1. (2026-08 run: 7/7 R1 confirms were counted, 0/2 R2 confirms — back-filled by hand; the per-round duty was implicit and lost.) The `recur`/`dismissed` calls above are the orchestrator's job, right where the verdict is decided — not a step reserved for the learning agent's end-of-run pass over the finished log. At `floor=high`, D.7 is skipped entirely (see the effort table above), so there is no verdict to hang `recur` on: call it instead at Step E when the finding enters the fix queue (same `{pattern}` string used for `patterns-store.sh add`, see Step E, item 7). Either way, `patterns.json` should already show this run's patterns by the time the learning agent reads it — the learning agent's own trends-block pass then only reports `recurrences`, it does not populate them from scratch.
 
 Print after the step: `Verification: {X} confirmed, {Y} refuted, {Z} uncertain (of {N})`.
+
+**Mandatory per-round recur-feed check, right here, before Step E.** The prose duty above ("call
+`recur` where the verdict is decided") has been documented since 2026-08 and still silently didn't
+fire in two later runs (2026-08-21, 2026-09-02) — an implicit duty that depends on remembering it in
+the middle of a verdict table is exactly the failure mode, so this round does not end on the
+verifier's say-so alone. Compare mechanically: `X` (this round's `CONFIRMED` count from the line
+above) against how many `recur` calls this round actually made — the orchestrator made
+`patterns-store.sh recur` calls returning a count, so this is a tally of calls issued, not a
+store read. `calls_made < X` → back-fill the missing `recur {pattern}` calls NOW, in this round,
+before Step E starts, and note it in the round's chat output: `recur-feed: {X - calls_made}/{X}
+back-filled mid-round (per-verdict call was skipped)`. This replaces catching the gap only at
+Phase 5 (`learning-phase.md` Step 0.5) or in the Post-Log-Check (`post-loop.md` 3d.5) — those two
+stay as the last-resort nets for whatever this per-round check still misses, not as the primary
+mechanism.
 
 ## Step E — Auto-fix
 
@@ -92,6 +106,8 @@ Count confirmed Critical+Important (D.7 output; without D.7, at low effort, the 
 **Self-regression vs. pre-existing (prioritization):** if a finding is on a line that was changed in the current branch diff (`git blame`/diff comparison), it's a **self-regression** — ALWAYS fix, never park, even if it looks like a decision point (the branch introduced the problem). Only findings on unchanged, pre-existing lines may be parked as an open point.
 
 **HARD RULE: the orchestrator NEVER edits code files itself.** Every code fix goes through a fix agent (Sonnet). Edits by the orchestrator on Opus cost a multiple.
+
+**Sanctioned exception (decided 2026-09-03 after four runs of logging the same deviation):** the orchestrator MAY apply a fix itself when ALL of these hold: one file, at most 3 changed lines, severity Minor or Important, no test to run for it, and the fix is a literal correction (a stale value, a typo in a string, a missing attribute) rather than a logic change. Every self-fix still (1) calls `patterns-store.sh recur {pattern}` at the verdict like any other confirmed finding (the self-fix path dropped this call on 2026-09-03), (2) gets the E.5 fix-verifier like a fix-agent fix, and (3) is listed in the audit log under `## Incidents` as `Orchestrator self-fix: {file:line}` so the exception stays countable. Anything larger goes to a fix agent, no matter how small it looks.
 
 **Allowed orchestrator edits:** `.claude/audits/*.md`, `CLAUDE.md` audit context draft, `suppressions.json` (with user consent), changelog files.
 
@@ -118,7 +134,7 @@ For a single file, `git show HEAD:<path>` is enough and touches nothing. Note th
 **Verify-by-measurement (perf) — baseline:** if the round contains a `[Performance]` finding and `PERF_MEASURE_CMD` is set, measure the baseline once BEFORE the fix agent dispatch: `eval "$(bash "$AUDIT_BIN/perf-measure.sh" --run "$PERF_MEASURE_CMD")"; PERF_BASELINE="$PERF_METRIC"`. Details: `references/perf-measurement.md`.
 
 1. Group findings by file
-2. Dispatch one `fix-agent.md` subagent (Sonnet) per file, in parallel
+2. Dispatch one `audit-fix-agent` subagent (`agents/fix-agent.md`) per file, in parallel
 3. Multiple findings in the same file: bundle into one fix-agent call
 3a. **Centralization findings (new shared utility):** if a finding extracts a duplicated pattern into a new `lib/*.js` / helper / trait, FIRST grep all occurrences (`grep -rn "{old_pattern}" src/`, adjust the glob to the project language) and pass ALL matching files to ONE fix agent (no parallel split, otherwise file collision). Mark as a centralization fix so the fix agent migrates every occurrence (see fix-agent.md special case).
 3b. **Limit fix-wave size:** a fix assignment that touches >2 templates or contains a partial extraction gets split across multiple fix agents (except the centralization fix from 3a, which stays deliberately bundled) OR gets a report checkpoint: the fix agent MUST deliver an interim report before the final edits. Large assignments without a report checkpoint tend to silently abort, based on experience.
@@ -149,18 +165,17 @@ Any assigned file that is NOT modified means the fix never landed or was destroy
 
 4b. **`FIX_RESULT=PARTIAL` (mandatory handling, never falls through unhandled).** The code changed — verify it: the fix-verifier run (E.5) is MANDATORY for these files, exactly like `APPLIED`. It is NOT a clean fix, so do not add it to `BEREITS_GEFIXT` (point 7) — that list tells workers to stop reporting something, which would hide the leftover instead of exposing it. Instead, the original finding (same `file:line`/`severity`/`dimension`) re-enters `FINDINGS_NAECHSTE_RUNDE` with its description replaced by the agent's `remaining:` text, skipping D.7 (already confirmed once). On `RUNDE < MAX_RUNDEN` this feeds directly into the next round's finding set, so it counts toward that round's `FINDINGS_AKTUELLE_RUNDE` like any confirmed finding — a round cannot report `SAUBER` while a `PARTIAL` remainder is outstanding. On `RUNDE = MAX_RUNDEN` there is no next round: see `audit/SKILL.md`, section "After each round", for where it lands (Phase 3f, tagged `Fix incomplete`).
 
-5. Minor: with `FIX_MINOR=1` (medium + high/xhigh effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue.
+5. Minor: with `FIX_MINOR=1` (medium + high/xhigh effort), fix all high/medium-confidence Minor findings, otherwise skip. Unfixed Minor findings stay ONLY in the audit log — never as an issue. **Exception, visual dimensions:** a Minor finding in `ui_design`, `typography`, `animation` or `ux` with `confidence: low` is never auto-fixed at any effort level; it is reported in the log only, unless a verifier explicitly confirmed the visual defect. Three layout regressions in a row (2026-08 to 2026-09-03, sprachverliebt) came from fix agents "correcting" a low-confidence layout guess that was not a defect.
 6. Not fixable because a decision is needed: as an open point with justification (see definition above). Not fixable for another reason (e.g. external system): discard + `patterns-store.sh dismissed {pattern}`
 7. Add fixed issues to `BEREITS_GEFIXT`, into the learning store via `patterns-store.sh add`. At `floor=high`, also call `patterns-store.sh recur {pattern}` here (same string) — D.7 was skipped for this run, so this is the only point a self-confirmed finding gets counted. `FIX_RESULT=PARTIAL` is excluded from this step (see 4b) — only a fully `APPLIED` fix is a fixed issue.
 
 ## Step E.5 — Fix verification (MANDATORY for medium/high/xhigh effort, SKIP for low)
 
-For every `FIX_RESULT=APPLIED` or `FIX_RESULT=PARTIAL`, dispatch a fix-verifier subagent (sonnet). Above roughly 20 fixes in a round the same bundling allowance as Step D.7 applies (group by file or risk area, one verdict block per fix, ratio named in the log); read it there before using it.
+For every `FIX_RESULT=APPLIED` or `FIX_RESULT=PARTIAL`, dispatch a fix-verifier subagent (sonnet). A fix agent that reported `TEST_ENV_BLOCKED`, or a verifier whose DETAILS open with `VERIFICATION: static-only`, has NOT run the test: run the named test file yourself (through `test-lock.sh`) before accepting `keep`, and count the case in the round's chat output (`static-only verdicts: N, re-run by orchestrator`). A static-only `keep` accepted as green is the failure mode, not the exception path. Above roughly 20 fixes in a round the same bundling allowance as Step D.7 applies (group by file or risk area, one verdict block per fix, ratio named in the log); read it there before using it.
 
 ```
 Agent(
-  subagent_type: general-purpose,
-  model: sonnet,
+  subagent_type: audit-fix-verifier,
   prompt: "Read agents/fix-verifier.md and evaluate the following fix.
     ORIGINAL_FINDING: {finding}
     FIX_RESULT: {APPLIED|PARTIAL}

@@ -1,0 +1,14 @@
+[
+  { "number": 1001, "name": "Account 1", "curated": true },
+  { "number": 1002, "name": "Account 2", "curated": true },
+  { "number": 1003, "name": "Account 3", "curated": true },
+  { "number": 1004, "name": "Account 4", "curated": true },
+  { "number": 1005, "name": "Account 5", "curated": true },
+  { "number": 1006, "name": "Account 6", "curated": true },
+  { "number": 1007, "name": "Account 7", "curated": true },
+  { "number": 1008, "name": "Account 8", "curated": true },
+  { "number": 1009, "name": "Account 9", "curated": true },
+  { "number": 1010, "name": "Account 10", "curated": false },
+  { "number": 1011, "name": "Account 11", "curated": false },
+  { "number": 1012, "name": "Account 12", "curated": false }
+]

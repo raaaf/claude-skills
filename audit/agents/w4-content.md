@@ -1,6 +1,6 @@
 # Worker 4: Content (seo + docs_sync + copy)
 
-- **subagent_type:** `general-purpose`
+- **subagent_type:** `audit-content-worker`
 - **model:** `sonnet`
 - **maxTurns:** `30`   # equals the prompt-template tool-call budget; the two move together
 - **covers dimensions:** `seo`, `docs_sync`, `copy`

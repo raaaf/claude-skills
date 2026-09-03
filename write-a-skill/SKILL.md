@@ -3,7 +3,7 @@ name: write-a-skill
 description: "Create a new Claude Code skill with proper frontmatter, scoped trigger description, progressive disclosure into references/, optional subagent dispatch, and self-learning loop. Use when user wants to write, build, or scaffold a new skill, when adding a workflow that should run via slash command, or when refactoring an existing skill into the canonical structure."
 when_to_use: "/write-a-skill, build a new skill, neuen skill schreiben, scaffold skill, refactor skill"
 argument-hint: "[skill-name or short description]"
-model: opus
+model: inherit
 effort: high
 allowed-tools:
   - Read
@@ -58,7 +58,7 @@ description: "What it does. Use when [specific user triggers]. NOT when [adjacen
 when_to_use: "/slash-command, natural language phrase 1, phrase 2"
 argument-hint: "[optional: what the argument means]"
 arguments: [name]        # named positional args; body uses $name (never positional {N})
-model: opus              # or sonnet, haiku, fable, inherit
+model: inherit           # or opus, sonnet, haiku, fable
 effort: high             # low, medium, high, xhigh, max
 allowed-tools:           # pre-approved permissions for the turn, NOT the tool pool
   - Read
