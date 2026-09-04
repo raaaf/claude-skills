@@ -35,6 +35,13 @@ ARIA. Trace every `$wire.set` / `$wire.call` path on select, delete and overwrit
 property end up holding what the user sees? A visually correct widget whose selection never reaches
 Livewire is a data-loss finding, not a polish note.
 
+**Sibling check before a style-deviation finding.** A timing, border width, radius or
+spacing that looks off in one file is only drift when its siblings do it differently. Read at
+least one sibling of the same component family (the same layout family, the same control type)
+before reporting; if the siblings share the value, it is a convention, not a finding. Six of 23
+verifications on 2026-09-05 refuted findings born from reading one file in isolation
+(hover-zoom 500/300ms split repeated across three templates, `border-2` on every drawn control).
+
 **design-audit mode:** when the briefing says the run is /design-audit, apply the visual-only
 scope from that skill (visual a11y only — no ARIA/semantics/forms; no copy) and its
 Defect/Elevation split. The briefing carries those instructions; this file does not repeat them.

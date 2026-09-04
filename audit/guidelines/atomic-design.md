@@ -60,6 +60,12 @@ This is the atom layer of the design system; a raw value bypassing it is the hig
   "should use component X". Hallucinated components are not allowed.
 - **Count duplicates:** actually grep the "3+ times" and cite the locations, do not estimate.
 - **Prove god-components:** give the line count / prop count / passed-through props as evidence.
+- **Wrapper component forwards what you hang on it:** before recommending (or fixing towards)
+  `x-show`, `aria-*`, `:class` or dynamic slot content on a wrapper component with a fixed
+  `@props` set, open it and confirm it echoes `$attributes` and offers a slot for the dynamic
+  part. Three known cases where it does not: `link.blade.php` (2026-08-03), `x-badge` and
+  `x-select` (no `$attributes` echo, no slot for Alpine `x-for` options, 2026-09-05). A fix that
+  moves the attribute onto a wrapper span is correct; a finding that assumes propagation is not.
 
 ## Severity guide
 
