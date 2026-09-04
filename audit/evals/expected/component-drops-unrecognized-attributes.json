@@ -1,0 +1,22 @@
+{
+  "fixture": "a11y/component-drops-unrecognized-attributes.blade.php",
+  "note": "Regression eval from audit 2026-08-07: a wrapper component declares a fixed @props list and renders only those; extra attributes passed at the call site (aria-hidden, tabindex) are silently dropped because the root element has no {{ $attributes }} merge. a11y fixes at several call sites were no-ops although every diff looked correct. The finding must sit on the component root, not only on the call sites.",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 3,
+      "matches": ["$attributes", "aria-hidden", "tabindex", "dropped", "not rendered", "merge"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "all output is escaped, no raw echo"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}

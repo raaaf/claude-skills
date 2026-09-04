@@ -169,7 +169,7 @@ Reject the submission server-side if the honeypot field has a value. This is def
 
 **Validate every input on the server.** Client-side validation is a UX convenience, not a security measure. An attacker will bypass it entirely.
 
-Prefer strict allowlists over blocklists. Validate type, length, format, and range:
+Allowlists match exactly, not by substring: `[class*=]`, `includes()`, `startsWith()` on a class or role name admit every value that merely contains the token (see accessibility-2026.md XIV for the class-gating case, 2026-08-13). Prefer strict allowlists over blocklists. Validate type, length, format, and range:
 
 ```
 validated = request.validate({
@@ -400,6 +400,8 @@ Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
 ```
 
 **CSP nonce, not 'unsafe-inline'.** Generate a per-request nonce, put it on every `<script>` tag, reference it in CSP. `'unsafe-inline'` defeats XSS protection entirely; nonce-based is the minimum acceptable today.
+
+CSP Level 2 nuance, so this does not become a false finding: `'unsafe-inline'` **together with** a `'nonce-...'` or `'sha256-...'` source in the same `script-src` is the standard backwards-compatibility pattern. CSP2+ browsers ignore `'unsafe-inline'` as soon as a nonce or hash is present, only CSP1 browsers fall back to it. Not a finding. `'unsafe-inline'` alone (no nonce, no hash) stays Important. `'unsafe-eval'` can be a documented framework requirement (Alpine.js without the CSP build, some template engines): check whether the project documents it (CLAUDE.md, a comment at the header) before reporting; documented -> not a finding, undocumented -> Minor with the pointer to the framework's CSP build (2026-08-03).
 
 **SameSite=Strict cookies** unless cross-site flows require otherwise. `Lax` is the default since 2020 but `Strict` is safer for session cookies.
 
