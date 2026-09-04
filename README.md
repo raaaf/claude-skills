@@ -221,9 +221,9 @@ Checks an existing app against the same spec: deterministic scan first (`app-bas
 |---|---|
 | Format | Markdown + YAML frontmatter |
 | Language | English throughout (skill bodies, agents, references, guidelines); German only in trigger phrases and runtime user-facing strings |
-| Hooks | Two kinds: global hooks in `~/.claude/hooks/` (sync, audit-loop, format), not version controlled; skill-scoped hooks shipped inside the skill (`audit/hooks/`) — frontmatter registers one dispatcher (`pretooluse-bash.sh`) that invokes the guards as siblings |
+| Hooks | Two kinds: global hooks in `~/.claude/hooks/` (sync, audit-loop, format, worktree bootstrap), versioned in the private config repo and symlinked; skill-scoped hooks shipped inside the skill (`audit/hooks/`) — frontmatter registers one dispatcher (`pretooluse-bash.sh`) that invokes the guards as siblings |
 | Runtime | Claude Code 2.1.218+ (uses skill frontmatter `model`, `effort`, `allowed-tools`, `disallowed-tools`, and `context: fork` with `background`) |
-| Model resolution | `model: opus` alias (auto-resolves to latest Opus on Anthropic API) |
+| Model resolution | Orchestrator skills (audit, full-audit, design-audit, feature-audit, plan-it, write-a-skill) use `model: inherit` and run on the session model; workers and other skills pin `sonnet`, `opus` or `haiku` aliases (auto-resolve to the latest model of that tier). Depth per skill via frontmatter `effort` |
 | Dependencies | none — no npm, no composer, no Python venv |
 
 Real output artifacts (an actual audit log, a full-audit state file) live in [examples/](./examples/).
