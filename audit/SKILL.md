@@ -39,7 +39,11 @@ AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
 AUDIT_AGENTS_DIR="${CLAUDE_SKILL_DIR}/agents"
 bash "$AUDIT_BIN/run-log.sh" --start --skill audit
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
-bash "$AUDIT_BIN/collect-scope.sh"
+SCOPE_OUT="$(bash "$AUDIT_BIN/collect-scope.sh")"
+BASE_REF=$(printf '%s\n' "$SCOPE_OUT" | sed -n 's/^BASE_REF=//p')
+ALLE_DATEIEN=$(printf '%s\n' "$SCOPE_OUT" | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p}')
+echo "BASE_REF=$BASE_REF"
+echo "ALLE_DATEIEN: $(printf '%s\n' "$ALLE_DATEIEN" | grep -c .) file(s)"
 FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
 FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
 SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
@@ -117,7 +121,12 @@ Run the full suite exactly once via `test-lock.sh` after the fix wave (fix-verif
 Finalize `LOGFILE` from `references/audit-log-template.md`: Result, Findings per dimension, Fixes, Discarded (with reason), Unverified, Not completed, Open Points. Include the mechanical checks from Phase 1 and a chat display of the finished log (markdown block).
 
 ```bash
-bash "$AUDIT_BIN/run-cost.sh" --json "$CLAUDE_TRANSCRIPT_DIR" 2>/dev/null   # cost line for the log header + run-ledger
+AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
+# A Claude Code session has no env var pointing at its own transcript dir:
+# derive the projects dir from cwd using the same slug convention as
+# ~/.claude/projects/ (every "/" becomes "-").
+CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(pwd | sed 's#/#-#g')"
+bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # cost line for the log header + run-ledger
 bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
   --counts "critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}" --gate "{blocked|partial|passed}"
 ```

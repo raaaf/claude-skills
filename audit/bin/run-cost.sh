@@ -4,6 +4,12 @@
 # its subagents/*.jsonl files, and prices the result against a fixed table.
 #
 # Usage: bash run-cost.sh <projects-dir> <session-id> [--json]
+#        bash run-cost.sh --latest <projects-dir> [--json]
+#
+# `--latest <projects-dir>` picks the most recently modified `<session-id>.jsonl`
+# directly under <projects-dir> instead of taking a session id — Claude Code
+# sessions have no $CLAUDE_TRANSCRIPT_DIR env var to read the current session id
+# from, so this is how audit/SKILL.md Phase 4 finds "the session that just ran".
 #
 # Input: <projects-dir>/<session-id>.jsonl (main transcript) plus
 # <projects-dir>/<session-id>/subagents/*.jsonl (one file per dispatched
@@ -17,10 +23,23 @@
 # bash 3.2 compatible (no declare -A, no readarray). jq required.
 set -euo pipefail
 
-PROJECTS_DIR="${1:?usage: run-cost.sh <projects-dir> <session-id> [--json]}"
-SESSION_ID="${2:?usage: run-cost.sh <projects-dir> <session-id> [--json]}"
-JSON_MODE=0
-[ "${3:-}" = "--json" ] && JSON_MODE=1
+if [ "${1:-}" = "--latest" ]; then
+  PROJECTS_DIR="${2:?usage: run-cost.sh --latest <projects-dir> [--json]}"
+  SESSION_FILE=$(find "$PROJECTS_DIR" -maxdepth 1 -type f -name '*.jsonl' -exec stat -f '%m %N' {} \; 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2-)
+  if [ -z "$SESSION_FILE" ]; then
+    echo "COST agents=0 turns=0 usd=0.00 (no session found in: $PROJECTS_DIR)"
+    exit 0
+  fi
+  SESSION_ID="$(basename "$SESSION_FILE" .jsonl)"
+  JSON_MODE=0
+  [ "${3:-}" = "--json" ] && JSON_MODE=1
+else
+  PROJECTS_DIR="${1:?usage: run-cost.sh <projects-dir> <session-id> [--json]}"
+  SESSION_ID="${2:?usage: run-cost.sh <projects-dir> <session-id> [--json]}"
+  JSON_MODE=0
+  [ "${3:-}" = "--json" ] && JSON_MODE=1
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "COST agents=0 turns=0 usd=0.00 (jq missing)"
