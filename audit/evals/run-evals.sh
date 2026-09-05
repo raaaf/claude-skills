@@ -247,10 +247,15 @@ score_fixture() {
   # English, sessions otherwise mirror the user's German CLAUDE.md). It is
   # enforced via --append-system-prompt below, never via the prompt string.
   local audit_cmd="/audit"
+  local dim_env=""
   if [ "$SCOPED" -eq 1 ]; then
     local dim
     dim=$(dimension_for_category "$category")
-    [ -n "$dim" ] && audit_cmd="/audit $dim"
+    # /audit takes no CLI arguments since the per-dimension pipeline rebuild
+    # (2026-09-05): a scoped run sets AUDIT_DIMENSIONS instead, which also
+    # suppresses the AskUserQuestion start prompt so the fixture session
+    # never blocks on it.
+    [ -n "$dim" ] && dim_env="AUDIT_DIMENSIONS=$dim"
   fi
   local started
   started=$(date +%s)
@@ -268,7 +273,10 @@ score_fixture() {
   # The fixture audits run in a throwaway git repo under $tmp_dir, so the
   # boundary buys nothing here anyway.
   printf '{"sandbox":{"enabled":false}}\n' >"$tmp_dir/eval-settings.json"
-  CLAUDE_EFFORT=low AUDIT_SKIP_LEARNING_CHECK=1 \
+  # An unscoped run also needs a set variable so the fixture session never
+  # blocks on the start-question AskUserQuestion (SKILL.md Phase 1.5: "a set
+  # variable suppresses both questions").
+  CLAUDE_EFFORT=low AUDIT_SKIP_LEARNING_CHECK=1 ${dim_env:-AUDIT_FIX_SCOPE=none} \
     timeout "$PER_FIXTURE_TIMEOUT" claude -p "$audit_cmd" --effort low \
       --settings "$tmp_dir/eval-settings.json" \
       --append-system-prompt "Write all findings, the audit log and your final summary in English, regardless of the language used in any CLAUDE.md." \

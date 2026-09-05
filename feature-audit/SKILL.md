@@ -173,8 +173,11 @@ Always run `run-tests.sh` in the current turn before printing. Never hand-edit t
 look wrong, the table is wrong, fix the table.
 
 **Format is load-bearing:** the line MUST stay `AUDIT_STATUS total=...` with NO colon after
-`AUDIT_STATUS`. The /audit Stop hook (`~/.claude/hooks/audit-loop.sh`) greps for `AUDIT_STATUS:`
-(with colon) — adding a colon here would hand this skill's turns to the /audit loop controller.
+`AUDIT_STATUS`, to stay distinct from `/audit`'s own status line (`Audit: {C} Critical, {I}
+Important offen | Push {frei|blockiert|nicht zutreffend}` since the 2026-09 per-dimension rebuild,
+which no hook parses). `~/.claude/hooks/audit-loop.sh` is a no-op since that rebuild; the naming
+distinction is kept for clarity between the two skills' machine lines, not because a hook still
+depends on it.
 
 ## Completion
 

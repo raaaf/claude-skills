@@ -8,51 +8,44 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 
 ### `/audit` — Pre-Push Code Audit
 
-Audits all uncommitted and unpushed changes before every push. A triage agent routes the diff to relevant subagents, parallel fix-agents handle repairs, peer-review verifiers check every fix, manual test plan covers visual changes.
+Audits all uncommitted and unpushed changes before every push. Runs a per-dimension `Workflow`
+pipeline (find.js) — scout, chunk, specialists, verifier, per one Critical a refuter — then a fix
+wave (fix.js) with peer-review verification and a regression pass. Since the 2026-09-05
+per-dimension rebuild there is no round loop: one find pass, one fix pass.
 
 **Pipeline:**
 
-1. Phase 0: Learning-Backlog-Check (asks before each audit if past improvement suggestions should be implemented); Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
-2. Phase 0.5: Effort Configuration (low / medium / high — scales rounds, Minor fixing, confidence floor)
-3. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching so workers load only guidelines whose `applies_to` glob matches the diff)
-4. Phase 2: Audit-loop with triage routing (sonnet triage + a deterministic Bash sanity-floor that forces obviously-wrong skips back on and prints a visible `Routing:` line every round), 4 collapsed workers covering the 12 dimensions (w1 code, security, w3 frontend, w4 content — dimensions route, workers execute) reporting for coverage rather than self-filtering, hallucination validator (file and line exist), finding verification by fresh-context verifiers that are prompted to refute (only confirmed findings reach the fix stage; refuted ones are discarded before a file is touched, inconclusive ones are listed as unverified), fix-agents, fix-verifier peer review (performance fixes additionally use verify-by-measurement when a `perf-measure:` command is configured: baseline before, re-measure after, verdict from the metric delta)
-5. Phase 2.5: Cross-Reference pass when diff touches >=3 files (skip on low effort)
-6. Phase 3: Post-loop (changelog, linter, tests, manual test plan; open decision points go to the user — fix now / defer as issue / dismiss. Issues only for explicit deferrals, never for Minor findings)
-7. Phase 4: Pre-push gate (marker-based, never in the same Bash call as `git push`)
-8. Phase 5: Learning (subagent returns structured output, orchestrator writes `learning-log.md` and `suppressions.json`)
-9. Phase 6: PR creation if applicable
+1. Phase 0: Learning-Backlog-Check; Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
+2. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, CI-hardening check, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching)
+3. Phase 1.5: one `AskUserQuestion` round, two questions — dimensions (all/backend/frontend/custom over all 13) and fix scope (find & log only / fix Critical / fix Critical and Important, preselected from `CLAUDE_EFFORT`). A set `AUDIT_DIMENSIONS`/`AUDIT_FIX_SCOPE` skips the question entirely (CI/headless)
+4. Phase 2: `find.js` Workflow run — one pipeline per dimension (scout → chunk → specialists → verifier → Critical refuter), decide fix/log/discard per finding
+5. Phase 3: `fix.js` Workflow run — one fixer per file, fix-verifier per 3-5 fixes, a regression pass over changed files
+6. Phase 4: Log, cost line (`run-cost.sh`), push marker (only when no Critical is open and no new test failure), run-ledger
+7. Phase 5: Learning (subagent returns structured output, orchestrator writes `learning-log.md` and `suppressions.json`)
+8. Phase 6: PR creation if applicable
 
-**Worker dispatch (12 dimensions routed onto 4 collapsed workers, parallel):**
+**13 dimensions**, each a standalone specialist prompt (`audit/agents/{n}-{name}.md`) dispatched by
+`agentType`: `security-auditor` for security/privacy, `performance-auditor` for performance,
+`ui-ux-reviewer` for a11y/ui_design/ux/typography/animation, `code-reviewer` for
+architecture/code_quality/seo/docs_sync/copy. `architecture`, `docs_sync` and `security` also run a
+cluster scout (module/pattern map) alongside or instead of the per-file scout — cluster specialists
+found cross-file guard gaps that file-chunk scouts missed in testing. Every specialist and verifier
+runs on Sonnet except the scout (`Explore`) and the one-per-Critical refuter (Opus).
 
-| Worker | Covers dimensions | Model |
-|---|---|---|
-| Triage (`0-triage.md`, opt-in) | routing hotspots | sonnet |
-| W1 Code (`w1-code.md`) | architecture, performance, code_quality | sonnet |
-| W2 Security (`2-security.md`) | security | opus |
-| W3 Frontend (`w3-frontend.md`) | a11y (WCAG 2.2), typography, ui_design, ux, animation | sonnet |
-| W4 Content (`w4-content.md`) | seo, docs_sync, copy | sonnet |
-
-Dimensions route (partial audits, finding tags, suppressions and skip rules all keep speaking in
-the 12 dimensions), workers execute: correlated dimensions read the same files, so one reader with
-the merged rubric replaces up to five siblings that each paid for every file separately. The
-numbered `agents/{N}-*.md` files remain the run-hardened dimension modules the workers read.
-Every worker runs on Sonnet except Security (Opus, for exploit reasoning). Haiku is no longer used: a full-audit run once had a Haiku code-quality batch produce five findings that the validator discarded as impossible or hallucinated, while Sonnet workers in the same run produced zero — and a cheaper model's wrong finding still costs a verifier round and a fix wave, which erases the savings.
-
-Triage routes the diff to relevant workers only; workers receive triage-marked hotspots, never the full diff. Saves 40-60% input tokens per worker.
-
-**Platform support:** web (Laravel, Next.js, Nuxt, Django) and native mobile (iOS, Android, React Native, Flutter). Framework detection sets `PLATFORM`; on native projects the security/performance/a11y/typography/UI/UX workers switch to `guidelines/native-mobile.md` (Keychain/Keystore, VoiceOver/TalkBack, Dynamic Type, main-thread, HIG/Material), and the i18n pre-check reads `.lproj` bundles and `values-*/strings.xml`.
+**Platform support:** web (Laravel, Next.js, Nuxt, Django) and native mobile (iOS, Android, React Native, Flutter). Framework detection sets `PLATFORM`; on native projects the relevant specialists switch to `guidelines/native-mobile.md` (Keychain/Keystore, VoiceOver/TalkBack, Dynamic Type, main-thread, HIG/Material), and the i18n pre-check reads `.lproj` bundles and `values-*/strings.xml`.
 
 **Per-finding output cap:** 50 words, no code snippets, only `file:line` refs.
 
-**Dimension scoping:** `/audit` alone runs the full gate with automatic routing. An argument turns it into a **partial audit**: `/audit security`, `/audit performance,a11y`, group aliases `backend` / `frontend` / `design`, or `/audit ?` for a multi-select prompt over all 12 dimensions. Partial audits run only the selected workers (no triage/floor), fix and verify as usual, but **never write the push marker** — only the unscoped `/audit` gates a push.
+**Dimension scoping:** a partial dimension selection at the start question runs only the selected dimensions and **never writes the push marker** — only the full 13-dimension selection gates a push.
 
 ### `/full-audit` — Full Codebase Audit
 
-Comprehensive one-time audit of an entire codebase. Auto-detects framework, batches large codebases (>80 files), runs Phase 0 backlog check, Phase 0.5 dimension selection (Alles / Nur Backend / Nur Frontend / Custom multi-select), Phase 0.7 effort configuration. Cross-Reference pass after all batches (xhigh runs it even in SINGLE mode).
-
-Runs as a persistent goal-loop: batch progress lives in `.claude/audits/full-audit-state.md` (matrix + deterministic `FULL_AUDIT_STATUS` line from `full-audit/bin/status-line.sh`), so an interrupted run resumes at the first pending batch instead of starting over — clean batches are only re-audited when `resume-check.sh` detects their files changed since completion. For very large codebases it can be driven turn-by-turn via `/loop /full-audit`.
-
-Same 4 worker definitions as `/audit` (`audit/agents/w*.md` + `2-security.md`; the numbered `agents/{N}-*.md` files are the dimension modules workers read — single source of truth). Incremental by default: files unchanged since their last clean audit are skipped via `.claude/audits/cache.json`; `FULL_AUDIT_FORCE=1` audits everything (mandatory once after guideline changes).
+Comprehensive one-time audit of an entire codebase. Runs the exact same `find.js`/`fix.js`
+per-dimension pipeline as `/audit`, with `SCOPE=repo` (the whole tracked source tree, per
+`full-audit/references/scope.md`) instead of a diff, and no push marker ever written. Same start
+questions (dimensions + fix scope), same log format, same `runId`-based resume via
+`Workflow({ scriptPath, resumeFromRunId })` across a session limit — no more hand-rolled batch
+matrix or state file.
 
 ### `/design-audit` — Design Pass Over the Whole Frontend
 
@@ -284,15 +277,20 @@ perf-measure: npx size-limit --json | jq -r '"PERF_METRIC=\([.[].size]|add)"'
 
 All three skills respect `CLAUDE_EFFORT`:
 
-| Level | /audit | /full-audit | /plan-it |
-|---|---|---|---|
-| low | 1 round, no Minor, no Learning | 1 round/batch, no Cross-Ref, no Learning | 3 challenges, no eval, no learning |
-| medium | 2 rounds, fix Minor, floor=medium (default) | 2 rounds/batch, fix Minor, Cross-Ref BATCHED-only | 4 challenges, no eval |
-| high / xhigh | 3 rounds, fix Minor, floor=low | 3 rounds/batch, Cross-Ref always, fix Minor (default) | 5 challenges, full eval (default) |
+`/audit` and `/full-audit` no longer scale by rounds (2026-09-05 per-dimension rebuild): one
+`find.js` pass covers every selected dimension, one `fix.js` pass applies the selected fix scope.
+`CLAUDE_EFFORT` only preselects the fix-scope start question — `low` → find & log only, `medium` →
+fix Critical, `high`/`xhigh` → fix Critical and Important. Minor is never fixed, always logged.
+
+| Level | /plan-it |
+|---|---|
+| low | 3 challenges, no eval, no learning |
+| medium | 4 challenges, no eval |
+| high / xhigh | 5 challenges, full eval (default) |
 
 ```bash
-CLAUDE_EFFORT=low claude /audit              # quick WIP-Push check
-FULL_AUDIT_DIMENSIONS=security claude /full-audit  # security-only sweep
+CLAUDE_EFFORT=low claude /audit                  # quick WIP-push check, preselects "find & log only"
+AUDIT_DIMENSIONS=security claude /full-audit      # security-only sweep, skips the start questions
 ```
 
 ## Architecture
