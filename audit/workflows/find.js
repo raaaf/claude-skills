@@ -144,6 +144,14 @@ function warnIfNull(logFn, result, message) {
   return false;
 }
 
+// Prepended to every agent briefing so a specialist reads the audited repo,
+// not the directory the Workflow tool happened to launch from (round-2 defect:
+// 4 of 6 specialists answered "file does not exist" because the briefing never
+// named the repo root).
+const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
+  'Work only inside REPO_ROOT. Every path in this briefing is relative to REPO_ROOT; read files as ' +
+  'REPO_ROOT/<path>. Do not use the current working directory, it may be a different repository.\n\n';
+
 // agentType per dimension (Step 4 of the plan).
 const AGENT_TYPE_BY_DIMENSION = {
   security: 'security-auditor',
@@ -255,6 +263,7 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
   const scopeFiles = ctx.files;
   const floorFiles = computeFloorFiles(dimension, scopeFiles);
   const result = await agentFn(
+    ROOT_HEADER +
     `Read ${promptDoc} and execute the file-scout task for DIMENSION=${dimension}.\n` +
     `SCOPE_FILES=${JSON.stringify(scopeFiles)}\nFLOOR_FILES=${JSON.stringify(floorFiles)}\n` +
     `SCOPE=${ctx.scope}`,
@@ -282,6 +291,7 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
 async function runClusterScout(ctx, dimension, agentFn, logFn) {
   const promptDoc = `${ctx.promptDir}/scout-clusters.md`;
   const result = await agentFn(
+    ROOT_HEADER +
     `Read ${promptDoc} and execute the cluster-scout task for DIMENSION=${dimension}.\n` +
     `SCOPE_FILES=${JSON.stringify(ctx.files)}`,
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_CLUSTERS_SCHEMA, phase: 'Scout' }
@@ -314,9 +324,24 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
 
   // Stage 2: chunking (code, not an agent).
   const filePaths = files.map((f) => f.path);
-  const chunks = clusters.length
-    ? clusters.map((c) => ({ kind: 'cluster', cluster: c }))
-    : chunkByDirectory(filePaths).map((group) => ({ kind: 'files', files: group }));
+  // A cluster naming fewer than 2 files is not a cluster (scout-clusters.md
+  // "at least two files"); drop it rather than dispatching a specialist that
+  // sees a single file with no comparison to make.
+  const droppedSingleFileClusters = clusters.filter((c) => !c.files || c.files.length < 2).length;
+  clusters = clusters.filter((c) => c.files && c.files.length >= 2);
+  if (droppedSingleFileClusters) {
+    logFn(`${dimension}: dropped ${droppedSingleFileClusters} single-file cluster(s)`);
+  }
+  const fileChunks = chunkByDirectory(filePaths).map((group) => ({ kind: 'files', files: group }));
+  const clusterChunks = clusters.map((c) => ({ kind: 'cluster', cluster: c }));
+  let chunks;
+  if (CLUSTER_ONLY_DIMENSIONS.includes(dimension)) {
+    chunks = clusterChunks;
+  } else if (BOTH_SCOUTS_DIMENSIONS.includes(dimension)) {
+    chunks = fileChunks.concat(clusterChunks);
+  } else {
+    chunks = fileChunks;
+  }
   logFn(`${dimension}: scout ${filePaths.length || clusters.length} unit(s), ${chunks.length} chunk(s)`);
   if (chunks.length > 15) {
     logFn(`${dimension}: ${chunks.length} chunks, above the 15-chunk expectation`);
@@ -332,6 +357,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       ? `CLUSTER=${JSON.stringify(c.cluster)}`
       : `FILES=${JSON.stringify(c.files)}`;
     const result = await agentFn(
+      ROOT_HEADER +
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
       `for DIMENSION=${dimension}.\n${briefing}\nGUIDELINE_MATCHES=${JSON.stringify(guidelines)}\n` +
       `SCOPE=${ctx.scope}`,
@@ -360,6 +386,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   const verifierGroups = chunk(allFindings, 38);
   const verifierResults = await parallelFn(verifierGroups.map((group) => async () => {
     const result = await agentFn(
+      ROOT_HEADER +
       `Read ${ctx.promptDir}/finding-verifier.md and verify these findings.\n` +
       `FINDINGS=${JSON.stringify(group)}`,
       { agentType: 'code-reviewer', model: 'sonnet', schema: VERDICTS_SCHEMA, phase: 'Verify' }
@@ -375,6 +402,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     const refuterResults = await parallelFn(criticalConfirmed.map((v) => async () => {
       const finding = allFindings.find((f) => f.id === v.id);
       const refuterVerdict = await agentFn(
+        ROOT_HEADER +
         `Read ${ctx.promptDir}/finding-verifier.md, section "Refuter". Try to refute this ` +
         `CONFIRMED Critical finding.\nFINDING=${JSON.stringify(finding)}\nVERDICT=${JSON.stringify(v)}`,
         { agentType: 'code-reviewer', model: 'opus', schema: VERDICTS_SCHEMA, phase: 'Verify' }

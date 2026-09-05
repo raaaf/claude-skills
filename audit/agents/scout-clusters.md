@@ -26,6 +26,9 @@ coincidental directory grouping.
 comparison that makes clustering valuable in the first place (a guard present in 6 of 7
 structurally identical files is only visible if all 7 are in the cluster).
 
+A cluster names at least two files that share the pattern; a pattern that occurs in one file only
+is not a cluster and is left out.
+
 For `security`: focus cluster candidates on gates (auth/capability checks), escaping paths
 (output-sink to escaping-call chains), and nonce/CSRF handlers — the file scout already covers
 per-file XSS/injection sweeps, the cluster scout's job is the cross-file guard pattern the file

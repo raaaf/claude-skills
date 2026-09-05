@@ -88,6 +88,13 @@ function warnIfNull(logFn, result, message) {
   return false;
 }
 
+// Prepended to every agent briefing so a fixer/verifier reads the audited
+// repo, not the directory the Workflow tool happened to launch from (same
+// round-2 defect as find.js).
+const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
+  'Work only inside REPO_ROOT. Every path in this briefing is relative to REPO_ROOT; read files as ' +
+  'REPO_ROOT/<path>. Do not use the current working directory, it may be a different repository.\n\n';
+
 function chunk(items, size) {
   const out = [];
   for (let i = 0; i < items.length; i += size) {
@@ -123,6 +130,7 @@ const baselineFailures = args.baselineFailures || [];
 // Stage 1: one fixer per file, all its findings in one dispatch.
 const fixResults = await parallel(args.fixes.map((f) => async () => {
   const result = await agent(
+    ROOT_HEADER +
     `Read agents/fix-agent.md and fix every finding below in ${f.file}. Do not touch any other ` +
     `file.\nFINDINGS=${JSON.stringify(f.findings)}\n` +
     `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}\n` +
@@ -143,6 +151,7 @@ const appliedOrPartial = fixResults.filter(
 const verifierGroups = chunk(appliedOrPartial, 4);
 const verifierResults = await parallel(verifierGroups.map((group) => async () => {
   const result = await agent(
+    ROOT_HEADER +
     `Read agents/fix-verifier.md and verify these fixes.\nFIXES=${JSON.stringify(group)}\n` +
     `BASELINE_FAILURES=${JSON.stringify(baselineFailures)}\n` +
     `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}`,
@@ -172,6 +181,7 @@ if (changedFiles.length) {
   const regressionGroups = groupForRegression(changedFiles);
   const regressionResults = await parallel(regressionGroups.map((group) => async () => {
     const result = await agent(
+      ROOT_HEADER +
       `Read the diffs of these files (git diff for each) and check for regressions across all ` +
       `13 dimensions, using the specialist schema. Diffs only, no unrelated reading.\n` +
       `FILES=${JSON.stringify(group)}`,
