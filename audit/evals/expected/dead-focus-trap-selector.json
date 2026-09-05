@@ -1,0 +1,22 @@
+{
+  "fixture": "a11y/dead-focus-trap-selector.blade.php",
+  "note": "Regression eval from audit 2026-08-07: a structural refactor moved x-show from <nav> to a wrapping <div>; the focus-trap querySelector('nav[x-show]') silently matched nothing, and the sibling test stayed green because it only checked isOpen/toggle() state, never the trap mechanics. The finding must name the dead selector and that the test does not cover the trap.",
+  "must_find": [
+    {
+      "dimension": "a11y",
+      "line": 26,
+      "matches": ["nav[x-show]", "querySelector", "focus trap", "matches nothing", "null", "x-show moved"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "script carries the CSP nonce and processes no user input"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no perf concern"
+    }
+  ]
+}

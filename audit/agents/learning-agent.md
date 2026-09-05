@@ -12,6 +12,7 @@ You receive:
 - `PROJECT_ROOT` — path to the project
 - `CURRENT_LOG` — content of the audit log just written
 - `AUDIT_TYPE` — "audit" or "full-audit"
+- `PATTERNS_RECURRENCES` — raw output of `patterns-store.sh recurrences`, collected by the orchestrator before dispatch. You have no `Bash` grant (Read/Grep/Glob only), so you cannot run this yourself; use the passed-in text verbatim, do not try to invoke the script.
 
 ## Process
 
@@ -35,10 +36,10 @@ Extract from past audit log files (`.claude/audits/*-*.md`) and have the orchest
 
 **Full-audit batch runs distort the windows.** A full-audit's batched scans produce finding counts one to two orders of magnitude above a regular audit. Compute last-3/last-5 and the average over regular audits only, and report any full-audit run in the window as a separately annotated outlier, never blended into the trend or the average.
 
-**Use the counter, do not eyeball the logs.** Recurrence is tracked persistently, so it survives log rotation and stays consistent between `/audit` and `/full-audit`. **You do not populate it yourself:** the orchestrator already called `patterns-store.sh recur {pattern}` for every `CONFIRMED` finding (and at Step E for `floor=high` runs, see `SKILL.md`) while the audit ran, with a normalized pattern (short, no file/line, so the same problem elsewhere in the codebase collapses into it). By the time you run, `patterns.json` already reflects this run — you only read it:
+**Use the counter, do not eyeball the logs.** Recurrence is tracked persistently, so it survives log rotation and stays consistent between `/audit` and `/full-audit`. **You do not populate it yourself:** the orchestrator already called `patterns-store.sh recur {pattern}` for every `CONFIRMED` finding (and at Step E for `floor=high` runs, see `SKILL.md`) while the audit ran, with a normalized pattern (short, no file/line, so the same problem elsewhere in the codebase collapses into it). By the time you run, `patterns.json` already reflects this run — read it from `PATTERNS_RECURRENCES`, the text the orchestrator collected and passed you (you have no `Bash` grant to fetch it yourself):
 
-```bash
-bash "$AUDIT_BIN/patterns-store.sh" recurrences
+```
+PATTERNS_RECURRENCES (example content, passed in, not run by you):
 # "4x widget reads lock state only once -- last seen: 2026-08-10 (3d ago)"
 # "15x sibling call-site duplication -- last seen: 2026-04-13 (122d ago, DORMANT)"
 ```

@@ -313,6 +313,13 @@ Anti-pattern: hardcoded hex like `border: 1px solid #e5e5e5`.
 
 Computation: relative luminance L = 0.2126R + 0.7152G + 0.0722B on linearized sRGB; ratio = (L_lighter + 0.05) / (L_darker + 0.05).
 
+**Token utility that renders nothing.** In Tailwind v4 a `text-icon-disabled` or
+`text-content-*` utility only exists when the `@theme` block maps `--color-icon-disabled` to the
+semantic token. A missing alias produces no CSS and no error: the element silently inherits.
+When a finding or a fix relies on such a utility, grep the `@theme` block for the
+`--color-{role}` line first; `text-icon-disabled` was used in two templates of the starter theme
+while the alias did not exist (2026-09-05).
+
 ---
 
 ## Materials & Translucency (2026)

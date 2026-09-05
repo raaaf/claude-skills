@@ -48,3 +48,15 @@ Useful values: `numeric` (digits only, e.g. OTP, PIN, postcode), `decimal` (pric
 ```
 
 Finding (Minor) when a numeric-only field on a project with any mobile surface has no `inputmode`. Not a finding on a desktop-only internal tool, where the attribute has no effect. A missing `<label>` or a wrong `type` stays the more severe finding of the three.
+
+## XIV. Contrast Findings Against the Effective Cascade, Not Raw Tokens (2026)
+
+**Compute colors from what the browser renders, never from the token file.** A `tokens.css` (or Figma export) value is the start of a cascade, not its end: `app.css` overrides the same custom property later in the file, `:root` is redefined several times (light, `data-theme="dark"`, `prefers-color-scheme`, `prefers-contrast: more`), and a `@theme` block can shadow the token again. A contrast finding that quotes the raw token as the rendered color is wrong whenever any later rule redefines the property. Two workers in two rounds reported the same refuted dark-mode elevation claim from raw `tokens.css` values (2026-08-13).
+
+Before any contrast, elevation, or focus-ring finding:
+
+1. Resolve the property through every `:root`/`[data-theme]`/media block in the compiled or authored CSS, last matching declaration wins per scheme state (there are usually three states, not two).
+2. When a browser is available, read `getComputedStyle()` in the target scheme; wait ~600ms after a `data-theme` switch, the first two frames still carry the previous scheme's colors.
+3. State in the finding which resolved values (hex or OKLCH) and which scheme state the ratio was computed from. A finding without the resolved pair is `low confidence` and not fixable.
+
+**Exclusion and gating lists use exact class names, never `[class*=]` substrings.** A contrast or security gate that skips elements via `[class*="btn"]` or `className.includes('badge')` also skips `btn-link`, `no-btn-style`, `badge-count` and every future class that happens to contain the substring, on the trigger AND on all its descendants. Two of four Critical findings of one run were caused by such substring exclusions (2026-08-13). Finding (Important) when an allow/skip list matches on a substring; the fix is an explicit class list (`:is(.btn, .btn-primary)`, `classList.contains()`), applied to the trigger element and, when descendants are meant to be covered, to an explicit descendant selector rather than an inherited substring match.

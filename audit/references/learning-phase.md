@@ -32,10 +32,13 @@ Agent(
   prompt: "Read agents/learning-agent.md and run the process.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
-    AUDIT_TYPE=audit",
+    AUDIT_TYPE=audit
+    PATTERNS_RECURRENCES={Ausgabe von `patterns-store.sh recurrences`, hier vom Orchestrator eingesammelt}",
   run_in_background: false
 )
 ```
+
+**Why `PATTERNS_RECURRENCES` is passed in, not fetched by the agent:** `audit-learning-agent` has no `Bash` grant (Read/Grep/Glob only), so it cannot call `patterns-store.sh recurrences` itself. The orchestrator runs it here, before dispatch, and pastes the raw output into the prompt — see `agents/learning-agent.md`, section 2, "Use the counter, do not eyeball the logs."
 
 **`run_in_background: false` is mandatory, not decoration.** Subagents run in the background by default, and a background subagent's result only arrives as a completion notification in a *later* turn. Phase 5 has to parse that output and write the log in *this* turn, before Phase 6 writes the push marker, a backgrounded learning agent silently loses the whole learning pass. Foreground costs 5-10s and is not push-blocking.
 
