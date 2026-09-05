@@ -1,18 +1,10 @@
-# Scope, Context, Batching (Phase 1 + 1.5 Detail)
+# Scope (SCOPE=repo file walk)
 
-Detail bash and batching heuristic for Phase 1 (Scope & Context) and Phase 1.5 (Batching Decision). Read by the orchestrator.
+Detail bash for building the repo-wide file list for `/full-audit`, moved out of the old batching
+doc (batching itself is gone, see the 2026-09-05 per-dimension rebuild). Read by
+`full-audit/SKILL.md` Phase 0 in place of `collect-scope.sh --all`.
 
-## Contents
-
-- Phase 1: Scope & Context, the executable bash block
-- Suppressions: re-validate factual-claim reasons at audit start
-- Project context: the heading is not the contract
-- Context building (one-time) and optional pre-checks
-- Phase 1.5: Batching decision
-- Concurrent tree check (detail)
-- Intent docs / decided tradeoffs (DECIDED_TRADEOFFS)
-
-## Phase 1: Scope & Context — Bash
+## Phase 0: Scope & Context — Bash
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
@@ -65,16 +57,6 @@ PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
 # repo's own root, "Local Sites/claude-skills", is one). SOURCE_DIRS itself
 # keeps its %q-quoted string form for anything that still reads it as text.
 eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"
-
-# Directory-scope argument (SKILL.md Phase 1: "$ARGUMENTS holds the optional
-# directory scope"). A non-empty value overrides the framework-detected
-# SOURCE_DIRS and restricts every find call below (and the plausibility
-# assert further down) to that one path — this is the actual wiring the
-# scope argument was documented to have but did not.
-if [ -n "${ARGUMENTS:-}" ]; then
-  SOURCE_DIRS_ARR=("$ARGUMENTS")
-  SOURCE_DIRS="$ARGUMENTS"
-fi
 
 # Load PROJECT_CONTEXT from CLAUDE.md (awk instead of sed — more portable)
 #
@@ -205,7 +187,7 @@ fi
 sort -u -o /tmp/full-audit-files.txt /tmp/full-audit-files.txt
 TOTAL_FILES=$(wc -l < /tmp/full-audit-files.txt)
 
-# --- Scope plausibility assert (MANDATORY, before Phase 1.5 / any batch dispatch) ---
+# --- Scope plausibility assert (MANDATORY, before dispatch) ---
 # Guards the failure mode where scope collection silently returns nothing (or
 # next to nothing) and the audit reports "clean" over files nobody enumerated.
 # Real incident: an unquoted SOURCE_DIRS made `eval` drop it for every
@@ -219,11 +201,7 @@ if [ "$TOTAL_FILES" -eq 0 ]; then
   exit 1
 fi
 
-if [ -n "${ARGUMENTS:-}" ]; then
-  REPO_FILE_COUNT=$(git ls-files -- "$ARGUMENTS" | wc -l | tr -d ' ')
-else
-  REPO_FILE_COUNT=$(git ls-files | wc -l | tr -d ' ')
-fi
+REPO_FILE_COUNT=$(git ls-files | wc -l | tr -d ' ')
 
 if [ "$REPO_FILE_COUNT" -gt 0 ]; then
   # 2% of ALL tracked files (docs, configs, lockfiles, assets included, not
@@ -237,8 +215,6 @@ if [ "$REPO_FILE_COUNT" -gt 0 ]; then
   if [ "$TOTAL_FILES" -lt "$SCOPE_THRESHOLD" ]; then
     echo "ABORT: TOTAL_FILES=$TOTAL_FILES looks implausibly small against the repo (git ls-files: $REPO_FILE_COUNT tracked files, expected >= $SCOPE_THRESHOLD)."
     echo "  Likely cause: SOURCE_DIRS wrong or incomplete ($SOURCE_DIRS), or an over-broad EXCLUDE."
-    echo "  If this really is a legitimately narrow scope, re-run with the directory-scope argument"
-    echo "  so the comparison narrows too instead -- do not override this check by hand."
     exit 1
   fi
 fi
@@ -257,134 +233,9 @@ find "${SOURCE_DIRS_ARR[@]}" \( -path "*/lang/*" -o -path "*/locales/*" -o -path
 ```
 
 Variables from the outputs:
-- **ALLE_DATEIEN:** `/tmp/full-audit-files.txt` — includes any `scope-extensions:` extra extensions, already merged and deduplicated
+- **ALLE_DATEIEN:** `/tmp/full-audit-files.txt` — includes any `scope-extensions:` extra extensions, already merged and deduplicated. This is the `files` array passed to `find.js` as `args.files` (`scope: 'repo'`).
 - **VISUELL_RELEVANTE_DATEIEN:** `/tmp/full-audit-frontend.txt`
 - **TRANSLATION_DATEIEN:** `/tmp/full-audit-translations.txt`
 - **TOTAL_FILES**, **PROJECT_CONTEXT**, **FRAMEWORK**, **SOURCE_DIRS**, **SUPPRESSIONS**, **CONTEXT_FALLBACK**
 
 **Project-level scope override (`scope-extensions:`).** No functional effect on `/audit`: its scope is diff-based (`audit/bin/collect-scope.sh` lists whatever changed, regardless of extension), not a fixed-glob tree scan, so a changed `SKILL.md` is already in `/audit`'s scope today. This override exists for `/full-audit` only, where the fixed extension list above is otherwise the sole gate. `.claude/audit-guidelines.md` is a general per-project file, though — a project using both commands declares the line once and only `/full-audit` acts on it.
-
-## Suppressions: re-validate factual-claim reasons at audit start
-
-Before passing `SUPPRESSIONS` to the workers, re-check every suppression whose `reason` is a **factual claim about the current code** (e.g. "unused", "never called", "dead code", "no callers", "already handled elsewhere"), not a decision or tradeoff ("accepted risk", "single-user app", "by design"). A factual reason can silently go stale: the thing gets used again while the suppression keeps waving the finding through.
-
-For each such entry, grep the codebase for the claim before honouring it (e.g. reason "unused `hairlineStrong`" → `grep -rn "hairlineStrong" <source dirs>`; more than the declaration site means it IS used now). If the claim no longer holds, drop that pattern from the passed-in `SUPPRESSIONS` for this run so the finding surfaces normally, and log a line under `## Notes` (`Stale suppression re-activated: {pattern} — reason "{reason}" no longer true`). Do NOT edit `suppressions.json` here; removal from the live set is enough, the user decides on the file in Phase 4. Decision/tradeoff reasons are never re-checked this way — they stand until the user revisits them.
-
-Real incident: `hairlineStrong` was suppressed as "unused", stayed suppressed after it had gained call sites, and rode through several audits unflagged.
-
-## Project Context: the heading is not the contract
-
-`/audit` asks the user to draft an `## Audit Context` section when it finds none
-(`../audit/references/scope-and-pre-checks.md`, "Audit Context Check"). Port that
-question, but only for `CONTEXT_FALLBACK=NO_FILE`. Asking "shall I draft a context
-section?" at a `CLAUDE.md` that already holds two hundred lines of project rules is
-the wrong question, and answering it wastes the rules that are already there.
-
-| CONTEXT_FALLBACK | What to do |
-|---|---|
-| `NONE` (heading found) | Pass that section as `PROJECT_CONTEXT`, as before |
-| `WHOLE_FILE` | Pass the entire file, and additionally instruct EVERY worker and EVERY fix agent to read `CLAUDE.md` in full themselves before their first edit. Do not ask the user anything |
-| `NO_FILE` | Ask via `AskUserQuestion` exactly as `/audit` does, including the `.claude/audit-no-context.flag` marker check |
-
-Why the explicit read-it-yourself instruction on top of passing the text: a full
-`CLAUDE.md` is long, it competes with the file list for attention, and the rules it
-carries are often bans ("never `.ultraThinMaterial`", "real umlauts, never ae/oe/ue")
-that are invisible until an agent is about to break one. A run where this was skipped
-produced fix agents writing fake-umlaut German comments into a repo whose `CLAUDE.md`
-forbids it twice, on a project whose headings are `## Sprache` and `## Design`, so the
-literal `## Audit Context` heading never matched and every agent ran blind.
-
-## Context Building (one-time)
-
-Read `CLAUDE.md`, package manifest, top 2 levels of SOURCE_DIRS. Create a compact **ARCHITEKTUR-NOTIZ** (max 20 lines): reusable modules/traits/mixins, services/utils, framework patterns.
-
-## Optional Pre-Checks
-
-Only useful when a local diff exists. Skip on a greenfield audit.
-
-```bash
-[ -n "$(git status --porcelain)" ] && bash "$AUDIT_BIN/pre-checks.sh"
-```
-
-`SECRET_SCAN_RESULT=FINDINGS` → **Critical** in the audit log. `LOCKFILE_DRIFT_RESULT=DRIFT` and `BINARY_ARTIFACTS_RESULT=FINDINGS` → **Important**.
-
-## Phase 1.5: Batching Decision
-
-| TOTAL_FILES | Mode | Rationale |
-|---|---|---|
-| ≤ `BATCH_MAX` (~15, see below) | `SINGLE` | One worker wave covers it inside the tool-call budget |
-| > `BATCH_MAX` | `BATCHED` | Split into batches of `BATCH_MAX` so every batch stays coverable |
-
-`SINGLE` mode dispatches all `TOTAL_FILES` to one worker wave with no batch boundary, so its threshold is not independent of the per-batch max below — it IS the per-batch max. A `SINGLE` run over 79 files would have the exact same worker-budget contradiction as an oversized batch, just without a second round to rescue it.
-
-### Batch Creation (BATCHED only)
-
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-
-# Re-derive the scope-extensions: override (Phase 1.5 runs as a separate bash
-# invocation from Phase 1, so its shell state is gone). Same sanitize-and-cap
-# logic as Phase 1 — see that block for the reasoning; kept here only so a
-# directory whose extra files (e.g. many *.md) push it over BATCH_MAX is
-# still counted correctly and gets split like any oversized directory would.
-SCOPE_EXTRA_LIST=""
-if [ -f "$PROJECT_ROOT/.claude/audit-guidelines.md" ]; then
-  SCOPE_EXTENSIONS_RAW=$(grep -m1 '^scope-extensions:[[:space:]]*' "$PROJECT_ROOT/.claude/audit-guidelines.md" \
-    | sed 's/^scope-extensions:[[:space:]]*//')
-  SCOPE_EXTRA_COUNT=0
-  for ext in $SCOPE_EXTENSIONS_RAW; do
-    case "$ext" in
-      ''|*[!A-Za-z0-9]*) continue ;;
-    esac
-    [ "$SCOPE_EXTRA_COUNT" -ge 5 ] && break
-    SCOPE_EXTRA_LIST="$SCOPE_EXTRA_LIST $ext"
-    SCOPE_EXTRA_COUNT=$((SCOPE_EXTRA_COUNT + 1))
-  done
-fi
-
-for dir in $(find "${SOURCE_DIRS_ARR[@]}" -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort); do
-  count=$(find "$dir" -maxdepth 1 \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.py" -o -name "*.sh" -o -name "*.bash" -o -name "*.zsh" \) 2>/dev/null | wc -l)
-  for ext in $SCOPE_EXTRA_LIST; do
-    extra=$(find "$dir" -maxdepth 1 -name "*.$ext" 2>/dev/null | wc -l)
-    count=$((count + extra))
-  done
-  [ "$count" -gt 0 ] && echo "$count $dir"
-done | sort -rn
-```
-
-**`BATCH_MAX`, derived from the worker tool-call budget, not picked independently:** `audit/agents/prompt-template.md` caps each worker at 30 tool calls total and separately instructs it to "Read EVERY file in the list. Skip none." Those two rules only both hold if the batch fits the budget. Reserve ~12 calls for the mandatory non-file reads of the heaviest collapsed worker (`CLAUDE.md` in full, the wave-shared briefing file from Step A.2, up to 5 dimension modules for W3 Frontend, up to 5 matched `guidelines/*.md`) plus ~3 calls investigation margin (the modules mandate `git log`/`git blame`/greps per finding, which are calls too) — that leaves `BATCH_MAX = 30 - 12 - 3 = 15` file-reads per batch. This replaces the old "max ~30-40", which no worker could finish by construction: batch 1 of the run that motivated this rule had 31 files and workers stopped near 19, leaving the rest with zero coverage. **If the tool-call number in `prompt-template.md`'s worker-budget line changes, recompute `BATCH_MAX` with it — the two are coupled, not independent constants.**
-
-**Batch rules:**
-- Max `BATCH_MAX` (~15) files per batch
-- Related items in the same batch (component + template)
-- Directory with >`BATCH_MAX` files: split into subdirectories
-- Directory with <5 files: merge with a related one
-- Models/entities + traits/mixins together
-- Config + routing together
-
-Output batch overview: `Batch N: directory (X files)`.
-
-## Concurrent Tree Check (Detail)
-
-A full audit runs for minutes across many batches. If the user (or another process) changes the working tree in the meantime, later batches audit a stale state. So record the baseline in Phase 1 and compare again after every batch:
-
-```bash
-AUDIT_BASE_HEAD=$(git rev-parse HEAD)
-AUDIT_TREE_HASH=$(git diff HEAD | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
-```
-
-Both, not just the hash. They fail in different ways, and the interesting case defeats the hash alone: a parallel session commits **exactly** the current dirty tree, so `git diff HEAD` returns empty against the new HEAD, the hash matches a clean baseline again, and the check stays quiet while the diff base has moved. `/audit` pins `AUDIT_BASE_HEAD` for this reason (`../audit/SKILL.md`); this skill did not, and a run where the user committed four times mid-audit passed the check silently every time.
-
-After every batch, compare both:
-
-```bash
-[ "$(git rev-parse HEAD)" = "$AUDIT_BASE_HEAD" ] || echo "WARN: Fremd-Commit waehrend Audit"
-```
-
-On a deviation in either: warning into the audit log (`## Notes: Tree changed during audit`), naming the foreign commits (`git log --oneline $AUDIT_BASE_HEAD..HEAD`) so the log says what moved rather than only that something did. Then reset the next batch to the current state (re-run this document's scope collection), re-pin BOTH values, and discard findings on lines that have meanwhile been overwritten (hallucination risk).
-
-A foreign commit is not automatically a problem, and the audit does not stop for one. What it must not do is keep reporting against a base that no longer exists. Two things deserve a second look: code the audit never saw because it arrived after that batch's scope collection, and the audit's own fixes swept into someone else's commit.
-
-## Intent Docs / Decided Tradeoffs (DECIDED_TRADEOFFS)
-
-Same derivation as /audit (`../audit/references/scope-and-pre-checks.md`, section "Intent-Docs"): glob `docs/adr/`, `docs/adrs/`, `docs/decisions/`, `DESIGN.md`, `PRODUCT.md`, `CONTEXT.md`, summarize decisions in max 15 lines, pass through to all workers. Documented tradeoffs are not findings; code drift from the decision is a docs_sync finding.
