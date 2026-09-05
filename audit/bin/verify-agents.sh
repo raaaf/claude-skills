@@ -14,9 +14,6 @@ set -euo pipefail
 AGENTS_DIR="${1:?usage: verify-agents.sh <AUDIT_AGENTS_DIR>}"
 
 REQUIRED=(
-  w1-code.md
-  w3-frontend.md
-  w4-content.md
   1-architecture.md
   2-security.md
   3-performance.md
@@ -29,7 +26,9 @@ REQUIRED=(
   10-animation.md
   11-docs-sync.md
   12-copy.md
-  0-triage.md
+  13-privacy.md
+  scout-files.md
+  scout-clusters.md
   fix-agent.md
   finding-verifier.md
   fix-verifier.md

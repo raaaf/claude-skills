@@ -82,20 +82,25 @@ If the finding's location is a credential, token, or `.env` value, your `REASON`
 
 ## Output format
 
-Exactly these lines, nothing else:
+Reply with the verdicts schema (`references/finding-schema.md`): one entry per finding in
+`verdicts[{id, verdict, severity, reason}]`.
 
-```
-FINDING_VERDICT=CONFIRMED|REFUTED|UNCERTAIN
-SEVERITY_CORRECTION=Critical|Important|Minor|none
-REASON={one sentence, max 30 words, with the file:line you actually read}
-```
+- `id`: the finding's own ID (dimension-prefixed), unchanged.
+- `verdict: CONFIRMED`: you read the location and the problem is there as described (or worse).
+- `verdict: REFUTED`: the problem is not there, is already handled elsewhere, or is a documented
+  tradeoff. `reason` names what refutes it (`file:line` of the guard, the caller, the ADR entry).
+- `verdict: UNCERTAIN`: you could not settle it inside your turn budget: the answer depends on
+  runtime behavior, an external system, or a library you cannot inspect. `reason` says what would
+  settle it. `UNCERTAIN` is an honest verdict, not a polite `CONFIRMED`: use it rather than waving
+  a finding through.
+- `severity`: the finding's severity, corrected if wrong (max one step per Prompt-Regel 4's
+  criterion for the dimension), unchanged otherwise.
+- `reason`: one sentence, max 30 words, with the `file:line` you actually read.
 
-- `CONFIRMED`: you read the location and the problem is there as described (or worse).
-- `REFUTED`: the problem is not there, is already handled elsewhere, or is a documented tradeoff.
-  Name what refutes it (`file:line` of the guard, the caller, the ADR entry).
-- `UNCERTAIN`: you could not settle it inside your turn budget: the answer depends on runtime
-  behavior, an external system, or a library you cannot inspect. Say what would settle it.
-  `UNCERTAIN` is an honest verdict, not a polite `CONFIRMED`: use it rather than waving a finding
-  through.
+## Refuter (Stage 5, Critical only)
 
-`SEVERITY_CORRECTION=none` means the reported severity stands. Any other value replaces it.
+Every `CONFIRMED` verdict with `severity: Critical` gets exactly one additional refuter pass in
+`find.js` (`model: 'opus'`, prompt "try to refute", same input as this agent plus your `reason`).
+A refutation from the refuter lowers the severity to `Important` and sets `disputed: true` on the
+finding; it is not a second vote, and it never discards the finding outright — a disputed
+Important is still fixed or logged, never dropped.

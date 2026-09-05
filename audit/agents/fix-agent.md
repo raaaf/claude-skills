@@ -37,6 +37,9 @@ If the fix touches a credential, token, or `.env` value, the `{short description
   ```
 - `PROJECT_CONTEXT` — Audit context from CLAUDE.md (if present)
 - `SUPPRESSIONS` — List of accepted patterns
+- `TEST_COMMAND` — run via `bash {AUDIT_BIN}/test-lock.sh {TEST_COMMAND}`, never unlocked
+- `BASELINE_FAILURES` — tests already failing before this fix wave (measured once via
+  `test-lock.sh` before `fix.js` starts); only NEW failures beyond this list count against your fix
 
 ## Process
 
@@ -353,15 +356,16 @@ If the fix genuinely seems to need any of the above, `FIX_RESULT=FAILED` with th
 
 ## Output
 
-Exactly one of these lines:
+Reply with the fix schema (`references/finding-schema.md`): `{fix_result, files, diff_summary,
+test, tool_calls}`.
 
-```
-FIX_RESULT=APPLIED | {file}:{line} | {short description}
-FIX_RESULT=PARTIAL | {file}:{line} | {what was fixed and verified} | remaining: {what is left}
-FIX_RESULT=NOT_FOUND | {file}:{line} | Finding could not be verified
-FIX_RESULT=SUPPRESSED | {file}:{line} | falls under suppression pattern
-FIX_RESULT=FAILED | {file}:{line} | {reason}
-```
+- `fix_result`: `APPLIED` | `PARTIAL` | `NOT_FOUND` | `SUPPRESSED` | `FAILED`.
+- `files`: every file you changed (never a file outside your assignment).
+- `diff_summary`: what changed, max 50 words — same evidence bar as a finding: `file:line`, no
+  code snippets. For `PARTIAL`, state what remains.
+- `test`: the test command you ran (via `test-lock.sh`) and its result, or `none` with a one-line
+  reason (no runnable check, or `TEST_ENV_BLOCKED: {reason}`).
+- `tool_calls`: the number of tool calls you used.
 
 ## Prohibited
 
@@ -377,4 +381,11 @@ FIX_RESULT=FAILED | {file}:{line} | {reason}
 - No reformatting of unchanged lines
 - No commits — file changes only
 - No follow-up questions to the user — if it's not clear: `FIX_RESULT=FAILED`
-- No going silent. **Work budget: 40 tool calls** (a fix agent reads, edits, re-verifies and often runs a locked test — genuinely heavier than a finder's 20). A partial, verified fix reported on time beats a perfect one that blows the budget. On reaching 40 tool calls, stop immediately: `FIX_RESULT=APPLIED` if fully done, `FIX_RESULT=PARTIAL` naming exactly what remains if some of it landed and is verified, `FIX_RESULT=FAILED` if nothing usable landed. There is no timeout on you, so silence stalls the round until the orchestrator notices.
+- No going silent. **Work budget: 25 tool calls** (measured 2026-09-05: real fixes landed in 9 and
+  11 calls). A partial, verified fix reported on time beats a perfect one that blows the budget. On
+  reaching 25 tool calls, stop immediately: `fix_result: APPLIED` if fully done, `PARTIAL` naming
+  exactly what remains if some of it landed and is verified, `FAILED` if nothing usable landed.
+  There is no timeout on you, so silence stalls the whole `fix.js` pipeline until it notices.
+- **Baseline failures are not your problem to fix.** `BASELINE_FAILURES` lists tests already red
+  before this fix wave started; only a NEW failure beyond that list counts as a regression you
+  introduced.

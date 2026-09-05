@@ -1,31 +1,29 @@
-# Subagent 10: Animation & Motion Design
+# Dimension: Animation & Motion Design
 
-- **subagent_type:** `ui-ux-reviewer`
-- **model:** `sonnet`
-- **maxTurns:** `10`
+## Look for
 
-## Focus
+Animations, transitions, motion design: missing animations (page transitions, modals, dropdowns,
+lists, skeletons), excessive animations, CSS/Tailwind transitions, reduced motion, audio feedback.
+Read `guidelines/ui-animation.md` (decision framework, timing, easing, reduced motion) and
+`guidelines/ui-audio.md` (projects with audio feedback) in full.
 
-Animations, transitions, motion design: missing animations (page transitions, modals, dropdowns, lists, skeletons), excessive animations, CSS/Tailwind transitions, reduced motion, audio feedback.
+- **Reduced-motion catch-all:** check for a global catch-all (global CSS/`app.css`, Tailwind
+  preset) before flagging a single element for missing its own `@media` rule.
+- **Tailwind transition defaults:** default duration is 150ms; "missing duration" is not a finding
+  unless an explicitly deviating duration is actually needed.
+- **New dependencies:** check the animation library's own defaults (e.g. `respectMotionPreference`)
+  before attributing misbehavior to it.
 
-**Complete guidelines:** Read these files in the skill directory and check the code against all rules described there:
-- `guidelines/ui-animation.md` — decision framework, timing, easing, reduced motion
-- `guidelines/ui-audio.md` — only relevant when the project uses audio feedback
+Skip when no frontend files are in scope.
 
-## Full-Audit Focus (additional)
+## Severity
 
-Overall picture: is the app consistent in its motion design — same easing functions, same timing steps? Or does every page differ?
+No `Critical`. Missing `prefers-reduced-motion` support with no catch-all, or an animation that
+actively breaks interaction (blocks input, causes motion sickness triggers) is `Important`;
+everything else `Minor`.
 
-## Mandatory Verification BEFORE Flagging
+## Output
 
-- **Reduced-motion catch-all:** Before every "missing `prefers-reduced-motion`" finding, check whether a global catch-all exists for it (global CSS/`app.css`, Tailwind preset). If it already exists, a single element without its own `@media` rule is NOT a finding.
-- **Tailwind transition defaults:** Tailwind utilities like `transition`/`transition-colors`/`transition-transform` have a default duration of 150ms. "Missing duration" is therefore NOT a finding as long as no explicitly deviating (too long/too short) duration is needed.
-- **Findings against new dependencies:** Before a finding that attributes misbehavior to an animation library newly introduced in the diff (e.g. "doesn't respect reduced motion"), first check its defaults (README/docs in `node_modules/{pkg}/`, e.g. `respectMotionPreference`). Many libraries already handle the assumed behavior by default.
-
-## Skip When
-
-- No frontend files in the diff/batch
-
-## Project-Specific Context
-
-{PROJECT_CONTEXT}
+Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`
+plus `coverage`. Every ID is prefixed `animation-`. Set `coverage` to `COVERAGE: full` or
+`COVERAGE: partial | not read: {file1}, {file2}`.

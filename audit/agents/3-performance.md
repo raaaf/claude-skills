@@ -1,27 +1,32 @@
-# Subagent 3: Performance & Efficiency
+# Dimension: Performance & Efficiency
 
-- **subagent_type:** `performance-auditor`
-- **model:** `sonnet`
-- **maxTurns:** `10`
+## Look for
 
-## Focus
+N+1, memory leaks, bundle size, re-renders, redundant operations (duplicate file reads, repeated
+API calls), missed concurrency, hot-path bloat, TOCTOU, unbounded data structures. Scaling issues:
+code that works with 1 user but breaks with 100+ concurrent users (missing pagination, synchronous
+jobs, file-based sessions, unbounded SELECTs, missing locks on concurrent writes).
 
-N+1, memory leaks, bundle size, re-renders, redundant operations (duplicate file reads, repeated API calls), missed concurrency (sequential instead of parallel), hot-path bloat, TOCTOU anti-pattern, unbounded data structures. **Scaling issues:** code that works with 1 user but breaks with 100+ concurrent users (missing pagination, synchronous jobs, file-based sessions, unbounded SELECTs, missing locks on concurrent writes).
+Read `guidelines/performance.md` and `guidelines/performance-2026.md` in full. Native apps
+(`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md`
+section III — main-thread blocking, retain cycles/context leaks, list virtualization, image
+downsampling, app start. Web vitals (INP/LCP/CLS) do not apply there.
 
-**Complete guidelines:** Read guidelines/performance.md AND guidelines/performance-2026.md in the skill directory and check the code against all rules described there.
+- **Factory state semantics:** never infer a factory state's meaning from its method name — read
+  the state definition against the enum.
+- **FK index coverage:** check whether a composite index already covers the column as leading
+  column before flagging a missing single index.
+- **bun:sqlite:** `db.query(sql)` auto-caches per SQL string; "prepared per call" is only a valid
+  finding for bare `db.prepare()` in a loop.
 
-**For native apps** (`FRAMEWORK` = ios/android/react-native/flutter): additionally `guidelines/native-mobile.md` section III — main-thread blocking, retain cycles / context leaks, list virtualization, image downsampling, app start. Web vitals (INP/LCP/CLS) do not apply there.
+## Severity
 
-## Full-Audit Focus (additional)
+`Critical` requires a demonstrated user-facing outage or data-loss path under realistic load
+(unbounded growth, a lock that starves under concurrency, a query that times out at real data
+volume). A measurable but non-outage degradation is `Important`. Micro-optimizations are `Minor`.
 
-N+1 queries (ORM relations without eager loading), queries in loops, missing memoization for expensive operations, repeated identical DB queries within a request lifecycle, missing aggregation functions where subselects would be needed. **Scaling check across the whole codebase:** connection pooling, queue usage, session backend, caching strategy, pagination of all lists, index coverage, horizontal scalability (statelessness check), bulk operations instead of single operations.
+## Output
 
-## Mandatory Verification BEFORE Flagging
-
-- **Factory state semantics:** NEVER infer the meaning of a factory state from the method name. Before flagging, read the state definition and check it against the enum definition (example: `public()` can set `Visibility::Hidden`). Findings based on the name without checking the definition are not permitted.
-- **FK index coverage:** Before every FK-index finding, check whether a composite index exists with the column as the leading column. Such a composite index covers the single-index lookup, an additional single index would be redundant. Findings without this check are false positives.
-- **bun:sqlite statement caching:** `db.query(sql)` automatically caches the prepared statement per SQL string (a second call with the same SQL means no re-prepare). Only a bare `db.prepare()` gets re-prepared on every call. "Statement re-prepared per call" / "prepare in loop" is therefore NOT a valid finding for `db.query(...)` calls in a loop — only for `db.prepare(...)` in a loop.
-
-## Project-Specific Context
-
-{PROJECT_CONTEXT}
+Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`
+plus `coverage`. Every ID is prefixed `performance-`. Set `coverage` to `COVERAGE: full` or
+`COVERAGE: partial | not read: {file1}, {file2}`.

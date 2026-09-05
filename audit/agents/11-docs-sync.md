@@ -1,62 +1,49 @@
-# Subagent 11: Docs Sync & Style
+# Dimension: Docs Sync & Style
 
-- **subagent_type:** `audit-content-worker` (this module is read BY w4-content.md, never dispatched on its own)
-- **model:** `sonnet`
-- **maxTurns:** `10`
+## Look for
 
-## Focus
+Keep project documentation current and consistent in style. Check `README.md`, `CLAUDE.md`,
+`.env.example`, `CHANGELOG.md` and `docs/**` against the actual state of the code. Findings under
+category `[Docs]`. Read `guidelines/documentation.md` in full (structure standards, `.env.example`
+sync rules, style rules). `guidelines/docs-sync.md` additionally for wizard/config/schema diffs
+(check its checklist: wizard steps, config keys, migrations, routes → which docs must be checked).
 
-Keep project documentation current and consistent in style. Check `README.md`, `CLAUDE.md`, `.env.example`, `CHANGELOG.md` and `docs/**` against the actual state of the code. Findings under category `[Docs]`.
+Uses `scout-clusters.md`, not `scout-files.md`: docs-sync findings live in the gap between two
+files, so a module/pattern map with cross-reference points finds more than a per-file chunk did.
 
-**Complete guidelines:** Read `guidelines/documentation.md` in the skill directory and check against all rules described there (structure standards for README/CLAUDE.md, sync rules for .env.example, style rules per Strunk/Caveman).
+**Sync against code (mandatory):**
+- Every `env('FOO')`/`process.env.FOO`/`os.getenv('FOO')` → entry in `.env.example`?
+- New routes, CLI/Artisan commands, scripts → mentioned in README?
+- New top-level dependencies → stack section in CLAUDE.md current?
+- Do install/run commands still work? Do referenced paths/files still exist?
+- **Design token/palette/brand value changed?** Grep the OLD literal under `tests/`,
+  `__snapshots__/`, `Snapshots/` and fixture directories too — a snapshot harness re-records a
+  stale value as the new baseline on first re-run.
+- **Anything named, numbered or listed changed?** Walk every repeat site explicitly: CLAUDE.md
+  tables (Commands, migrated-so-far lists, skill roster, effort table, counts), README counts and
+  feature lists, SKILL.md step/phase numbering, `.claude-plugin/plugin.json` and
+  `marketplace.json`. Each stale repeat site is its own `[Docs]` finding — grep the changed
+  identifier repo-wide, the drift is by definition in files the diff did NOT touch.
 
-**Wizard/config/schema diffs:** If `guidelines/docs-sync.md` appears in GUIDELINE_MATCHES, read it and run its checklist (wizard steps, config keys, migrations, routes → which docs must be checked for drift).
+**Test-count drift (unconditional, every run):** determine the real test count (test-runner
+summary or `grep -rcE '\b(it|test)\(' tests/`) and diff it against every "number + test/assertion"
+phrase in README/CLAUDE.md. Mismatch → `[Docs]` finding with both numbers.
 
-## What to Check (Short Version)
+**Structure/style (see guideline):** clear sections, no duplication between README and CLAUDE.md,
+no filler ("just", "simply", "basically"), no preambles, tables over prose, short paragraphs.
 
-**Sync against code (MANDATORY):**
-- Every `env('FOO')` / `process.env.FOO` / `os.getenv('FOO')` reference in the code → entry in `.env.example`?
-- New routes, CLI commands, Artisan commands, scripts → mentioned in README?
-- New top-level dependencies in `package.json`/`composer.json`/`pyproject.toml` → stack section in CLAUDE.md current?
-- Do install/run commands in the README still work (no outdated `npm run dev` if the script was deleted)?
-- Do referenced paths/files still exist?
-- **Design token, palette or brand value changed?** Then test fixtures and snapshot harnesses are drift sites too, not only `DESIGN.md`/`CLAUDE.md`: grep the OLD literal (hex, color name, font name) under `tests/`, `__snapshots__/`, `Snapshots/` and fixture directories. A harness that hard-codes the pre-change value re-records the stale value as the new baseline on the first re-run (2026-09-02).
-- **Anything named, numbered or listed changed? Then every place that repeats it is a drift candidate (3/3 audits hit this).** A new, renamed or removed skill, feature, phase, step, agent file or script never lives in one place. Walk the repeat sites explicitly instead of trusting that the diff touched them:
-  - `CLAUDE.md` tables: Commands, "Migrated so far" lists, skill roster, effort-level table, gotchas that name a count ("all N agent files")
-  - `README.md`: counts, feature lists, command examples, pipeline diagrams, runtime/version claims
-  - `SKILL.md`: step and phase numbering plus the format of the step headings. A newly inserted step (D.7 between D.5 and E) must not break references to the neighbouring steps in the same file, in `references/*.md` or in `agents/*.md`
-  - the shipping manifests `.claude-plugin/plugin.json` and `marketplace.json`, which must carry the same skill list and descriptions
-  Each stale repeat site is its own `[Docs]` finding with `file:line`. Verify by grepping the changed identifier repo-wide, never by reading the diff alone: the drift is by definition in the files the diff did NOT touch.
+Skip in `/audit` mode when the diff has no doc-relevant change (no new env/route/command/script, no
+new top-level dependency, no user-facing behavior change) and is not a pure i18n/test change —
+except the test-count drift check, which always runs.
 
-**Test-count drift (UNCONDITIONAL, every run):**
-Regardless of whether the diff touches tests: determine the real test count and diff it against the numbers stated in docs. Test-count drift is a 5x repeat offender.
-- Actual count: test-runner summary (e.g. `./vendor/bin/pest --ci` tail, `jest`/`vitest` summary) OR grep (`grep -rcE '\b(it|test)\(' tests/`).
-- Documented count: every "number + test/assertion" phrase in `README.md`/`CLAUDE.md` (e.g. "149 Pest tests, 395 assertions").
-- Documented differs from actual → `[Docs]` finding with both numbers. Fix: set the doc to the actual value or suggest a circa/range wording if the number keeps drifting.
+## Severity
 
-**Structure (see guideline):**
-- README has clear sections: what/why, install, usage, dev, stack, license
-- CLAUDE.md has clear sections: identity/stack, commands, conventions, architecture notes
-- No duplication between README and CLAUDE.md (CLAUDE.md references, doesn't duplicate)
+`Important` when the drift breaks setup/onboarding (missing `.env.example` entry, dead install
+command, broken referenced path) or misstates a number readers rely on. Style/structure issues and
+cosmetic drift are `Minor`. No `Critical` — docs drift alone carries no exploit or data-loss path.
 
-**Style (see guideline):**
-- No filler ("just", "simply", "basically", "im Grunde", "eigentlich")
-- No preambles ("In the following section we will...")
-- Tables instead of prose where possible
-- Code blocks instead of descriptions of code
-- Short sentences (max 3 lines per paragraph)
+## Output
 
-## Full-Audit Focus (additional)
-
-Complete style overhaul instead of just a drift check. Restructuring into standard sections allowed. Identify outdated docs/**-files (e.g. feature docs for removed features).
-
-## Skip When
-
-- `/audit` mode AND the diff contains no doc-relevant changes (no new `env(...)`, no new routes/commands/scripts, no new top-level dependencies, no user-facing behavior change)
-- Pure i18n update or pure test change
-
-**Exception:** the test-count drift check above ALWAYS runs, even if the agent would otherwise be skipped.
-
-## Project-Specific Context
-
-{PROJECT_CONTEXT}
+Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`
+plus `coverage`. Every ID is prefixed `docs_sync-`. Set `coverage` to `COVERAGE: full` or
+`COVERAGE: partial | not read: {file1}, {file2}`.
