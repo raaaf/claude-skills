@@ -514,7 +514,8 @@ Agent(
   prompt: "Read {AUDIT_AGENTS}/learning-agent.md and execute the flow.
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des Audit-Logs}
-    AUDIT_TYPE=full-audit",
+    AUDIT_TYPE=full-audit
+    PATTERNS_RECURRENCES={Ausgabe von `patterns-store.sh recurrences`, hier vom Orchestrator eingesammelt}",
   subagent_type: audit-learning-agent,
   run_in_background: false
 )
