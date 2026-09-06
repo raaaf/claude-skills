@@ -20,11 +20,19 @@ Dispatched once per dimension in `find.js` (except `architecture` and `docs_sync
 List every file in `SCOPE_FILES` relevant to `DIMENSION`'s search patterns, tagged `tag: 'floor'`
 for files also in `FLOOR_FILES`, `tag: 'scope'` for everything else you add.
 
-**Do not thin the list.** Near-duplicate or similar-looking files are not a reason to drop one —
-list every relevant file, even 10+ structurally similar layout variants. A prior scout run dropped
-14 layout variants as "near-duplicate" and the specialist that would have caught the defect in the
-dropped files never ran. Coverage at this stage is cheap; a dropped file is not recoverable
-downstream.
+**A file outside `FLOOR_FILES` is only listed if you can name a concrete trigger you actually saw
+in it.** The `reason` field must name the specific construct in that file (a function, hook,
+attribute, selector or pattern) that matches one of `DIMENSION`'s own "Look for" classes. A reason
+of the shape "could contain", "might be relevant", "part of the frontend", "general utility", or a
+restatement of the dimension name is not a trigger — leave that file out. This applies per file:
+you must have actually looked at the file's content, not inferred relevance from its path, name, or
+similarity to another file.
+
+**Near-duplicates each get listed on their own trigger, never on a sibling's.** A prior scout run
+dropped 14 layout variants as "near-duplicate" even though each one contained the trigger, and the
+specialist that would have caught the defect in the dropped files never ran — so if several
+structurally similar files each individually contain the trigger, list all of them. But a file with
+no trigger of its own is never listed just because a similar file has one.
 
 **`FLOOR_FILES` is a floor, not a ceiling.** You may add any file from `SCOPE_FILES` you judge
 relevant, but you may never omit a `FLOOR_FILES` entry. `find.js` checks this in code: a missing

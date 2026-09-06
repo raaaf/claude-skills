@@ -285,6 +285,20 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
   if (added.length) {
     logFn(`${dimension}: scout omitted ${added.length} floor file(s), re-added: ${added.join(', ')}`);
   }
+  // Soft cap: measured 2026-09-06, a scout given "do not thin the list" stopped
+  // narrowing at all (203/209/199/150/141/139 files across 6 dimensions, 273
+  // agents total, 124 USD against a 100 USD target). Floor entries are never
+  // dropped; non-floor entries beyond the cap are dropped in scout order.
+  const MAX_SCOUT_FILES = 70;
+  if (result.files.length > MAX_SCOUT_FILES) {
+    const floorEntries = result.files.filter((f) => f.tag === 'floor');
+    const nonFloorEntries = result.files.filter((f) => f.tag !== 'floor');
+    const nonFloorKeep = Math.max(0, MAX_SCOUT_FILES - floorEntries.length);
+    const kept = floorEntries.concat(nonFloorEntries.slice(0, nonFloorKeep));
+    const dropped = result.files.length - kept.length;
+    logFn(`${dimension}: scout returned ${result.files.length} files, kept ${kept.length}, dropped ${dropped}`);
+    return kept;
+  }
   return result.files;
 }
 
