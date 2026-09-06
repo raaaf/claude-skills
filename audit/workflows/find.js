@@ -230,9 +230,98 @@ function floorDimensionsForFile(path) {
 // re-measuring against the corpus above.
 const SELECTIVE_FLOOR_DIMENSIONS = ['docs_sync', 'copy', 'typography', 'architecture'];
 
-function computeFloorFiles(dimension, files) {
-  if (!SELECTIVE_FLOOR_DIMENSIONS.includes(dimension)) return [];
-  return files.filter((f) => floorDimensionsForFile(f).includes(dimension));
+// Soft cap on a dimension's scout list, shared by computeFloorFiles (logs
+// when the content floor alone exceeds it) and runFileScout (measured
+// 2026-09-06, a scout given "do not thin the list" stopped narrowing at all:
+// 203/209/199/150/141/139 files across 6 dimensions, 273 agents total, 124
+// USD against a 100 USD target). Floor entries are never dropped; non-floor
+// entries beyond the cap are dropped in scout order.
+const MAX_SCOUT_FILES = 70;
+
+// CONTENT-based floor: replaces the extension-based per-file floor for the
+// broad dimensions above (measured 2026-09-06, see the note above this
+// block). A path-based floor over FRONTEND_EXT_RE/`.php|ts|...` matches most
+// of a real repo, which makes MAX_SCOUT_FILES inert; these regexes instead
+// match actual content signals derived from the ground-truth defects two
+// real runs missed (JSON-LD critical in a provider the security scout
+// dropped non-reproducibly, an e2e spec the code_quality scout never saw).
+// Deterministic, cheap (no LLM call), and narrow enough that the cap still
+// binds. `architecture` intentionally has no content signal: it keeps the
+// existing selective PATH-based floor only.
+const FLOOR_CONTENT_SIGNALS = {
+  security: [
+    /\$_(GET|POST|REQUEST|SERVER|FILES|COOKIE)/m,
+    /wp_ajax_|admin_ajax/m,
+    /current_user_can|wp_verify_nonce|check_ajax_referer/m,
+    /json_encode|wp_json_encode/m,
+    /upload_mimes|wp_handle_upload|\$file\['type'\]/m,
+    /Content-Security-Policy|X-Forwarded|gethostbyname|wp_remote_|shell_exec|eval\(/m
+  ],
+  privacy: [
+    /consent|cookie|analytics|gtag|iframe|tracking|X-Forwarded|REMOTE_ADDR/m
+  ],
+  performance: [
+    /foreach|while \(|get_posts|WP_Query|wp_remote_|file_get_contents|new \w+\(\)\s*;/m,
+    /useEffect|addEventListener|setInterval/m
+  ],
+  code_quality: [
+    /function |class |=> |describe\(|it\(|test\(/m
+  ],
+  seo: [
+    /wp_head|meta name|og:|json-ld|application\/ld\+json|sitemap|robots|canonical/m
+  ],
+  a11y: [
+    /aria-|role=|<button|<a |<input|<label|tabindex|alt=/m
+  ],
+  ui_design: [
+    /class="|className=|--\w+-|font-|text-|rem|px/m
+  ],
+  typography: [
+    /class="|className=|--\w+-|font-|text-|rem|px/m
+  ],
+  ux: [
+    /<form|submit|loading|error|aria-live|disabled/m
+  ],
+  animation: [
+    /transition|animate|@keyframes|prefers-reduced-motion|gsap|framer/m
+  ],
+  docs_sync: [
+    /^#|README|CLAUDE\.md|\.env/m
+  ],
+  copy: [
+    />[A-Za-zÄÖÜäöüß][^<>]{12,}<|__\(|_e\(|_x\(/m
+  ]
+  // architecture: no content signal, path-based floor only (see above).
+};
+
+// Content-based floor: a file joins a dimension's floor when its content
+// matches at least one of FLOOR_CONTENT_SIGNALS[dimension]. `readFile(path)`
+// is supplied by the caller (find.js has no filesystem access); it returns
+// the file's content or '' when unreadable. Falls back to the selective
+// path-based floor (current behaviour) when no `readFile` is given; the
+// "content floor inactive" warning itself is logged once at the top level
+// (entry point below), not here, to avoid one log line per dimension.
+function computeFloorFiles(dimension, files, readFile, logFn) {
+  const pathFloor = SELECTIVE_FLOOR_DIMENSIONS.includes(dimension)
+    ? files.filter((f) => floorDimensionsForFile(f).includes(dimension))
+    : [];
+  if (typeof readFile !== 'function') {
+    return pathFloor;
+  }
+  const signals = FLOOR_CONTENT_SIGNALS[dimension];
+  if (!signals) return pathFloor;
+  const contentFloor = files.filter((f) => {
+    const content = readFile(f) || '';
+    return signals.some((re) => re.test(content));
+  });
+  const merged = pathFloor.slice();
+  for (const f of contentFloor) {
+    if (!merged.includes(f)) merged.push(f);
+  }
+  if (merged.length > MAX_SCOUT_FILES && logFn) {
+    logFn(`${dimension}: content floor alone has ${merged.length} file(s), above the ${MAX_SCOUT_FILES}-file cap; floor entries are never dropped`);
+  }
+  return merged;
 }
 
 // DIMENSION GATE: true when at least one file in scope carries this
@@ -288,7 +377,7 @@ function chunkByDirectory(files) {
 async function runFileScout(ctx, dimension, agentFn, logFn) {
   const promptDoc = `${ctx.promptDir}/scout-files.md`;
   const scopeFiles = ctx.files;
-  const floorFiles = computeFloorFiles(dimension, scopeFiles);
+  const floorFiles = computeFloorFiles(dimension, scopeFiles, ctx.readFile, logFn);
   if (!floorFiles.length && !dimensionHasFloorSignal(dimension, scopeFiles)) {
     logFn(`${dimension}: no deterministic floor signal in scope, relying entirely on the scout`);
   }
@@ -318,11 +407,6 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
   if (added.length) {
     logFn(`${dimension}: scout omitted ${added.length} floor file(s), re-added: ${added.join(', ')}`);
   }
-  // Soft cap: measured 2026-09-06, a scout given "do not thin the list" stopped
-  // narrowing at all (203/209/199/150/141/139 files across 6 dimensions, 273
-  // agents total, 124 USD against a 100 USD target). Floor entries are never
-  // dropped; non-floor entries beyond the cap are dropped in scout order.
-  const MAX_SCOUT_FILES = 70;
   if (result.files.length > MAX_SCOUT_FILES) {
     const floorEntries = result.files.filter((f) => f.tag === 'floor');
     const nonFloorEntries = result.files.filter((f) => f.tag !== 'floor');
@@ -561,8 +645,17 @@ function dimensionFileName(dim) {
 // Entry point: this script body IS the run, invoked by the Workflow tool with
 // `agent`, `parallel`, `log`, `args` already in scope as globals.
 // args: { repoRoot, scope: 'diff'|'repo', files, dimensions, effort, promptDir, guidelinesDir,
-//         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc }
+//         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc,
+//         fileContents (object mapping repo-relative path to content; find.js has no
+//         filesystem access, so the caller reads every scope file and passes it in) }
 const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions : ALL_DIMENSIONS);
+
+const fileContents = args.fileContents || {};
+const hasFileContents = Object.keys(fileContents).length > 0;
+const readFile = hasFileContents ? (path) => fileContents[path] || '' : null;
+if (!hasFileContents) {
+  log('content floor inactive for this run: args.fileContents is absent or empty, falling back to path-based floors only');
+}
 
 const ctx = {
   repoRoot: args.repoRoot,
@@ -571,6 +664,7 @@ const ctx = {
   promptDir: args.promptDir,
   guidelinesDir: args.guidelinesDir || '',
   guidelines: args.guidelines || '',
+  readFile,
   dimensionDoc: args.dimensionDoc || Object.fromEntries(
     ALL_DIMENSIONS.map((d) => [d, `${args.promptDir}/${dimensionFileName(d)}`])
   )
@@ -582,7 +676,7 @@ const ctx = {
 // end. The real count isn't known before the scout runs, so this uses the
 // deterministic floor-file count as a proxy — cheap to compute up front.
 const floorCountByDim = Object.fromEntries(
-  dimensions.map((d) => [d, computeFloorFiles(d, ctx.files).length])
+  dimensions.map((d) => [d, computeFloorFiles(d, ctx.files, ctx.readFile, log).length])
 );
 const ordered = [...dimensions].sort((a, b) => floorCountByDim[b] - floorCountByDim[a]);
 

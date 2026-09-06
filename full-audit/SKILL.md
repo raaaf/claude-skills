@@ -67,7 +67,7 @@ the answer, so a partial selection here has no gate consequence, only a smaller 
 
 Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
 
-- `find.js` args: `scope: "repo"`, `files` from the Phase 0 scope walk above (not a diff).
+- `find.js` args: `scope: "repo"`, `files` from the Phase 0 scope walk above (not a diff), and `fileContents` built the same way as `audit/SKILL.md` Phase 2 (read every scope file with the Read tool in batches, pass the path-to-content map).
 - Phase 4 never writes `/tmp/claude-audit-passed-*` — `/full-audit` has no push gate. Everything
   else (log finalization, `run-cost.sh`, `run-log.sh --counts`, in-progress marker release,
   learning phase) is identical.
