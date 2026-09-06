@@ -37,7 +37,9 @@ no trigger of its own is never listed just because a similar file has one.
 **`FLOOR_FILES` is a floor, not a ceiling.** You may add any file from `SCOPE_FILES` you judge
 relevant, but you may never omit a `FLOOR_FILES` entry. `find.js` checks this in code: a missing
 Floor file is added back and logged, never silently dropped — treat that as a safety net, not
-permission to skip the check yourself.
+permission to skip the check yourself. When the briefing says there are none for this dimension,
+every file you list must still carry its own concrete trigger, and the list is expected to be a
+small fraction of `SCOPE_FILES`, not most of it.
 
 **Diff-mode context files (`SCOPE=diff` only):** for each file in `SCOPE_FILES`, you may
 additionally list up to 5 files it directly imports or that directly call it, tagged

@@ -212,8 +212,35 @@ function floorDimensionsForFile(path) {
   return dims;
 }
 
+// FILE FLOOR vs. DIMENSION GATE: floorDimensionsForFile is a per-file SIGNAL
+// (which dimensions this file's path is relevant to), not a per-file
+// OBLIGATION. Measured 2026-09-06 against the real 257-file corpus (CLAUDE.md
+// gotcha "Triage routing has a deterministic floor" describes the floor at
+// DIMENSION granularity, i.e. "should this dimension run at all" — it never
+// claimed "this file must appear in the dimension's scout list"):
+//   security 238, performance 238, code_quality 238, seo 122, a11y 122,
+//   ui_design 122, ux 122, animation 122, architecture 0, typography 0,
+//   docs_sync 0, copy 0, privacy 0
+// Applying the signal as a per-file floor for the broad dimensions makes
+// MAX_SCOUT_FILES=70 inert (a rule matching most of the repo is not a
+// signal, it is the whole repository) and forces the scout to keep a
+// near-total file set. Only the narrow, genuinely selective signals
+// (DOCS_RE, TRANSLATION_RE, MIGRATION_RE match a small precise set) stay a
+// per-file obligation. Do not add a dimension back here without
+// re-measuring against the corpus above.
+const SELECTIVE_FLOOR_DIMENSIONS = ['docs_sync', 'copy', 'typography', 'architecture'];
+
 function computeFloorFiles(dimension, files) {
+  if (!SELECTIVE_FLOOR_DIMENSIONS.includes(dimension)) return [];
   return files.filter((f) => floorDimensionsForFile(f).includes(dimension));
+}
+
+// DIMENSION GATE: true when at least one file in scope carries this
+// dimension's signal. A dimension still runs when this is false (the scout
+// may find something the signal regexes miss); this only decides whether to
+// log that the dimension has no deterministic signal at all.
+function dimensionHasFloorSignal(dimension, files) {
+  return files.some((f) => floorDimensionsForFile(f).includes(dimension));
 }
 
 function chunk(files, size) {
@@ -262,10 +289,16 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
   const promptDoc = `${ctx.promptDir}/scout-files.md`;
   const scopeFiles = ctx.files;
   const floorFiles = computeFloorFiles(dimension, scopeFiles);
+  if (!floorFiles.length && !dimensionHasFloorSignal(dimension, scopeFiles)) {
+    logFn(`${dimension}: no deterministic floor signal in scope, relying entirely on the scout`);
+  }
+  const floorFilesBriefing = floorFiles.length
+    ? JSON.stringify(floorFiles)
+    : '(none for this dimension; select under the concrete-trigger rule and stay within MAX_SCOUT_FILES)';
   const result = await agentFn(
     ROOT_HEADER +
     `Read ${promptDoc} and execute the file-scout task for DIMENSION=${dimension}.\n` +
-    `SCOPE_FILES=${JSON.stringify(scopeFiles)}\nFLOOR_FILES=${JSON.stringify(floorFiles)}\n` +
+    `SCOPE_FILES=${JSON.stringify(scopeFiles)}\nFLOOR_FILES=${floorFilesBriefing}\n` +
     `SCOPE=${ctx.scope}`,
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_FILES_SCHEMA, phase: 'Scout' }
   );
