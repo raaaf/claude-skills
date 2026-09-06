@@ -103,6 +103,8 @@ Count confirmed Critical+Important (D.7 output; without D.7, at low effort, the 
 - `floor=medium` (medium effort): `high` goes straight to fix, `medium`+`low` go through Step D.7 first
 - `floor=low` (high/xhigh effort): every Critical/Important finding goes through Step D.7, regardless of confidence
 
+**At `floor=medium`, the D.7 skip must be visible.** The orchestrator MUST either dispatch the finding-verifier for every medium/low-confidence Critical/Important finding, or write one line under `## Incidents` in the audit log: `D.7 skipped: {reason}`. A silent skip is a process defect, not a shortcut. Reference case (2026-09-06): a run skipped D.7 wholesale with no log entry; only the downstream fix-verifier caught a bad fix.
+
 **From here on, open points are ONLY:** genuine decision points (architecture tradeoffs, behavior changes, scope questions) that an agent is not allowed to decide. Everything else gets fixed or discarded.
 
 **Self-regression vs. pre-existing (prioritization):** if a finding is on a line that was changed in the current branch diff (`git blame`/diff comparison), it's a **self-regression** — ALWAYS fix, never park, even if it looks like a decision point (the branch introduced the problem). Only findings on unchanged, pre-existing lines may be parked as an open point.
