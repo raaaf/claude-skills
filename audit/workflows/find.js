@@ -433,10 +433,11 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
 
 const CONFIDENCE_RANK = { high: 3, medium: 2, low: 1 };
 
-// A finding's dedup key: its lowest-sorting file path, the first line number mentioned
-// for that path, and a normalized prefix of the issue text. Two reports of the same
-// defect can differ slightly in the exact line cited, so line numbers within 5 of each
-// other are treated as equal.
+// A finding's dedup key: its lowest-sorting file path and the first line number
+// mentioned for that path. Within ONE dimension, two findings on the same file within
+// five lines of each other are the same defect reported by two chunks; the wording
+// differs because different specialists wrote it, so the issue text is not part of the
+// key.
 function findingDedupKey(finding) {
   const files = (finding.files || []).slice().sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const first = files[0];
@@ -444,13 +445,12 @@ function findingDedupKey(finding) {
   const lineMatch = /\d+/.exec(first.lines || '');
   return {
     path: first.path,
-    line: lineMatch ? parseInt(lineMatch[0], 10) : null,
-    issuePrefix: (finding.issue || '').slice(0, 40).toLowerCase().replace(/[^a-z0-9]/g, '')
+    line: lineMatch ? parseInt(lineMatch[0], 10) : null
   };
 }
 
 function sameDedupKey(a, b) {
-  if (!a || !b || a.path !== b.path || a.issuePrefix !== b.issuePrefix) return false;
+  if (!a || !b || a.path !== b.path) return false;
   if (a.line == null || b.line == null) return a.line === b.line;
   return Math.abs(a.line - b.line) <= 5;
 }
@@ -472,7 +472,7 @@ function dedupeFindings(findings, dimension, logFn) {
   for (const finding of findings) {
     const key = findingDedupKey(finding);
     if (!key) { survivors.push(finding); keys.push(key); continue; }
-    const existingIdx = survivors.findIndex((s, i) => sameDedupKey(keys[i], key));
+    const existingIdx = survivors.findIndex((_, i) => sameDedupKey(keys[i], key));
     if (existingIdx === -1) {
       survivors.push(finding);
       keys.push(key);
@@ -487,7 +487,9 @@ function dedupeFindings(findings, dimension, logFn) {
       winner = finding;
       dropped = existing;
     }
-    winner.mergedFrom = (winner.mergedFrom || []).concat([dropped.id], dropped.mergedFrom || []);
+    const merged = (winner.mergedFrom || []).concat([{ id: dropped.id, issue: dropped.issue }], dropped.mergedFrom || []);
+    const seenIds = new Set();
+    winner.mergedFrom = merged.filter((m) => (seenIds.has(m.id) ? false : (seenIds.add(m.id), true)));
     survivors[existingIdx] = winner;
     keys[existingIdx] = findingDedupKey(winner);
     logFn(`${dimension}: merged ${dropped.id} into ${winner.id}`);
