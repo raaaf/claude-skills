@@ -27,6 +27,21 @@ used instead of existing UI components (Guideline XII).
   (dead write hides intent).
 - **Dependency direction:** service-layer modules must not import from route/controller layers.
 
+**Defect classes calibrated against real findings (2026-09-05/2026-08-27 audits):**
+- **Contradicting capability/permission mapping:** a capability mapped to a broader capability with
+  a `do_not_allow`/deny fallback (two sources of truth for "who is allowed"), or a query operator
+  change (e.g. `meta_query` compare) that silently turns an OR into an inner join, changing which
+  records are visible.
+- **Hard singleton blocking test seams:** a cross-cutting service (sync engine, cache) wired as a
+  hard singleton with no injectable seam, so its side effects (removal, invalidation) cannot be
+  tested in isolation — flag the missing seam, not just "no tests".
+- **Duplicated fetch-by-id/lookup helper:** the same "fetch entity by id from context/store" logic
+  copied across 3+ views/controllers instead of one shared accessor.
+- **Parallel engine/state-machine duplication:** two services owning overlapping responsibility for
+  the same runtime concern (e.g. two timer engines, two sync queues) that should be one.
+- **Shared connection/resource object duplicated per module:** a DB connection, HTTP client, or
+  cache handle re-instantiated per module instead of one shared instance module.
+
 Guidelines to read in full: `guidelines/architecture.md` (DRY, SRP, layers, component reuse, API
 design, observability), `guidelines/atomic-design.md` (frontend files only), `guidelines/data-migrations.md`
 (when migrations are in scope), `guidelines/theme-fork.md` (forked-theme projects; section VIII

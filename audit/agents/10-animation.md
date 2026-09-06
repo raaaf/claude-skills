@@ -14,6 +14,11 @@ Read `guidelines/ui-animation.md` (decision framework, timing, easing, reduced m
 - **New dependencies:** check the animation library's own defaults (e.g. `respectMotionPreference`)
   before attributing misbehavior to it.
 
+**Defect class calibrated against a real finding (2026-08-27 audit):** a drag/gesture settle-back
+or reset animation (e.g. a panel snapping back after an incomplete swipe) fired unconditionally in
+its own reset closure, ignoring an existing `prefers-reduced-motion`/Reduce Motion setting even
+though a global catch-all exists for other animations in the same file.
+
 Skip when no frontend files are in scope.
 
 ## Severity

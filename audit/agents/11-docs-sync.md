@@ -25,6 +25,11 @@ files, so a module/pattern map with cross-reference points finds more than a per
   `marketplace.json`. Each stale repeat site is its own `[Docs]` finding — grep the changed
   identifier repo-wide, the drift is by definition in files the diff did NOT touch.
 
+**Defect class calibrated against a real finding (2026-08-27 audit):** an auth/secret-bearing
+environment variable (`BACKEND_JWT_SECRET`-style) used in code but absent from `.env.example` —
+its absence in production causes a silent feature lockout, not just a setup inconvenience; flag
+this class of missing `.env.example` entry even when other, non-secret vars are already documented.
+
 **Test-count drift (unconditional, every run):** determine the real test count (test-runner
 summary or `grep -rcE '\b(it|test)\(' tests/`) and diff it against every "number + test/assertion"
 phrase in README/CLAUDE.md. Mismatch → `[Docs]` finding with both numbers.

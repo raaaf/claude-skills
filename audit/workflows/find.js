@@ -347,7 +347,6 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     logFn(`${dimension}: ${chunks.length} chunks, above the 15-chunk expectation`);
   }
 
-  const guidelines = (ctx.guidelines && ctx.guidelines[dimension]) || [];
   const agentType = AGENT_TYPE_BY_DIMENSION[dimension];
   const dimDoc = ctx.dimensionDoc[dimension];
 
@@ -359,7 +358,8 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
-      `for DIMENSION=${dimension}.\n${briefing}\nGUIDELINE_MATCHES=${JSON.stringify(guidelines)}\n` +
+      `for DIMENSION=${dimension}.\nCHUNK_INDEX=${i}\n${briefing}\n` +
+      `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
       `SCOPE=${ctx.scope}`,
       { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
@@ -447,7 +447,8 @@ function dimensionFileName(dim) {
 
 // Entry point: this script body IS the run, invoked by the Workflow tool with
 // `agent`, `parallel`, `log`, `args` already in scope as globals.
-// args: { repoRoot, scope: 'diff'|'repo', files, dimensions, effort, promptDir, guidelines, dimensionDoc }
+// args: { repoRoot, scope: 'diff'|'repo', files, dimensions, effort, promptDir, guidelinesDir,
+//         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc }
 const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions : ALL_DIMENSIONS);
 
 const ctx = {
@@ -455,7 +456,8 @@ const ctx = {
   scope: args.scope,
   files: args.files || [],
   promptDir: args.promptDir,
-  guidelines: args.guidelines || {},
+  guidelinesDir: args.guidelinesDir || '',
+  guidelines: args.guidelines || '',
   dimensionDoc: args.dimensionDoc || Object.fromEntries(
     ALL_DIMENSIONS.map((d) => [d, `${args.promptDir}/${dimensionFileName(d)}`])
   )

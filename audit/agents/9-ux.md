@@ -12,6 +12,13 @@ prevention. Read `guidelines/ui-ux-patterns.md` in full. Native apps: additional
   chain the touched file belongs to — a missing step (no confirmation state, no error path, no way
   back) is a finding anchored to the file where the step should attach.
 
+**Defect classes calibrated against real findings (2026-08-27 audit):**
+- **Background sync/integration with no error channel:** a sync or calendar/third-party
+  integration path that has a success path back to the UI but no failure/error surface, so a
+  failed sync looks identical to a successful one.
+- **Content rendered before its gate resolves:** form fields or protected content rendered/visible
+  before an async auth/password check has resolved, briefly exposing the gated state.
+
 Skip when no frontend files are in scope.
 
 ## Severity

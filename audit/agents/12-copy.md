@@ -15,6 +15,14 @@ any historical quote as evidence must verify the quote against an actual source 
 show` for the claimed earlier wording, or Read for a current quote). A quote you cannot locate is
 not evidence — drop or re-ground the finding.
 
+**Defect classes calibrated against real findings (2026-08-27 audit):**
+- **Inconsistent verb/tense between a control and its adjacent text:** a button's imperative label
+  ("Erneut versuchen") next to status/error text using a different tense or verb for the same
+  action ("später erneut versuchen").
+- **Internal/technical jargon surfaced to the user:** an implementation-facing term (e.g.
+  "Sicherheitsfeature" for App Attest) shown directly in user-facing copy instead of a plain
+  description of what happened.
+
 Skip when no frontend and no translation files are in scope, or the change is pure code/config
 with no new/changed user-facing text.
 

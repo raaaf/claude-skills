@@ -15,6 +15,12 @@ paths) — only check human-readable text.
 - **`font-display` findings:** only after `grep -rn "@font-face"` confirms one exists.
 - **New dependencies:** check the library's own defaults before attributing misbehavior to it.
 
+**Defect classes calibrated against real findings (2026-08-27 audit):**
+- **Straight apostrophe in user-facing copy:** a literal `'` (U+0027) in translated/displayed text
+  instead of the typographic apostrophe (U+2019).
+- **Hardcoded plural ternary:** a manual `count == 1 ? "item" : "items"`-style branch instead of the
+  platform's plural rule (String Catalog `.stringsdict`, ICU MessageFormat, gettext plural forms).
+
 Skip when no frontend and no translation files are in scope.
 
 ## Severity

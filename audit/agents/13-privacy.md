@@ -20,6 +20,14 @@ sharing, imprint/privacy-policy links, form data.
 - **Required links:** missing or broken imprint (`Impressum`) / privacy-policy links on pages that
   collect data or embed third-party content.
 
+**Defect classes calibrated against real findings (2026-09-05/2026-08-27 audits):**
+- **Third-party plugin bypassing the first-party access gate:** a third-party SEO/marketing
+  plugin's own meta/OG/Twitter/schema filter not wired to the same access-check the first-party
+  code uses, leaking protected-page content through the plugin's output instead.
+- **Sensitive identifier logged even truncated:** an API key id, certificate fingerprint, or other
+  identifying material written to logs (even partially/truncated) without a stated retention or
+  redaction policy — flag regardless of whether the log target is stdout-only or a debug flag.
+
 **Do not wave a consent question through as "documented".** A prior audit treated a consent gate
 as accepted because it was mentioned in a doc; the gate itself was still missing at runtime. Verify
 the actual code path, not the doc's claim about it (Prompt-Regel 5 applies to the tradeoff, not to

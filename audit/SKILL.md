@@ -98,7 +98,7 @@ AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
 ```
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelines: GUIDELINE_MATCHES } })`.
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES } })`.
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 

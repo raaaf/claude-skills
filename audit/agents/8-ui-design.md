@@ -24,6 +24,14 @@ conventions, system components, safe areas/insets, semantic colors for dark mode
 - **Flex-row layout fixes:** verify the long-content case (4-word name, long translation) wraps or
   truncates without pushing siblings out (`min-w-0`, `truncate`, `shrink-0`).
 
+**Defect classes calibrated against real findings (2026-08-27 audit):**
+- **Raw spacing/size literal where a token exists:** a hardcoded pixel/pt margin, padding, or
+  radius (e.g. a raw `24pt`) in a project that has a design-token spacing scale — cite the missing
+  token by name.
+- **Component variant convention broken silently:** a default label/icon/state applied
+  unconditionally instead of only for the variant it was designed for (e.g. a fallback label now
+  also appears on an icon-only variant that should stay unlabeled visually).
+
 Skip when no frontend files are in scope.
 
 ## Severity

@@ -31,6 +31,16 @@ Read `guidelines/code-quality.md` and `guidelines/code-quality-2026.md` in full.
   against the whole `tests/` tree by class name, not by filename; a guard-test claim needs the test
   to actually scan many files for a convention, not render one component.
 
+**Defect classes calibrated against real findings (2026-09-05/2026-08-27 audits):**
+- **Repeated boilerplate block copy-pasted 3+ times:** the same error-response shape, param
+  parsing/validation block, or literal constant (secret placeholder, timeout value) duplicated
+  across 3 or more route handlers/tests instead of a shared helper/constant.
+- **Dead export or parameter:** a function/getter/constant exported or accepted but never called or
+  read anywhere in the codebase (grep before flagging; a false negative here just means it's used
+  from a spot you haven't checked).
+- **Swallowed error silently coerced to success:** a `try { ... } catch { }`/`try?` that discards the
+  real error and forces a success-looking state regardless of outcome.
+
 ## Severity
 
 At most `Important` unless the defect produces demonstrably wrong output/behavior (not merely

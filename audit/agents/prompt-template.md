@@ -15,12 +15,18 @@ their own copies of the rules that apply to them; this file is specialist-only.
   briefing. Documented decisions (ADRs, `DESIGN.md`, `PRODUCT.md`, or a tradeoff named in the last
   commit body / a docblock at the exact spot) are not findings (Prompt-Regel 5).
 - Read every file in your assignment completely, not only the hotspot lines.
+- **Guideline scope.** Read exactly those guideline files your own dimension file names AND that
+  also appear in `MATCHED_GUIDELINES` (the flat list given in your briefing), by absolute path
+  `GUIDELINES_DIR/<name>` — a guideline your dimension file names but `MATCHED_GUIDELINES` does not
+  list does not apply to this diff.
 
 ## Prompt-Regeln 1-6 (aus den verworfenen Findings, 2026-09-05)
 
-1. **Dimension prefix on every ID.** Every finding ID carries a dimension prefix
-   (`security-3`, `a11y-12`, ...). A specialist that drops its prefix makes dedup across
-   dimensions impossible.
+1. **Dimension prefix + chunk index on every ID.** Every finding ID has the form
+   `{dimension}-{CHUNK_INDEX}-{n}` (`security-3-1`, `a11y-12-2`, ...), where `CHUNK_INDEX` is the
+   value given in your briefing and `n` restarts at 1 per specialist. Every specialist numbers
+   findings from 1, so without the chunk index, parallel chunks of the same dimension collide on
+   identical IDs and verdicts can no longer be mapped back to the finding they belong to.
 2. **Name every involved file with lines.** Every finding names ALL files it touches, with line
    numbers, in the `files` array. This single rule lowered the verifier's discard rate from 22% to
    3% in the 2026-09-05 measurement.

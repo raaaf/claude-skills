@@ -12,6 +12,12 @@ structured data (JSON-LD), URL structure, Core Web Vitals hints, sitemap, canoni
 
 Skip when no frontend files are in scope.
 
+**Defect class calibrated against a real finding (2026-09-05 audit):** protected/access-gated page
+content leaking through a metadata sink that a first-party access check does not cover — meta
+description, Open Graph, Twitter Card, JSON-LD, sitemap entry, or `llms.txt`/`llms-full.txt` for a
+page an anonymous or unauthorized visitor cannot open directly. Check every metadata sink
+independently, including ones added by a third-party SEO plugin, not just the page body.
+
 ## Severity
 
 No `Critical` — a broken meta tag or heading hierarchy does not lose data or grant access. Missing
