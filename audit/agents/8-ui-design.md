@@ -41,6 +41,11 @@ Pure style/visual-consistency findings are at most `Important`, never `Critical`
 unusable (contrast below threshold on real content, layout that clips content); everything else
 `Minor`.
 
+Examples (2026-09-05 audit): `Important` — the admin theme-setup page's status badges had contrast
+below threshold against their background (batch 13), content unreadable at a glance. `Minor` —
+`app.css` carried empty rule blocks and stale comments, a style-consistency issue with no
+readability impact.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

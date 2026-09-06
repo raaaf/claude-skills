@@ -38,6 +38,12 @@ downsampling, app start. Web vitals (INP/LCP/CLS) do not apply there.
 (unbounded growth, a lock that starves under concurrency, a query that times out at real data
 volume). A measurable but non-outage degradation is `Important`. Micro-optimizations are `Minor`.
 
+Examples (2026-09-05 audit): `Critical` — `RateLimiter`'s counter increment was non-atomic, letting
+concurrent requests race past the limit under real load (batch 01), fixed with atomic counting.
+`Important` — the hero section's LCP degraded under real image sizes until `ImageData`/`HeroScrim`
+helpers were added (batch 08). `Minor` — `member_get_nonces` was requested twice in parallel on page
+load (facets + list); caching the promise removed a redundant round trip.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

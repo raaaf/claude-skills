@@ -40,6 +40,13 @@ third-party script/tracker loads without consent. `Important` = a consent flow e
 (pre-ticked, buried, easy to misconstrue as consent when it isn't) or a required link is missing.
 `Minor` = cosmetic consent-UI issues with no data-flow impact.
 
+Examples (2026-09-05 audit): `Critical` — `embed.blade.php:44` loaded third-party iframes before any
+consent, exactly the script-loads-without-consent case above. `Important` — a prior audit accepted an
+embed consent gate as "documented" when the gate was actually missing at runtime, the
+weak/misconstrued-consent case this level targets (see the rule above). `Minor` — a consent card
+missing its provider's privacy-policy link is a cosmetic gap once the underlying load is already
+properly gated.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

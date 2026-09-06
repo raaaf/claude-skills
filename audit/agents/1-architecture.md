@@ -54,6 +54,13 @@ claim to own the same fact and can drift). Everything else — missing reuse, du
 inconsistent rollout, dependency-direction violations — is at most `Important`. Style-only
 reuse suggestions are `Minor`.
 
+Examples (2026-09-05 audit): `Critical` — `AbstractPostType.php:220-222` mapped meta capabilities to
+`manage_options` with a `do_not_allow` fallback, a second source of truth for the grant that could
+lock every admin out when it disagreed with the intended cap. `Important` — `templates/flexible/*`
+carries section-header/image-card duplication ported across siblings instead of extracted, a real
+reuse gap kept as a documented tradeoff. `Minor` — batch 10's `ComponentId` helper replacing ad hoc
+id-generation snippets was a style-level reuse cleanup with no behavior change.
+
 ## Output
 
 Reply with the specialist schema (`references/finding-schema.md`): `findings[{id, severity,

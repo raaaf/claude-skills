@@ -47,6 +47,12 @@ except the test-count drift check, which always runs.
 command, broken referenced path) or misstates a number readers rely on. Style/structure issues and
 cosmetic drift are `Minor`. No `Critical` — docs drift alone carries no exploit or data-loss path.
 
+Examples: `Important` — a repeated "layout count" number in CLAUDE.md/README drifted from the real
+count across three prior audits (2026-06-11, 08-03, 08-26), the kind of number readers rely on.
+`Minor` — illustrative example paths in CLAUDE.md/README/GETTING-STARTED that don't resolve to real
+repo paths are cosmetic drift, repeatedly proposed and discarded as by-design illustrations
+(2026-08-13, 2026-08-26 audits).
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

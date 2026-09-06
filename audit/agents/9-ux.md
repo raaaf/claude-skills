@@ -27,6 +27,13 @@ Skip when no frontend files are in scope.
 deletion, irreversible data loss with no confirmation). A missing intermediate state (no loading
 indicator, weak empty state) is `Important`; polish issues are `Minor`.
 
+Examples (2026-09-05 audit): `Critical` — every downloads query on the member-area page failed with
+"Verbindungsfehler" after a boolean-vs-null regression, blocking the flow with no recovery path
+(browser verification). `Important` — upload items whose attachment had been deleted still reported
+`available=true`, letting a user click a dead download with no explanation. `Minor` — empty
+`<x-section>` shells still render for 17 unconfigured layouts instead of being hidden, a known
+open polish gap.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

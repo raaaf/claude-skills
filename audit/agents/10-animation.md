@@ -27,6 +27,11 @@ No `Critical`. Missing `prefers-reduced-motion` support with no catch-all, or an
 actively breaks interaction (blocks input, causes motion sickness triggers) is `Important`;
 everything else `Minor`.
 
+Examples (2026-08-27 audit): `Important` — a drag/gesture settle-back animation fired unconditionally
+in its own reset closure, ignoring an existing Reduce Motion setting despite a global catch-all
+existing for other animations in the same file (the defect class above). `Minor` — a phase-crossfade
+timing tweak on the photo-import sheet was a polish adjustment with no interaction breakage.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

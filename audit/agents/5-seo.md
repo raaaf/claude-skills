@@ -23,6 +23,11 @@ independently, including ones added by a third-party SEO plugin, not just the pa
 No `Critical` — a broken meta tag or heading hierarchy does not lose data or grant access. Missing
 required meta/structured data that harms indexing is `Important`; everything else `Minor`.
 
+Examples (2026-09-05 audit): `Important` — an access-gated page stayed indexable through its meta
+description, Open Graph, JSON-LD and sitemap entry, exactly the metadata-sink gap this severity
+level covers. `Minor` — `goldene-strategie`'s `SeoMetaDescriptionTest` fixtures still spoke of
+"Stiftungen", stale test copy with no ranking impact.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

@@ -31,6 +31,11 @@ with no new/changed user-facing text.
 No `Critical`. Misleading or legally sensitive copy (wrong pricing, wrong consent wording, wrong
 irreversible-action confirmation) is `Important`; everything else `Minor`.
 
+Examples (2026-08-27 audit): `Important` — dissolve/leave-household confirm dialogs did not name the
+irreversible consequences before the fix, the wrong-irreversible-action-confirmation case above.
+`Minor` — a sync-interval claim was reworded from an inexact promise to "meist innerhalb weniger
+Sekunden", a wording-accuracy fix with no legal or irreversible-action stakes.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

@@ -28,6 +28,11 @@ Skip when no frontend and no translation files are in scope.
 No `Critical`. A rule violation that breaks readability or renders text incorrectly (mojibake,
 wrong quote nesting) is `Important`; everything else `Minor`.
 
+Examples (2026-09-05 audit): `Important` — a delete-confirmation dialog used straight quotes instead
+of German „…" quotes (batch 14), the wrong-quote-nesting case named above. `Minor` — the run's own
+notes record typography as one of the two dimensions with the fewest findings, "mostly Minor":
+spacing/casing consistency nits with no readability impact.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

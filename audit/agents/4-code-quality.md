@@ -47,6 +47,12 @@ At most `Important` unless the defect produces demonstrably wrong output/behavio
 inelegant code) — `Critical` is reserved for that case. Style, naming, and structure findings are
 `Minor` unless they cause a real bug.
 
+Examples (2026-09-05 audit): `Critical` — `Acf.php:214-216`'s `is_admin()` check hid the password
+hash on admin-ajax, breaking password-mode login, demonstrably wrong behavior. `Important` — 13 of
+15 root templates sat on an ever-growing "may throw" allow-list instead of being fixed, hiding real
+render failures from the test suite. `Minor` — batch 16's `Config` comment-trim cleanup was
+formatting only, no behavior change.
+
 ## Output
 
 Reply with the specialist schema: `findings[{id, severity, confidence, files, issue, impact}]`

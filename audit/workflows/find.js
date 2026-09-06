@@ -376,7 +376,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     }
   });
 
-  const allFindings = specialists.flatMap((s) => s.findings);
+  const allFindings = dedupeFindings(specialists.flatMap((s) => s.findings), dimension, logFn);
 
   if (allFindings.length === 0) {
     return { status: 'complete', files: filePaths, chunks: chunks.length, findings: [], verdicts: [], uncovered };
@@ -429,6 +429,70 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     verdicts,
     uncovered
   };
+}
+
+const CONFIDENCE_RANK = { high: 3, medium: 2, low: 1 };
+
+// A finding's dedup key: its lowest-sorting file path, the first line number mentioned
+// for that path, and a normalized prefix of the issue text. Two reports of the same
+// defect can differ slightly in the exact line cited, so line numbers within 5 of each
+// other are treated as equal.
+function findingDedupKey(finding) {
+  const files = (finding.files || []).slice().sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const first = files[0];
+  if (!first) return null;
+  const lineMatch = /\d+/.exec(first.lines || '');
+  return {
+    path: first.path,
+    line: lineMatch ? parseInt(lineMatch[0], 10) : null,
+    issuePrefix: (finding.issue || '').slice(0, 40).toLowerCase().replace(/[^a-z0-9]/g, '')
+  };
+}
+
+function sameDedupKey(a, b) {
+  if (!a || !b || a.path !== b.path || a.issuePrefix !== b.issuePrefix) return false;
+  if (a.line == null || b.line == null) return a.line === b.line;
+  return Math.abs(a.line - b.line) <= 5;
+}
+
+// A finding's chunk index, parsed from its `{dimension}-{chunkIndex}-{n}` id, used as
+// the tie-breaker when two duplicates share the same confidence.
+function findingChunkIndex(finding) {
+  const m = /-(\d+)-/.exec(finding.id || '');
+  return m ? parseInt(m[1], 10) : Infinity;
+}
+
+// BOTH_SCOUTS_DIMENSIONS runs a file-chunk pass AND a cluster-chunk pass over the same
+// files, so two different specialists can independently report the same defect. Merge
+// those duplicates here, before the verifier stage sees them, so a real defect isn't
+// verified and counted two or three times.
+function dedupeFindings(findings, dimension, logFn) {
+  const survivors = [];
+  const keys = [];
+  for (const finding of findings) {
+    const key = findingDedupKey(finding);
+    if (!key) { survivors.push(finding); keys.push(key); continue; }
+    const existingIdx = survivors.findIndex((s, i) => sameDedupKey(keys[i], key));
+    if (existingIdx === -1) {
+      survivors.push(finding);
+      keys.push(key);
+      continue;
+    }
+    const existing = survivors[existingIdx];
+    const existingRank = CONFIDENCE_RANK[existing.confidence] || 0;
+    const newRank = CONFIDENCE_RANK[finding.confidence] || 0;
+    let winner = existing;
+    let dropped = finding;
+    if (newRank > existingRank || (newRank === existingRank && findingChunkIndex(finding) < findingChunkIndex(existing))) {
+      winner = finding;
+      dropped = existing;
+    }
+    winner.mergedFrom = (winner.mergedFrom || []).concat([dropped.id], dropped.mergedFrom || []);
+    survivors[existingIdx] = winner;
+    keys[existingIdx] = findingDedupKey(winner);
+    logFn(`${dimension}: merged ${dropped.id} into ${winner.id}`);
+  }
+  return survivors;
 }
 
 function dimensionFileName(dim) {
