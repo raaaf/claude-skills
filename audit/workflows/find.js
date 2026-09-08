@@ -80,6 +80,13 @@ const SCOUT_CLUSTERS_SCHEMA = {
   required: ['clusters']
 };
 
+function hasCompleteCoverage(result, paths) {
+  const coverage = result && result.coverage;
+  return coverage && coverage.status === 'complete' && Array.isArray(coverage.files) &&
+    coverage.files.every((path) => typeof path === 'string' && paths.includes(path)) &&
+    paths.every((path) => coverage.files.includes(path));
+}
+
 const FINDINGS_SCHEMA = {
   type: 'object',
   properties: {
@@ -108,7 +115,14 @@ const FINDINGS_SCHEMA = {
         required: ['id', 'severity', 'confidence', 'files', 'issue', 'impact']
       }
     },
-    coverage: { type: 'string' }
+    coverage: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['complete', 'incomplete'] },
+        files: { type: 'array', items: { type: 'string' } }
+      },
+      required: ['status', 'files']
+    }
   },
   required: ['findings', 'coverage']
 };
@@ -149,8 +163,9 @@ function warnIfNull(logFn, result, message) {
 // 4 of 6 specialists answered "file does not exist" because the briefing never
 // named the repo root).
 const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
-  'Work only inside REPO_ROOT. Every path in this briefing is relative to REPO_ROOT; read files as ' +
-  'REPO_ROOT/<path>. Do not use the current working directory, it may be a different repository.\n\n';
+  'Audit and edit source files only inside REPO_ROOT. Relative source paths resolve as REPO_ROOT/<path>. ' +
+  'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
+  'Do not use the current working directory, it may be a different repository.\n\n';
 
 // agentType per dimension (Step 4 of the plan).
 const AGENT_TYPE_BY_DIMENSION = {
@@ -261,46 +276,53 @@ const FLOOR_CONTENT_SIGNALS = {
     /consent|cookie|analytics|gtag|iframe|tracking|X-Forwarded|REMOTE_ADDR/m
   ],
   performance: [
-    /foreach|while \(|get_posts|WP_Query|wp_remote_|file_get_contents|new \w+\(\)\s*;/m,
-    /useEffect|addEventListener|setInterval/m
+    /\b(?:foreach|while|for)\s*\([^{}]*\{[^}]*\b(?:get_posts|WP_Query|wp_remote_\w*|get_post_meta|get_field)\s*\(/m,
+    /useEffect|addEventListener|setInterval|file_get_contents|wp_remote_/m
   ],
   code_quality: [
-    /function |class |=> |describe\(|it\(|test\(/m
+    // Error-swallowing, sentinel fallbacks, bypassed checks and weak/conditional assertions.
+    /catch\s*(?:\([^)]*\))?\s*\{\s*\}|catch\s*(?:\([^)]*\))?\s*\{[^}]*\breturn\b|@ts-ignore|eslint-disable/m,
+    /\breturn\s+(?:null|false|\[\])\s*;/m,
+    /\bif\s*\([^\n]*\)\s*\{\s*(?:await\s+)?expect\(|\.(?:toBeTruthy|toBeDefined|toBeFalsy)\(|assertTrue\(true|assertNotNull\(/m
   ],
   seo: [
-    /wp_head|meta name|og:|json-ld|application\/ld\+json|sitemap|robots|canonical/m
+    /wp_head|meta name|og:|json-ld|application\/ld\+json|sitemap|robots|canonical|<h[1-6]\b|<title\b/m
   ],
   a11y: [
-    /aria-|role=|<button|<a |<input|<label|tabindex|alt=/m
+    /aria-|role=|<button|<input|<label|tabindex|alt=/m
   ],
   ui_design: [
-    /class="|className=|--\w+-|font-|text-|rem|px/m
+    // Token declarations and spacing/shape utilities, not every CSS variable reference.
+    /(?:^|[;{\s])--[a-z][\w-]*\s*:|gap-|\bp[xy]?-\d|rounded-|shadow-/m
   ],
   typography: [
-    /class="|className=|--\w+-|font-|text-|rem|px/m
+    // ASCII quotes alone mostly match programming-language string delimiters.
+    /font-|line-height|letter-spacing|&shy;|&nbsp;|[A-Za-z]’[A-Za-z]/m
   ],
   ux: [
-    /<form|submit|loading|error|aria-live|disabled/m
+    // Busy/disabled/live feedback and state changes with no visible error handler.
+    /disabled|aria-live|aria-busy/m,
+    /^(?![^]*(?:\bcatch\s*(?:\(|\{)|\.catch\s*\(|setError\s*\())[^]*(?:preventDefault\s*\(|setLoading\s*\(|\.classList\.(?:toggle|add|remove)\s*\()/
   ],
   animation: [
     /transition|animate|@keyframes|prefers-reduced-motion|gsap|framer/m
   ],
   docs_sync: [
-    /^#|README|CLAUDE\.md|\.env/m
+    // Documented API references and public configuration are documentation drift surfaces.
+    /^#|README|CLAUDE\.md|\.env|@see|@example|@deprecated|register_setting|add_option|getenv\(|process\.env/m
   ],
   copy: [
-    />[A-Za-zÄÖÜäöüß][^<>]{12,}<|__\(|_e\(|_x\(/m
+    // Rendered/returned translations and explicit microcopy labels, not every schema label.
+    /(?:\{\{|\becho\b|\breturn\b)\s*__\(|_e\(|_x\(|placeholder\s*=|aria-label\s*=/m
   ]
   // architecture: no content signal, path-based floor only (see above).
 };
 
 // Content-based floor: a file joins a dimension's floor when its content
 // matches at least one of FLOOR_CONTENT_SIGNALS[dimension]. `readFile(path)`
-// is supplied by the caller (find.js has no filesystem access); it returns
-// the file's content or '' when unreadable. Falls back to the selective
-// path-based floor (current behaviour) when no `readFile` is given; the
-// "content floor inactive" warning itself is logged once at the top level
-// (entry point below), not here, to avoid one log line per dimension.
+// is supplied by the caller (find.js has no filesystem access). The entry
+// point validates complete scope content before dispatch; the helper keeps
+// a path-only fallback for standalone calibration callers.
 function computeFloorFiles(dimension, files, readFile, logFn) {
   const pathFloor = SELECTIVE_FLOOR_DIMENSIONS.includes(dimension)
     ? files.filter((f) => floorDimensionsForFile(f).includes(dimension))
@@ -392,7 +414,7 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_FILES_SCHEMA, phase: 'Scout' }
   );
   if (warnIfNull(logFn, result, `${dimension}: file scout returned null, using floor files only`)) {
-    return floorFiles.map((path) => ({ path, tag: 'floor', reason: 'scout unavailable' }));
+    return { failed: true, files: floorFiles.map((path) => ({ path, tag: 'floor', reason: 'scout unavailable' })) };
   }
   // Code-side floor enforcement: a missing floor file is added back, never
   // silently dropped (Step 3 contract).
@@ -408,15 +430,15 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
     logFn(`${dimension}: scout omitted ${added.length} floor file(s), re-added: ${added.join(', ')}`);
   }
   if (result.files.length > MAX_SCOUT_FILES) {
-    const floorEntries = result.files.filter((f) => f.tag === 'floor');
-    const nonFloorEntries = result.files.filter((f) => f.tag !== 'floor');
+    const floorEntries = result.files.filter((f) => floorFiles.includes(f.path));
+    const nonFloorEntries = result.files.filter((f) => !floorFiles.includes(f.path));
     const nonFloorKeep = Math.max(0, MAX_SCOUT_FILES - floorEntries.length);
     const kept = floorEntries.concat(nonFloorEntries.slice(0, nonFloorKeep));
     const dropped = result.files.length - kept.length;
     logFn(`${dimension}: scout returned ${result.files.length} files, kept ${kept.length}, dropped ${dropped}`);
-    return kept;
+    return { files: kept };
   }
-  return result.files;
+  return { files: result.files };
 }
 
 async function runClusterScout(ctx, dimension, agentFn, logFn) {
@@ -427,30 +449,33 @@ async function runClusterScout(ctx, dimension, agentFn, logFn) {
     `SCOPE_FILES=${JSON.stringify(ctx.files)}`,
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_CLUSTERS_SCHEMA, phase: 'Scout' }
   );
-  if (warnIfNull(logFn, result, `${dimension}: cluster scout returned null`)) return [];
-  return result.clusters;
+  if (warnIfNull(logFn, result, `${dimension}: cluster scout returned null`)) return { failed: true, clusters: [] };
+  return { clusters: result.clusters };
 }
 
 async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
-  // Stage 1: scout(s).
+  // Stage 1: retain scout failures independently from deterministic floor coverage.
+  const scoutJobs = [];
+  if (!CLUSTER_ONLY_DIMENSIONS.includes(dimension)) {
+    scoutJobs.push(['files', () => runFileScout(ctx, dimension, agentFn, logFn)]);
+  }
+  if (CLUSTER_ONLY_DIMENSIONS.includes(dimension) || BOTH_SCOUTS_DIMENSIONS.includes(dimension)) {
+    scoutJobs.push(['clusters', () => runClusterScout(ctx, dimension, agentFn, logFn)]);
+  }
+  const scoutResults = await parallelFn(scoutJobs.map((job) => job[1]));
+  const uncovered = [];
   let files = [];
   let clusters = [];
-  if (CLUSTER_ONLY_DIMENSIONS.includes(dimension)) {
-    clusters = await runClusterScout(ctx, dimension, agentFn, logFn);
-  } else if (BOTH_SCOUTS_DIMENSIONS.includes(dimension)) {
-    const [fileResult, clusterResult] = await parallelFn([
-      () => runFileScout(ctx, dimension, agentFn, logFn),
-      () => runClusterScout(ctx, dimension, agentFn, logFn)
-    ]);
-    files = fileResult || [];
-    clusters = clusterResult || [];
-  } else {
-    files = await runFileScout(ctx, dimension, agentFn, logFn);
-  }
-
+  scoutJobs.forEach(([kind], i) => {
+    const result = scoutResults[i];
+    if (!result || result.failed) uncovered.push(`scout:${kind}`);
+    if (kind === 'files') files = result && result.files || [];
+    else clusters = result && result.clusters || [];
+  });
   if (files.length === 0 && clusters.length === 0) {
-    logFn(`${dimension}: skipped, no relevant files`);
-    return { status: 'skipped', files: [], chunks: 0, findings: [], verdicts: [], uncovered: [] };
+    const status = uncovered.length ? 'incomplete' : 'skipped';
+    logFn(`${dimension}: ${status}, no relevant files`);
+    return { status, files: [], chunks: 0, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] };
   }
 
   // Stage 2: chunking (code, not an agent).
@@ -458,11 +483,16 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   // A cluster naming fewer than 2 files is not a cluster (scout-clusters.md
   // "at least two files"); drop it rather than dispatching a specialist that
   // sees a single file with no comparison to make.
-  const droppedSingleFileClusters = clusters.filter((c) => !c.files || c.files.length < 2).length;
-  clusters = clusters.filter((c) => c.files && c.files.length >= 2);
-  if (droppedSingleFileClusters) {
-    logFn(`${dimension}: dropped ${droppedSingleFileClusters} single-file cluster(s)`);
-  }
+  clusters = clusters.filter((cluster, index) => {
+    const valid = cluster && typeof cluster.id === 'string' && cluster.id.trim() &&
+      typeof cluster.pattern === 'string' && cluster.pattern.trim() &&
+      Array.isArray(cluster.files) && cluster.files.length >= 2 &&
+      cluster.files.every((file) => file && typeof file.path === 'string' && file.path.trim() &&
+        Number.isInteger(file.count) && file.count > 0) &&
+      new Set(cluster.files.map((file) => file.path)).size === cluster.files.length;
+    if (!valid) uncovered.push(`cluster:${cluster && cluster.id || index}`);
+    return valid;
+  });
   const fileChunks = chunkByDirectory(filePaths).map((group) => ({ kind: 'files', files: group }));
   const clusterChunks = clusters.map((c) => ({ kind: 'cluster', cluster: c }));
   let chunks;
@@ -500,9 +530,8 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   const specialists = specialistResults.filter(Boolean);
   logFn(`${dimension}: ${specialists.length}/${chunks.length} specialists done`);
 
-  const uncovered = [];
   chunks.forEach((c, i) => {
-    if (!specialistResults[i]) {
+    if (!hasCompleteCoverage(specialistResults[i], c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files)) {
       uncovered.push(c.kind === 'cluster' ? c.cluster.id : c.files.join(','));
     }
   });
@@ -510,7 +539,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   const allFindings = dedupeFindings(specialists.flatMap((s) => s.findings), dimension, logFn);
 
   if (allFindings.length === 0) {
-    return { status: 'complete', files: filePaths, chunks: chunks.length, findings: [], verdicts: [], uncovered };
+    return { status: uncovered.length ? 'incomplete' : 'complete', files: filePaths, chunks: chunks.length, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] };
   }
 
   // Stage 4: verifier, one agent per 35-40 findings.
@@ -525,7 +554,24 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     if (warnIfNull(logFn, result, `${dimension}: a verifier group returned null (${group.length} findings uncovered)`)) return null;
     return result.verdicts;
   }));
-  let verdicts = verifierResults.filter(Boolean).flat();
+  const unverified = [];
+  const unrefuted = [];
+  const verdicts = [];
+  verifierGroups.forEach((group, i) => {
+    const replies = verifierResults[i];
+    const expected = new Set(group.map((f) => f.id));
+    if (Array.isArray(replies) && replies.some((v) => !v || !expected.has(v.id))) {
+      uncovered.push(`verifier:${i}:unknown-id`);
+    }
+    for (const finding of group) {
+      const matches = Array.isArray(replies) ? replies.filter((v) => v && v.id === finding.id) : [];
+      if (matches.length !== 1 || !validVerdict(matches[0])) unverified.push(finding.id);
+      else {
+        verdicts.push(matches[0]);
+        if (matches[0].verdict === 'UNCERTAIN') unverified.push(finding.id);
+      }
+    }
+  });
 
   // Stage 5: refuter, one per CONFIRMED Critical.
   const criticalConfirmed = verdicts.filter((v) => v.verdict === 'CONFIRMED' && v.severity === 'Critical');
@@ -541,10 +587,15 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       return refuterVerdict;
     }));
     refuterResults.forEach((r, i) => {
-      if (!r) return;
-      const refuted = r.verdicts && r.verdicts[0];
-      if (refuted && refuted.verdict === 'REFUTED') {
-        const original = criticalConfirmed[i];
+      const original = criticalConfirmed[i];
+      const refuted = r && Array.isArray(r.verdicts) && r.verdicts.length === 1 && r.verdicts[0];
+      if (!validVerdict(refuted) || refuted.id !== original.id || refuted.verdict === 'UNCERTAIN') {
+        unrefuted.push(original.id);
+        original.verdict = 'UNCERTAIN';
+        original.reason = `${original.reason} | required refutation incomplete`;
+        return;
+      }
+      if (refuted.verdict === 'REFUTED') {
         original.severity = 'Important';
         original.disputed = true;
         original.reason = `${original.reason} | disputed by refuter: ${refuted.reason}`;
@@ -553,13 +604,21 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   }
 
   return {
-    status: uncovered.length ? 'incomplete' : 'complete',
+    status: uncovered.length || unverified.length || unrefuted.length ? 'incomplete' : 'complete',
     files: filePaths,
     chunks: chunks.length,
     findings: allFindings,
     verdicts,
-    uncovered
+    uncovered,
+    unverified,
+    unrefuted
   };
+}
+
+function validVerdict(verdict) {
+  return verdict && typeof verdict.id === 'string' &&
+    ['CONFIRMED', 'REFUTED', 'UNCERTAIN'].includes(verdict.verdict) &&
+    ['Critical', 'Important', 'Minor'].includes(verdict.severity) && typeof verdict.reason === 'string';
 }
 
 const CONFIDENCE_RANK = { high: 3, medium: 2, low: 1 };
@@ -648,14 +707,19 @@ function dimensionFileName(dim) {
 //         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc,
 //         fileContents (object mapping repo-relative path to content; find.js has no
 //         filesystem access, so the caller reads every scope file and passes it in) }
+if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
+  args.dimensions.some((dimension) => !ALL_DIMENSIONS.includes(dimension)))) {
+  throw new Error('args.dimensions must be an array of supported dimension ids');
+}
 const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions : ALL_DIMENSIONS);
 
-const fileContents = args.fileContents || {};
-const hasFileContents = Object.keys(fileContents).length > 0;
-const readFile = hasFileContents ? (path) => fileContents[path] || '' : null;
-if (!hasFileContents) {
-  log('content floor inactive for this run: args.fileContents is absent or empty, falling back to path-based floors only');
+const fileContents = args.fileContents;
+const missingContents = (args.files || []).filter((path) => !fileContents ||
+  !Object.prototype.hasOwnProperty.call(fileContents, path) || typeof fileContents[path] !== 'string');
+if (missingContents.length) {
+  throw new Error(`args.fileContents must contain complete text for every scope file; missing: ${missingContents.join(', ')}`);
 }
+const readFile = (path) => fileContents && fileContents[path] || '';
 
 const ctx = {
   repoRoot: args.repoRoot,
@@ -688,11 +752,13 @@ const dimensionResults = await parallel(ordered.map((dim) => async () => {
   return [dim, r];
 }));
 
-for (const entry of dimensionResults) {
-  if (!entry) continue;
-  const [dim, r] = entry;
+for (const [index, entry] of dimensionResults.entries()) {
+  const [dim, r] = entry || [ordered[index], {
+    status: 'incomplete', files: [], chunks: 0, findings: [], verdicts: [],
+    uncovered: ['dimension:failed'], unverified: [], unrefuted: []
+  }];
   results[dim] = r;
   if (r.status === 'skipped') skipped.push(dim);
 }
 
-return { dimensions: results, skipped };
+return { status: Object.values(results).some((r) => r.status === 'incomplete') ? 'incomplete' : 'complete', dimensions: results, skipped };

@@ -60,3 +60,10 @@ their own copies of the rules that apply to them; this file is specialist-only.
 - **The dimension tag is one of exactly 13 ids**: `architecture`, `security`, `performance`,
   `code_quality`, `seo`, `a11y`, `typography`, `ui_design`, `ux`, `animation`, `docs_sync`,
   `copy`, `privacy`. No aliases.
+
+## Structured coverage contract
+
+Return `coverage` as `{ "status": "complete" | "incomplete", "files": ["reviewed/path"] }`.
+List only assigned paths actually reviewed completely. The assignment is `FILES` or every
+`CLUSTER.files[].path`. Use `complete` only when every assigned path was reviewed; any denied,
+unread, or partially reviewed path requires `incomplete`, even when `findings` is empty.

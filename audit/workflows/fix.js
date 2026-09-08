@@ -44,6 +44,13 @@ const FIX_VERDICT_SCHEMA = {
   required: ['verdict', 'regressions', 'tests']
 };
 
+function hasCompleteCoverage(result, paths) {
+  const coverage = result && result.coverage;
+  return result && Array.isArray(result.findings) && coverage && coverage.status === 'complete' && Array.isArray(coverage.files) &&
+    coverage.files.every((path) => typeof path === 'string' && paths.includes(path)) &&
+    paths.every((path) => coverage.files.includes(path));
+}
+
 const FINDINGS_SCHEMA = {
   type: 'object',
   properties: {
@@ -72,7 +79,14 @@ const FINDINGS_SCHEMA = {
         required: ['id', 'severity', 'confidence', 'files', 'issue', 'impact']
       }
     },
-    coverage: { type: 'string' }
+    coverage: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['complete', 'incomplete'] },
+        files: { type: 'array', items: { type: 'string' } }
+      },
+      required: ['status', 'files']
+    }
   },
   required: ['findings', 'coverage']
 };
@@ -92,8 +106,9 @@ function warnIfNull(logFn, result, message) {
 // repo, not the directory the Workflow tool happened to launch from (same
 // round-2 defect as find.js).
 const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
-  'Work only inside REPO_ROOT. Every path in this briefing is relative to REPO_ROOT; read files as ' +
-  'REPO_ROOT/<path>. Do not use the current working directory, it may be a different repository.\n\n';
+  'Audit and edit source files only inside REPO_ROOT. Relative source paths resolve as REPO_ROOT/<path>. ' +
+  'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
+  'Do not use the current working directory, it may be a different repository.\n\n';
 
 function chunk(items, size) {
   const out = [];
@@ -121,17 +136,23 @@ function groupForRegression(files) {
 
 // Entry point: this script body IS the run, invoked by the Workflow tool with
 // `agent`, `parallel`, `log`, `args` already in scope as globals.
-// args: { repoRoot, fixes: [{file, findings}], testCommand, baselineFailures, budget, auditBin }
+// args: { repoRoot, fixes: [{file, findings}], testCommand, baselineFailures, budget, auditBin, promptDir }
 const budget = args.budget || 25;
 const auditBin = args.auditBin;
+const promptDir = args.promptDir || `${auditBin}/../agents`;
 const testCommand = args.testCommand;
 const baselineFailures = args.baselineFailures || [];
 
-// Stage 1: one fixer per file, all its findings in one dispatch.
-const fixResults = await parallel(args.fixes.map((f) => async () => {
+const excluded = (args.fixes || []).flatMap((f) => f.findings.filter((finding) => finding.severity === 'Minor').map((finding) => finding.id));
+const requested = (args.fixes || []).map((f) => ({ ...f, findings: f.findings.filter((finding) => finding.severity !== 'Minor') }));
+const uncovered = [];
+
+// Stage 1: one fixer per file, all actionable findings in one dispatch.
+const fixerSlots = await parallel(requested.map((f) => async () => {
+  if (!f.findings.length) return { ...f, fix: null, verdict: null, status: 'skipped' };
   const result = await agent(
     ROOT_HEADER +
-    `Read agents/fix-agent.md and fix every finding below in ${f.file}. Do not touch any other ` +
+    `Read ${promptDir}/fix-agent.md and fix every finding below in ${f.file}. Do not touch any other ` +
     `file.\nFINDINGS=${JSON.stringify(f.findings)}\n` +
     `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}\n` +
     `BASELINE_FAILURES=${JSON.stringify(baselineFailures)}\nBUDGET=${budget}`,
@@ -142,17 +163,23 @@ const fixResults = await parallel(args.fixes.map((f) => async () => {
   }
   return { file: f.file, findings: f.findings, fix: result };
 }));
-log(`fix.js: ${fixResults.filter((r) => r.fix).length}/${args.fixes.length} fixers reported`);
+const fixResults = requested.map((f, i) => fixerSlots[i] || { ...f, fix: null });
+log(`fix.js: ${fixResults.filter((r) => r.fix).length}/${requested.length} fixers reported`);
+
+function hasOwnedChange(result) {
+  return result.fix && Array.isArray(result.fix.files) &&
+    result.fix.files.length === 1 && result.fix.files[0] === result.file;
+}
 
 // Stage 2: fix-verifier per 3-5 fixes.
 const appliedOrPartial = fixResults.filter(
-  (r) => r.fix && (r.fix.fix_result === 'APPLIED' || r.fix.fix_result === 'PARTIAL')
+  (r) => hasOwnedChange(r) && (r.fix.fix_result === 'APPLIED' || r.fix.fix_result === 'PARTIAL')
 );
 const verifierGroups = chunk(appliedOrPartial, 4);
 const verifierResults = await parallel(verifierGroups.map((group) => async () => {
   const result = await agent(
     ROOT_HEADER +
-    `Read agents/fix-verifier.md and verify these fixes.\nFIXES=${JSON.stringify(group)}\n` +
+    `Read ${promptDir}/fix-verifier.md and verify these fixes.\nFIXES=${JSON.stringify(group)}\n` +
     `BASELINE_FAILURES=${JSON.stringify(baselineFailures)}\n` +
     `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}`,
     { agentType: 'audit-fix-verifier', model: 'sonnet', schema: FIX_VERDICT_SCHEMA, phase: 'Verify' }
@@ -165,7 +192,17 @@ const verifierResults = await parallel(verifierGroups.map((group) => async () =>
   // `regressions` entries that name the file.
   return group.map((g) => ({ ...g, verdict: result }));
 }));
-const verified = verifierResults.flat();
+const verified = verifierGroups.flatMap((group, i) => verifierResults[i] || group.map((g) => ({ ...g, verdict: null })));
+for (const result of fixResults) {
+  const verification = verified.find((v) => v.file === result.file);
+  result.verdict = verification && verification.verdict || null;
+  if (result.status !== 'skipped') {
+    result.status = hasOwnedChange(result) && result.fix.fix_result === 'APPLIED' && result.verdict &&
+      result.verdict.verdict === 'VERIFIED' && Array.isArray(result.verdict.regressions) &&
+      result.verdict.regressions.length === 0 ? 'complete' : 'incomplete';
+    if (result.status === 'incomplete') uncovered.push(`fix:${result.file}`);
+  }
+}
 
 const rejected = verified.filter((v) => v.verdict && v.verdict.verdict === 'REJECT');
 if (rejected.length) {
@@ -184,13 +221,22 @@ if (changedFiles.length) {
       ROOT_HEADER +
       `Read the diffs of these files (git diff for each) and check for regressions across all ` +
       `13 dimensions, using the specialist schema. Diffs only, no unrelated reading.\n` +
+      `Return coverage={status:"complete"|"incomplete",files:[reviewed paths]}. Only mark complete after reviewing every assigned file.\n` +
       `FILES=${JSON.stringify(group)}`,
       { agentType: 'code-reviewer', model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Regress' }
     );
-    if (warnIfNull(log, result, `fix.js: a regression pass returned null for ${group.join(', ')}`)) return [];
-    return result.findings;
+    if (warnIfNull(log, result, `fix.js: a regression pass returned null for ${group.join(', ')}`)) return null;
+    return result;
   }));
-  regressions = regressionResults.flat();
+  regressionGroups.forEach((group, i) => {
+    if (!hasCompleteCoverage(regressionResults[i], group)) {
+      uncovered.push(...group.map((file) => `regression:${file}`));
+      for (const result of fixResults) {
+        if (result.fix && result.fix.files.some((file) => group.includes(file))) result.status = 'incomplete';
+      }
+    }
+  });
+  regressions = regressionResults.filter((result) => result && Array.isArray(result.findings)).flatMap((result) => result.findings);
 }
 
 const blockingRegressions = regressions.filter(
@@ -198,10 +244,16 @@ const blockingRegressions = regressions.filter(
 );
 if (blockingRegressions.length) {
   log(`fix.js: ${blockingRegressions.length} regression(s) at Critical/Important, blocking the marker`);
+  for (const result of fixResults) {
+    if (result.status === 'complete') result.status = 'incomplete';
+  }
 }
 
 return {
-  fixes: verified,
+  status: uncovered.length || blockingRegressions.length ? 'incomplete' : 'complete',
+  fixes: fixResults,
+  uncovered,
+  excluded,
   verdicts: verified.map((v) => v.verdict).filter(Boolean),
   regressions,
   rejected: rejected.map((r) => r.file),
