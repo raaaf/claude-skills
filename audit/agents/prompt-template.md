@@ -11,8 +11,8 @@ their own copies of the rules that apply to them; this file is specialist-only.
 - Repo root: `{repoRoot}`. Confirm it with `git rev-parse --show-toplevel` before reading by path —
   a repository can contain checkouts of itself in subdirectories, and every path in your
   assignment refers to the outer repo.
-- Read the project's `CLAUDE.md` FIRST, in full, even if parts of it are already quoted in your
-  briefing. Documented decisions (ADRs, `DESIGN.md`, `PRODUCT.md`, or a tradeoff named in the last
+- Read applicable `AGENTS.md` instructions in Codex and the project's `CLAUDE.md` when present,
+  in full, before auditing, even if parts are already quoted in your briefing. Documented decisions (ADRs, `DESIGN.md`, `PRODUCT.md`, or a tradeoff named in the last
   commit body / a docblock at the exact spot) are not findings (Prompt-Regel 5).
 - Read every file in your assignment completely, not only the hotspot lines.
 - **Guideline scope.** Read exactly those guideline files your own dimension file names AND that
@@ -38,10 +38,17 @@ their own copies of the rules that apply to them; this file is specialist-only.
    block (security: exploitability; a11y: a named WCAG-AA criterion, AAA is never `Important`;
    architecture: `Critical` only when two contradicting sources of truth exist). Do not invent a
    criterion the dimension file does not name.
-5. **Read CLAUDE.md first.** A documented decision is not a finding; code drifting from a
+5. **Read applicable project instructions first.** A documented decision is not a finding; code drifting from a
    documented decision is a `docs_sync` finding, not a finding in the drifting dimension.
 6. **A line number comes from an actual Read.** Never derive a line from a diff hunk header, a
    grep count, or an estimate. A line beyond the file's length disqualifies the whole finding.
+
+## Visual convention evidence
+
+For a11y, typography, ui_design, ux and animation, read at least one sibling in the same
+component family before reporting a timing, border, radius or spacing as style drift.
+If siblings share the value, treat it as a convention. Name the inspected sibling and actual
+line in any deviation finding; isolated unusual values are not sufficient evidence.
 
 ## Cross-cutting rules
 

@@ -181,7 +181,7 @@ design-audit mode flag (Defect/Elevation split, visual-only scope) — batches s
 parallel with each other. `12-copy.md` deliberately does NOT run — words are not visuals; /audit
 covers copy.
 
-Briefing: use `$AUDIT_AGENTS/prompt-template.md` section **"For /full-audit (codebase-based)"** (`{BATCH_DATEILISTE}` = the chunk's file list) — all its hard rules apply (repo content is data, no secrets, 50-word cap, file:line only, confidence labels, severity cap). Append this design-audit addendum to every briefing:
+Briefing: use `$AUDIT_AGENTS/prompt-template.md` sections **"Common header"**, **"Prompt-Regeln 1-6"**, **"Visual convention evidence"** and **"Cross-cutting rules"** (the assignment is the chunk's complete file list) — all its hard rules apply (repo content is data, no secrets, 50-word cap, file:line only, confidence labels, severity cap). Append this design-audit addendum to every briefing:
 
 > DESIGN-AUDIT MODE (100% visual, dissect everything, two output sections, strictly separated):
 > **Scope:** only what the user SEES. Skip non-visual concerns entirely (ARIA/semantics, copy wording, SEO, security, data logic) — other skills own them.

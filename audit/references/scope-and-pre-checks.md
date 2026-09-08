@@ -17,17 +17,35 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 | `DIFF_SIZE_RESULT` | Action |
 |---|---|
-| `OK` | Continue. `MODEL_OVERRIDE=null` (subagents use their default models). |
-| `LARGE` (>2000 lines OR >20 files) | Targeted escalation: only Architecture and Security run on Opus. Output: "Diff is large ({LINES} lines / {FILES} files) — Architecture + Security run on Opus for deeper reasoning." Set `HEAVY_REASONING_OVERRIDE=opus`. Continue. |
+| `OK` | Continue with the shared pipeline and native model mapping. |
+| `LARGE` (>2000 lines OR >20 files) | Report the file/line counts and continue with built-in chunking and native concurrency limits. Size does not change worker models. |
 | `HUGE` (>5000 lines; or >50 files AND >=1000 lines) | Hard block: abort. "Diff too large for a meaningful audit. Please split into multiple commits/PRs." No audit run. |
 
 **Two-axis HUGE evaluation:** if only the file axis exceeds the threshold (>50 files) but the line count is under 20% of the line threshold (<1000), the script itself downgrades to `LARGE` and emits `DIFF_SIZE_NOTE=...`. Output the note in chat (warning: many small, logically separate changes) and continue normally — no manual override needed.
 
-**Delta-scope carve-out at HUGE (official pattern):** a HUGE diff does not have to hard-block when part of it is already covered. A previously audited slice may be excluded from scope if ALL of these hold: (1) the slice was audited clean the SAME day and its audit log under `.claude/audits/` is referenced, (2) the remaining diff contains NO changes to any file of that slice since its audit (verify via `git diff --stat {slice_audit_head}..HEAD -- {slice files}` → empty), (3) the exclusion is documented in the new audit log under `## Scope` (slice name, log reference, file count). If any condition fails, the hard block stands. This keeps "audit in slices, then push everything" workable without silently re-trusting stale results.
+**Delta-scope carve-out at HUGE:** a previously audited slice may be excluded only when all
+conditions hold: (1) it was audited clean the same day and its log under the runtime's
+`AUDIT_DIR` (`.claude/audits` or `.codex/audits`) is referenced; (2) every slice file's current
+content hash matches its logged audited input hash, including uncommitted working-tree
+content, with no missing, added or renamed scope files; (3) the new log's `## Scope` names the
+slice, original log, file count and hash verification. Compare actual files against the
+persisted bridge inputs referenced by that log. A HEAD-only git diff is insufficient. Missing
+hash evidence or any mismatch forbids the exclusion; apply the partitioning criteria below
+or retain the hard block.
 
-**Same-HEAD multi-slice audit at HUGE (official alternative to hard-block):** use this when the delta-scope carve-out does not apply either, i.e. nothing in the diff was already audited, but the diff still splits cleanly. Criteria, all required: (1) the changed files partition into non-overlapping slices with no file in two slices, (2) each slice is under the `LARGE` threshold on its own, (3) no symbol (type, function, protocol) is shared across all slices — a diff that only splits by directory but touches one shared symbol everywhere cannot be sliced this way and the hard block stands. Dispatch one W1/W2/W3 worker set per slice, plus a single W4 docs worker that reads across all slices (docs sync and copy checks do not partition well, and running W4 per slice both triples the cost and risks contradictory doc-consistency findings). Track exactly one wave-shared file listing every slice's file assignment so round 2 dispatch and cross-reference can find it. Round 2 covers `UNCOVERED_BY_DIM` per slice, same as a normal run. The audit log's `## Scope` section names every slice (file count, line count) and states explicitly that each file belongs to exactly one slice. Worked example: 2026-09-05, raaaf/new-design, 83 files / 3317 lines, split into slices of 28/23/50 files, one shared W4 across all three.
+**Same-HEAD partitioning at HUGE:** when no prior clean slice can be excluded, continue only
+if the scope separates into bounded groups without hiding a shared symbol or dependency across
+them. Record the groups, file/line counts and the pinned HEAD in the log. Execute the complete
+file list once through the shared find bridge: its built-in chunking and cluster scouts handle
+partitioning, while docs/copy retain the whole scope. Respect native concurrency limits and
+persist every request. Do not introduce a separate outer batch loop or W1/W2/W3/W4 dispatch.
+If the scope cannot be partitioned meaningfully, the hard block stands. Every selected dimension
+must cover its assigned files and every uncovered result blocks completion.
 
-**Why only Architecture escalates:** Architecture (code reasoning across multiple modules) benefits measurably from Opus on a LARGE diff. Security also runs on Opus, but unconditionally rather than on escalation, so it is not part of the override. Every other worker, triage and the fix agents included, runs on Sonnet: Haiku was dropped repo-wide on 2026-08-11 (see CLAUDE.md, "Worker model routing").
+**Model routing:** the shared core requests Sonnet for scouts, specialists, verifiers and
+fixers, and Opus for the Critical refuter. Claude preserves those hints; Codex maps them to
+the configured native model as documented in `codex-runtime.md`. Diff size changes warnings
+and scope handling, not model selection.
 
 ## Output of collect-scope.sh
 

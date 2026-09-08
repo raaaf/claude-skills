@@ -80,6 +80,9 @@ Run the selected runtime branch of Phases 2 through 5 of `audit/SKILL.md`, with 
   else (log finalization, `run-cost.sh`, `run-log.sh --counts`, in-progress marker release,
   learning phase) is identical.
 
+Claude learning receives `PATTERNS_RECURRENCES` collected by the orchestrator with
+`patterns-store.sh recurrences`, as required by `audit/references/learning-phase.md`.
+
 In both runtimes, persist the find and fix bridge directories in the log and resume with
 `step` through the shared reference. Completed responses are replayed from disk without
 redispatch; recover persisted native worker IDs for pending requests before launching more

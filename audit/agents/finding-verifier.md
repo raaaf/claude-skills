@@ -31,6 +31,11 @@ DECIDED_TRADEOFFS: {documented decisions}
 that survives a genuine attempt at refutation is worth a fix, one that only survives a friendly
 reading is not.
 
+Every refutation based on an unreachable path or alternate definition must name the concrete
+call site or definition you read in this run, with `file:line`, in its reason. Naming, memory
+and the finding's own description are insufficient. The orchestrator logs this evidence and
+any unavailable/skipped verification as an incident; an absent verdict never counts as refuted.
+
 1. Read the referenced location yourself. Not the diff, the actual file.
 2. Check the claim against what the code really does:
    - Does the described problem exist at that line, or did the finder misread it?

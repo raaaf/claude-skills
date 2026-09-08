@@ -101,6 +101,8 @@ CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
 
 Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`SUPPRESSIONS`/`PROJECT_CONTEXT`/`DECIDED_TRADEOFFS`: `references/scope-and-pre-checks.md`. Prose gate (`DIFF_CLASS=prose`, from `bin/classify-diff.sh`) limits the dimension preselection to `docs_sync`+`copy` and the fix-scope preselection to "find only": `references/prose-gate.md`.
 
+**HUGE diff:** check the delta-scope carve-out and same-HEAD slice criteria in `references/scope-and-pre-checks.md` before aborting. Every slice uses the shared per-dimension bridge and complete coverage gates.
+
 **WIP/stale-snapshot scope check:** does the working tree contain files that clearly do NOT belong to the current task? Clarify scope with the runtime question mechanism only when existing authorization does not resolve it: session/task changes or the entire working tree.
 
 ## Phase 1.5: Start questions (dimensions + fix scope)
@@ -129,6 +131,12 @@ LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/
 Claude only: refresh the in-progress marker after completion (`[ "$AUDIT_RUNTIME" != claude ] || touch "/tmp/claude-audit-in-progress-${CWD_HASH}"`, staleness 45 min). Read the bridge output JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped}`.
 
 **Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE`, `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. The find result must return `status: complete`. Every selected dimension must return `status: complete`, or a justified `status: skipped` from a successful empty scout with no findings or coverage gaps. Require complete finding verdict coverage and empty `uncovered`, `unverified`, and `unrefuted` lists wherever present. Any `UNCERTAIN` finding also blocks the push gate. Missing or unknown statuses/verdicts, failed requests, uncovered files, or interrupted verifiers block completion and the push gate. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
+
+Record concrete call-site or definition evidence for every refutation in the log, with a
+`file:line` actually read this run. In Claude, preserve `patterns-store.sh dismissed {pattern}`
+for refuted findings. Orchestrator evidence goes to the mandatory independent verifier;
+it never substitutes for a completed verifier response. If verification is unavailable or
+skipped, record `Verification skipped: {reason}` under `## Incidents` and keep the run incomplete.
 
 ## Phase 3: Fix
 
