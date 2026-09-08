@@ -35,7 +35,42 @@ function fixture(t, source) {
   }
   return { root, repo, prompts, runDir, argsFile, args, run, init, submit, step: () => run(['step', runDir]) };
 }
-const parallelSource = `const replies = await parallel(['first','second'].map(name => () => agent(name, {schema:${JSON.stringify(schema)},phase:'Audit'}))); return {status: replies.every(Boolean) ? 'complete' : 'incomplete', replies};`;
+const parallelSource = `const replies = await parallel(['first','second'].map(name => () => agent(name, {agentType:'code-reviewer',model:'sonnet',schema:${JSON.stringify(schema)},phase:'Audit'}))); return {status: replies.every(Boolean) ? 'complete' : 'incomplete', replies};`;
+const routedParallelSource = `const replies = await parallel([
+  () => agent('scout', {agentType:'Explore',model:'sonnet',schema:${JSON.stringify(schema)},phase:'Scout'}),
+  () => agent('specialist', {agentType:'security-auditor',model:'sonnet',schema:${JSON.stringify(schema)},phase:'Audit'})
+]); return {status: replies.every(Boolean) ? 'complete' : 'incomplete', replies};`;
+test('Codex dispatch maps Claude hints without changing cached request identity', async (t) => {
+  const f = fixture(t, routedParallelSource);
+  await f.init();
+  const first = await f.step();
+  assert.deepEqual(first.pending.map(({ phase, model, fork_turns, agent_type }) => ({ phase, model, fork_turns, agent_type })), [
+    { phase: 'Scout', model: 'gpt-5.6-sol', fork_turns: 'none', agent_type: 'explorer' },
+    { phase: 'Audit', model: 'gpt-5.6-sol', fork_turns: 'none', agent_type: 'security-auditor' },
+  ]);
+  for (const job of first.pending) {
+    const request = JSON.parse(fs.readFileSync(job.requestPath));
+    assert.equal(request.options.model, 'sonnet');
+    assert.deepEqual(request.codex, { model: 'gpt-5.6-sol', fork_turns: 'none', agent_type: job.agent_type });
+    delete request.codex;
+    fs.writeFileSync(job.requestPath, JSON.stringify(request));
+  }
+  assert.deepEqual((await f.step()).pending.map((job) => job.id), first.pending.map((job) => job.id));
+});
+test('Codex dispatch maps the Critical refuter opus hint to Astra', async (t) => {
+  const f = fixture(t, `await agent('Critical refuter', {agentType:'code-reviewer',model:'opus',schema:${JSON.stringify(schema)},phase:'Verify'}); return {};`);
+  await f.init();
+  const job = (await f.step()).pending[0];
+  assert.deepEqual({ model: job.model, fork_turns: job.fork_turns, agent_type: job.agent_type }, { model: 'gpt-6-astra', fork_turns: 'none', agent_type: 'code-reviewer' });
+  assert.equal(JSON.parse(fs.readFileSync(job.requestPath)).options.model, 'opus');
+});
+test('unknown Codex model hints fail instead of inheriting silently', async (t) => {
+  for (const model of ['haiku', 'toString']) {
+    const f = fixture(t, `await agent('unknown', {agentType:'code-reviewer',model:${JSON.stringify(model)},schema:${JSON.stringify(schema)},phase:'Audit'}); return {};`);
+    await f.init();
+    await assert.rejects(f.step(), new RegExp(`Unknown Codex model mapping: ${model}`));
+  }
+});
 test('replay caches by content, regardless of completion order, across restart', async (t) => {
   const f = fixture(t, parallelSource);
   await f.init();
@@ -64,7 +99,7 @@ test('invalid, corrupt and null replies never become cached success', async (t) 
   assert.equal((await f.step()).pending.length, 2);
 });
 test('explicit failures terminate as incomplete, even if program incorrectly says complete', async (t) => {
-  const f = fixture(t, `await agent('one', {schema:${JSON.stringify(schema)}}); return {status:'complete'};`);
+  const f = fixture(t, `await agent('one', {agentType:'code-reviewer',model:'sonnet',schema:${JSON.stringify(schema)},phase:'Audit'}); return {status:'complete'};`);
   await f.init(); const job = (await f.step()).pending[0];
   await f.run(['fail', f.runDir, job.id, 'Native worker unavailable']);
   const done = await f.step(); assert.equal(done.status, 'incomplete');
@@ -109,11 +144,18 @@ test('real find program reaches specialists and finishes through native response
   const f = fixture(t); await f.init();
   const scout = await f.step(); assert.equal(scout.status, 'pending');
   for (const job of scout.pending) {
+    assert.equal(job.model, 'gpt-5.6-sol'); assert.equal(job.fork_turns, 'none'); assert.equal(job.agent_type, 'explorer');
     const request = JSON.parse(fs.readFileSync(job.requestPath));
     await f.submit(job, request.options.schema.properties.clusters ? { clusters: [] } : { files: [{ path: 'index.js', tag: 'floor', reason: 'code' }] });
   }
   const specialists = await f.step(); assert.ok(specialists.pending.length);
-  for (const job of specialists.pending) await f.submit(job, { findings: [], coverage: { status: 'complete', files: ['index.js'] } });
+  for (const job of specialists.pending) {
+    assert.equal(job.model, 'gpt-5.6-sol'); assert.equal(job.fork_turns, 'none'); assert.equal(job.agent_type, 'code-reviewer');
+    await f.submit(job, { findings: [{ id: 'CQ-1', severity: 'Important', confidence: 'high', files: [{ path: 'index.js', lines: '1' }], issue: 'Fixture issue', impact: 'Fixture impact' }], coverage: { status: 'complete', files: ['index.js'] } });
+  }
+  const verifier = (await f.step()).pending[0];
+  assert.deepEqual({ model: verifier.model, fork_turns: verifier.fork_turns, agent_type: verifier.agent_type }, { model: 'gpt-5.6-sol', fork_turns: 'none', agent_type: 'code-reviewer' });
+  await f.submit(verifier, { verdicts: [{ id: 'CQ-1', verdict: 'CONFIRMED', severity: 'Important', reason: 'Verified fixture' }] });
   assert.equal((await f.step()).status, 'complete');
 });
 test('real fix program caches authorized edits, then verifies and regresses', async (t) => {
@@ -121,11 +163,12 @@ test('real fix program caches authorized edits, then verifies and regresses', as
   await f.init('fix', { fixes: [{ file: 'index.js', findings: [{ id: 'CQ-1', severity: 'Important', issue: 'Wrong value' }] }], testCommand: 'node -c index.js', auditBin: path.resolve(__dirname, '../bin') });
   const fixer = (await f.step()).pending[0];
   assert.equal(fixer.phase, 'Fix');
+  assert.deepEqual({ model: fixer.model, fork_turns: fixer.fork_turns, agent_type: fixer.agent_type }, { model: 'gpt-5.6-sol', fork_turns: 'none', agent_type: 'audit-fix-agent' });
   fs.writeFileSync(path.join(f.repo, 'index.js'), 'export const value = 2;');
   await f.submit(fixer, { fix_result: 'APPLIED', files: ['index.js'], diff_summary: 'Changed value', test: 'passed', tool_calls: 1 });
-  const verifier = (await f.step()).pending[0]; assert.equal(verifier.phase, 'Verify');
+  const verifier = (await f.step()).pending[0]; assert.equal(verifier.phase, 'Verify'); assert.equal(verifier.model, 'gpt-5.6-sol'); assert.equal(verifier.agent_type, 'audit-fix-verifier');
   await f.submit(verifier, { verdict: 'VERIFIED', regressions: [], tests: 'passed' });
-  const regression = (await f.step()).pending[0]; assert.equal(regression.phase, 'Regress');
+  const regression = (await f.step()).pending[0]; assert.equal(regression.phase, 'Regress'); assert.equal(regression.model, 'gpt-5.6-sol'); assert.equal(regression.agent_type, 'code-reviewer');
   await f.submit(regression, { findings: [], coverage: { status: 'complete', files: ['index.js'] } });
   assert.equal((await f.step()).status, 'complete');
   assert.equal(fs.readdirSync(path.join(f.runDir, 'requests')).length, 3);

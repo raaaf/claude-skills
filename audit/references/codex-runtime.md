@@ -49,10 +49,13 @@ executes no git or shell commands itself.
 `step` writes no model output to stdout. It returns compact JSON:
 
 ```json
-{"status":"pending","pending":[{"id":"sha256","requestPath":"/absolute/run/requests/sha256.json","phase":"Scout","agentType":"Explore"}],"failed":[],"outputPath":null,"cost":{"status":"unavailable","usd":null}}
+{"status":"pending","pending":[{"id":"sha256","requestPath":"/absolute/run/requests/sha256.json","phase":"Scout","agentType":"Explore","model":"gpt-5.6-sol","fork_turns":"none","agent_type":"explorer"}],"failed":[],"outputPath":null,"cost":{"status":"unavailable","usd":null}}
 ```
 
-Read each request file: `{id, prompt, options: {agentType, model, schema, phase}}`.
+Read each request file: `{id, prompt, options: {agentType, model, schema, phase}, codex:
+{model, fork_turns, agent_type}}`. Older persisted requests may lack `codex`; use the same
+fields derived in `step.pending`. The source `options` remain unchanged so presentation
+metadata does not invalidate cached IDs.
 Dispatch its prompt plus the JSON response contract below using the current runtime:
 
 - Claude: use `Agent({subagent_type: options.agentType, model: options.model,
@@ -65,11 +68,26 @@ Dispatch its prompt plus the JSON response contract below using the current runt
   returned native agent ID before waiting for its completion notification. Read its final
   response from that notification or the runtime's returned output location. Never treat
   launch acknowledgements or intermediate commentary as a final result.
-- Codex: use native collaboration. Map `Explore` to `explorer`; use other requested roles
-  when available, otherwise `default` with the role's instructions in the briefing. Map
-  Claude `sonnet`/`opus` hints to the configured native model by omitting the model argument.
-  Never pass Anthropic model IDs or `inherit` to Codex spawn. Bind the returned agent ID
-  before waiting with native collaboration tools.
+- Codex: use native collaboration with the exact `model`, `fork_turns` and `agent_type`
+  returned by the bridge. The bridge maps Claude `sonnet` to `gpt-5.6-sol`, and maps the
+  `opus` hint used only by a Critical refuter to `gpt-6-astra`. It maps `Explore` to
+  `explorer` and otherwise preserves the source role. For example:
+
+  ```js
+  spawn_agent({
+    task_name: "audit_request_short_id",
+    message: briefing,
+    model: pending.model,
+    fork_turns: pending.fork_turns,
+    agent_type: pending.agent_type
+  })
+  ```
+
+  Never pass Anthropic model IDs or `inherit`, and never omit the mapped model. An unknown
+  mapping fails before dispatch. If Sol is unavailable, fail that job explicitly and report
+  incomplete coverage. Do not substitute Astra automatically. Preserve the selected role's
+  built-in reasoning effort. Bind the returned agent ID before waiting with native
+  collaboration tools.
 
 Use the actual session concurrency limit, not the workflow's historical limit
 of 16. With four slots including the root, dispatch at most three workers at once;
@@ -157,8 +175,10 @@ shared git directory lock unchanged so both runtimes serialize tests together.
 
 ## Native learning
 
-When learning is enabled, dispatch the native `audit-learning-agent` (or `default`)
-with the absolute `AUDIT_ROOT/agents/learning-agent.md`, PROJECT_ROOT, the actual
+When learning is enabled, dispatch with `agent_type: 'audit-learning-agent'` (or
+`agent_type: 'default'` when that role is unavailable), `model: 'gpt-5.6-sol'`, and
+`fork_turns: 'none'`. Provide the absolute
+`AUDIT_ROOT/agents/learning-agent.md`, PROJECT_ROOT, the actual
 audit log and confirmed verdicts. Override all legacy `.claude/audits` write paths
 with AUDIT_DIR. The worker returns structured results; the orchestrator writes
 learning-log.md and trends there. Preserve the existing explicit user-consent rule

@@ -125,6 +125,16 @@ function incomplete(value) {
   if (!value || typeof value !== 'object') return false;
   return value.status === 'incomplete' || value.complete === false || Object.values(value).some(incomplete);
 }
+function codexDispatch(options) {
+  const models = { sonnet: 'gpt-5.6-sol', opus: 'gpt-6-astra' };
+  if (!Object.hasOwn(models, options.model)) throw new Error(`Unknown Codex model mapping: ${String(options.model)}`);
+  const model = models[options.model];
+  return {
+    model,
+    fork_turns: 'none',
+    agent_type: options.agentType === 'Explore' ? 'explorer' : options.agentType,
+  };
+}
 async function step(runDir, state) {
   const args = read(path.join(runDir, 'args.json'));
   checkDrift(runDir, state, args);
@@ -141,7 +151,7 @@ async function step(runDir, state) {
         if (!job.fixFile) throw new Error('Unable to associate fixer with its authorized file');
       }
       state.jobs[id] = job;
-      atomic(path.join(runDir, 'requests', `${id}.json`), { id, prompt, options });
+      atomic(path.join(runDir, 'requests', `${id}.json`), { id, prompt, options, codex: codexDispatch(options) });
     }
     if (job.status === 'complete') return Promise.resolve(clone(validate(job.result, options.schema)));
     if (job.status === 'failed') return Promise.resolve(null);
@@ -168,7 +178,7 @@ async function step(runDir, state) {
   state.status = status;
   atomic(path.join(runDir, 'state.json'), state);
   atomic(path.join(runDir, 'progress.json'), { status, logs });
-  return { status, pending: [...pending].map((id) => ({ id, requestPath: path.join(runDir, 'requests', `${id}.json`), phase: state.jobs[id].options.phase, agentType: state.jobs[id].options.agentType, ...(state.jobs[id].nativeWorkerId ? { nativeWorkerId: state.jobs[id].nativeWorkerId } : {}) })), failed, outputPath, cost: { status: 'unavailable', usd: null } };
+  return { status, pending: [...pending].map((id) => ({ id, requestPath: path.join(runDir, 'requests', `${id}.json`), phase: state.jobs[id].options.phase, agentType: state.jobs[id].options.agentType, ...codexDispatch(state.jobs[id].options), ...(state.jobs[id].nativeWorkerId ? { nativeWorkerId: state.jobs[id].nativeWorkerId } : {}) })), failed, outputPath, cost: { status: 'unavailable', usd: null } };
 }
 function bind(runDir, state, id, nativeWorkerId) {
   const job = state.jobs[id];

@@ -30,7 +30,8 @@ per-dimension rebuild there is no round loop: one find pass, one fix pass.
 architecture/code_quality/seo/docs_sync/copy. `architecture`, `docs_sync` and `security` also run a
 cluster scout (module/pattern map) alongside or instead of the per-file scout — cluster specialists
 found cross-file guard gaps that file-chunk scouts missed in testing. Every specialist and verifier
-runs on Sonnet except the scout (`Explore`) and the one-per-Critical refuter (Opus).
+runs on Sonnet, including the scout (`Explore`), except the one-per-Critical refuter (Opus).
+Codex maps those hints explicitly to `gpt-5.6-sol` and `gpt-6-astra`, respectively.
 
 **Platform support:** web (Laravel, Next.js, Nuxt, Django) and native mobile (iOS, Android, React Native, Flutter). Framework detection sets `PLATFORM`; on native projects the relevant specialists switch to `guidelines/native-mobile.md` (Keychain/Keystore, VoiceOver/TalkBack, Dynamic Type, main-thread, HIG/Material), and the i18n pre-check reads `.lproj` bundles and `values-*/strings.xml`.
 
@@ -317,7 +318,7 @@ SKILL.md (orchestrator)
 - **Descriptions are model triggers** — third-person, written for *when* to invoke, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need (SKILL.md under 500 lines, references one level deep)
 - **Worker isolation** — subagents receive only triage-routed hotspots, read files on-demand (max 5 per run)
-- **Per-worker model routing** — Sonnet for every worker, Opus for Security only (rationale under the worker table above)
+- **Per-worker model routing** — Claude uses Sonnet for every audit worker except the per-Critical Opus refuter; Codex maps the same split to `gpt-5.6-sol` and `gpt-6-astra`
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Orchestrator-only `.claude/` writes** — subagents are blocked by hardcoded path protection; they return structured output, orchestrator parses and writes
 - **Semantic suppression dedup** — `bin/normalize-suppression.sh` produces stable keys so paraphrased dismissals collapse into one
