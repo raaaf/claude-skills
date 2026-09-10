@@ -127,7 +127,36 @@ be a Stripe integration, so the guideline always applies when it runs.
 
 Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
 
-- `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `fileContents` built the same way as `audit/SKILL.md` Phase 2 (read every file in that scope with the Read tool in batches, pass the path-to-content map). `STRIPE_FILES` is deliberately NOT unioned into `files` and NOT read into `fileContents` here: the `payments` scout and its specialists read that surface themselves, and passing its content inline cost about 104 KB of orchestrator context in a real repo, enough to make a session bypass the whole pipeline. `find.js` only requires complete `fileContents` for `args.files`; a `dimensionFiles`-only path without content simply falls back to the scout for that dimension. One `find.js` call for every selected dimension, same as `audit/SKILL.md` Phase 2: when `payments` is in `SELECTED_DIMENSIONS`, pass `dimensionFiles: { payments: STRIPE_FILES }` and `dimensionContext: { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING }` alongside the shared `files`/`dimensions`/`guidelines` args, otherwise both default to `{}`.
+- `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `floorFiles`
+  built the same way as `audit/SKILL.md` Phase 2: the orchestrator never reads scope-file content at
+  all, since `find.js` has no filesystem access and the scout/specialist subagents read the repo
+  themselves; instead run `FLOOR_FILES=$(node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$SELECTED_DIMENSIONS" < /tmp/full-audit-files.txt)` (`ALLE_DATEIEN`, the same Phase 0 scope-walk list `references/scope.md` produces) and pass its JSON stdout as `floorFiles`. `STRIPE_FILES` is
+  deliberately NOT unioned into `files`: it is not part of the Phase 0 repo walk's scope, and
+  unioning it in would widen what every other dimension audits. It IS passed to the helper, in a
+  second invocation, because the helper reads files from disk itself, so handing it the surface costs
+  the orchestrator nothing, and `payments` should get a deterministic floor over the surface it
+  actually scouts, same as `audit/SKILL.md` Phase 2:
+
+  ```bash
+  if [ "${SELECTED_DIMENSIONS#*payments}" != "$SELECTED_DIMENSIONS" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      PAYMENTS_FLOOR=$(printf '%s\n' "$STRIPE_FILES" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "payments")
+      FLOOR_FILES=$(jq -s '.[0] * .[1]' <(printf '%s' "$FLOOR_FILES") <(printf '%s' "$PAYMENTS_FLOOR"))
+    else
+      echo "payments floor: skipped (jq unavailable), payments floor computed over repo scope only"
+    fi
+  fi
+  ```
+
+  Inlining the surface's content, back when the floor ran inline in the orchestrator, cost about
+  104 KB of context in a real repo, enough to make a session bypass the whole pipeline (a second
+  session then routed every dimension through `dimensionFiles` to dodge it, which starved every
+  content floor and left five of fourteen dimensions skipped or incomplete). A dimension absent from
+  `floorFiles` simply falls back to the scout for that dimension. One `find.js` call for every
+  selected dimension, same as `audit/SKILL.md` Phase 2: when `payments` is in `SELECTED_DIMENSIONS`,
+  pass `dimensionFiles: { payments: STRIPE_FILES }` and `dimensionContext: { payments: "STRIPE_MODE=" +
+  STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING }` alongside the shared `files`/`dimensions`/
+  `guidelines` args, otherwise both default to `{}`.
 - Phase 4 never writes `/tmp/claude-audit-passed-*` — `/full-audit` has no push gate, so the
   coverage conditions that gate `audit/SKILL.md`'s marker do not apply here. The log still must
   say the same thing they would check: any dimension that came back `skipped` or `status:

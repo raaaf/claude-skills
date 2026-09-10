@@ -139,16 +139,34 @@ AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
 ```
 
-Before dispatch, read every file in `ALLE_DATEIEN` with the Read tool (batches, not a bash loop)
-and build `FILE_CONTENTS`, an object mapping each repo-relative path to its content — this is the
-only place file content enters the workflow, since `find.js` itself has no filesystem access.
-`STRIPE_FILES` is deliberately NOT read here and NOT unioned into `files`: the `payments` scout and
-its specialists read that surface themselves inside the repo, and passing its content inline cost
-about 104 KB of orchestrator context in a real repo, enough to make a session bypass the whole
-pipeline. `find.js` only requires complete `fileContents` for `args.files`; a `dimensionFiles`-only
-path without content simply falls back to the scout for that dimension.
+The orchestrator does not read scope files at all — `find.js` has no filesystem access and the scout
+and specialist subagents read the audited repo themselves, so there is nothing content-based left for
+the orchestrator to inline. Before dispatch, compute the content-based scout floor with the helper
+instead of reading files: `FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")`, which prints `{"<dimension>": ["<path>", ...], ...}`
+on stdout for every dimension in `AUDIT_DIMENSIONS`. `STRIPE_FILES` is deliberately NOT unioned into
+`ALLE_DATEIEN`: it is not part of the diff scope, and unioning it in would widen what every other
+dimension audits. It IS passed to the helper, in a second invocation, because the helper reads files
+from disk itself, so handing it the surface costs the orchestrator nothing, and `payments` should get
+a deterministic floor over the surface it actually scouts, not just whatever of that surface the diff
+happened to touch:
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, fileContents: FILE_CONTENTS, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
+```bash
+if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    PAYMENTS_FLOOR=$(printf '%s\n' "$STRIPE_FILES" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "payments")
+    FLOOR_FILES=$(jq -s '.[0] * .[1]' <(printf '%s' "$FLOOR_FILES") <(printf '%s' "$PAYMENTS_FLOOR"))
+  else
+    echo "payments floor: skipped (jq unavailable), payments floor computed over diff scope only"
+  fi
+fi
+```
+
+This matters because two real sessions hit the old inline-content approach's cost directly: one
+repo's scope was 132 KB, another session refused to inline 104 KB and bypassed the whole pipeline,
+and a follow-up session routed every dimension through `dimensionFiles` to dodge it, which starved
+every content floor and left five of fourteen dimensions skipped or incomplete.
+
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
 `payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
 

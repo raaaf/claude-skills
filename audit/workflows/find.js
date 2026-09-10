@@ -258,97 +258,25 @@ const MAX_SCOUT_FILES = 70;
 // CONTENT-based floor: replaces the extension-based per-file floor for the
 // broad dimensions above (measured 2026-09-06, see the note above this
 // block). A path-based floor over FRONTEND_EXT_RE/`.php|ts|...` matches most
-// of a real repo, which makes MAX_SCOUT_FILES inert; these regexes instead
-// match actual content signals derived from the ground-truth defects two
-// real runs missed (JSON-LD critical in a provider the security scout
-// dropped non-reproducibly, an e2e spec the code_quality scout never saw).
-// Deterministic, cheap (no LLM call), and narrow enough that the cap still
-// binds. `architecture` intentionally has no content signal: it keeps the
-// existing selective PATH-based floor only.
-const FLOOR_CONTENT_SIGNALS = {
-  security: [
-    /\$_(GET|POST|REQUEST|SERVER|FILES|COOKIE)/m,
-    /wp_ajax_|admin_ajax/m,
-    /current_user_can|wp_verify_nonce|check_ajax_referer/m,
-    /json_encode|wp_json_encode/m,
-    /upload_mimes|wp_handle_upload|\$file\['type'\]/m,
-    /Content-Security-Policy|X-Forwarded|gethostbyname|wp_remote_|shell_exec|eval\(/m
-  ],
-  privacy: [
-    /consent|cookie|analytics|gtag|iframe|tracking|X-Forwarded|REMOTE_ADDR/m
-  ],
-  performance: [
-    /\b(?:foreach|while|for)\s*\([^{}]*\{[^}]*\b(?:get_posts|WP_Query|wp_remote_\w*|get_post_meta|get_field)\s*\(/m,
-    /useEffect|addEventListener|setInterval|file_get_contents|wp_remote_/m
-  ],
-  code_quality: [
-    // Error-swallowing, sentinel fallbacks, bypassed checks and weak/conditional assertions.
-    /catch\s*(?:\([^)]*\))?\s*\{\s*\}|catch\s*(?:\([^)]*\))?\s*\{[^}]*\breturn\b|@ts-ignore|eslint-disable/m,
-    /\breturn\s+(?:null|false|\[\])\s*;/m,
-    /\bif\s*\([^\n]*\)\s*\{\s*(?:await\s+)?expect\(|\.(?:toBeTruthy|toBeDefined|toBeFalsy)\(|assertTrue\(true|assertNotNull\(/m
-  ],
-  seo: [
-    /wp_head|meta name|og:|json-ld|application\/ld\+json|sitemap|robots|canonical|<h[1-6]\b|<title\b/m
-  ],
-  a11y: [
-    /aria-|role=|<button|<input|<label|tabindex|alt=/m
-  ],
-  ui_design: [
-    // Token declarations and spacing/shape utilities, not every CSS variable reference.
-    /(?:^|[;{\s])--[a-z][\w-]*\s*:|gap-|\bp[xy]?-\d|rounded-|shadow-/m
-  ],
-  typography: [
-    // ASCII quotes alone mostly match programming-language string delimiters.
-    /font-|line-height|letter-spacing|&shy;|&nbsp;|[A-Za-z]’[A-Za-z]/m
-  ],
-  ux: [
-    // Busy/disabled/live feedback and state changes with no visible error handler.
-    /disabled|aria-live|aria-busy/m,
-    /^(?![^]*(?:\bcatch\s*(?:\(|\{)|\.catch\s*\(|setError\s*\())[^]*(?:preventDefault\s*\(|setLoading\s*\(|\.classList\.(?:toggle|add|remove)\s*\()/
-  ],
-  animation: [
-    /transition|animate|@keyframes|prefers-reduced-motion|gsap|framer/m
-  ],
-  docs_sync: [
-    // Documented API references and public configuration are documentation drift surfaces.
-    /^#|README|CLAUDE\.md|\.env|@see|@example|@deprecated|register_setting|add_option|getenv\(|process\.env/m
-  ],
-  copy: [
-    // Rendered/returned translations and explicit microcopy labels, not every schema label.
-    /(?:\{\{|\becho\b|\breturn\b)\s*__\(|_e\(|_x\(|placeholder\s*=|aria-label\s*=/m
-  ],
-  payments: [
-    // Stripe SDK usage, webhook verification, hosted/checkout surfaces and payment identifiers.
-    /Stripe::|new Stripe\(|stripe\.js|Webhook::constructEvent|constructEvent|js\.stripe\.com|api\.stripe\.com|PaymentIntent|checkout\.session|Cashier|stripe_id/m
-  ]
-  // architecture: no content signal, path-based floor only (see above).
-};
+// of a real repo, which makes MAX_SCOUT_FILES inert. The actual signals
+// (regex source + explanatory comments) live in audit/floor-signals.json,
+// the single source of truth, and are computed OUTSIDE this script by
+// audit/bin/compute-floor.mjs since find.js has no filesystem access; the
+// result arrives here as args.floorFiles, a {dimension: [paths]} map.
+// `architecture` intentionally has no content signal: it keeps the existing
+// selective PATH-based floor only.
 
 // Content-based floor: a file joins a dimension's floor when its content
-// matches at least one of FLOOR_CONTENT_SIGNALS[dimension]. `readFile(path)`
-// is supplied by the caller (find.js has no filesystem access). The entry
-// point validates complete scope content for args.files only; a
-// dimensionFiles-only path without content simply yields no content floor
-// and falls back to the scout. The helper also keeps a path-only fallback
-// for standalone calibration callers.
-function computeFloorFiles(dimension, files, readFile, logFn) {
+// matched at least one of that dimension's signals in floor-signals.json,
+// already computed by the caller via audit/bin/compute-floor.mjs into
+// `floorFiles[dimension]`. A dimension absent from `floorFiles` simply
+// yields no content floor and falls back to the scout (and is reported
+// under degradedDimensions below).
+function computeFloorFiles(dimension, files, floorFiles, logFn) {
   const pathFloor = SELECTIVE_FLOOR_DIMENSIONS.includes(dimension)
     ? files.filter((f) => floorDimensionsForFile(f).includes(dimension))
     : [];
-  if (typeof readFile !== 'function') {
-    return pathFloor;
-  }
-  const signals = FLOOR_CONTENT_SIGNALS[dimension];
-  if (!signals) return pathFloor;
-  let unavailable = 0;
-  const contentFloor = files.filter((f) => {
-    const content = readFile(f) || '';
-    if (!content) unavailable++;
-    return signals.some((re) => re.test(content));
-  });
-  if (unavailable && logFn) {
-    logFn(`${dimension}: content floor unavailable for ${unavailable} of ${files.length} scope file(s), falling back to the scout for those`);
-  }
+  const contentFloor = (floorFiles && floorFiles[dimension]) || [];
   const merged = pathFloor.slice();
   for (const f of contentFloor) {
     if (!merged.includes(f)) merged.push(f);
@@ -419,7 +347,7 @@ function scopeFilesFor(ctx, dimension) {
 async function runFileScout(ctx, dimension, agentFn, logFn) {
   const promptDoc = `${ctx.promptDir}/scout-files.md`;
   const scopeFiles = scopeFilesFor(ctx, dimension);
-  const floorFiles = computeFloorFiles(dimension, scopeFiles, ctx.readFile, logFn);
+  const floorFiles = computeFloorFiles(dimension, scopeFiles, ctx.floorFiles, logFn);
   if (!floorFiles.length && !dimensionHasFloorSignal(dimension, scopeFiles)) {
     logFn(`${dimension}: no deterministic floor signal in scope, relying entirely on the scout`);
   }
@@ -767,20 +695,20 @@ function dimensionFileName(dim) {
 // `agent`, `parallel`, `log`, `args` already in scope as globals.
 // args: { repoRoot, scope: 'diff'|'repo', files, dimensions, effort, promptDir, guidelinesDir,
 //         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc,
-//         fileContents (object mapping repo-relative path to content; find.js has no
-//         filesystem access, so the caller reads scope files and passes them in). Required,
-//         complete, for every args.files entry. Optional for a path that appears only in
-//         args.dimensionFiles: the scout and specialist subagents read those files themselves,
-//         content is only used as a deterministic optimization (the content floor); a path
-//         missing here just falls back to the scout for that dimension,
+//         floorFiles (optional, object keyed by dimension id, e.g. { security: [...] }): the
+//         content-based scout floor, precomputed by audit/bin/compute-floor.mjs from
+//         audit/floor-signals.json since find.js has no filesystem access and no longer reads
+//         scope-file content at all — the scout and specialist subagents read the repo
+//         themselves. A dimension present as a key (even with an empty array) had its floor
+//         computed; a dimension absent from floorFiles simply falls back to the scout for that
+//         dimension and is reported under degradedDimensions,
 //         dimensionFiles (optional, object keyed by dimension id, e.g. { payments: [...] });
 //         narrow intent ONLY: a dimension-specific surface that is deliberately outside the
 //         shared diff/repo scope (the original and still only real case is `payments` over the
 //         precomputed Stripe surface). A dimension listed here scouts that file list wherever
 //         the pipeline would otherwise use ctx.files; every other dimension keeps using
-//         args.files unchanged. It is never a cheaper substitute for args.files + fileContents
-//         across dimensions in general — see the args.files/dimensionFiles guard below, which
-//         throws on exactly that misuse,
+//         args.files unchanged. It is never a cheaper substitute for args.files in general —
+//         see the args.files/dimensionFiles guard below, which throws on exactly that misuse,
 //         dimensionContext (optional, object keyed by dimension id, e.g.
 //         { payments: 'STRIPE_MODE=cashier,sdk' }); a dimension listed here gets that
 //         string appended to its specialist briefing as its own line, never mixed into
@@ -791,24 +719,18 @@ if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
 }
 const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions : ALL_DIMENSIONS);
 
-const fileContents = args.fileContents;
+const floorFiles = args.floorFiles || {};
 const dimensionFiles = args.dimensionFiles || {};
 // Hard guard against the exact misuse dimensionFiles is not for: routing every dimension
-// through dimensionFiles to skip inlining args.files + fileContents entirely. That silently
-// starves every dimension's content floor (computeFloorFiles returns nothing to add back),
-// so scouts run with no deterministic floor and a scout that finds nothing ends its dimension
-// as `skipped`. Fail loudly here instead.
+// through dimensionFiles to skip the shared scope entirely. That silently starves every
+// dimension's content floor (computeFloorFiles returns nothing to add back), so scouts run
+// with no deterministic floor and a scout that finds nothing ends its dimension as `skipped`.
+// Fail loudly here instead.
 if ((!args.files || args.files.length === 0) && Object.keys(dimensionFiles).length > 0) {
   throw new Error('args.dimensionFiles is for a dimension-specific surface outside the shared ' +
-    'scope (e.g. payments/STRIPE_FILES), never a replacement for args.files + fileContents. ' +
+    'scope (e.g. payments/STRIPE_FILES), never a replacement for args.files. ' +
     'args.files is empty/absent while args.dimensionFiles is not.');
 }
-const missingContents = (args.files || []).filter((path) => !fileContents ||
-  !Object.prototype.hasOwnProperty.call(fileContents, path) || typeof fileContents[path] !== 'string');
-if (missingContents.length) {
-  throw new Error(`args.fileContents must contain complete text for every args.files entry; missing: ${missingContents.join(', ')}`);
-}
-const readFile = (path) => fileContents && fileContents[path] || '';
 
 const ctx = {
   repoRoot: args.repoRoot,
@@ -819,7 +741,7 @@ const ctx = {
   promptDir: args.promptDir,
   guidelinesDir: args.guidelinesDir || '',
   guidelines: args.guidelines || '',
-  readFile,
+  floorFiles,
   dimensionDoc: args.dimensionDoc || Object.fromEntries(
     ALL_DIMENSIONS.map((d) => [d, `${args.promptDir}/${dimensionFileName(d)}`])
   )
@@ -833,20 +755,22 @@ const ctx = {
 // dimension whose scope files carry no content (dimensionFiles-only, e.g.
 // payments) always computes a floor of 0 regardless of true size, so it
 // falls back to its raw scope-file count instead of sorting last.
-// Same pass also flags a dimension as degraded when it has a defined content signal
-// (FLOOR_CONTENT_SIGNALS[d]) but none of its scope files have usable content in
-// fileContents at all: computeFloorFiles then has nothing to compute a content floor
-// from, so the dimension's scout ran with no deterministic floor (see the guard above).
+// Same pass also flags a dimension as degraded when it is absent from
+// args.floorFiles entirely: compute-floor.mjs never ran for it (or the
+// caller omitted it), so computeFloorFiles has nothing to compute a content
+// floor from and the dimension's scout ran with no deterministic floor (see
+// the guard above). compute-floor.mjs always emits a key, possibly empty,
+// for every requested dimension it was given, so key absence means "never
+// computed", not "computed, no match".
 const dimMeta = dimensions.map((d) => {
   const scopeFiles = scopeFilesFor(ctx, d);
-  const floorCount = computeFloorFiles(d, scopeFiles, ctx.readFile, log).length;
-  const contentAvailable = scopeFiles.some((f) =>
-    fileContents && Object.prototype.hasOwnProperty.call(fileContents, f));
-  const degraded = Boolean(FLOOR_CONTENT_SIGNALS[d]) && scopeFiles.length > 0 && !contentAvailable;
+  const floorCount = computeFloorFiles(d, scopeFiles, ctx.floorFiles, log).length;
+  const floorComputed = Object.prototype.hasOwnProperty.call(floorFiles, d);
+  const degraded = scopeFiles.length > 0 && !floorComputed;
   if (degraded) {
-    log(`${d}: no usable content for any of ${scopeFiles.length} scope file(s), ran without a deterministic content floor`);
+    log(`${d}: absent from args.floorFiles (${scopeFiles.length} scope file(s)), ran without a deterministic content floor`);
   }
-  return { d, floorCount: floorCount === 0 && !contentAvailable ? scopeFiles.length : floorCount, degraded };
+  return { d, floorCount: floorCount === 0 && !floorComputed ? scopeFiles.length : floorCount, degraded };
 });
 const floorCountByDim = Object.fromEntries(dimMeta.map(({ d, floorCount }) => [d, floorCount]));
 const degradedDimensions = dimMeta.filter(({ degraded }) => degraded).map(({ d }) => d);

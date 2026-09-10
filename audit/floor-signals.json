@@ -1,0 +1,86 @@
+{
+  "_description": "Content-based floor signals for the audit find pipeline (audit/workflows/find.js). A file joins a dimension's scout floor when its content matches at least one of that dimension's signals below. Single source of truth: find.js no longer contains these regexes at all, it only consumes the result via args.floorFiles, computed by audit/bin/compute-floor.mjs. These regexes replace an extension-based per-file floor for the broad dimensions (a path-based floor over most extensions matches most of a real repo, which makes the MAX_SCOUT_FILES cap in find.js inert); they instead match actual content signals derived from the ground-truth defects two real runs missed (JSON-LD critical in a provider the security scout dropped non-reproducibly, an e2e spec the code_quality scout never saw). Calibrated 2026-09-06 against a 257-file corpus, see CLAUDE.md 'The scout floor is content-based and calibrated'. Do not change, remove, or reword a single regex without re-measuring recall with a deterministic harness first: this changes WHAT the floor matches, not just where it runs. `architecture` intentionally has no entry here: it keeps the existing selective PATH-based floor only, computed in find.js's floorDimensionsForFile.",
+  "dimensions": {
+    "security": {
+      "signals": [
+        { "source": "\\$_(GET|POST|REQUEST|SERVER|FILES|COOKIE)", "flags": "m" },
+        { "source": "wp_ajax_|admin_ajax", "flags": "m" },
+        { "source": "current_user_can|wp_verify_nonce|check_ajax_referer", "flags": "m" },
+        { "source": "json_encode|wp_json_encode", "flags": "m" },
+        { "source": "upload_mimes|wp_handle_upload|\\$file\\['type'\\]", "flags": "m" },
+        { "source": "Content-Security-Policy|X-Forwarded|gethostbyname|wp_remote_|shell_exec|eval\\(", "flags": "m" }
+      ]
+    },
+    "privacy": {
+      "signals": [
+        { "source": "consent|cookie|analytics|gtag|iframe|tracking|X-Forwarded|REMOTE_ADDR", "flags": "m" }
+      ]
+    },
+    "performance": {
+      "signals": [
+        { "source": "\\b(?:foreach|while|for)\\s*\\([^{}]*\\{[^}]*\\b(?:get_posts|WP_Query|wp_remote_\\w*|get_post_meta|get_field)\\s*\\(", "flags": "m" },
+        { "source": "useEffect|addEventListener|setInterval|file_get_contents|wp_remote_", "flags": "m" }
+      ]
+    },
+    "code_quality": {
+      "comment": "Error-swallowing, sentinel fallbacks, bypassed checks and weak/conditional assertions.",
+      "signals": [
+        { "source": "catch\\s*(?:\\([^)]*\\))?\\s*\\{\\s*\\}|catch\\s*(?:\\([^)]*\\))?\\s*\\{[^}]*\\breturn\\b|@ts-ignore|eslint-disable", "flags": "m" },
+        { "source": "\\breturn\\s+(?:null|false|\\[\\])\\s*;", "flags": "m" },
+        { "source": "\\bif\\s*\\([^\\n]*\\)\\s*\\{\\s*(?:await\\s+)?expect\\(|\\.(?:toBeTruthy|toBeDefined|toBeFalsy)\\(|assertTrue\\(true|assertNotNull\\(", "flags": "m" }
+      ]
+    },
+    "seo": {
+      "signals": [
+        { "source": "wp_head|meta name|og:|json-ld|application\\/ld\\+json|sitemap|robots|canonical|<h[1-6]\\b|<title\\b", "flags": "m" }
+      ]
+    },
+    "a11y": {
+      "signals": [
+        { "source": "aria-|role=|<button|<input|<label|tabindex|alt=", "flags": "m" }
+      ]
+    },
+    "ui_design": {
+      "comment": "Token declarations and spacing/shape utilities, not every CSS variable reference.",
+      "signals": [
+        { "source": "(?:^|[;{\\s])--[a-z][\\w-]*\\s*:|gap-|\\bp[xy]?-\\d|rounded-|shadow-", "flags": "m" }
+      ]
+    },
+    "typography": {
+      "comment": "ASCII quotes alone mostly match programming-language string delimiters.",
+      "signals": [
+        { "source": "font-|line-height|letter-spacing|&shy;|&nbsp;|[A-Za-z]’[A-Za-z]", "flags": "m" }
+      ]
+    },
+    "ux": {
+      "comment": "Busy/disabled/live feedback and state changes with no visible error handler.",
+      "signals": [
+        { "source": "disabled|aria-live|aria-busy", "flags": "m" },
+        { "source": "^(?![^]*(?:\\bcatch\\s*(?:\\(|\\{)|\\.catch\\s*\\(|setError\\s*\\())[^]*(?:preventDefault\\s*\\(|setLoading\\s*\\(|\\.classList\\.(?:toggle|add|remove)\\s*\\()", "flags": "" }
+      ]
+    },
+    "animation": {
+      "signals": [
+        { "source": "transition|animate|@keyframes|prefers-reduced-motion|gsap|framer", "flags": "m" }
+      ]
+    },
+    "docs_sync": {
+      "comment": "Documented API references and public configuration are documentation drift surfaces.",
+      "signals": [
+        { "source": "^#|README|CLAUDE\\.md|\\.env|@see|@example|@deprecated|register_setting|add_option|getenv\\(|process\\.env", "flags": "m" }
+      ]
+    },
+    "copy": {
+      "comment": "Rendered/returned translations and explicit microcopy labels, not every schema label.",
+      "signals": [
+        { "source": "(?:\\{\\{|\\becho\\b|\\breturn\\b)\\s*__\\(|_e\\(|_x\\(|placeholder\\s*=|aria-label\\s*=", "flags": "m" }
+      ]
+    },
+    "payments": {
+      "comment": "Stripe SDK usage, webhook verification, hosted/checkout surfaces and payment identifiers.",
+      "signals": [
+        { "source": "Stripe::|new Stripe\\(|stripe\\.js|Webhook::constructEvent|constructEvent|js\\.stripe\\.com|api\\.stripe\\.com|PaymentIntent|checkout\\.session|Cashier|stripe_id", "flags": "m" }
+      ]
+    }
+  }
+}

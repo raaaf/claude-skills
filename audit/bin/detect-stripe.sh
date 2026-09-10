@@ -83,6 +83,19 @@ SRC_NAME_OPTS=(
 
 TEST_DIR_RE='(^|/)(tests?|spec|__tests__|__mocks__|fixtures?|factories)/'
 
+# grep -l over a newline-separated file list ($2), NUL-delimited so paths
+# containing spaces survive intact and a leading '-' in a filename can't be
+# read as an option. Empty input returns nothing rather than letting xargs
+# run the command once on an empty list (observed on some xargs builds) or
+# grep fall through to the whole working directory.
+grep_list() {
+  local pattern="$1"
+  local list
+  list=$(printf '%s\n' "$2" | sed '/^$/d')
+  [ -z "$list" ] && return 1
+  printf '%s\n' "$list" | tr '\n' '\0' | xargs -0 grep -lE -- "$pattern" 2>/dev/null
+}
+
 # ----------------------------------------------------------------------------
 # Manifest detection: repo root, plus the top-level directory of each
 # SOURCE_DIRS entry (non-recursive), so a monorepo package manifest counts
@@ -208,7 +221,7 @@ CONTENT_PATTERN='js\.stripe\.com|api\.stripe\.com|buy\.stripe\.com|checkout\.str
 
 ALL_CONTENT_HITS=""
 if [ -n "$CANDIDATE_FILES" ]; then
-  ALL_CONTENT_HITS=$(printf '%s\n' "$CANDIDATE_FILES" | xargs grep -lE "$CONTENT_PATTERN" 2>/dev/null || true)
+  ALL_CONTENT_HITS=$(grep_list "$CONTENT_PATTERN" "$CANDIDATE_FILES" || true)
 fi
 ALL_CONTENT_HITS=$(printf '%s\n' "$ALL_CONTENT_HITS" | sed '/^$/d' | sort -u)
 
@@ -217,13 +230,13 @@ NON_TEST_CONTENT_HITS=$(printf '%s\n' "$ALL_CONTENT_HITS" | grep -vE "$TEST_DIR_
 HAS_HOSTED=0
 HAS_HTTP=0
 if [ -n "$NON_TEST_CONTENT_HITS" ]; then
-  if printf '%s\n' "$NON_TEST_CONTENT_HITS" | xargs grep -lE 'buy\.stripe\.com|checkout\.stripe\.com' 2>/dev/null | grep -q .; then
+  if grep_list 'buy\.stripe\.com|checkout\.stripe\.com' "$NON_TEST_CONTENT_HITS" | grep -q .; then
     HAS_HOSTED=1
   fi
-  if printf '%s\n' "$NON_TEST_CONTENT_HITS" | xargs grep -lE 'api\.stripe\.com' 2>/dev/null | grep -q .; then
+  if grep_list 'api\.stripe\.com' "$NON_TEST_CONTENT_HITS" | grep -q .; then
     HAS_HTTP=1
   fi
-  if printf '%s\n' "$NON_TEST_CONTENT_HITS" | xargs grep -lE 'js\.stripe\.com' 2>/dev/null | grep -q .; then
+  if grep_list 'js\.stripe\.com' "$NON_TEST_CONTENT_HITS" | grep -q .; then
     HAS_CLIENT_MANIFEST=1
   fi
 fi
@@ -269,13 +282,13 @@ echo "STRIPE_MODE=$MODE"
 # ----------------------------------------------------------------------------
 RECURRING_CONTENT=0
 if [ -n "$NON_TEST_CONTENT_HITS" ]; then
-  if printf '%s\n' "$NON_TEST_CONTENT_HITS" | xargs grep -lE '\\Stripe\\Subscription|Subscription::' 2>/dev/null | grep -q .; then
+  if grep_list '\\Stripe\\Subscription|Subscription::' "$NON_TEST_CONTENT_HITS" | grep -q .; then
     RECURRING_CONTENT=1
   fi
-  if printf '%s\n' "$NON_TEST_CONTENT_HITS" | xargs grep -lE "mode['\"][[:space:]]*(=>|:)[[:space:]]*['\"]subscription['\"]" 2>/dev/null | grep -q .; then
+  if grep_list "mode['\"][[:space:]]*(=>|:)[[:space:]]*['\"]subscription['\"]" "$NON_TEST_CONTENT_HITS" | grep -q .; then
     RECURRING_CONTENT=1
   fi
-  if printf '%s\n' "$NON_TEST_CONTENT_HITS" | xargs grep -lE "recurring['\"]?[[:space:]]*(=>|:)" 2>/dev/null | grep -q .; then
+  if grep_list "recurring['\"]?[[:space:]]*(=>|:)" "$NON_TEST_CONTENT_HITS" | grep -q .; then
     RECURRING_CONTENT=1
   fi
 fi
