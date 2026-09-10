@@ -1,0 +1,3 @@
+#!/usr/bin/env php
+<?php
+// Marker file so detect-framework.sh recognizes this fixture as a Laravel app.

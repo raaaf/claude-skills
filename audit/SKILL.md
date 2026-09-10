@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. Two start questions (dimensions, fix scope) replace the old argument form. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. Two start questions (dimensions, fix scope) replace the old argument form. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 model: inherit
 effort: high
@@ -41,7 +41,7 @@ bash "$AUDIT_BIN/run-log.sh" --start --skill audit
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 SCOPE_OUT="$(bash "$AUDIT_BIN/collect-scope.sh")"
 BASE_REF=$(printf '%s\n' "$SCOPE_OUT" | sed -n 's/^BASE_REF=//p')
-ALLE_DATEIEN=$(printf '%s\n' "$SCOPE_OUT" | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p}')
+ALLE_DATEIEN=$(printf '%s\n' "$SCOPE_OUT" | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p;}')
 echo "BASE_REF=$BASE_REF"
 echo "ALLE_DATEIEN: $(printf '%s\n' "$ALLE_DATEIEN" | grep -c .) file(s)"
 FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
@@ -50,6 +50,11 @@ SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
 PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
 bash "$AUDIT_BIN/pre-checks.sh"
 bash "$AUDIT_BIN/check-ci-hardening.sh" "$(git rev-parse --show-toplevel)"   # HITS become Important security findings, no specialist needed
+STRIPE_OUT="$(bash "$AUDIT_BIN/detect-stripe.sh" "$(git rev-parse --show-toplevel)")"
+STRIPE=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE=//p')
+STRIPE_MODE=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE_MODE=//p')
+STRIPE_RECURRING=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE_RECURRING=//p')
+STRIPE_FILES=$(printf '%s\n' "$STRIPE_OUT" | sed -n '/^STRIPE_FILES<<END$/,/^END$/{/^STRIPE_FILES<<END$/d;/^END$/d;p;}')
 if echo "$ALLE_DATEIEN" | grep -qE '(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Podfile(\.lock)?|Package\.(swift|resolved)|pubspec\.(yaml|lock)|build\.gradle)'; then
   bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)"
 fi
@@ -81,10 +86,46 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 
 Otherwise ask exactly one `AskUserQuestion` round, two questions, presets from `references/dimension-selection.md`:
 
-- **(a) Dimensions:** All (default) | Backend | Frontend | Custom (multi-select over all 13).
+- **(a) Dimensions:** All (default) | Backend | Frontend | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
 - **(b) Fix scope:** find & log only | fix Critical | fix Critical and Important. Preselection from `${CLAUDE_EFFORT:-medium}`: `low` → find only, `medium` → Critical, `high`/`xhigh` → Critical and Important.
 
 Result: `AUDIT_DIMENSIONS` (comma list) and `AUDIT_FIX_SCOPE` (`none|critical|all`). A partial selection at (a) never writes the push marker (same rule as before), and the log names the dimensions not checked.
+
+**`payments` (CONDITIONAL 14th dimension):** joins `SELECTED_DIMENSIONS` only when BOTH hold:
+`STRIPE=yes` (from Phase 1) AND the changed-file set intersects `STRIPE_FILES`. The intersection is
+computed against `STRIPE_FILES`, the precomputed Stripe surface `detect-stripe.sh` already found,
+never by grepping the diff text for "stripe": half of a payments checklist is about an *absent*
+guard (a webhook route with no signature check, a client secret logged instead of masked), and an
+absence never shows up as a line in a diff — a diff-text grep would silently miss exactly the class
+of defect this dimension exists to catch.
+
+```bash
+if [ "${STRIPE:-no}" = "yes" ]; then
+  STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
+  if [ -n "$STRIPE_TOUCHED" ]; then
+    SELECTED_DIMENSIONS="$SELECTED_DIMENSIONS,payments"
+    if ! printf '%s\n' "$GUIDELINE_MATCHES" | grep -q '^payments\.md'; then
+      GUIDELINE_MATCHES=$(printf '%s\npayments.md\tmandatory\tscoped' "$GUIDELINE_MATCHES")
+    fi
+  else
+    echo "payments: skipped, diff did not touch the payment surface"
+  fi
+fi
+```
+
+`guidelines/payments.md` carries an `applies_to` path regex, so a diff that only touches a generic
+file in the payment surface (`bootstrap/app.php`, a middleware file) may not match it and
+`match-guidelines.sh` would then omit the guideline from `GUIDELINE_MATCHES`, even though the
+dimension only runs once the detector has already established the repo is a Stripe integration, so
+the guideline always applies when `payments` runs. The block above appends the line only when
+`match-guidelines.sh` did not already emit it.
+
+When `payments` runs, its scope is the FULL `STRIPE_FILES` surface (not just `STRIPE_TOUCHED`): pass
+it as `dimensionFiles: { payments: STRIPE_FILES }` for that dimension when invoking `find.js` in
+Phase 2, and thread `STRIPE_MODE` and `STRIPE_RECURRING` through `dimensionContext: { payments:
+"STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING }` so the specialist applies
+mode-dependent rules (cashier/sdk/client/hosted/http) and gates the dashboard checklist on whether
+the integration does recurring billing at all.
 
 ## Phase 2: Find
 
@@ -98,9 +139,18 @@ AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
 ```
 
-Before dispatch, read every file in `ALLE_DATEIEN` with the Read tool (batches, not a bash loop) and build `FILE_CONTENTS`, an object mapping each repo-relative path to its content — this is the only place file content enters the workflow, since `find.js` itself has no filesystem access.
+Before dispatch, read every file in `ALLE_DATEIEN` with the Read tool (batches, not a bash loop)
+and build `FILE_CONTENTS`, an object mapping each repo-relative path to its content — this is the
+only place file content enters the workflow, since `find.js` itself has no filesystem access.
+`STRIPE_FILES` is deliberately NOT read here and NOT unioned into `files`: the `payments` scout and
+its specialists read that surface themselves inside the repo, and passing its content inline cost
+about 104 KB of orchestrator context in a real repo, enough to make a session bypass the whole
+pipeline. `find.js` only requires complete `fileContents` for `args.files`; a `dimensionFiles`-only
+path without content simply falls back to the scout for that dimension.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, fileContents: FILE_CONTENTS } })`.
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, fileContents: FILE_CONTENTS, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
+where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
+`payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
@@ -129,8 +179,12 @@ AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
 # ~/.claude/projects/ (every "/" becomes "-").
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(pwd | sed 's#/#-#g')"
 bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # cost line for the log header + run-ledger
+COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}"
+if [ "${SELECTED_DIMENSIONS#*payments}" != "$SELECTED_DIMENSIONS" ]; then
+  COUNTS="$COUNTS,payments_head=$(git rev-parse HEAD)"
+fi
 bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
-  --counts "critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}" --gate "{blocked|partial|passed}"
+  --counts "$COUNTS" --gate "{blocked|partial|passed}"
 ```
 
 **Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when no Critical is open AND no new test failure beyond `BASELINE_FAILURES`. A partial dimension selection (Phase 1.5) never sets it — print the reason instead.

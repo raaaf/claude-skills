@@ -1,0 +1,18 @@
+{
+  "fixture": "payments/webhook-no-signature",
+  "must_find": [
+    {
+      "dimension": "payments",
+      "line": 14,
+      "matches": [
+        "unverified",
+        "forged",
+        "constructevent",
+        "grants entitlement",
+        "unauthenticated"
+      ],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": []
+}

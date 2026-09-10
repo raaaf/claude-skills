@@ -27,6 +27,7 @@ REQUIRED=(
   11-docs-sync.md
   12-copy.md
   13-privacy.md
+  14-payments.md
   scout-files.md
   scout-clusters.md
   fix-agent.md

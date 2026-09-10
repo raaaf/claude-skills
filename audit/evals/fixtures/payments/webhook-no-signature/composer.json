@@ -1,0 +1,7 @@
+{
+    "require": {
+        "php": "^8.2",
+        "laravel/framework": "^11.0",
+        "stripe/stripe-php": "^13.0"
+    }
+}

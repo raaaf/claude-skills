@@ -1,0 +1,2 @@
+This fixture must be copied to the repo root (see run-evals.sh) so detect-stripe.sh
+can find composer.json and classify STRIPE=yes. This file itself is never staged.

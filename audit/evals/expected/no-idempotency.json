@@ -1,0 +1,17 @@
+{
+  "fixture": "payments/no-idempotency",
+  "must_find": [
+    {
+      "dimension": "payments",
+      "line": 26,
+      "matches": ["duplicate charge", "double charge", "idempotent", "queue retry"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no SQL injection, XSS, or auth-bypass defect exists in this fixture, only a missing idempotency key on a retried job"
+    }
+  ]
+}

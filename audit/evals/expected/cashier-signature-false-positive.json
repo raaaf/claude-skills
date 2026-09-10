@@ -1,0 +1,17 @@
+{
+  "fixture": "payments/cashier-signature-false-positive",
+  "must_find": [
+    {
+      "dimension": "payments",
+      "line": 15,
+      "matches": ["idempotency", "duplicate charge", "retry", "idempotent"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "payments",
+      "reason": "Laravel Cashier verifies webhook signatures itself (VerifyWebhookSignature middleware); the app implements no custom webhook handling, so a missing/absent signature check is not a real defect here"
+    }
+  ]
+}

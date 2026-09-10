@@ -72,6 +72,7 @@ dimension_for_category() {
     performance)  echo "performance" ;;
     architecture) echo "architecture" ;;
     docs)         echo "docs_sync" ;;
+    payments)     echo "payments" ;;
     seo)          echo "seo" ;;
     typography)   echo "typography" ;;
     ui|ui_design) echo "ui_design" ;;
@@ -227,14 +228,28 @@ score_fixture() {
   # Drop fixture as staged change. A directory fixture is copied and staged as
   # a whole (one scenario, several files) so it triggers exactly one run, not
   # one run per file inside it.
-  if [ "$is_dir" -eq 1 ]; then
+  #
+  # A directory fixture carrying a top-level `.eval-root` marker is copied to
+  # the repo ROOT instead of under `<category>/<name>/`. This is an explicit
+  # opt-in for fixtures whose scenario depends on repo-level detection (e.g.
+  # payments: detect-stripe.sh only looks for composer.json at the repo root
+  # and one level into each SOURCE_DIRS entry, never inside a nested fixture
+  # directory, so a plain directory-fixture copy would score zero recall for
+  # a reason indistinguishable from the dimension failing). The marker file
+  # itself is never staged, only used to select this branch.
+  if [ "$is_dir" -eq 1 ] && [ -f "$fixture_path/.eval-root" ]; then
+    cp -R "$fixture_path/." "$tmp_dir/"
+    rm -f "$tmp_dir/.eval-root"
+    git add -A
+  elif [ "$is_dir" -eq 1 ]; then
     mkdir -p "$fixture_rel"
     cp -R "$fixture_path/." "$fixture_rel/"
+    git add "$fixture_rel"
   else
     mkdir -p "$(dirname "$fixture_rel")"
     cp "$fixture_path" "$fixture_rel"
+    git add "$fixture_rel"
   fi
-  git add "$fixture_rel"
 
   # Run audit with low effort for speed. --effort beats env (session env from a
   # spawning Claude session would otherwise leak in); 300s was never enough for

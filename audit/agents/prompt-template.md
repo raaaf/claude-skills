@@ -1,7 +1,7 @@
 # Prompt Template for Specialists
 
 Shared header and rules for every dimension specialist (`audit/agents/1-architecture.md` through
-`13-privacy.md`), read by `find.js` before the dimension-specific "Look for" / "Severity" /
+`14-payments.md`), read by `find.js` before the dimension-specific "Look for" / "Severity" /
 "Output" blocks. Scouts (`scout-files.md`, `scout-clusters.md`), the verifier
 (`finding-verifier.md`), the fixer (`fix-agent.md`) and the fix-verifier (`fix-verifier.md`) carry
 their own copies of the rules that apply to them; this file is specialist-only.
@@ -64,9 +64,9 @@ line in any deviation finding; isolated unusual values are not sufficient eviden
   you actually read is not a finding.
 - **50 words max per finding, no code snippets.** `file:line` references only.
 - **A denied file/tool is a blocker, reported as-is** — never guessed at or worked around.
-- **The dimension tag is one of exactly 13 ids**: `architecture`, `security`, `performance`,
+- **The dimension tag is one of exactly 14 ids**: `architecture`, `security`, `performance`,
   `code_quality`, `seo`, `a11y`, `typography`, `ui_design`, `ux`, `animation`, `docs_sync`,
-  `copy`, `privacy`. No aliases.
+  `copy`, `privacy`, `payments`. No aliases. `payments` is conditional: it exists only on a repo where `bin/detect-stripe.sh` reports `STRIPE=yes`.
 
 ## Structured coverage contract
 

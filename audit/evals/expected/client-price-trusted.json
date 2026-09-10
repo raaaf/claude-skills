@@ -1,0 +1,18 @@
+{
+  "fixture": "payments/client-price-trusted",
+  "must_find": [
+    {
+      "dimension": "payments",
+      "line": 18,
+      "matches": [
+        "amount",
+        "browser",
+        "unauthenticated",
+        "server side",
+        "re-derive"
+      ],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": []
+}

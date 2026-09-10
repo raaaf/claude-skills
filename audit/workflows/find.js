@@ -181,7 +181,8 @@ const AGENT_TYPE_BY_DIMENSION = {
   code_quality: 'code-reviewer',
   seo: 'code-reviewer',
   docs_sync: 'code-reviewer',
-  copy: 'code-reviewer'
+  copy: 'code-reviewer',
+  payments: 'security-auditor'
 };
 
 // Dimensions that use ONLY the cluster scout (no file scout).
@@ -191,7 +192,8 @@ const BOTH_SCOUTS_DIMENSIONS = ['security'];
 
 const ALL_DIMENSIONS = [
   'architecture', 'security', 'performance', 'code_quality', 'seo', 'a11y',
-  'typography', 'ui_design', 'ux', 'animation', 'docs_sync', 'copy', 'privacy'
+  'typography', 'ui_design', 'ux', 'animation', 'docs_sync', 'copy', 'privacy',
+  'payments'
 ];
 
 // Mirrors audit/bin/lib-git-base.sh FRONTEND_EXT_RE (single source of truth is the
@@ -314,6 +316,10 @@ const FLOOR_CONTENT_SIGNALS = {
   copy: [
     // Rendered/returned translations and explicit microcopy labels, not every schema label.
     /(?:\{\{|\becho\b|\breturn\b)\s*__\(|_e\(|_x\(|placeholder\s*=|aria-label\s*=/m
+  ],
+  payments: [
+    // Stripe SDK usage, webhook verification, hosted/checkout surfaces and payment identifiers.
+    /Stripe::|new Stripe\(|stripe\.js|Webhook::constructEvent|constructEvent|js\.stripe\.com|api\.stripe\.com|PaymentIntent|checkout\.session|Cashier|stripe_id/m
   ]
   // architecture: no content signal, path-based floor only (see above).
 };
@@ -321,8 +327,10 @@ const FLOOR_CONTENT_SIGNALS = {
 // Content-based floor: a file joins a dimension's floor when its content
 // matches at least one of FLOOR_CONTENT_SIGNALS[dimension]. `readFile(path)`
 // is supplied by the caller (find.js has no filesystem access). The entry
-// point validates complete scope content before dispatch; the helper keeps
-// a path-only fallback for standalone calibration callers.
+// point validates complete scope content for args.files only; a
+// dimensionFiles-only path without content simply yields no content floor
+// and falls back to the scout. The helper also keeps a path-only fallback
+// for standalone calibration callers.
 function computeFloorFiles(dimension, files, readFile, logFn) {
   const pathFloor = SELECTIVE_FLOOR_DIMENSIONS.includes(dimension)
     ? files.filter((f) => floorDimensionsForFile(f).includes(dimension))
@@ -332,10 +340,15 @@ function computeFloorFiles(dimension, files, readFile, logFn) {
   }
   const signals = FLOOR_CONTENT_SIGNALS[dimension];
   if (!signals) return pathFloor;
+  let unavailable = 0;
   const contentFloor = files.filter((f) => {
     const content = readFile(f) || '';
+    if (!content) unavailable++;
     return signals.some((re) => re.test(content));
   });
+  if (unavailable && logFn) {
+    logFn(`${dimension}: content floor unavailable for ${unavailable} of ${files.length} scope file(s), falling back to the scout for those`);
+  }
   const merged = pathFloor.slice();
   for (const f of contentFloor) {
     if (!merged.includes(f)) merged.push(f);
@@ -396,9 +409,16 @@ function chunkByDirectory(files) {
   return chunks;
 }
 
+// A dimension listed in ctx.dimensionFiles scouts its own file list (e.g.
+// payments/STRIPE_FILES) instead of the shared diff/repo scope; every other
+// dimension falls back to ctx.files unchanged.
+function scopeFilesFor(ctx, dimension) {
+  return (ctx.dimensionFiles && ctx.dimensionFiles[dimension]) || ctx.files;
+}
+
 async function runFileScout(ctx, dimension, agentFn, logFn) {
   const promptDoc = `${ctx.promptDir}/scout-files.md`;
-  const scopeFiles = ctx.files;
+  const scopeFiles = scopeFilesFor(ctx, dimension);
   const floorFiles = computeFloorFiles(dimension, scopeFiles, ctx.readFile, logFn);
   if (!floorFiles.length && !dimensionHasFloorSignal(dimension, scopeFiles)) {
     logFn(`${dimension}: no deterministic floor signal in scope, relying entirely on the scout`);
@@ -446,7 +466,7 @@ async function runClusterScout(ctx, dimension, agentFn, logFn) {
   const result = await agentFn(
     ROOT_HEADER +
     `Read ${promptDoc} and execute the cluster-scout task for DIMENSION=${dimension}.\n` +
-    `SCOPE_FILES=${JSON.stringify(ctx.files)}`,
+    `SCOPE_FILES=${JSON.stringify(scopeFilesFor(ctx, dimension))}`,
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_CLUSTERS_SCHEMA, phase: 'Scout' }
   );
   if (warnIfNull(logFn, result, `${dimension}: cluster scout returned null`)) return { failed: true, clusters: [] };
@@ -516,12 +536,13 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     const briefing = c.kind === 'cluster'
       ? `CLUSTER=${JSON.stringify(c.cluster)}`
       : `FILES=${JSON.stringify(c.files)}`;
+    const dimContext = (ctx.dimensionContext && ctx.dimensionContext[dimension]) || '';
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
       `for DIMENSION=${dimension}.\nCHUNK_INDEX=${i}\n${briefing}\n` +
       `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
-      `SCOPE=${ctx.scope}`,
+      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : ''),
       { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
     if (warnIfNull(logFn, result, `${dimension}: specialist for chunk ${i} returned null`)) return null;
@@ -697,13 +718,14 @@ function dedupeFindings(findings, dimension, logFn) {
 function dimensionFileName(dim) {
   const numbers = {
     architecture: 1, security: 2, performance: 3, code_quality: 4, seo: 5, a11y: 6,
-    typography: 7, ui_design: 8, ux: 9, animation: 10, docs_sync: 11, copy: 12, privacy: 13
+    typography: 7, ui_design: 8, ux: 9, animation: 10, docs_sync: 11, copy: 12, privacy: 13,
+    payments: 14
   };
   const slugs = {
     architecture: 'architecture', security: 'security', performance: 'performance',
     code_quality: 'code-quality', seo: 'seo', a11y: 'a11y', typography: 'typography',
     ui_design: 'ui-design', ux: 'ux', animation: 'animation', docs_sync: 'docs-sync',
-    copy: 'copy', privacy: 'privacy'
+    copy: 'copy', privacy: 'privacy', payments: 'payments'
   };
   return `${numbers[dim]}-${slugs[dim]}.md`;
 }
@@ -713,7 +735,18 @@ function dimensionFileName(dim) {
 // args: { repoRoot, scope: 'diff'|'repo', files, dimensions, effort, promptDir, guidelinesDir,
 //         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc,
 //         fileContents (object mapping repo-relative path to content; find.js has no
-//         filesystem access, so the caller reads every scope file and passes it in) }
+//         filesystem access, so the caller reads scope files and passes them in). Required,
+//         complete, for every args.files entry. Optional for a path that appears only in
+//         args.dimensionFiles: the scout and specialist subagents read those files themselves,
+//         content is only used as a deterministic optimization (the content floor); a path
+//         missing here just falls back to the scout for that dimension,
+//         dimensionFiles (optional, object keyed by dimension id, e.g. { payments: [...] });
+//         a dimension listed here scouts its own file list everywhere the pipeline would
+//         otherwise use ctx.files, every other dimension keeps using args.files unchanged,
+//         dimensionContext (optional, object keyed by dimension id, e.g.
+//         { payments: 'STRIPE_MODE=cashier,sdk' }); a dimension listed here gets that
+//         string appended to its specialist briefing as its own line, never mixed into
+//         MATCHED_GUIDELINES }
 if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
   args.dimensions.some((dimension) => !ALL_DIMENSIONS.includes(dimension)))) {
   throw new Error('args.dimensions must be an array of supported dimension ids');
@@ -721,10 +754,11 @@ if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
 const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions : ALL_DIMENSIONS);
 
 const fileContents = args.fileContents;
+const dimensionFiles = args.dimensionFiles || {};
 const missingContents = (args.files || []).filter((path) => !fileContents ||
   !Object.prototype.hasOwnProperty.call(fileContents, path) || typeof fileContents[path] !== 'string');
 if (missingContents.length) {
-  throw new Error(`args.fileContents must contain complete text for every scope file; missing: ${missingContents.join(', ')}`);
+  throw new Error(`args.fileContents must contain complete text for every args.files entry; missing: ${missingContents.join(', ')}`);
 }
 const readFile = (path) => fileContents && fileContents[path] || '';
 
@@ -732,6 +766,8 @@ const ctx = {
   repoRoot: args.repoRoot,
   scope: args.scope,
   files: args.files || [],
+  dimensionFiles,
+  dimensionContext: args.dimensionContext || {},
   promptDir: args.promptDir,
   guidelinesDir: args.guidelinesDir || '',
   guidelines: args.guidelines || '',
@@ -745,9 +781,18 @@ const ctx = {
 // (Konzurrenz-Rechnung, Schritt 4): the workflow tool caps at 16 concurrent
 // agents, so starting big dimensions first avoids them running alone at the
 // end. The real count isn't known before the scout runs, so this uses the
-// deterministic floor-file count as a proxy — cheap to compute up front.
+// deterministic floor-file count as a proxy — cheap to compute up front. A
+// dimension whose scope files carry no content (dimensionFiles-only, e.g.
+// payments) always computes a floor of 0 regardless of true size, so it
+// falls back to its raw scope-file count instead of sorting last.
 const floorCountByDim = Object.fromEntries(
-  dimensions.map((d) => [d, computeFloorFiles(d, ctx.files, ctx.readFile, log).length])
+  dimensions.map((d) => {
+    const scopeFiles = scopeFilesFor(ctx, d);
+    const floorCount = computeFloorFiles(d, scopeFiles, ctx.readFile, log).length;
+    const contentAvailable = scopeFiles.some((f) =>
+      fileContents && Object.prototype.hasOwnProperty.call(fileContents, f));
+    return [d, floorCount === 0 && !contentAvailable ? scopeFiles.length : floorCount];
+  })
 );
 const ordered = [...dimensions].sort((a, b) => floorCountByDim[b] - floorCountByDim[a]);
 

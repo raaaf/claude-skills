@@ -41,6 +41,20 @@ A fixture is just a real file with intentional bugs. Keep them minimal so the
 expected findings are unambiguous. Reference real frameworks (Laravel, Blade,
 React) since that's what /audit is tuned for.
 
+**`.eval-root` marker (directory fixtures only).** A directory fixture that
+contains a top-level `.eval-root` file is copied to the throwaway repo's ROOT
+instead of under `<category>/<name>/`; the marker file itself is never
+staged. This exists for fixtures whose scenario depends on repo-level
+detection rather than the diff — a manifest a dimension gates on
+(`composer.json`/`package.json`), a config file only read from the repo
+root, and so on. Without it, a plain directory-fixture copy lands the
+manifest at `<category>/<name>/composer.json`, which the detector never
+sees (it only looks at the repo root and one level into each source
+directory), so the gated dimension never runs and the fixture scores zero
+recall for a reason indistinguishable from the dimension actually failing.
+Used by the `payments` fixtures, which need `composer.json` at the repo
+root for `bin/detect-stripe.sh` to report `STRIPE=yes`.
+
 ## Expected format
 
 ```json
