@@ -83,8 +83,6 @@ Key invariants:
 | `/plan-it` | opus | Iterative plan builder, parallel challenges |
 | `/delegate` | (erbt Session-Modell) | Default-Implementierungs-Flow: teures Modell analysiert/reviewt, Sonnet setzt um |
 
-2026-09-10: nine skills removed after a usage check over all session transcripts since 2026-05-27 showed zero invocations (review, diagnose, triage, improve, write-a-skill, app-baseline, baseline-check, feature-audit) or one (handoff); the six remaining are the ones actually in use.
-
 ## Effort levels (set on skill frontmatter or via `CLAUDE_EFFORT`)
 
 Since the 2026-09-05 per-dimension rebuild, `/audit` and `/full-audit` no longer scale by rounds —

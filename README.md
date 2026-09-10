@@ -6,8 +6,6 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 
 ## Skills
 
-2026-09-10: nine skills removed after a usage check over all session transcripts since 2026-05-27 showed zero invocations (review, diagnose, triage, improve, write-a-skill, app-baseline, baseline-check, feature-audit) or one (handoff); the six remaining are the ones actually in use.
-
 | Command | What it does |
 |---|---|
 | `/audit` | Audits your uncommitted and unpushed changes before a push. 13 dimensions, verified findings, one fix wave, then the push is unlocked. |
