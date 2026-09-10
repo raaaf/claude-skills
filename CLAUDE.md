@@ -76,11 +76,11 @@ Key invariants:
 
 | Skill | Model | Purpose |
 |---|---|---|
-| `/audit` | opus | Pre-push diff audit, per-dimension Workflow pipeline (13 dimensions); two start questions (dimensions, fix scope) replace the old argument form, a partial dimension selection writes no push marker |
-| `/full-audit` | opus | Full codebase audit, same per-dimension pipeline with `SCOPE=repo`, no push marker |
-| `/design-audit` | opus | 100% visual dissection of the whole frontend: defects + gated elevation opportunities, optional Mobbin grounding, report first, fixes only on selection |
+| `/audit` | inherit (session model) | Pre-push diff audit, per-dimension Workflow pipeline (13 dimensions); two start questions (dimensions, fix scope) replace the old argument form, a partial dimension selection writes no push marker |
+| `/full-audit` | inherit (session model) | Full codebase audit, same per-dimension pipeline with `SCOPE=repo`, no push marker |
+| `/design-audit` | inherit (session model) | 100% visual dissection of the whole frontend: defects + gated elevation opportunities, optional Mobbin grounding, report first, fixes only on selection |
 | `/ship` | sonnet | Docs sync + commit + audit gate + push + deploy + verify |
-| `/plan-it` | opus | Iterative plan builder, parallel challenges |
+| `/plan-it` | inherit (session model) | Iterative plan builder, parallel challenges |
 | `/delegate` | (erbt Session-Modell) | Default-Implementierungs-Flow: teures Modell analysiert/reviewt, Sonnet setzt um |
 
 ## Effort levels (set on skill frontmatter or via `CLAUDE_EFFORT`)
