@@ -136,7 +136,14 @@ case "$GIT_COMMON_DIR" in
   *) PROJECT_ROOT="$(git rev-parse --show-toplevel)" ;;
 esac
 AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
-LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-$(git branch --show-current | tr '/' '-').md"
+# The filename is a contract, not a preference: audit/evals/run-evals.sh matches
+# `YYYY-MM-DD_HHMMSS-<branch>.md` to find the log it scores, and a name outside that
+# shape makes the fixture UNMEASURED rather than a miss. `git branch --show-current`
+# is EMPTY on a detached HEAD, which would produce a trailing `-.md` and fail the
+# match, so fall back to the short SHA. Do not rename this file by hand.
+AUDIT_BRANCH=$(git branch --show-current | tr '/' '-')
+[ -n "$AUDIT_BRANCH" ] || AUDIT_BRANCH="detached-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-${AUDIT_BRANCH}.md"
 ```
 
 The orchestrator does not read scope files at all — `find.js` has no filesystem access and the scout

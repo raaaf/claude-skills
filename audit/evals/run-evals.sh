@@ -71,6 +71,13 @@ dimension_for_category() {
     a11y)         echo "a11y" ;;
     performance)  echo "performance" ;;
     architecture) echo "architecture" ;;
+    # `quality` and `copy` map to real dimensions and were simply missing here, so
+    # --scoped silently fell through to a full unscoped audit for all 13 of those
+    # fixtures: roughly ten times the agents and cost per fixture, for a run the
+    # caller asked to be scoped. `correctness` and `reliability` stay unmapped on
+    # purpose, they span several dimensions and have no single right answer.
+    quality)      echo "code_quality" ;;
+    copy)         echo "copy" ;;
     docs)         echo "docs_sync" ;;
     payments)     echo "payments" ;;
     seo)          echo "seo" ;;
