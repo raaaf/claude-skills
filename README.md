@@ -30,7 +30,10 @@ per-dimension rebuild there is no round loop: one find pass, one fix pass.
 architecture/code_quality/seo/docs_sync/copy. `architecture`, `docs_sync` and `security` also run a
 cluster scout (module/pattern map) alongside or instead of the per-file scout — cluster specialists
 found cross-file guard gaps that file-chunk scouts missed in testing. Every specialist and verifier
-runs on Sonnet except the scout (`Explore`) and the one-per-Critical refuter (Opus).
+runs on Sonnet except the scout (`Explore`) and the one-per-Critical refuter (Opus). The per-file
+scout also has a content-based inclusion floor (`FLOOR_CONTENT_SIGNALS`, matched against file
+content rather than extension), force-including any file with a concrete per-dimension trigger;
+calibrated 2026-09-06 against a 257-file corpus to a 29-80 floor-file band per dimension.
 
 **Platform support:** web (Laravel, Next.js, Nuxt, Django) and native mobile (iOS, Android, React Native, Flutter). Framework detection sets `PLATFORM`; on native projects the relevant specialists switch to `guidelines/native-mobile.md` (Keychain/Keystore, VoiceOver/TalkBack, Dynamic Type, main-thread, HIG/Material), and the i18n pre-check reads `.lproj` bundles and `values-*/strings.xml`.
 
@@ -313,8 +316,8 @@ SKILL.md (orchestrator)
 - **Frontmatter controls behavior** — `model`, `effort`, `allowed-tools`, `maxTurns`, `hooks` set per-skill
 - **Descriptions are model triggers** — third-person, written for *when* to invoke, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need (SKILL.md under 500 lines, references one level deep)
-- **Worker isolation** — subagents receive only triage-routed hotspots, read files on-demand (max 5 per run)
-- **Per-worker model routing** — Sonnet for every worker, Opus for Security only (rationale under the worker table above)
+- **Worker isolation** — each specialist receives one chunk of 5 to 8 files (or one cluster) for one dimension and reads only those, plus the guidelines its dimension names
+- **Per-worker model routing** — Sonnet for every audit worker and the scout, Opus only for the one-per-Critical refuter
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Orchestrator-only `.claude/` writes** — subagents are blocked by hardcoded path protection; they return structured output, orchestrator parses and writes
 - **Semantic suppression dedup** — `bin/normalize-suppression.sh` produces stable keys so paraphrased dismissals collapse into one
