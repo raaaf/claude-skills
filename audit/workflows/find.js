@@ -542,6 +542,13 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     return { status: uncovered.length ? 'incomplete' : 'complete', files: filePaths, chunks: chunks.length, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] };
   }
 
+  const findingIds = new Set(allFindings.map((finding) => finding.id));
+  if (findingIds.size !== allFindings.length) {
+    uncovered.push('findings:duplicate-id');
+    logFn(`${dimension}: duplicate finding IDs prevent unambiguous verification`);
+    return { status: 'incomplete', files: filePaths, chunks: chunks.length, findings: allFindings, verdicts: [], uncovered, unverified: [...findingIds], unrefuted: [] };
+  }
+
   // Stage 4: verifier, one agent per 35-40 findings.
   const verifierGroups = chunk(allFindings, 38);
   const verifierResults = await parallelFn(verifierGroups.map((group) => async () => {

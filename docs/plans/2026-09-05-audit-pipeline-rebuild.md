@@ -400,3 +400,5 @@ This delivery supersedes the earlier temporary-worktree installation and Workflo
 - Pre-existing and concurrently arriving unrelated edits were left untouched and unstaged, including main learning-log changes and separate personal hook/sync work.
 
 The expensive live Claude recall benchmark was not rerun. Its historical incomplete result remains a measurement limitation, not evidence against or proof of the new bridge's live recall. Native recurrence/accounting and deletion-aware scope handling remain separately documented limitations outside these three final packages.
+
+2026-09-10: Codex-Pfad entfernt. Die Bridge (`codex-runner.cjs`, `codex-runtime.md`) und alle Runtime-Weichen sind zurückgebaut, Claude nutzt wieder ausschließlich das Workflow-Tool. Behalten wurden die Floor-Kalibrierung in `find.js`, die Robustheitsänderungen in `fix.js`, `run-cost.sh` mit Test und `w3-frontend.md` für /design-audit.

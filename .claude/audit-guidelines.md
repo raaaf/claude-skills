@@ -12,7 +12,7 @@ scope-extensions: md
 ```
 
 This adds `.md` to `/full-audit`'s fixed source-extension glob (see
-`full-audit/references/scope-context-batching.md`). `.claude/audits/` and
+`full-audit/references/scope.md`). `.claude/audits/` and
 `.claude/plans/logs/` stay excluded regardless (generated audit/plan logs, never
 source). `/audit`'s scope is diff-based and already covers changed Markdown files
 without this line.

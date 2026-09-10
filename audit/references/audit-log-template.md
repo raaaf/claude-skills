@@ -1,7 +1,6 @@
 # Audit Log Template
 
-Format for the audit log under `.codex/audits/` (Codex) or `.claude/audits/` (Claude)
-in the audited checkout, named `{date}_{time}-{branch}.md`, written by
+Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, written by
 `audit/SKILL.md` Phase 4 after the find and fix workflows complete.
 
 ```markdown
@@ -14,7 +13,7 @@ in the audited checkout, named `{date}_{time}-{branch}.md`, written by
 - runId (find): {runId} | runId (fix): {runId}
 
 ## Result
-- Runtime: {codex|claude} | Status: {complete|incomplete} | Gate: {passed|blocked|partial|not_applicable}
+- Status: {complete|incomplete} | Gate: {passed|blocked|partial|not_applicable}
 - Dimensions completed: {N}/{selected} | Agents dispatched/completed/failed: {A}/{B}/{C}
 - Findings verified/unverified: {V}/{U} | Fix verification: {complete|incomplete|not_requested}
 - Findings fixed: Critical N / Important N / Minor N

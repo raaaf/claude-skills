@@ -8,8 +8,8 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 
 ### `/audit` — Pre-Push Code Audit
 
-Audits all uncommitted and unpushed changes before every push. Runs a per-dimension native
-pipeline (find.js): scout, chunk, specialists, verifier, per one Critical a refuter, then a fix
+Audits all uncommitted and unpushed changes before every push. Runs a per-dimension `Workflow`
+pipeline (find.js) — scout, chunk, specialists, verifier, per one Critical a refuter — then a fix
 wave (fix.js) with peer-review verification and a regression pass. Since the 2026-09-05
 per-dimension rebuild there is no round loop: one find pass, one fix pass.
 
@@ -18,8 +18,8 @@ per-dimension rebuild there is no round loop: one find pass, one fix pass.
 1. Phase 0: Learning-Backlog-Check; Phase 0.2 offers open `audit-finding` issues for fixing in this run and collects open PRs as dedup/conflict context
 2. Phase 1: Pre-flight (secret scan, lockfile drift, diff-size gate, CI-hardening check, deterministic i18n key-set check, project-specific guidelines from `.claude/audit-guidelines.md`, per-file guideline matching)
 3. Phase 1.5: one `AskUserQuestion` round, two questions — dimensions (all/backend/frontend/custom over all 13) and fix scope (find & log only / fix Critical / fix Critical and Important, preselected from `CLAUDE_EFFORT`). A set `AUDIT_DIMENSIONS`/`AUDIT_FIX_SCOPE` skips the question entirely (CI/headless)
-4. Phase 2: `find.js` shared bridge run: one pipeline per dimension (scout → chunk → specialists → verifier → Critical refuter), decide fix/log/discard per finding
-5. Phase 3: `fix.js` shared bridge run: one fixer per file, fix-verifier per 3-5 fixes, a regression pass over changed files
+4. Phase 2: `find.js` Workflow run — one pipeline per dimension (scout → chunk → specialists → verifier → Critical refuter), decide fix/log/discard per finding
+5. Phase 3: `fix.js` Workflow run — one fixer per file, fix-verifier per 3-5 fixes, a regression pass over changed files
 6. Phase 4: Log, cost line (`run-cost.sh`), push marker (only when no Critical is open and no new test failure), run-ledger
 7. Phase 5: Learning (subagent returns structured output, orchestrator writes `learning-log.md` and `suppressions.json`)
 8. Phase 6: PR creation if applicable
@@ -30,8 +30,7 @@ per-dimension rebuild there is no round loop: one find pass, one fix pass.
 architecture/code_quality/seo/docs_sync/copy. `architecture`, `docs_sync` and `security` also run a
 cluster scout (module/pattern map) alongside or instead of the per-file scout — cluster specialists
 found cross-file guard gaps that file-chunk scouts missed in testing. Every specialist and verifier
-runs on Sonnet, including the scout (`Explore`), except the one-per-Critical refuter (Opus).
-Codex maps those hints explicitly to `gpt-5.6-sol` and `gpt-6-astra`, respectively.
+runs on Sonnet except the scout (`Explore`) and the one-per-Critical refuter (Opus).
 
 **Platform support:** web (Laravel, Next.js, Nuxt, Django) and native mobile (iOS, Android, React Native, Flutter). Framework detection sets `PLATFORM`; on native projects the relevant specialists switch to `guidelines/native-mobile.md` (Keychain/Keystore, VoiceOver/TalkBack, Dynamic Type, main-thread, HIG/Material), and the i18n pre-check reads `.lproj` bundles and `values-*/strings.xml`.
 
@@ -44,12 +43,9 @@ Codex maps those hints explicitly to `gpt-5.6-sol` and `gpt-6-astra`, respective
 Comprehensive one-time audit of an entire codebase. Runs the exact same `find.js`/`fix.js`
 per-dimension pipeline as `/audit`, with `SCOPE=repo` (the whole tracked source tree, per
 `full-audit/references/scope.md`) instead of a diff, and no push marker ever written. Same start
-questions (dimensions + fix scope) and log format. Both Claude and Codex resume through the
-shared `audit/workflows/codex-runner.cjs` disk bridge, using persisted request IDs, validated
-responses and native worker associations. Claude dispatches through `Agent`; Codex uses native
-collaboration. Completed workers are cached, failed requests remain incomplete, and pending
-workers must be recovered before further dispatch. See
-[audit runtime](audit/references/codex-runtime.md) for installation, dispatch and resume.
+questions (dimensions + fix scope), same log format, same `runId`-based resume via
+`Workflow({ scriptPath, resumeFromRunId })` across a session limit — no more hand-rolled batch
+matrix or state file.
 
 ### `/design-audit` — Design Pass Over the Whole Frontend
 
@@ -318,7 +314,7 @@ SKILL.md (orchestrator)
 - **Descriptions are model triggers** — third-person, written for *when* to invoke, not what it does
 - **Progressive disclosure** — large reference material lives in separate files; subagents read only what they need (SKILL.md under 500 lines, references one level deep)
 - **Worker isolation** — subagents receive only triage-routed hotspots, read files on-demand (max 5 per run)
-- **Per-worker model routing** — Claude uses Sonnet for every audit worker except the per-Critical Opus refuter; Codex maps the same split to `gpt-5.6-sol` and `gpt-6-astra`
+- **Per-worker model routing** — Sonnet for every worker, Opus for Security only (rationale under the worker table above)
 - **Deterministic control flow** — Bash scripts decide branching (secret scans, diff-size gates, cache checks), not LLM judgment
 - **Orchestrator-only `.claude/` writes** — subagents are blocked by hardcoded path protection; they return structured output, orchestrator parses and writes
 - **Semantic suppression dedup** — `bin/normalize-suppression.sh` produces stable keys so paraphrased dismissals collapse into one

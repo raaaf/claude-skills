@@ -17,35 +17,32 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 | `DIFF_SIZE_RESULT` | Action |
 |---|---|
-| `OK` | Continue with the shared pipeline and native model mapping. |
-| `LARGE` (>2000 lines OR >20 files) | Report the file/line counts and continue with built-in chunking and native concurrency limits. Size does not change worker models. |
+| `OK` | Continue. Model routing is fixed by find.js/fix.js (Sonnet everywhere except the scout and the Critical refuter, which run Opus). |
+| `LARGE` (>2000 lines OR >20 files) | Report the file/line counts and continue; find.js's chunking handles the size. Size does not change worker models. |
 | `HUGE` (>5000 lines; or >50 files AND >=1000 lines) | Hard block: abort. "Diff too large for a meaningful audit. Please split into multiple commits/PRs." No audit run. |
 
 **Two-axis HUGE evaluation:** if only the file axis exceeds the threshold (>50 files) but the line count is under 20% of the line threshold (<1000), the script itself downgrades to `LARGE` and emits `DIFF_SIZE_NOTE=...`. Output the note in chat (warning: many small, logically separate changes) and continue normally — no manual override needed.
 
 **Delta-scope carve-out at HUGE:** a previously audited slice may be excluded only when all
-conditions hold: (1) it was audited clean the same day and its log under the runtime's
-`AUDIT_DIR` (`.claude/audits` or `.codex/audits`) is referenced; (2) every slice file's current
-content hash matches its logged audited input hash, including uncommitted working-tree
-content, with no missing, added or renamed scope files; (3) the new log's `## Scope` names the
-slice, original log, file count and hash verification. Compare actual files against the
-persisted bridge inputs referenced by that log. A HEAD-only git diff is insufficient. Missing
-hash evidence or any mismatch forbids the exclusion; apply the partitioning criteria below
-or retain the hard block.
+conditions hold: (1) it was audited clean the same day and its log under `.claude/audits/` is
+referenced; (2) every slice file's current content hash matches its logged audited input hash,
+including uncommitted working-tree content, with no missing, added or renamed scope files;
+(3) the new log's `## Scope` names the slice, original log, file count and hash verification.
+A HEAD-only git diff is insufficient. Missing hash evidence or any mismatch forbids the
+exclusion; apply the partitioning criteria below or retain the hard block.
 
 **Same-HEAD partitioning at HUGE:** when no prior clean slice can be excluded, continue only
 if the scope separates into bounded groups without hiding a shared symbol or dependency across
 them. Record the groups, file/line counts and the pinned HEAD in the log. Execute the complete
-file list once through the shared find bridge: its built-in chunking and cluster scouts handle
-partitioning, while docs/copy retain the whole scope. Respect native concurrency limits and
-persist every request. Do not introduce a separate outer batch loop or W1/W2/W3/W4 dispatch.
-If the scope cannot be partitioned meaningfully, the hard block stands. Every selected dimension
-must cover its assigned files and every uncovered result blocks completion.
+file list once through find.js: its built-in chunking and cluster scouts handle partitioning,
+while docs/copy retain the whole scope. Do not introduce a separate outer batch loop or
+W1/W2/W3/W4 dispatch. If the scope cannot be partitioned meaningfully, the hard block stands.
+Every selected dimension must cover its assigned files and every uncovered result blocks
+completion.
 
-**Model routing:** the shared core requests Sonnet for scouts, specialists, verifiers and
-fixers, and Opus for the Critical refuter. Claude preserves those hints; Codex maps them to
-the configured native model as documented in `codex-runtime.md`. Diff size changes warnings
-and scope handling, not model selection.
+**Model routing:** find.js/fix.js request Sonnet for scouts, specialists, verifiers and fixers,
+and Opus for the Critical refuter. Diff size changes warnings and scope handling, not model
+selection.
 
 ## Output of collect-scope.sh
 

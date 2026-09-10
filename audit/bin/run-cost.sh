@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude transcript accounting, bash 3.2 and jq. Native Codex costs are unavailable.
+# Claude transcript accounting, bash 3.2 and jq.
 # Usage: run-cost.sh <projects-dir> <session-id> [--json]
 #        run-cost.sh --latest <projects-dir> [--json]
 # Deduplicate message IDs across main and recursive agent transcripts, taking

@@ -2,22 +2,30 @@
 
 JSON schemas for every stage of the per-dimension pipeline (`audit/workflows/find.js`,
 `audit/workflows/fix.js`). Each schema is a plain object literal (`type`, `properties`,
-`required`), supplied by the core in each bridge request's `options.schema`.
-The native Agent/collaboration prompt includes this schema; it is not a native tool parameter.
-The orchestrator submits the final JSON to `codex-runner.cjs`, which validates nested types,
-required properties and enums before persisting the response. Invalid replies remain pending.
+`required`), passed as the Workflow tool's `schema` option so the agent's reply comes back
+already validated — no parsing in the workflow script.
 
-## Shared execution contract
+## Workflow-Kontrakt, geprüft am 2026-09-05
 
-Claude and Codex both execute the same find/fix programs through the disk bridge described
-in `codex-runtime.md`. Native role mapping preserves worker tool grants. Accepted responses
-are immutable and replayed by deterministic request ID, independent of dispatch order.
-Explicit failures return `null` to the core and keep the run incomplete. Completed native
-workers are not redispatched on resume; pending worker associations must be recovered.
+Observations from the throwaway spike (`wf_0f7107d6-f3f`, 3 agents, 74s, 87k tokens), which
+Steps 4-7 are built on:
 
-The early three-agent Workflow spike did cache responses, but a later nested-parallel audit
-replayed 52 completed specialist requests. That spike is not evidence for resumability of
-this pipeline; do not use `Workflow({resumeFromRunId})` for audit execution.
+1. **`agentType` is honored with its tool grants.** `Explore`, `security-auditor` and
+   `code-reviewer` were all accepted as `agentType` values in `agent()` calls and each agent kept
+   the tool grants of its registered definition (`agents/*.md`) — no separate tool config needed
+   in the workflow script.
+2. **`schema` returns a validated object directly.** A `schema` with nested objects, `enum` and
+   `required` fields produced the already-validated JS object as the agent's result — no `JSON.parse`
+   or manual validation needed in the calling script.
+3. **A thrown/aborted agent in `parallel()` comes back as `null`.** The run itself completes
+   normally; the failure reason appears in the `<failures>` block of the completion notification,
+   not as a thrown exception in the workflow script. Callers must `.filter(Boolean)` parallel
+   results rather than assuming every slot returned data.
+4. **`resumeFromRunId` replays completed agents from cache.** A second start with the same script
+   and `args` plus `resumeFromRunId` completed in 29ms with 0 tokens spent — all three agents came
+   back from cache instead of re-running. A later nested-parallel audit replayed 52 completed
+   specialist requests the same way; do not reintroduce a hand-rolled resume mechanism, the
+   Workflow tool's own cache already covers it.
 
 ## Scout output — file scout (`scout-files.md`)
 
