@@ -33,10 +33,15 @@ in full.
   the other four (test clocks, billing portal, trial rules, dunning retries) are subscription
   concerns, gated by `STRIPE_RECURRING` — full list and per-value finding text in
   `guidelines/payments.md` section IV. Read `.claude/stripe-golive.md` in the audited repo if it
-  exists. Emit exactly ONE informational `Minor` finding, id `payments-dashboard-unanswered`, whose
-  `issue` names how many of the applicable points are answered and when, and lists which are
-  unanswered. If the file does not exist, the same single `Minor` finding says so and lists all
-  applicable points. Never split this into one finding per point, and never raise it above `Minor`.
+  exists. Emit exactly ONE informational `Minor` finding, whose `issue` names how many of the
+  applicable points are answered and when, and lists which are unanswered. If the file does not
+  exist, the same single `Minor` finding says so and lists all applicable points. Never split this
+  into one finding per point, and never raise it above `Minor`. Always use the exact literal id
+  `payments-dashboard-unanswered` for this finding, never a chunk-indexed id — this dimension is
+  chunked, one specialist runs per chunk, and every chunk sees the same dashboard checklist, so
+  every chunk that emits this finding is expected to emit it under this same id. Do not try to
+  guess whether a sibling chunk already emitted it or skip it on that guess; duplicates across
+  chunks sharing this id are expected and collapsed downstream, before verification runs.
 
 **Defect classes calibrated against the go-live checklist:**
 - **Forged entitlement:** a webhook handler that grants access/plan/credits without verifying the

@@ -680,14 +680,58 @@ function findingChunkIndex(finding) {
   return m ? parseInt(m[1], 10) : Infinity;
 }
 
+// Confidence-ranked merge of two findings identified as duplicates (same id, or same
+// file+line): keeps the higher-confidence one, tie-breaking toward the earlier chunk, and
+// records the dropped finding's id/issue in the winner's mergedFrom (deduped by id).
+// Shared by collapseDuplicateIds and dedupeFindings so the merge/tie-break/mergedFrom
+// bookkeeping exists in exactly one place.
+function mergeDuplicate(existing, incoming) {
+  const existingRank = CONFIDENCE_RANK[existing.confidence] || 0;
+  const newRank = CONFIDENCE_RANK[incoming.confidence] || 0;
+  let winner = existing;
+  let dropped = incoming;
+  if (newRank > existingRank || (newRank === existingRank && findingChunkIndex(incoming) < findingChunkIndex(existing))) {
+    winner = incoming;
+    dropped = existing;
+  }
+  const merged = (winner.mergedFrom || []).concat([{ id: dropped.id, issue: dropped.issue }], dropped.mergedFrom || []);
+  const seenIds = new Set();
+  winner.mergedFrom = merged.filter((m) => (seenIds.has(m.id) ? false : (seenIds.add(m.id), true)));
+  return { winner, dropped };
+}
+
+// A dimension prompt can instruct every chunk's specialist to emit the SAME literal id for
+// a cross-chunk singleton finding (e.g. payments' payments-dashboard-unanswered), because no
+// single specialist can see its siblings to avoid the collision itself. Collapse those here,
+// BEFORE the file+line dedup pass and before runDimension's duplicate-id check, so two
+// specialists agreeing on one id doesn't mark the whole dimension incomplete.
+function collapseDuplicateIds(findings, dimension, logFn) {
+  const survivors = [];
+  const indexById = new Map();
+  for (const finding of findings) {
+    const id = finding && finding.id;
+    if (id && indexById.has(id)) {
+      const idx = indexById.get(id);
+      const { winner, dropped } = mergeDuplicate(survivors[idx], finding);
+      survivors[idx] = winner;
+      logFn(`${dimension}: collapsed duplicate literal id ${dropped.id} into ${winner.id}`);
+      continue;
+    }
+    survivors.push(finding);
+    if (id) indexById.set(id, survivors.length - 1);
+  }
+  return survivors;
+}
+
 // BOTH_SCOUTS_DIMENSIONS runs a file-chunk pass AND a cluster-chunk pass over the same
 // files, so two different specialists can independently report the same defect. Merge
 // those duplicates here, before the verifier stage sees them, so a real defect isn't
 // verified and counted two or three times.
 function dedupeFindings(findings, dimension, logFn) {
+  const idCollapsed = collapseDuplicateIds(findings, dimension, logFn);
   const survivors = [];
   const keys = [];
-  for (const finding of findings) {
+  for (const finding of idCollapsed) {
     const key = findingDedupKey(finding);
     if (!key) { survivors.push(finding); keys.push(key); continue; }
     const existingIdx = survivors.findIndex((_, i) => sameDedupKey(keys[i], key));
@@ -696,18 +740,7 @@ function dedupeFindings(findings, dimension, logFn) {
       keys.push(key);
       continue;
     }
-    const existing = survivors[existingIdx];
-    const existingRank = CONFIDENCE_RANK[existing.confidence] || 0;
-    const newRank = CONFIDENCE_RANK[finding.confidence] || 0;
-    let winner = existing;
-    let dropped = finding;
-    if (newRank > existingRank || (newRank === existingRank && findingChunkIndex(finding) < findingChunkIndex(existing))) {
-      winner = finding;
-      dropped = existing;
-    }
-    const merged = (winner.mergedFrom || []).concat([{ id: dropped.id, issue: dropped.issue }], dropped.mergedFrom || []);
-    const seenIds = new Set();
-    winner.mergedFrom = merged.filter((m) => (seenIds.has(m.id) ? false : (seenIds.add(m.id), true)));
+    const { winner, dropped } = mergeDuplicate(survivors[existingIdx], finding);
     survivors[existingIdx] = winner;
     keys[existingIdx] = findingDedupKey(winner);
     logFn(`${dimension}: merged ${dropped.id} into ${winner.id}`);
@@ -741,8 +774,13 @@ function dimensionFileName(dim) {
 //         content is only used as a deterministic optimization (the content floor); a path
 //         missing here just falls back to the scout for that dimension,
 //         dimensionFiles (optional, object keyed by dimension id, e.g. { payments: [...] });
-//         a dimension listed here scouts its own file list everywhere the pipeline would
-//         otherwise use ctx.files, every other dimension keeps using args.files unchanged,
+//         narrow intent ONLY: a dimension-specific surface that is deliberately outside the
+//         shared diff/repo scope (the original and still only real case is `payments` over the
+//         precomputed Stripe surface). A dimension listed here scouts that file list wherever
+//         the pipeline would otherwise use ctx.files; every other dimension keeps using
+//         args.files unchanged. It is never a cheaper substitute for args.files + fileContents
+//         across dimensions in general — see the args.files/dimensionFiles guard below, which
+//         throws on exactly that misuse,
 //         dimensionContext (optional, object keyed by dimension id, e.g.
 //         { payments: 'STRIPE_MODE=cashier,sdk' }); a dimension listed here gets that
 //         string appended to its specialist briefing as its own line, never mixed into
@@ -755,6 +793,16 @@ const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions 
 
 const fileContents = args.fileContents;
 const dimensionFiles = args.dimensionFiles || {};
+// Hard guard against the exact misuse dimensionFiles is not for: routing every dimension
+// through dimensionFiles to skip inlining args.files + fileContents entirely. That silently
+// starves every dimension's content floor (computeFloorFiles returns nothing to add back),
+// so scouts run with no deterministic floor and a scout that finds nothing ends its dimension
+// as `skipped`. Fail loudly here instead.
+if ((!args.files || args.files.length === 0) && Object.keys(dimensionFiles).length > 0) {
+  throw new Error('args.dimensionFiles is for a dimension-specific surface outside the shared ' +
+    'scope (e.g. payments/STRIPE_FILES), never a replacement for args.files + fileContents. ' +
+    'args.files is empty/absent while args.dimensionFiles is not.');
+}
 const missingContents = (args.files || []).filter((path) => !fileContents ||
   !Object.prototype.hasOwnProperty.call(fileContents, path) || typeof fileContents[path] !== 'string');
 if (missingContents.length) {
@@ -785,15 +833,23 @@ const ctx = {
 // dimension whose scope files carry no content (dimensionFiles-only, e.g.
 // payments) always computes a floor of 0 regardless of true size, so it
 // falls back to its raw scope-file count instead of sorting last.
-const floorCountByDim = Object.fromEntries(
-  dimensions.map((d) => {
-    const scopeFiles = scopeFilesFor(ctx, d);
-    const floorCount = computeFloorFiles(d, scopeFiles, ctx.readFile, log).length;
-    const contentAvailable = scopeFiles.some((f) =>
-      fileContents && Object.prototype.hasOwnProperty.call(fileContents, f));
-    return [d, floorCount === 0 && !contentAvailable ? scopeFiles.length : floorCount];
-  })
-);
+// Same pass also flags a dimension as degraded when it has a defined content signal
+// (FLOOR_CONTENT_SIGNALS[d]) but none of its scope files have usable content in
+// fileContents at all: computeFloorFiles then has nothing to compute a content floor
+// from, so the dimension's scout ran with no deterministic floor (see the guard above).
+const dimMeta = dimensions.map((d) => {
+  const scopeFiles = scopeFilesFor(ctx, d);
+  const floorCount = computeFloorFiles(d, scopeFiles, ctx.readFile, log).length;
+  const contentAvailable = scopeFiles.some((f) =>
+    fileContents && Object.prototype.hasOwnProperty.call(fileContents, f));
+  const degraded = Boolean(FLOOR_CONTENT_SIGNALS[d]) && scopeFiles.length > 0 && !contentAvailable;
+  if (degraded) {
+    log(`${d}: no usable content for any of ${scopeFiles.length} scope file(s), ran without a deterministic content floor`);
+  }
+  return { d, floorCount: floorCount === 0 && !contentAvailable ? scopeFiles.length : floorCount, degraded };
+});
+const floorCountByDim = Object.fromEntries(dimMeta.map(({ d, floorCount }) => [d, floorCount]));
+const degradedDimensions = dimMeta.filter(({ degraded }) => degraded).map(({ d }) => d);
 const ordered = [...dimensions].sort((a, b) => floorCountByDim[b] - floorCountByDim[a]);
 
 const results = {};
@@ -813,4 +869,9 @@ for (const [index, entry] of dimensionResults.entries()) {
   if (r.status === 'skipped') skipped.push(dim);
 }
 
-return { status: Object.values(results).some((r) => r.status === 'incomplete') ? 'incomplete' : 'complete', dimensions: results, skipped };
+return {
+  status: Object.values(results).some((r) => r.status === 'incomplete') ? 'incomplete' : 'complete',
+  dimensions: results,
+  skipped,
+  degradedDimensions
+};

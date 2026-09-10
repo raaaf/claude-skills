@@ -128,11 +128,15 @@ be a Stripe integration, so the guideline always applies when it runs.
 Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
 
 - `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `fileContents` built the same way as `audit/SKILL.md` Phase 2 (read every file in that scope with the Read tool in batches, pass the path-to-content map). `STRIPE_FILES` is deliberately NOT unioned into `files` and NOT read into `fileContents` here: the `payments` scout and its specialists read that surface themselves, and passing its content inline cost about 104 KB of orchestrator context in a real repo, enough to make a session bypass the whole pipeline. `find.js` only requires complete `fileContents` for `args.files`; a `dimensionFiles`-only path without content simply falls back to the scout for that dimension. One `find.js` call for every selected dimension, same as `audit/SKILL.md` Phase 2: when `payments` is in `SELECTED_DIMENSIONS`, pass `dimensionFiles: { payments: STRIPE_FILES }` and `dimensionContext: { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING }` alongside the shared `files`/`dimensions`/`guidelines` args, otherwise both default to `{}`.
-- Phase 4 never writes `/tmp/claude-audit-passed-*` — `/full-audit` has no push gate. Everything
-  else (log finalization, `run-cost.sh`, `run-log.sh --counts`, in-progress marker release,
-  learning phase) is identical, plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)`
-  to the `--counts` argument, same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0
-  re-run decision reads back on the next run.
+- Phase 4 never writes `/tmp/claude-audit-passed-*` — `/full-audit` has no push gate, so the
+  coverage conditions that gate `audit/SKILL.md`'s marker do not apply here. The log still must
+  say the same thing they would check: any dimension that came back `skipped` or `status:
+  incomplete`, and the `degradedDimensions` array from the Phase 2 `find.js` result, go in the log
+  under `## Not completed` same as `audit/SKILL.md`. Everything else (log finalization,
+  `run-cost.sh`, `run-log.sh --counts`, in-progress marker release, learning phase) is identical,
+  plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)` to the `--counts` argument,
+  same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
+  the next run.
 
 `runId` for both the find and fix workflows goes into the same log-header position `audit/SKILL.md`
 uses, so `Workflow({ scriptPath, resumeFromRunId })` resumes a full-audit run exactly like a

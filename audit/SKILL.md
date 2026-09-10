@@ -154,7 +154,7 @@ where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One ca
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
-Touch the in-progress marker again (`touch "/tmp/claude-audit-in-progress-${CWD_HASH}"`, staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped}`.
+Touch the in-progress marker again (`touch "/tmp/claude-audit-in-progress-${CWD_HASH}"`, staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
 
 **Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
 
@@ -187,7 +187,18 @@ bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
   --counts "$COUNTS" --gate "{blocked|partial|passed}"
 ```
 
-**Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when no Critical is open AND no new test failure beyond `BASELINE_FAILURES`. A partial dimension selection (Phase 1.5) never sets it — print the reason instead.
+**Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when ALL of these hold, all derived from the Phase 2 `find.js` result:
+
+- no Critical is open,
+- no new test failure beyond `BASELINE_FAILURES`,
+- every selected dimension has `status: complete` (none `skipped`, none `incomplete`),
+- `degradedDimensions` is empty.
+
+Coverage gates the marker because a run where dimensions did not finish is not a pre-push gate: a
+real run selected all 14 dimensions and set the marker while 5 of them were `skipped` or
+`incomplete`, which is exactly what this rule exists to stop. A partial dimension selection (Phase
+1.5) never sets it either — print the reason instead. When any condition fails, do not set the
+marker and print which dimensions were incomplete, skipped, or degraded.
 
 ```bash
 hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
