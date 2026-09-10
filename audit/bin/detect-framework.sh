@@ -42,12 +42,9 @@
 #   eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"     # array context, not a blanket eval
 #
 # All in-repo consumers (audit/SKILL.md, full-audit/references/
-# scope-context-batching.md, design-audit/SKILL.md, app-baseline/bin/
-# baseline-scan.sh) already use this pattern -- baseline-scan.sh additionally
-# greps for `^(PLATFORM|FRAMEWORK)=` before its eval, which is also safe
-# since it strips the SOURCE_DIRS line out before eval ever sees it. The risk
-# this block guards against is the NEXT consumer, written from memory or an
-# old example, that reaches for the blanket form again.
+# scope-context-batching.md, design-audit/SKILL.md) already use this pattern.
+# The risk this block guards against is the NEXT consumer, written from
+# memory or an old example, that reaches for the blanket form again.
 # ============================================================================
 set -euo pipefail
 
@@ -109,7 +106,7 @@ else
   # No known framework marker matched. Prefer conventional source directory
   # names, but only the ones that actually exist -- a hard-coded "src/ lib/
   # app/" produces an empty SOURCE_DIRS on a repo like this one (top level is
-  # audit/, full-audit/, write-a-skill/, ...), which zeroes out the `find` in
+  # audit/, full-audit/, plan-it/, ...), which zeroes out the `find` in
   # scope-context-batching.md and now trips its scope-plausibility abort
   # instead of the old silent "audited nothing" bug.
   CANDIDATES="src lib app source cmd pkg internal api server client packages"

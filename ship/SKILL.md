@@ -382,7 +382,7 @@ Command: {DEPLOY_COMMAND}
 Exit code: {N}
 Output: {last 20 lines}
 
-Next step: /diagnose — describe the deploy failure as the bug.
+Next step: reproduce the deploy failure locally and write a regression test before fixing it.
 ```
 
 If health check failed: run the log call (`outcome=health_failed`), then:
@@ -392,7 +392,7 @@ Deploy succeeded but health check failed.
 URL: {HEALTH_URL}
 Response: {curl output}
 
-Check: app logs, recent error monitoring, or run /diagnose.
+Check: app logs, recent error monitoring, or reproduce the failure locally with a regression test.
 ```
 
 ## Summary Output

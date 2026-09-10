@@ -6,23 +6,16 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 
 ## Skills
 
+2026-09-10: nine skills removed after a usage check over all session transcripts since 2026-05-27 showed zero invocations (review, diagnose, triage, improve, write-a-skill, app-baseline, baseline-check, feature-audit) or one (handoff); the six remaining are the ones actually in use.
+
 | Command | What it does |
 |---|---|
 | `/audit` | Audits your uncommitted and unpushed changes before a push. 13 dimensions, verified findings, one fix wave, then the push is unlocked. |
 | `/full-audit` | The same pipeline over a whole codebase. No push gate. |
 | `/design-audit` | Visual pass over the entire frontend: typography, color, spacing, motion, visual accessibility. Reports first, fixes only what you pick. |
-| `/feature-audit` | Turns a feature list into a test matrix and drives it to all green. |
 | `/plan-it` | Interviews you, writes an executor-grade plan, challenges it from five perspectives. `execute` runs it in a worktree and reviews the result. |
 | `/delegate` | Default way to implement: the session model writes a mini-spec, Sonnet builds it, the session model reviews the diff. |
-| `/review` | Two-axis code review: project standards and the linked spec. |
-| `/diagnose` | Reproduce-first bug diagnosis with a regression test. |
 | `/ship` | Docs sync, commit, audit gate, push, deploy, verify. |
-| `/triage` | GitHub issue state machine with agent briefs. |
-| `/handoff` | Compacts the session into a handoff file for a fresh agent. |
-| `/improve` | Product perspective: feature gaps, growth, business. |
-| `/app-baseline` | Onboards an app onto a 12-point production baseline. |
-| `/baseline-check` | Checks an existing app against that baseline. |
-| `/write-a-skill` | Scaffolds a new skill in this shape. |
 
 ## How an audit runs
 
