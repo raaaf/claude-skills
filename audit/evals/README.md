@@ -78,7 +78,12 @@ root for `bin/detect-stripe.sh` to report `STRIPE=yes`.
 ```
 
 `matches` is a list of substrings; any one matching the finding description
-counts as a hit. `must_not_find` catches false positives.
+counts as a hit. Matching tolerates ordinary word-form variation: keywords of
+9+ characters are trimmed by their trailing 3 characters before matching (e.g.
+`idempotent` also matches `idempotency`), so keywords shorter than that are
+matched verbatim and phrasing you actually expect the audit to use, not a
+mash of synonyms, is still the right way to write `matches`. `must_not_find`
+catches false positives.
 
 ## Running
 
@@ -103,6 +108,21 @@ Three options exist for that reason:
 | `--only <substring>` | Run only fixtures whose path contains the substring |
 | `--scoped` | Run `/audit <dimension>` derived from the fixture's category instead of a full audit. Far cheaper, but it measures worker recall instead of routing plus worker recall, so scoped numbers are not comparable to unscoped baselines |
 | `--timeout <sec>` | Per-fixture cap. A timed-out fixture scores as a miss, which is indistinguishable from a recall collapse, so timeouts are printed per fixture and totalled in the summary. Never read a recall number without checking that line |
+
+## Exit code
+
+`run-evals.sh` exits non-zero when nothing was actually measured: every
+candidate fixture (one with a matching `expected/*.json`) failed before
+producing an audit log or session stdout to score (mktemp failure, or the
+`claude` session dying before writing anything), or there were zero candidate
+fixtures at all (e.g. a typo'd `--only`). This case prints `ERROR: nothing
+was measured` and is reported in the summary as `UNMEASURED`, separate from
+recall. A zero-recall result with exit 0 means fixtures genuinely ran and were
+scored; it does not mean the harness itself worked, but at least one fixture
+did produce scorable output. Do not read a `Recall: 0/N` line as proof the
+audit missed everything without first checking the exit code and the
+`UNMEASURED` line — a harness failure and a genuine recall collapse both used
+to look identical (2026-09-10 incident).
 
 ## Adding a fixture
 

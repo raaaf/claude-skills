@@ -8,36 +8,36 @@ in full.
 
 - **Mode-dependent scope.** Your briefing carries `STRIPE_MODE`, a comma list from
   `bin/detect-stripe.sh` (`cashier`, `sdk`, `client`, `hosted`, `http`). Which checks apply and
-  which are false positives differs per mode — `guidelines/payments.md` section II has the exact
+  which are false positives differs per mode. `guidelines/payments.md` section II has the exact
   matrix. Read it before forming any finding; do not apply the full code-verifiable list uniformly
   across modes.
 - **Recurring-aware dashboard gating.** Your briefing also carries `STRIPE_RECURRING`
   (`yes|no|unknown`) from `bin/detect-stripe.sh`. It gates which of the eight dashboard-only points
-  below apply — `guidelines/payments.md` section IV has the exact split and the finding text per
+  below apply. `guidelines/payments.md` section IV has the exact split and the finding text per
   value. Do not assume the integration has subscriptions; check `STRIPE_RECURRING` first.
 - **Absences, not diffs.** Most of this dimension's real defects are something MISSING (no
   idempotency key, no webhook signature check, no failed-payment handler). You are given the whole
   payment surface, not just changed lines, because a missing guard never appears in a diff. Read
   every assigned file in full before concluding a guard is absent, and name every plausible
-  location you checked in the finding's `files` — an absence finding without named checked
+  location you checked in the finding's `files`. An absence finding without named checked
   locations is not evidence, it is a guess.
 - **Code-verifiable checks** (may become findings): webhook signature verification, idempotency
   keys on retried/mutating calls, server-side gating of price/plan/entitlement (never trusted from
   the client), subscription status persisted to the DB, payment event logging, handlers for failed
   payment / refund / expired card / upgrade-downgrade, duplicate-charge prevention, currency
   handling, whether payment paths carry any test coverage at all.
-- **Dashboard-only checks — NEVER raise these as individual findings.** Test clocks, billing portal
+- **Dashboard-only checks, NEVER raised as individual findings.** Test clocks, billing portal
   existence, tax collection, trial rules, dunning retries, receipt emails, failed-webhook alerting,
   and the manual customer-flow test are not derivable from a repo. Four of the eight (tax
   configuration, receipt emails, failed-webhook alerting, the manual customer test) always apply;
   the other four (test clocks, billing portal, trial rules, dunning retries) are subscription
-  concerns, gated by `STRIPE_RECURRING` — full list and per-value finding text in
+  concerns, gated by `STRIPE_RECURRING`. Full list and per-value finding text in
   `guidelines/payments.md` section IV. Read `.claude/stripe-golive.md` in the audited repo if it
   exists. Emit exactly ONE informational `Minor` finding, whose `issue` names how many of the
   applicable points are answered and when, and lists which are unanswered. If the file does not
   exist, the same single `Minor` finding says so and lists all applicable points. Never split this
   into one finding per point, and never raise it above `Minor`. Always use the exact literal id
-  `payments-dashboard-unanswered` for this finding, never a chunk-indexed id — this dimension is
+  `payments-dashboard-unanswered` for this finding, never a chunk-indexed id, because this dimension is
   chunked, one specialist runs per chunk, and every chunk sees the same dashboard checklist, so
   every chunk that emits this finding is expected to emit it under this same id. Do not try to
   guess whether a sibling chunk already emitted it or skip it on that guess; duplicates across
@@ -63,13 +63,16 @@ in full.
 
 ## Severity
 
-`Critical` is money or access moving incorrectly and reachable in production: an unverified webhook
-that grants entitlement (anyone can forge a paid status with a crafted POST), or a price/plan taken
-from the client and trusted server-side. `Important` is a real gap that needs an unusual
-precondition or degrades correctness without granting free access: a missing idempotency key on a
-retried call (duplicate charge only on retry, not on every request), or a refund that is received
-but not reflected in entitlement. `Minor` is defense-in-depth plus the dashboard-unanswered finding:
-a redundant guard, or the go-live checklist's dashboard-only half being unanswered.
+`Critical` is money or access moving incorrectly and reachable in production without any extra
+precondition: an unverified webhook that grants entitlement (anyone can forge a paid status with a
+crafted POST), or a price/plan taken from the client and trusted server-side. `Important` is a real
+gap that needs an unusual precondition to trigger, or degrades correctness without granting
+anything for free. A missing idempotency key belongs here, not in `Critical`: its failure mode is a
+duplicate charge on an actual retry (client retry, webhook redelivery, queue retry), and every
+ordinary, non-retried call still charges correctly and grants nothing extra. The same tier applies to a refund
+that is received but not reflected in entitlement. `Minor` is defense-in-depth plus the
+dashboard-unanswered finding: a redundant guard, or the go-live checklist's dashboard-only half
+being unanswered.
 
 ## Output
 

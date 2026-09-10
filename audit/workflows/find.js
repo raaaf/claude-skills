@@ -578,6 +578,9 @@ function validVerdict(verdict) {
 }
 
 const CONFIDENCE_RANK = { high: 3, medium: 2, low: 1 };
+// Used by mergeDuplicate: a merged finding carries the highest severity of the set, not the
+// severity of whichever finding won the confidence tie-break.
+const SEVERITY_RANK = { Critical: 3, Important: 2, Minor: 1 };
 
 // A finding's dedup key: its lowest-sorting file path and the first line number
 // mentioned for that path. Within ONE dimension, two findings on the same file within
@@ -625,7 +628,14 @@ function mergeDuplicate(existing, incoming) {
   const merged = (winner.mergedFrom || []).concat([{ id: dropped.id, issue: dropped.issue }], dropped.mergedFrom || []);
   const seenIds = new Set();
   winner.mergedFrom = merged.filter((m) => (seenIds.has(m.id) ? false : (seenIds.add(m.id), true)));
-  return { winner, dropped };
+  // Severity is the MAX of the merged set, never the winner's own. The winner is chosen by
+  // confidence, so without this a high-confidence Important absorbing a medium-confidence
+  // Critical would silently downgrade it, and the push gate keys on Critical being open.
+  // Confidence and issue text still come from the winner: those describe how well the defect
+  // was evidenced, which is exactly what the confidence tie-break selected for.
+  const raised = SEVERITY_RANK[dropped.severity] > SEVERITY_RANK[winner.severity];
+  if (raised) winner.severity = dropped.severity;
+  return { winner, dropped, raised };
 }
 
 // A dimension prompt can instruct every chunk's specialist to emit the SAME literal id for
@@ -640,9 +650,9 @@ function collapseDuplicateIds(findings, dimension, logFn) {
     const id = finding && finding.id;
     if (id && indexById.has(id)) {
       const idx = indexById.get(id);
-      const { winner, dropped } = mergeDuplicate(survivors[idx], finding);
+      const { winner, dropped, raised } = mergeDuplicate(survivors[idx], finding);
       survivors[idx] = winner;
-      logFn(`${dimension}: collapsed duplicate literal id ${dropped.id} into ${winner.id}`);
+      logFn(`${dimension}: collapsed duplicate literal id ${dropped.id} into ${winner.id}${raised ? `, severity raised to ${winner.severity}` : ""}`);
       continue;
     }
     survivors.push(finding);
@@ -668,10 +678,10 @@ function dedupeFindings(findings, dimension, logFn) {
       keys.push(key);
       continue;
     }
-    const { winner, dropped } = mergeDuplicate(survivors[existingIdx], finding);
+    const { winner, dropped, raised } = mergeDuplicate(survivors[existingIdx], finding);
     survivors[existingIdx] = winner;
     keys[existingIdx] = findingDedupKey(winner);
-    logFn(`${dimension}: merged ${dropped.id} into ${winner.id}`);
+    logFn(`${dimension}: merged ${dropped.id} into ${winner.id}${raised ? `, severity raised to ${winner.severity}` : ""}`);
   }
   return survivors;
 }

@@ -190,6 +190,14 @@ Run the full suite exactly once via `test-lock.sh` after the fix wave (fix-verif
 
 Finalize `LOGFILE` from `references/audit-log-template.md`: Result, Findings per dimension, Fixes, Discarded (with reason), Unverified, Not completed, Open Points. Include the mechanical checks from Phase 1 and a chat display of the finished log (markdown block).
 
+Every finding line, in every section listed above, MUST be exactly `- [Severity][Dimension]
+file:line: description` on one physical line, e.g. `- [Critical][payments] app/Jobs/Charge.php:27:
+PaymentIntent::create has no idempotency_key, a queue retry double-charges the customer.` Do not
+wrap the file:line or description onto a continuation line, and do not substitute a numbered list,
+a bold-bullet header, or a table. `audit/evals/run-evals.sh`'s `normalize_findings()` parses exactly
+this shape to score recall; any other shape makes every finding on it unparseable, which reads as a
+capability regression (recall collapsed to zero) rather than what it actually is, a formatting slip.
+
 ```bash
 AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
 # A Claude Code session has no env var pointing at its own transcript dir:

@@ -215,6 +215,22 @@ check_candidate() {
 
   path_exists_in_repo "$cc_tok" && return
 
+  # A relative path inside a skill's own doc resolves against that skill's
+  # directory, not the repo root. `plan-it/SKILL.md` naming `agents/foo.md`
+  # means `plan-it/agents/foo.md`, and checking only the repo root reported
+  # four such references as unresolvable while every file was present. A
+  # docs-drift check that invents drift trains its readers to ignore it, which
+  # costs more than the drift it was built to catch.
+  case "$cc_tok" in
+    /*) : ;;
+    *)
+      cc_docdir="${cc_doc%/*}"
+      if [ "$cc_docdir" != "$cc_doc" ] && path_exists_in_repo "$cc_docdir/$cc_tok"; then
+        return
+      fi
+      ;;
+  esac
+
   FINDINGS=1
   TOTAL_FINDINGS=$((TOTAL_FINDINGS + 1))
   DOC_FINDINGS=$((DOC_FINDINGS + 1))

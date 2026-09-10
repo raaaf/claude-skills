@@ -166,6 +166,11 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)` to the `--counts` argument,
   same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
   the next run.
+- Every finding line, same as `audit/SKILL.md` Phase 4, MUST be exactly `- [Severity][Dimension]
+  file:line: description` on one physical line, e.g. `- [Critical][payments] app/Jobs/Charge.php:27:
+  PaymentIntent::create has no idempotency_key, a queue retry double-charges the customer.`
+  `audit/evals/run-evals.sh`'s `normalize_findings()` parses exactly this shape; any other shape
+  scores zero recall for every finding on it.
 
 `runId` for both the find and fix workflows goes into the same log-header position `audit/SKILL.md`
 uses, so `Workflow({ scriptPath, resumeFromRunId })` resumes a full-audit run exactly like a

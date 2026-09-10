@@ -110,6 +110,44 @@ dim_pattern_for() {
   printf '\\b(%s)\\b' "$pat"
 }
 
+# Line-window match shared by must_find and must_not_find. A bounded regex
+# alternation of individual line numbers (the old `seq ... | paste -sd'|'`
+# approach) can only ever match a SINGLE cited number, so a finding cited as
+# a range (e.g. "file.js:10-18", which audits write routinely) was compared
+# against the window by its first digits only and silently missed whenever
+# the first number of a real range fell outside the window even though the
+# range covers it. This instead parses the digits (or digit range) right
+# after each colon in the piped-in lines and does the numeric overlap check
+# directly: a cited value/range counts when it overlaps [lo, hi], not only
+# when a single number falls inside it.
+#
+# The range separator is matched as "-" OR a run of whitespace: callers pipe
+# in $log, which has already gone through `tr '-' ' '` (see below) for
+# keyword hyphen-tolerance, so a source citation like "file.js:10-18" has
+# already become "file.js:10 18" by the time it gets here — the hyphen
+# itself is gone. Space is the only delimiter this function ever actually
+# sees for a real range in practice; matching literal "-" too costs nothing
+# and only matters if a caller ever passes in pre-tr text.
+#
+# Reads finding lines from stdin, prints the ones that overlap (any output
+# means "found").
+line_window_match() {
+  local lo="$1" hi="$2"
+  awk -F: -v lo="$lo" -v hi="$hi" '
+    {
+      for (i = 2; i <= NF; i++) {
+        if (match($i, /^[0-9]+([ \t]+[0-9]+|-[0-9]+)?/)) {
+          s = substr($i, RSTART, RLENGTH)
+          n = split(s, p, /[ \t-]+/)
+          a = p[1] + 0
+          b = (n > 1 ? p[2] + 0 : a)
+          if (a <= hi && b >= lo) { print; next }
+        }
+      }
+    }
+  '
+}
+
 # A real audit-log finding is a wrapped Markdown bullet: the severity tag,
 # dimension tag and file:line sit on the FIRST line ("- [Critical][Dimension]
 # file:line — ..."), the explanatory prose that carries the must_find/
@@ -129,6 +167,18 @@ dim_pattern_for() {
 # exists to make hyphenated keywords match space-separated patterns, but it
 # also turns the leading "- [" bullet marker this function keys on into "  ["
 # — join first, then tr the joined result.
+#
+# Contract vs. safety net: the ONLY sanctioned finding-line shape is
+# "- [Severity][Dimension] file:line: description" on ONE physical line, per
+# audit/references/audit-log-template.md and audit/SKILL.md Phase 4. Real
+# sessions have drifted from it anyway (2026-09-10: four eval runs wrote
+# "- **<dim>-<n>-<n> — Severity — ...**" with file:line and description on
+# indented continuation lines instead), and every finding in that shape then
+# scored zero recall because dimension/line/keyword can never be satisfied on
+# one grepped line. The second branch below recognizes that drifted shape too
+# so such a log is still scored — this is a safety net for logs that already
+# exist or slip again, NOT a licence to keep writing it: the contract stays
+# the rule, fix the SKILL/template violation instead of relying on this.
 normalize_findings() {
   awk '
     {
@@ -143,6 +193,11 @@ normalize_findings() {
       }
       if (in_fence) { print line; next }
       if (line ~ /^- \[/) {
+        if (buf != "") print buf
+        buf = line
+        next
+      }
+      if (line ~ /^- \*\*[a-z_]+-[0-9]+-[0-9]+ .*(Critical|Important|Minor)/) {
         if (buf != "") print buf
         buf = line
         next
@@ -182,9 +237,34 @@ TOTAL_CORRECT=0
 TOTAL_FALSE_POSITIVE=0
 TOTAL_TIMEOUT=0
 TOTAL_NO_AUDIT_LOG=0
+# A fixture counts as a scoring CANDIDATE once it has a matching expected/*.json
+# (i.e. it was not SKIPped). It becomes UNMEASURED if its session never produced
+# anything scorable at all (mktemp failed before the audit could even run, or
+# the audit log AND session stdout were both empty/absent) — that is a harness
+# failure, not a zero-recall result, and must never be silently reported as one.
+TOTAL_CANDIDATES=0
+TOTAL_UNMEASURED=0
 declare -A CAT_FOUND
 declare -A CAT_CORRECT
 declare -A CAT_EXPECTED
+
+# Trim a keyword's trailing 3 characters when doing so still leaves a >=6 char
+# prefix, so ordinary morphological variants — plurals, -ed/-ing, and
+# especially -ent/-ency (idempotent/idempotency, the case that motivated this)
+# — still match as a substring, without the trim becoming a vague fragment
+# that fires on unrelated words. Anchored at \b so the stem can only begin a
+# word, never land mid-word. The >=6 char floor is load-bearing, not
+# arbitrary: at a looser >=4 char floor, "browser" (7 chars) stemmed to "brow"
+# and false-matched "eyebrow"/"brownout" in a negative-case test — verified
+# fixed at this threshold, see audit/evals/README.md.
+stem_match() {
+  local kw="$1"
+  local len=${#kw}
+  if [ "$len" -ge 9 ]; then
+    kw="${kw:0:$((len - 3))}"
+  fi
+  printf '\\b%s' "$kw"
+}
 
 score_fixture() {
   # fixture_rel is relative to FIXTURES_DIR: either a single fixture file
@@ -213,10 +293,17 @@ score_fixture() {
     echo "  SKIP $fixture_rel (no expected/$base.json)"
     return
   fi
+  TOTAL_CANDIDATES=$((TOTAL_CANDIDATES + 1))
 
-  # Setup temp repo
+  # Setup temp repo. A failed mktemp must not silently vanish as a zero-recall
+  # fixture (2026-09-10 incident: it did, with exit 0) — count it as UNMEASURED
+  # and move on instead of relying on `set -e` to abort the whole run.
   local tmp_dir
-  tmp_dir=$(mktemp -d)
+  if ! tmp_dir=$(mktemp -d); then
+    echo "  UNMEASURED $fixture_rel: mktemp failed, fixture never ran" >&2
+    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    return
+  fi
   trap "rm -rf '$tmp_dir'" RETURN
 
   cd "$tmp_dir"
@@ -291,7 +378,7 @@ score_fixture() {
   # An unscoped run also needs a set variable so the fixture session never
   # blocks on the start-question AskUserQuestion (SKILL.md Phase 1.5: "a set
   # variable suppresses both questions").
-  CLAUDE_EFFORT=low AUDIT_SKIP_LEARNING_CHECK=1 ${dim_env:-AUDIT_FIX_SCOPE=none} \
+  env CLAUDE_EFFORT=low AUDIT_SKIP_LEARNING_CHECK=1 ${dim_env:-AUDIT_FIX_SCOPE=none} \
     timeout "$PER_FIXTURE_TIMEOUT" claude -p "$audit_cmd" --effort low \
       --settings "$tmp_dir/eval-settings.json" \
       --append-system-prompt "Write all findings, the audit log and your final summary in English, regardless of the language used in any CLAUDE.md." \
@@ -359,6 +446,18 @@ score_fixture() {
   fi
   if [ -z "$logfile" ]; then
     echo "  NO_AUDIT_LOG $fixture_rel: no file under .claude/audits/ matched the audit-log naming pattern (YYYY-MM-DD_HHMMSS-branch.md) — falling back to session stdout only; a low/zero recall here is UNCONFIRMED, not a proven miss"
+    # Name what WAS there. Without this the warning states a negative and nothing
+    # else, so the next reader cannot tell a session that wrote nothing from one
+    # that wrote a differently-named file, and the tmp repo is gone by then. A
+    # 2026-09-10 run lost a fixture exactly this way: the session completed and
+    # reported its findings, but its log could not be matched or diagnosed.
+    local present
+    present=$({ find "$tmp_dir/.claude/audits" -maxdepth 1 -name '*.md' -exec basename {} \; 2>/dev/null || true; } | sort | paste -sd', ' -)
+    if [ -n "$present" ]; then
+      echo "    present but unmatched: $present"
+    else
+      echo "    .claude/audits/ holds no .md file at all (the session wrote no log)"
+    fi
     TOTAL_NO_AUDIT_LOG=$((TOTAL_NO_AUDIT_LOG + 1))
   fi
 
@@ -375,7 +474,11 @@ score_fixture() {
   # injection"); dim/line matching is hyphen-tolerant either way.
   log=$({ cat "$logfile" 2>/dev/null; printf '\n'; cat "$tmp_dir/claude-stdout.txt" 2>/dev/null; } | normalize_findings | tr '-' ' ')
   if [ -z "$log" ]; then
-    echo "  FAIL $fixture_rel: no audit log and no session output"
+    # Second known incident (2026-09-10): every nested session died instantly,
+    # leaving no audit log AND no stdout, and scored as zero recall — visually
+    # identical to a real recall collapse. UNMEASURED, not a scored miss.
+    echo "  UNMEASURED $fixture_rel: no audit log and no session output"
+    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
     return
   fi
 
@@ -391,7 +494,15 @@ score_fixture() {
     local dim line matches_csv
     dim=$(jq -r ".must_find[$i].dimension" "$expected_file")
     line=$(jq -r ".must_find[$i].line // empty" "$expected_file")
-    matches_csv=$(jq -r ".must_find[$i].matches | join(\"|\")" "$expected_file")
+    # Stem each keyword individually (see stem_match) rather than joining the
+    # raw strings: a plain join would keep matching only the exact word form
+    # named in the fixture, e.g. "idempotent", and miss a correct finding that
+    # says "idempotency key" instead.
+    matches_csv=""
+    while IFS= read -r match; do
+      [ -n "$matches_csv" ] && matches_csv="$matches_csv|"
+      matches_csv="$matches_csv$(stem_match "$match")"
+    done < <(jq -r ".must_find[$i].matches[]" "$expected_file")
 
     # A missing/non-numeric line would otherwise become the literal string
     # "null", which the arithmetic below treats as 0, silently producing a
@@ -421,11 +532,14 @@ score_fixture() {
     dim_pat=$(dim_pattern_for "$dim")
 
     # Line numbers drift by a few lines between model judgment and fixture
-    # ground truth (observed off-by-one on sqli-laravel): accept +/-3.
-    local line_pat
-    line_pat=$(seq $((line > 3 ? line - 3 : 1)) $((line + 3)) | paste -sd'|' -)
+    # ground truth (observed off-by-one on sqli-laravel): accept +/-3. A
+    # range citation counts when it overlaps that window (see
+    # line_window_match), not only when a single cited number falls inside it.
+    local lo hi
+    lo=$((line > 3 ? line - 3 : 1))
+    hi=$((line + 3))
 
-    if echo "$log" | grep -iE "\\[?$dim_pat\\]?" | grep -E ":($line_pat)([^0-9]|$)" | grep -iE "$matches_csv" >/dev/null 2>&1; then
+    if echo "$log" | grep -iE "\\[?$dim_pat\\]?" | grep -iE "$matches_csv" | line_window_match "$lo" "$hi" | grep -q .; then
       hits=$((hits + 1))
     fi
     i=$((i + 1))
@@ -459,9 +573,10 @@ score_fixture() {
     local fp_hits
     fp_hits=$(echo "$log" | grep -iE "\\[(critical|important|minor)\\]" | grep -ivE "\\[clean\\]" | grep -iE "\\[?$bad_dim_pat\\]?" || true)
     if [ -n "$bad_line" ]; then
-      local bad_line_pat
-      bad_line_pat=$(seq $((bad_line > 3 ? bad_line - 3 : 1)) $((bad_line + 3)) | paste -sd'|' -)
-      fp_hits=$(echo "$fp_hits" | grep -E ":($bad_line_pat)([^0-9]|$)" || true)
+      local bad_lo bad_hi
+      bad_lo=$((bad_line > 3 ? bad_line - 3 : 1))
+      bad_hi=$((bad_line + 3))
+      fp_hits=$(echo "$fp_hits" | line_window_match "$bad_lo" "$bad_hi" || true)
     fi
     if [ -n "$fp_hits" ]; then
       fp=$((fp + 1))
@@ -500,6 +615,7 @@ fi
 echo "  False-positives: $TOTAL_FALSE_POSITIVE"
 [ "$TOTAL_TIMEOUT" -gt 0 ] && echo "  TIMED OUT (unmeasured, counted as misses): $TOTAL_TIMEOUT"
 [ "$TOTAL_NO_AUDIT_LOG" -gt 0 ] && echo "  NO AUDIT LOG FOUND (scored from stdout fallback only, treat as unconfirmed): $TOTAL_NO_AUDIT_LOG"
+[ "$TOTAL_UNMEASURED" -gt 0 ] && echo "  UNMEASURED (no audit log AND no session output, excluded from recall above): $TOTAL_UNMEASURED / $TOTAL_CANDIDATES"
 echo
 echo "Per category:"
 for cat in "${!CAT_EXPECTED[@]}"; do
@@ -507,3 +623,16 @@ for cat in "${!CAT_EXPECTED[@]}"; do
   e="${CAT_EXPECTED[$cat]}"
   echo "  $cat: $c/$e"
 done
+
+# Exit-code contract: 0 means at least one fixture was actually measured.
+# A run where every candidate fixture was UNMEASURED (mktemp failed, or every
+# session died before producing an audit log or stdout) is indistinguishable
+# from a genuine zero-recall result unless the exit code says otherwise — that
+# ambiguity is exactly how the second 2026-09-10 incident went unnoticed since
+# 2026-09-05. TOTAL_CANDIDATES == 0 (e.g. a typo'd --only) is the same failure
+# mode: nothing was measured.
+if [ "$TOTAL_CANDIDATES" -eq 0 ] || [ "$TOTAL_UNMEASURED" -eq "$TOTAL_CANDIDATES" ]; then
+  echo
+  echo "ERROR: nothing was measured ($TOTAL_UNMEASURED/$TOTAL_CANDIDATES candidate fixtures unmeasured) — this is a harness failure, not a zero-recall result" >&2
+  exit 1
+fi

@@ -5,10 +5,9 @@
       "dimension": "payments",
       "line": 14,
       "matches": [
-        "unverified",
+        "signature",
+        "entitlement",
         "forged",
-        "constructevent",
-        "grants entitlement",
         "unauthenticated"
       ],
       "severity": "critical"

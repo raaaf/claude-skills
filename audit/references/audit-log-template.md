@@ -61,6 +61,19 @@ explicitly rather than leaving a category out. **Recompute, never hand-tally:** 
 found/fixed number by counting the itemized finding bullets in the log itself, immediately before
 writing the summary.
 
+## Finding-Line Format Is a Parsed Contract, Not a Style Suggestion
+
+Every line under `## Findings per Dimension`, `## Fixed Issues`, `## Discarded` and `## Unverified`
+MUST be exactly:
+
+    - [Severity][Dimension] file:line: description
+
+on ONE physical line: severity tag, dimension tag, `file:line`, and the description, in that order,
+never wrapped onto a continuation line. `audit/evals/run-evals.sh`'s `normalize_findings()` parses
+this exact shape to score recall; any other shape (numbered lists, bold-bullet headers with the
+description on the next line, tables) makes the finding unparseable, which scores as zero recall
+for that finding regardless of how correct or well-argued it was.
+
 ## Mandatory Tagging Convention
 
 Every finding line carries both tags: severity (`[Critical]`/`[Important]`/`[Minor]`) and
