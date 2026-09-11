@@ -36,6 +36,8 @@ them against unscoped numbers.
 | payments | 4 | 3/4 | 0 | 1 (no audit log written) |
 | security | 20 | 19/24 expected findings | 8 as measured, 5 after correcting the harness | 1 (timeout at 901s) |
 | architecture | 17 | 17/18 | 0 | 0 |
+| code_quality | 12 | 12/13 | 0 | 1 (timeout, partial output still scored) |
+| docs_sync | 4 | 5/5 | 0 | 0 |
 
 `architecture` is the cleanest picture so far and the only dimension measured after every harness
 repair of 2026-09-10: no false positives, no timeouts, no unmeasured fixtures, and `--recheck`
@@ -345,3 +347,24 @@ enclosing function; expected 52, the statement). Two dimensions, two fixtures, o
 cite the declaration that encloses the defect rather than the defect's own line. Every recall number
 measured before 2026-09-11 is therefore a floor, not a reading, and the correction is in
 `agents/prompt-template.md`, not in the scorer.
+
+### The citation rule, and why the early numbers are floors
+
+`agents/prompt-template.md` asked for `file:line` without saying which line, and specialists
+routinely cited the declaration enclosing a defect rather than the defect itself. Two fixtures in
+two dimensions were scored as misses for exactly that: `widget-lock-time-check` (cited 47, expected
+52) and `lock-race-entry-clobber` (cited 23, expected 29). The rule now names the defect's own line.
+
+Verified on 2026-09-11 by rerunning `lock-race-entry-clobber` alone: it flipped from a miss to a
+hit, and the log gained a citation at line 30 where it previously carried only 1, 12 and 23. One
+non-deterministic run does not prove a rule works, but a new citation appearing at the defect line,
+where there was none before, is evidence about the mechanism rather than about the score.
+
+Consequence for the table above: `payments`, `security`, `architecture` and `code_quality` were
+measured before that fix and are floors, not readings. `docs_sync` is the first dimension measured
+after it. Do not compare across that line without saying so.
+
+`docs_sync` is also the first dimension whose fixtures had never been scored at all: four of its
+expectations named the dimension `docs`, which no tag ever matches, so they returned nothing from
+the day they were written until 2026-09-11. The expectation that a never-exercised category would
+score poorly turned out to be wrong; it is the only dimension so far at 5 of 5.

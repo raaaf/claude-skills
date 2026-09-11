@@ -482,9 +482,27 @@ validate_expected() {
     fi
   done
 
+  # Mirror of the missing-fixture check: a fixture with no expected/*.json can
+  # never be scored, and nothing said so. `docs/component-test-vs-guard-test`
+  # sat in the suite unscoreable until the 2026-09-11 docs run made the count
+  # not add up (5 fixtures in the category, 4 scored). A warning, not an error:
+  # a fixture parked deliberately while its expectation is being written is a
+  # legitimate state, it just must not be a silent one.
+  local c_orphan_fixture=0
+  local fx b
+  while IFS= read -r fx; do
+    [ -n "$fx" ] || continue
+    b=$(basename "$fx"); b="${b%%.*}"
+    if [ ! -f "$EXPECTED_DIR/$b.json" ]; then
+      echo "WARNING: fixture '${fx#"$FIXTURES_DIR"/}' has no expected/$b.json, so it can never be scored. Write one or remove the fixture."
+      c_orphan_fixture=$((c_orphan_fixture + 1))
+    fi
+  done < <(find "$FIXTURES_DIR" -mindepth 2 -maxdepth 2 2>/dev/null | sort)
+
   echo
   echo "Validation summary"
   echo "-------------------"
+  echo "  fixture without an expected file, never scoreable (warning):     $c_orphan_fixture"
   echo "  must_not_find missing line, same dimension as must_find (error): $c_mnf_error"
   echo "  must_not_find missing line, different dimension (warning):       $c_mnf_warning"
   echo "  window collisions (error):                                      $c_window"
