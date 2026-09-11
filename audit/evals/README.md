@@ -34,10 +34,16 @@ them against unscoped numbers.
 | Dimension | Fixtures | Recall | False positives | Unmeasured |
 |---|---|---|---|---|
 | payments | 4 | 3/4 | 0 | 1 (no audit log written) |
-| security | 20 | 19/24 expected findings | 8 as measured, 5 after correcting the harness | 1 (timeout at 901s) |
+| security | 20 | 19/24 expected findings | 8 as first measured, 4 after the harness repairs | 1 (timeout at 901s) |
 | architecture | 17 | 17/18 | 0 | 0 |
 | code_quality | 12 | 12/13 | 0 | 1 (timeout, partial output still scored) |
 | docs_sync | 4 | 5/5 | 0 | 0 |
+| a11y | 13 | 15/16 | 1 | 0 |
+| ux | 5 | 3/5 | 2 | 0 |
+| ui_design | 2 | 2/2 | 0 | 0 |
+| animation | 1 | 1/1 | 0 | 0 |
+| copy | 1 | 1/1 | 0 | 0 |
+| performance | 1 | 1/1 | 0 | 0 |
 
 `architecture` is the cleanest picture so far and the only dimension measured after every harness
 repair of 2026-09-10: no false positives, no timeouts, no unmeasured fixtures, and `--recheck`
@@ -134,6 +140,19 @@ counts as a hit. Matching tolerates ordinary word-form variation: keywords of
 matched verbatim and phrasing you actually expect the audit to use, not a
 mash of synonyms, is still the right way to write `matches`. `must_not_find`
 catches false positives.
+
+Every `matches` entry is a literal substring, never a regex, even though
+several entries get joined into one `grep -E` alternation internally
+(`stem_match`/`ere_escape` in `run-evals.sh`): the runner escapes ERE
+metacharacters (`. ^ $ * + ? ( ) [ ] { } |` and `\`) after trimming, so write
+`n+1`, `with(`, `nav[x-show]` exactly as they appear in the finding text — no
+backslashing needed on your end. A keyword that starts with a letter, digit,
+or underscore is anchored with `\b` so it can only match at a word boundary,
+never mid-word; a keyword that starts with punctuation (`{!!`, `.help(`,
+`$attributes`) is matched unanchored, because `\b` in front of a
+non-word-starting keyword would only fire when the character immediately
+before it in the log text is itself a word character, the opposite of the
+common case where such a token is preceded by whitespace or a line start.
 
 A `must_not_find` entry needs a `line` whenever its `dimension` also appears
 in `must_find` for the same fixture: without it, the check degrades to "any
@@ -368,3 +387,20 @@ after it. Do not compare across that line without saying so.
 expectations named the dimension `docs`, which no tag ever matches, so they returned nothing from
 the day they were written until 2026-09-11. The expectation that a never-exercised category would
 score poorly turned out to be wrong; it is the only dimension so far at 5 of 5.
+
+### Keywords are substrings, and were being run as regular expressions
+
+`matches` entries went into a `grep -E` alternation unescaped, so every one was a pattern rather
+than the literal text its author wrote. Two failure modes, both wrong: `with(`, `filled(`, `.help(`
+and `{!!` break the alternation outright, which makes NO keyword match and the fixture score zero no
+matter how good the finding was; `n+1`, `nav[x-show]` and `(int)` stay valid and quietly match
+something else. 12 expected files carry such keywords.
+
+Measured on the 2026-09-11 runs, rescored from stored artifacts without rerunning anything:
+performance went 0/1 to 1/1, a11y 13/16 to 15/16, ux 2/5 to 3/5, and four of the seven reported
+scorer gaps disappeared. The security run was the regression check and did not move.
+
+The uncomfortable part is the selection effect: a keyword like `eager load` was always fine, while
+`with(` silently disabled its whole entry. The rule penalised precisely the authors who wrote the
+concrete code fragment they expected to see. The numbers in the table above from before this repair
+are floors for that reason as well.

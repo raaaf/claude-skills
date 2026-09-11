@@ -572,13 +572,42 @@ declare -A CAT_EXPECTED
 # arbitrary: at a looser >=4 char floor, "browser" (7 chars) stemmed to "brow"
 # and false-matched "eyebrow"/"brownout" in a negative-case test — verified
 # fixed at this threshold, see audit/evals/README.md.
+#
+# `matches` entries are documented as literal substrings, not regexes, but
+# several stem_match outputs get joined into one `grep -E` alternation
+# (matches_csv below), so every entry is interpreted as ERE unless escaped
+# here. Trim BEFORE escaping: escaping first could insert a backslash right
+# at the trim boundary and cut it in half, turning a valid escape sequence
+# into a dangling backslash. ere_escape backslash-escapes every ERE
+# metacharacter (. ^ $ * + ? ( ) [ ] { } | \) so the trimmed keyword is
+# matched as the literal text it is documented to be.
+#
+# \b is only prepended when the (trimmed) keyword starts with a word
+# character. \b means "boundary between \w and \W", so before a keyword
+# starting with a non-word character (e.g. "{!!", ".help(", "$attributes")
+# it would only match when the character immediately preceding the keyword
+# in the log text is itself a word character — the opposite of the common
+# case, where such tokens are preceded by whitespace or punctuation (a space
+# before "{!!", a line start before "$attributes"). Anchoring there would
+# silently suppress the very matches it is meant to protect, so those
+# keywords are matched unanchored instead; a word-starting keyword keeps the
+# \b anchor as before.
+ere_escape() {
+  printf '%s' "$1" | sed 's/[][\.^$*+?(){}|]/\\&/g'
+}
+
 stem_match() {
   local kw="$1"
   local len=${#kw}
   if [ "$len" -ge 9 ]; then
     kw="${kw:0:$((len - 3))}"
   fi
-  printf '\\b%s' "$kw"
+  local escaped
+  escaped=$(ere_escape "$kw")
+  case "$kw" in
+    [a-zA-Z0-9_]*) printf '\\b%s' "$escaped" ;;
+    *) printf '%s' "$escaped" ;;
+  esac
 }
 
 # Read both artifact files (audit log + session stdout, in that order, exactly
