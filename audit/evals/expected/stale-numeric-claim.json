@@ -2,7 +2,7 @@
   "fixture": "docs/stale-numeric-claim/",
   "must_find": [
     {
-      "dimension": "docs",
+      "dimension": "docs_sync",
       "line": 8,
       "matches": ["8", "9", "curated", "stale", "drift", "count"],
       "severity": "important"

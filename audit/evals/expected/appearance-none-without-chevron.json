@@ -2,7 +2,7 @@
   "fixture": "ui/appearance-none-without-chevron.blade.php",
   "must_find": [
     {
-      "dimension": "ui",
+      "dimension": "ui_design",
       "line": 3,
       "matches": ["appearance-none", "chevron", "arrow", "dropdown indicator", "no replacement"],
       "severity": "important"

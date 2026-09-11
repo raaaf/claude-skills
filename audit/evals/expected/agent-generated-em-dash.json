@@ -2,7 +2,7 @@
   "fixture": "docs/agent-generated-em-dash/",
   "must_find": [
     {
-      "dimension": "docs",
+      "dimension": "docs_sync",
       "line": 8,
       "matches": ["em-dash", "—", "CLAUDE.md", "prose", "dash"],
       "severity": "minor"

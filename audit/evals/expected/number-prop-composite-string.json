@@ -2,7 +2,7 @@
   "fixture": "quality/number-prop-composite-string.blade.php",
   "must_find": [
     {
-      "dimension": "architecture|quality",
+      "dimension": "code_quality",
       "line": 6,
       "matches": ["composite", "3/5", "cast", "(int)", "numeric prop", "value", "schluckt", "swallow"],
       "severity": "important"

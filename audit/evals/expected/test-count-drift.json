@@ -2,7 +2,7 @@
   "fixture": "docs/test-count-drift/",
   "must_find": [
     {
-      "dimension": "docs",
+      "dimension": "docs_sync",
       "line": 8,
       "matches": ["3 Tests", "5", "count", "stale", "drift", "README"],
       "severity": "important"

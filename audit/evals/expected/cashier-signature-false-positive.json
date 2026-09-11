@@ -11,6 +11,7 @@
   "must_not_find": [
     {
       "dimension": "payments",
+      "line": 7,
       "reason": "Laravel Cashier verifies webhook signatures itself (VerifyWebhookSignature middleware); the app implements no custom webhook handling, so a missing/absent signature check is not a real defect here"
     }
   ]

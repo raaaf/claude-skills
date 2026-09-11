@@ -21,7 +21,7 @@
       "reason": "recoverIfPending clearing the flag after a successful zone delete is correct on its own; the defect is that the guard above can never be reached, not this line"
     },
     {
-      "dimension": "code-quality",
+      "dimension": "code_quality",
       "reason": "the empty deleteLocalStore/deleteCloudKitZone bodies are fixture scaffolding, not dead code in a real codebase"
     },
     {

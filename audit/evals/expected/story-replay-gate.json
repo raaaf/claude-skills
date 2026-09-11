@@ -17,7 +17,7 @@
   "must_not_find": [
     {
       "dimension": "correctness",
-      "line": 62,
+      "line": 59,
       "reason": "shouldRefresh compares the stored day against now and is the correct pattern; it sits in the fixture as the counter-example and flagging it inverts the finding"
     },
     {

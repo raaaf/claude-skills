@@ -39,17 +39,23 @@ EXPECTED_DIR="$EVALS_DIR/expected"
 #                        cheaper (1-2 workers), measures worker recall rather
 #                        than routing + worker recall, so DO NOT compare scoped
 #                        numbers against unscoped baselines.
+#   --validate-only      run validate_expected() over every expected/*.json and
+#                        exit — no fixture runs, no model calls, no cost. Seconds
+#                        instead of hours. Prints a summary of errors/warnings by
+#                        class. See validate_expected() for what it checks.
 # ---------------------------------------------------------------------------
 ONLY=""
 PER_FIXTURE_TIMEOUT=1200
 SCOPED=0
+VALIDATE_ONLY=0
+USAGE="usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped] [--validate-only]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)
-      [ $# -ge 2 ] || { echo "usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped]" >&2; exit 2; }
+      [ $# -ge 2 ] || { echo "$USAGE" >&2; exit 2; }
       ONLY="$2"; shift 2 ;;
     --timeout)
-      [ $# -ge 2 ] || { echo "usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped]" >&2; exit 2; }
+      [ $# -ge 2 ] || { echo "$USAGE" >&2; exit 2; }
       PER_FIXTURE_TIMEOUT="$2"
       case "$PER_FIXTURE_TIMEOUT" in
         ''|*[!0-9]*|0)
@@ -57,8 +63,9 @@ while [ $# -gt 0 ]; do
           exit 2 ;;
       esac
       shift 2 ;;
-    --scoped)  SCOPED=1; shift ;;
-    -h|--help) echo "usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped]"; exit 0 ;;
+    --scoped)         SCOPED=1; shift ;;
+    --validate-only)  VALIDATE_ONLY=1; shift ;;
+    -h|--help) echo "$USAGE"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -226,6 +233,26 @@ if [ ! -d "$FIXTURES_DIR" ] || [ ! -d "$EXPECTED_DIR" ]; then
   exit 1
 fi
 
+# Canonical dimension ids, single-sourced from find.js's ALL_DIMENSIONS (never
+# duplicated here as a second literal list). dim_pattern_for() above hard-codes
+# exactly two non-canonical synonyms as deliberate, working aliases ("quality"
+# and "correctness" both resolve to the code_quality pattern) — verified by
+# actually calling dim_pattern_for and grep-matching its output against a real
+# "[code_quality]" tag, so these two are accepted alongside the 14 canonical
+# ids. Every other non-canonical spelling found while building this check
+# (docs, ui, code-quality, architecture|quality) was verified the same way to
+# either fail outright or only accidentally succeed against a real tag, so
+# anything outside this set is flagged.
+FIND_JS="$EVALS_DIR/../workflows/find.js"
+if [ -f "$FIND_JS" ]; then
+  ALL_DIMENSIONS_LIST=$(awk '/^const ALL_DIMENSIONS = \[/,/\];/' "$FIND_JS" | grep -oE "'[a-zA-Z0-9_]+'" | tr -d "'")
+else
+  ALL_DIMENSIONS_LIST=""
+fi
+KNOWN_DIMENSIONS="$ALL_DIMENSIONS_LIST
+quality
+correctness"
+
 # A must_not_find entry without a `line` degrades to "any finding in this
 # dimension is a false positive" (see the must_not_find scoring loop below).
 # That is only sound when the entry's dimension differs from every must_find
@@ -237,13 +264,63 @@ fi
 # still surfaced as a warning: it is sometimes intentional (a truly
 # dimension-wide "nothing here belongs in category X" claim) but is
 # indistinguishable from a forgotten line, so the author must see it.
+#
+# validate_expected() also catches five more drift classes, each grounded in
+# how score_fixture actually matches (re-verify the mechanism before trusting
+# these comments if score_fixture changes):
+#
+# - Window collision: a must_find and a must_not_find in the SAME dimension of
+#   the SAME fixture whose lines are 3 or fewer apart makes the fixture
+#   unscoreable in one direction. Derived directly from score_fixture's actual
+#   mechanism: the must_not_find false-positive check builds a window
+#   [bad_line-3, bad_line+3] and flags any finding CITING A LINE inside it, so
+#   a legitimate must_find at line F is wrongly counted as a false positive
+#   exactly when F falls in that window, i.e. when the gap between F and the
+#   must_not_find line is <= 3. A gap of 4-6 only makes the two +/-3 windows
+#   touch as ranges; no single cited line can land in both, so it is harmless
+#   and must NOT be flagged. Do not re-widen this to "windows overlap" (gap <
+#   7) — that flags gaps of 4-6 that never actually collide. Hard error
+#   (known instance: export-import-roundtrip.json, 88 vs 89).
+# - Line out of range: a cited `line` that is <=0 or past the end of the
+#   fixture file. Only checked when `fixture` names a single file that
+#   resolves; directory fixtures are skipped rather than guessed at.
+# - Missing fixture: `fixture` points at a path that does not exist under
+#   fixtures/.
+# - Unknown dimension: a `dimension` outside KNOWN_DIMENSIONS above.
+# - Unknown severity: a must_find `severity` other than critical/important/
+#   minor, case-insensitive.
+# - Keyword that can never match: score_fixture pipes the log through
+#   `tr '-' ' '` before grepping, so a hyphenated keyword can never match.
+#   Warning per such keyword (a sibling keyword in the same entry can still
+#   match); escalated to a hard error only when EVERY keyword of one
+#   must_find entry is hyphenated, since that entry is then unsatisfiable
+#   regardless of what the audit finds.
+#
+# A malformed expected/*.json invalidates only the fixture it belongs to, not
+# the whole suite: every ERROR below (not WARNING) also records that file's
+# basename without .json (matching the `base` score_fixture pairs a fixture
+# against) into the global INVALID_EXPECTED map, with the reason class(es)
+# that triggered it. --validate-only still aborts here (see the exit at the
+# bottom of this function), since that mode exists to fail loudly in a
+# pre-commit/CI context; a normal run consults the map instead to skip just
+# those fixtures while still measuring everything else.
+declare -A INVALID_EXPECTED
 validate_expected() {
   local bad=0
   local f
+  # Summary counters, printed by class at the end (also the --validate-only
+  # output).
+  local c_mnf_error=0 c_mnf_warning=0 c_window=0 c_range=0 c_missing_fixture=0
+  local c_unknown_dim=0 c_unknown_sev=0 c_hyphen_warn=0 c_hyphen_error=0
+  local c_invalid_files=0
   for f in "$EXPECTED_DIR"/*.json; do
     [ -f "$f" ] || continue
     local name
     name=$(basename "$f")
+    local key="${name%.json}"
+    local file_bad=0 file_reasons=""
+
+    # --- must_not_find without a line, same dimension as a must_find -------
     local fp_count
     fp_count=$(jq '.must_not_find | length' "$f")
     local j=0
@@ -255,18 +332,179 @@ validate_expected() {
         if jq -e --arg d "$bad_dim" '[.must_find[].dimension] | index($d) != null' "$f" >/dev/null; then
           echo "ERROR: expected/$name must_not_find[$j] (dimension '$bad_dim') has no line and shares its dimension with a must_find entry — the check degrades to dimension-wide and the fixture's own correct hit(s) would count as false positives, making 0 FPs impossible. Add a line." >&2
           bad=1
+          file_bad=1; file_reasons="$file_reasons,must_not_find missing line"
+          c_mnf_error=$((c_mnf_error + 1))
         else
           echo "WARNING: expected/$name must_not_find[$j] (dimension '$bad_dim') has no line — the check degrades to 'any finding in this dimension is a false positive'. If that is not deliberate, add a line." >&2
+          c_mnf_warning=$((c_mnf_warning + 1))
         fi
       fi
       j=$((j + 1))
     done
+
+    # --- fixture field: resolvable, and whether it names a single file -----
+    local fixture_field fixture_abs fixture_is_file=0 fixture_line_count=0
+    fixture_field=$(jq -r '.fixture' "$f")
+    fixture_abs="$FIXTURES_DIR/$fixture_field"
+    if [ ! -e "$fixture_abs" ]; then
+      echo "ERROR: expected/$name fixture '$fixture_field' does not exist under fixtures/." >&2
+      bad=1
+      file_bad=1; file_reasons="$file_reasons,missing fixture"
+      c_missing_fixture=$((c_missing_fixture + 1))
+    elif [ -f "$fixture_abs" ]; then
+      fixture_is_file=1
+      fixture_line_count=$(wc -l < "$fixture_abs" | tr -d ' ')
+    fi
+    # else: directory fixture — line-range check below is skipped for it.
+
+    # --- window collision: must_find vs must_not_find, same dimension ------
+    local collisions
+    collisions=$(jq -c '
+      [.must_find[]? | select(.line != null) | {dim: .dimension, line: .line}] as $mf
+      | [.must_not_find[]? | select(.line != null) | {dim: .dimension, line: .line}] as $mnf
+      | [ $mf[] as $a | $mnf[] as $b
+          | select($a.dim == $b.dim and (($a.line - $b.line) | if . < 0 then -. else . end) <= 3)
+          | {dim: $a.dim, must_find_line: $a.line, must_not_find_line: $b.line} ]
+      | .[]
+    ' "$f")
+    if [ -n "$collisions" ]; then
+      while IFS= read -r c; do
+        [ -z "$c" ] && continue
+        local cdim cmf cmnf cgap
+        cdim=$(echo "$c" | jq -r '.dim')
+        cmf=$(echo "$c" | jq -r '.must_find_line')
+        cmnf=$(echo "$c" | jq -r '.must_not_find_line')
+        cgap=$((cmf > cmnf ? cmf - cmnf : cmnf - cmf))
+        echo "ERROR: expected/$name dimension '$cdim' has must_find line $cmf and must_not_find line $cmnf, $cgap line(s) apart — the must_find line falls inside the must_not_find's +/-3 false-positive window, making the fixture unscoreable in one direction." >&2
+        bad=1
+        file_bad=1; file_reasons="$file_reasons,window collision"
+        c_window=$((c_window + 1))
+      done <<< "$collisions"
+    fi
+
+    # --- per must_find entry: severity, dimension, line range, keywords ----
+    local mf_count
+    mf_count=$(jq '.must_find | length' "$f")
+    local i=0
+    while [ "$i" -lt "$mf_count" ]; do
+      local dim sev line
+      dim=$(jq -r ".must_find[$i].dimension" "$f")
+      sev=$(jq -r ".must_find[$i].severity // empty" "$f")
+      line=$(jq -r ".must_find[$i].line // empty" "$f")
+
+      if [ -n "$sev" ]; then
+        case "$(printf '%s' "$sev" | tr '[:upper:]' '[:lower:]')" in
+          critical|important|minor) ;;
+          *)
+            echo "ERROR: expected/$name must_find[$i] has unknown severity '$sev' (expected critical, important or minor)." >&2
+            bad=1
+            file_bad=1; file_reasons="$file_reasons,unknown severity"
+            c_unknown_sev=$((c_unknown_sev + 1)) ;;
+        esac
+      fi
+
+      if [ -n "$dim" ] && ! grep -qxF "$dim" <<< "$KNOWN_DIMENSIONS"; then
+        echo "ERROR: expected/$name must_find[$i] has unknown dimension '$dim' (not one of find.js's ALL_DIMENSIONS or the documented quality/correctness aliases)." >&2
+        bad=1
+        file_bad=1; file_reasons="$file_reasons,unknown dimension"
+        c_unknown_dim=$((c_unknown_dim + 1))
+      fi
+
+      if [ -n "$line" ] && [ "$fixture_is_file" -eq 1 ]; then
+        if [ "$line" -le 0 ] 2>/dev/null || [ "$line" -gt "$fixture_line_count" ] 2>/dev/null; then
+          echo "ERROR: expected/$name must_find[$i] cites line $line but $fixture_field has $fixture_line_count lines." >&2
+          bad=1
+          file_bad=1; file_reasons="$file_reasons,line out of range"
+          c_range=$((c_range + 1))
+        fi
+      fi
+
+      local kw_count dead_count
+      kw_count=$(jq ".must_find[$i].matches | length" "$f")
+      dead_count=0
+      local k=0
+      while [ "$k" -lt "$kw_count" ]; do
+        local kw
+        kw=$(jq -r ".must_find[$i].matches[$k]" "$f")
+        case "$kw" in
+          *-*)
+            echo "WARNING: expected/$name must_find[$i].matches[$k] '$kw' contains a hyphen — score_fixture runs the log through tr '-' ' ' before matching, so this keyword can never match. Write it space-separated." >&2
+            c_hyphen_warn=$((c_hyphen_warn + 1))
+            dead_count=$((dead_count + 1)) ;;
+        esac
+        k=$((k + 1))
+      done
+      if [ "$kw_count" -gt 0 ] && [ "$dead_count" -eq "$kw_count" ]; then
+        echo "ERROR: expected/$name must_find[$i] has every keyword hyphenated — this entry can never match after tr '-' ' ', not just a weakened one." >&2
+        bad=1
+        file_bad=1; file_reasons="$file_reasons,all keywords hyphenated"
+        c_hyphen_error=$((c_hyphen_error + 1))
+      fi
+
+      i=$((i + 1))
+    done
+
+    # --- must_not_find dimension/line checks (independent of must_find) ----
+    j=0
+    while [ "$j" -lt "$fp_count" ]; do
+      local mnf_dim
+      mnf_dim=$(jq -r ".must_not_find[$j].dimension" "$f")
+      if [ -n "$mnf_dim" ] && ! grep -qxF "$mnf_dim" <<< "$KNOWN_DIMENSIONS"; then
+        echo "ERROR: expected/$name must_not_find[$j] has unknown dimension '$mnf_dim' (not one of find.js's ALL_DIMENSIONS or the documented quality/correctness aliases)." >&2
+        bad=1
+        file_bad=1; file_reasons="$file_reasons,unknown dimension"
+        c_unknown_dim=$((c_unknown_dim + 1))
+      fi
+      local mnf_line
+      mnf_line=$(jq -r ".must_not_find[$j].line // empty" "$f")
+      if [ -n "$mnf_line" ] && [ "$fixture_is_file" -eq 1 ]; then
+        if [ "$mnf_line" -le 0 ] 2>/dev/null || [ "$mnf_line" -gt "$fixture_line_count" ] 2>/dev/null; then
+          echo "ERROR: expected/$name must_not_find[$j] cites line $mnf_line but $fixture_field has $fixture_line_count lines." >&2
+          bad=1
+          file_bad=1; file_reasons="$file_reasons,line out of range"
+          c_range=$((c_range + 1))
+        fi
+      fi
+      j=$((j + 1))
+    done
+
+    if [ "$file_bad" -eq 1 ]; then
+      INVALID_EXPECTED[$key]="${file_reasons#,}"
+      c_invalid_files=$((c_invalid_files + 1))
+    fi
   done
+
+  echo
+  echo "Validation summary"
+  echo "-------------------"
+  echo "  must_not_find missing line, same dimension as must_find (error): $c_mnf_error"
+  echo "  must_not_find missing line, different dimension (warning):       $c_mnf_warning"
+  echo "  window collisions (error):                                      $c_window"
+  echo "  line out of range (error):                                      $c_range"
+  echo "  missing fixture file (error):                                   $c_missing_fixture"
+  echo "  unknown dimension (error):                                      $c_unknown_dim"
+  echo "  unknown severity (error):                                       $c_unknown_sev"
+  echo "  hyphenated keyword, never matches (warning):                    $c_hyphen_warn"
+  echo "  entry fully unsatisfiable, all keywords hyphenated (error):     $c_hyphen_error"
+  echo "  fixtures invalidated (error, skipped in a normal run):          $c_invalid_files"
+
   if [ "$bad" -eq 1 ]; then
-    echo "ERROR: one or more expected/*.json files have unscoreable must_not_find entries (see above)." >&2
-    exit 1
+    echo "ERROR: one or more expected/*.json files failed validation (see above)." >&2
+    # --validate-only exists to fail loudly in a pre-commit/CI context, so it
+    # keeps aborting here. A normal run does NOT exit: score_fixture() skips
+    # exactly the fixtures recorded in INVALID_EXPECTED and measures the rest
+    # instead of refusing the whole suite over a few malformed files.
+    if [ "$VALIDATE_ONLY" -eq 1 ]; then
+      exit 1
+    fi
   fi
 }
+if [ "$VALIDATE_ONLY" -eq 1 ]; then
+  validate_expected
+  echo
+  echo "--validate-only: no fixtures were run."
+  exit 0
+fi
 validate_expected
 
 # Per-run artifact dir (gitignored via results/): session stdout + audit log
@@ -288,12 +526,18 @@ TOTAL_FALSE_POSITIVE=0
 TOTAL_TIMEOUT=0
 TOTAL_NO_AUDIT_LOG=0
 # A fixture counts as a scoring CANDIDATE once it has a matching expected/*.json
-# (i.e. it was not SKIPped). It becomes UNMEASURED if its session never produced
+# that also passed validate_expected() (i.e. it was neither SKIPped nor
+# INVALID_EXPECTED). It becomes UNMEASURED if its session never produced
 # anything scorable at all (mktemp failed before the audit could even run, or
 # the audit log AND session stdout were both empty/absent) — that is a harness
 # failure, not a zero-recall result, and must never be silently reported as one.
+# TOTAL_INVALID_EXPECTED is a third, disjoint bucket: a fixture whose
+# expected/*.json failed validate_expected() never became a candidate in the
+# first place, so it is neither a recall miss nor an UNMEASURED harness
+# failure — it was never scoreable to begin with.
 TOTAL_CANDIDATES=0
 TOTAL_UNMEASURED=0
+TOTAL_INVALID_EXPECTED=0
 declare -A CAT_FOUND
 declare -A CAT_CORRECT
 declare -A CAT_EXPECTED
@@ -341,6 +585,16 @@ score_fixture() {
   local expected_file="$EXPECTED_DIR/$base.json"
   if [ ! -f "$expected_file" ]; then
     echo "  SKIP $fixture_rel (no expected/$base.json)"
+    return
+  fi
+
+  # expected/$base.json exists but validate_expected() flagged it: it was
+  # never scoreable, so it does not become a CANDIDATE at all (same tier as
+  # the SKIP above, not a run that failed). See INVALID_EXPECTED's definition
+  # at validate_expected() for what counts as invalidating vs. a warning.
+  if [ -n "${INVALID_EXPECTED[$base]:-}" ]; then
+    echo "  INVALID_EXPECTED $fixture_rel (expected/$base.json: ${INVALID_EXPECTED[$base]}) — skipped, not scored"
+    TOTAL_INVALID_EXPECTED=$((TOTAL_INVALID_EXPECTED + 1))
     return
   fi
   TOTAL_CANDIDATES=$((TOTAL_CANDIDATES + 1))
@@ -666,6 +920,7 @@ echo "  False-positives: $TOTAL_FALSE_POSITIVE"
 [ "$TOTAL_TIMEOUT" -gt 0 ] && echo "  TIMED OUT (unmeasured, counted as misses): $TOTAL_TIMEOUT"
 [ "$TOTAL_NO_AUDIT_LOG" -gt 0 ] && echo "  NO AUDIT LOG FOUND (scored from stdout fallback only, treat as unconfirmed): $TOTAL_NO_AUDIT_LOG"
 [ "$TOTAL_UNMEASURED" -gt 0 ] && echo "  UNMEASURED (no audit log AND no session output, excluded from recall above): $TOTAL_UNMEASURED / $TOTAL_CANDIDATES"
+[ "$TOTAL_INVALID_EXPECTED" -gt 0 ] && echo "  INVALID EXPECTATION (expected/*.json failed validation, never became a candidate, not a recall miss): $TOTAL_INVALID_EXPECTED"
 echo
 echo "Per category:"
 for cat in "${!CAT_EXPECTED[@]}"; do
@@ -680,9 +935,13 @@ done
 # from a genuine zero-recall result unless the exit code says otherwise — that
 # ambiguity is exactly how the second 2026-09-10 incident went unnoticed since
 # 2026-09-05. TOTAL_CANDIDATES == 0 (e.g. a typo'd --only) is the same failure
-# mode: nothing was measured.
+# mode: nothing was measured. A fixture skipped as INVALID_EXPECTED never
+# becomes a candidate (see score_fixture), so a run where --only selects
+# nothing but invalid fixtures already falls into TOTAL_CANDIDATES == 0 here —
+# no separate branch needed: it is exactly as much "nothing was measured" as
+# a typo'd --only, and the caller needs the same non-zero signal to notice.
 if [ "$TOTAL_CANDIDATES" -eq 0 ] || [ "$TOTAL_UNMEASURED" -eq "$TOTAL_CANDIDATES" ]; then
   echo
-  echo "ERROR: nothing was measured ($TOTAL_UNMEASURED/$TOTAL_CANDIDATES candidate fixtures unmeasured) — this is a harness failure, not a zero-recall result" >&2
+  echo "ERROR: nothing was measured ($TOTAL_UNMEASURED/$TOTAL_CANDIDATES candidate fixtures unmeasured, $TOTAL_INVALID_EXPECTED skipped as invalid) — this is a harness failure, not a zero-recall result" >&2
   exit 1
 fi

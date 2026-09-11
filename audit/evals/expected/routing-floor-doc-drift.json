@@ -2,13 +2,13 @@
   "fixture": "docs/routing-floor-doc-drift/",
   "must_find": [
     {
-      "dimension": "docs",
+      "dimension": "docs_sync",
       "line": 13,
       "matches": ["notify", "does not exist", "no such", "not implemented", "drift", "stale", "channel"],
       "severity": "important"
     },
     {
-      "dimension": "docs",
+      "dimension": "docs_sync",
       "line": 18,
       "matches": ["three flags", "four", "skip-tests", "channel", "undocumented", "drift", "stale"],
       "severity": "important"

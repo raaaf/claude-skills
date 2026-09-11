@@ -11,6 +11,7 @@
   "must_not_find": [
     {
       "dimension": "quality",
+      "line": 10,
       "reason": "the repeated numeric_state entity list is the only expressible form in HA YAML, not a DRY violation"
     },
     {

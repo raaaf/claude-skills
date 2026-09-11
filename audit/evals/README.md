@@ -137,6 +137,32 @@ occasionally the intended claim there. Point `line` at the specific line the
 general — see the security fixtures for examples of picking the line that
 anchors a "this specific spot is correct, don't flag it" claim.
 
+## Validating expected/*.json without running anything
+
+`--validate-only` runs every check `run-evals.sh` does on `expected/*.json`
+before a normal run, prints a summary by class, and exits — no fixtures run,
+no model calls, no cost. Seconds instead of hours. Always run this after
+touching `expected/`, and periodically on the whole set to catch drift early
+instead of discovering it after an expensive run.
+
+```bash
+bash audit/evals/run-evals.sh --validate-only
+```
+
+Checks (see `validate_expected()` in `run-evals.sh` for the exact matching
+mechanism each one is grounded in):
+
+| Check | Severity | What it catches |
+|---|---|---|
+| `must_not_find` missing `line`, same dimension as a `must_find` | error | the check degrades to dimension-wide and the fixture's own correct hit counts as its own false positive |
+| `must_not_find` missing `line`, different dimension | warning | sometimes intentional, but indistinguishable from a forgotten line |
+| Window collision | error | a `must_find` and a `must_not_find` in the same dimension, 3 or fewer lines apart; the `must_find` line falls inside the `must_not_find`'s +/-3 false-positive window |
+| Line out of range | error | a cited `line` is <=0 or past the end of the fixture file (only checked when `fixture` names a single resolvable file; directory fixtures are skipped, not guessed at) |
+| Missing fixture | error | `fixture` points at a path that does not exist under `fixtures/` |
+| Unknown dimension | error | `dimension` is not one of find.js's `ALL_DIMENSIONS` or the two documented aliases (`quality`, `correctness`, both of which `dim_pattern_for()` resolves to the `code_quality` pattern) |
+| Unknown severity | error | a `must_find` `severity` other than `critical`/`important`/`minor` (case-insensitive) |
+| Hyphenated keyword | warning, or error if every keyword in one entry is hyphenated | `score_fixture` runs the log through `tr '-' ' '` before matching, so a keyword containing a hyphen can never match; write keywords space-separated. Escalates to a hard error only when no sibling keyword in the same entry can match either |
+
 ## Running
 
 Requires bash 4+ (`declare -A`); on macOS: `brew install bash`.
@@ -160,21 +186,50 @@ Three options exist for that reason:
 | `--only <substring>` | Run only fixtures whose path contains the substring |
 | `--scoped` | Run `/audit <dimension>` derived from the fixture's category instead of a full audit. Far cheaper, but it measures worker recall instead of routing plus worker recall, so scoped numbers are not comparable to unscoped baselines |
 | `--timeout <sec>` | Per-fixture cap. A timed-out fixture scores as a miss, which is indistinguishable from a recall collapse, so timeouts are printed per fixture and totalled in the summary. Never read a recall number without checking that line |
+| `--validate-only` | Run only `validate_expected()` (see above) and exit. Seconds, no cost, no fixtures run — use this first |
+
+## A malformed expected/*.json invalidates its own fixture, not the suite
+
+`validate_expected()` (the same checks `--validate-only` runs, see above)
+also runs at the start of a normal run. It no longer aborts the whole suite
+when it finds an error: a broken `expected/*.json` only invalidates the one
+fixture it belongs to. The summary of errors/warnings by class still prints
+exactly as under `--validate-only`, but the run then continues instead of
+exiting.
+
+Each fixture whose `expected/*.json` failed an error-level check (warnings do
+not invalidate) is skipped during the fixture loop with its own line:
+
+```
+  INVALID_EXPECTED <fixture> (expected/<name>.json: <reason class>) — skipped, not scored
+```
+
+and counted in the final summary as `INVALID EXPECTATION`, its own category,
+separate from both `Recall` and `UNMEASURED`: it was never a scoreable
+candidate in the first place, so it is neither a recall miss (nothing ran
+against it) nor a harness failure while running (the harness worked exactly
+as designed).
+
+`--validate-only` keeps the old behavior unchanged: it still prints the
+summary and exits non-zero when there are errors, since that mode exists to
+fail loudly in a pre-commit or CI context.
 
 ## Exit code
 
 `run-evals.sh` exits non-zero when nothing was actually measured: every
-candidate fixture (one with a matching `expected/*.json`) failed before
-producing an audit log or session stdout to score (mktemp failure, or the
-`claude` session dying before writing anything), or there were zero candidate
-fixtures at all (e.g. a typo'd `--only`). This case prints `ERROR: nothing
-was measured` and is reported in the summary as `UNMEASURED`, separate from
-recall. A zero-recall result with exit 0 means fixtures genuinely ran and were
-scored; it does not mean the harness itself worked, but at least one fixture
-did produce scorable output. Do not read a `Recall: 0/N` line as proof the
-audit missed everything without first checking the exit code and the
-`UNMEASURED` line — a harness failure and a genuine recall collapse both used
-to look identical (2026-09-10 incident).
+candidate fixture (one with a matching, valid `expected/*.json`) failed
+before producing an audit log or session stdout to score (mktemp failure, or
+the `claude` session dying before writing anything), or there were zero
+candidate fixtures at all (e.g. a typo'd `--only`, or `--only` matching
+nothing but fixtures skipped as `INVALID_EXPECTED`, since those never become
+candidates either). This case prints `ERROR: nothing was measured` and is
+reported in the summary as `UNMEASURED`, separate from recall. A zero-recall
+result with exit 0 means fixtures genuinely ran and were scored; it does not
+mean the harness itself worked, but at least one fixture did produce
+scorable output. Do not read a `Recall: 0/N` line as proof the audit missed
+everything without first checking the exit code and the `UNMEASURED` line —
+a harness failure and a genuine recall collapse both used to look identical
+(2026-09-10 incident).
 
 ## Adding a fixture
 
