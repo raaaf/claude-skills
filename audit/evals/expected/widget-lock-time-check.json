@@ -20,6 +20,7 @@
   "must_not_find": [
     {
       "dimension": "security",
+      "line": 26,
       "reason": "LockBridge.isLocked itself is correct for a point-in-time question; the defect is the caller baking it into a long-lived timeline"
     },
     {

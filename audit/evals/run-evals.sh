@@ -226,6 +226,49 @@ if [ ! -d "$FIXTURES_DIR" ] || [ ! -d "$EXPECTED_DIR" ]; then
   exit 1
 fi
 
+# A must_not_find entry without a `line` degrades to "any finding in this
+# dimension is a false positive" (see the must_not_find scoring loop below).
+# That is only sound when the entry's dimension differs from every must_find
+# dimension in the same file; when it matches, the fixture's own legitimate
+# must_find hits count as false positives and 0 FPs becomes arithmetically
+# impossible (2026-09-10 incident: 3 of 8 measured security FPs were exactly
+# this). Same-dimension + no line is therefore a hard error, not a warning —
+# there is no legitimate reason for it. Different-dimension + no line is
+# still surfaced as a warning: it is sometimes intentional (a truly
+# dimension-wide "nothing here belongs in category X" claim) but is
+# indistinguishable from a forgotten line, so the author must see it.
+validate_expected() {
+  local bad=0
+  local f
+  for f in "$EXPECTED_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    local name
+    name=$(basename "$f")
+    local fp_count
+    fp_count=$(jq '.must_not_find | length' "$f")
+    local j=0
+    while [ "$j" -lt "$fp_count" ]; do
+      local bad_line bad_dim
+      bad_line=$(jq -r ".must_not_find[$j].line // empty" "$f")
+      if [ -z "$bad_line" ]; then
+        bad_dim=$(jq -r ".must_not_find[$j].dimension" "$f")
+        if jq -e --arg d "$bad_dim" '[.must_find[].dimension] | index($d) != null' "$f" >/dev/null; then
+          echo "ERROR: expected/$name must_not_find[$j] (dimension '$bad_dim') has no line and shares its dimension with a must_find entry — the check degrades to dimension-wide and the fixture's own correct hit(s) would count as false positives, making 0 FPs impossible. Add a line." >&2
+          bad=1
+        else
+          echo "WARNING: expected/$name must_not_find[$j] (dimension '$bad_dim') has no line — the check degrades to 'any finding in this dimension is a false positive'. If that is not deliberate, add a line." >&2
+        fi
+      fi
+      j=$((j + 1))
+    done
+  done
+  if [ "$bad" -eq 1 ]; then
+    echo "ERROR: one or more expected/*.json files have unscoreable must_not_find entries (see above)." >&2
+    exit 1
+  fi
+}
+validate_expected
+
 # Per-run artifact dir (gitignored via results/): session stdout + audit log
 # per fixture, for post-hoc diagnosis and rescoring without paid reruns.
 RESULTS_DIR="$EVALS_DIR/results/$(date +%Y-%m-%d_%H%M%S)"

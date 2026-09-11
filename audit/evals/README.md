@@ -14,10 +14,49 @@ SHOULD produce. The runner scores precision/recall.
 
 ## Status: growing eval suite
 
-As of 2026-09-04: 84 scorable fixtures (matched against `expected/<base>.json`)
-across 12 categories (a11y, animation, architecture, copy, correctness, docs,
-performance, quality, reliability, security, ui, ux) ship with the repo. Not yet a stable benchmark:
-add a new fixture every time you discover a class of bug the audit missed.
+As of 2026-09-10: 88 scorable fixtures (matched against `expected/<base>.json`)
+across 13 categories (a11y, animation, architecture, copy, correctness, docs,
+payments, performance, quality, reliability, security, ui, ux) ship with the repo. Not yet a stable
+benchmark: add a new fixture every time you discover a class of bug the audit missed.
+
+**The harness produced no valid measurement between 2026-09-05 and 2026-09-10.** The per-dimension
+rebuild rewrote the invocation as `... ${dim_env:-AUDIT_FIX_SCOPE=none} claude -p`, and an
+assignment arriving from a parameter expansion is a command name to the shell, not an assignment.
+No fixture started a session in that window; every run reported 0 recall and exited 0. Any number
+recorded from this harness in that period is void. The calibration figures in the root `CLAUDE.md`
+are NOT from this harness and stand unaffected.
+
+### Baseline, 2026-09-10 (first valid measurement after the repair)
+
+Both runs `--scoped`, so they measure worker recall for one dimension, never routing. Do not compare
+them against unscoped numbers.
+
+| Dimension | Fixtures | Recall | False positives | Unmeasured |
+|---|---|---|---|---|
+| payments | 4 | 3/4 | 0 | 1 (no audit log written) |
+| security | 20 | 19/24 expected findings | 8 as measured, 5 after correcting the harness | 1 (timeout at 901s) |
+
+**The security false-positive count was mostly the harness, not the dimension.** The run reported 8;
+analysing each against the artifacts gave a different picture. Three came from `must_not_find`
+entries with no `line`, which degrades the check to "any finding in this dimension is a false
+positive", so those specialists were penalised for their own correct hit. Those three expectations
+now carry a line and the runner hard-errors on the combination. Two more were the specialist
+correctly following the coverage-not-filtering rule in `agents/prompt-template.md` and reporting a
+genuine secondary weakness the fixture treats as scenery, which is arguably the fixture's problem,
+not the prompt's. Two were not reproducible from the artifacts at all. That leaves at most one to
+two real false positives, all of the same narrow shape: an adjacent, correct guard pulled into the
+fix alongside the real defect.
+
+The lesson is the one this whole suite exists to catch, applied to itself: a false-positive number
+is a claim about the measuring tool until each case has been read against the artifacts. Do not act
+on an aggregate here without doing that.
+
+`hash-verified-earlier-in-file.php` is a pure trap with `expected: 0` and it passes, which is worth
+knowing: what separates it from the failures is that its rule (`guidelines/security.md:26-28`) names
+the exact failure shape and its bar is a single binary outcome.
+
+The remaining 11 dimensions are unmeasured since the break. Roughly five minutes per fixture
+scoped, so budget accordingly before starting a category.
 
 ## Layout
 
@@ -84,6 +123,19 @@ counts as a hit. Matching tolerates ordinary word-form variation: keywords of
 matched verbatim and phrasing you actually expect the audit to use, not a
 mash of synonyms, is still the right way to write `matches`. `must_not_find`
 catches false positives.
+
+A `must_not_find` entry needs a `line` whenever its `dimension` also appears
+in `must_find` for the same fixture: without it, the check degrades to "any
+finding in this dimension is a false positive", so the fixture's own
+legitimate `must_find` hit counts as the false positive it was penalized for,
+and 0 FPs becomes arithmetically impossible. `run-evals.sh` hard-errors on
+this before running anything. A `must_not_find` entry whose dimension is
+*not* in `must_find` (the `performance` example above, against a `security`
+must_find) may omit `line`; the runner only warns, since dimension-wide is
+occasionally the intended claim there. Point `line` at the specific line the
+`reason` is actually about, not at the finding you want to suppress in
+general — see the security fixtures for examples of picking the line that
+anchors a "this specific spot is correct, don't flag it" claim.
 
 ## Running
 
