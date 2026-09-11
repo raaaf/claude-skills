@@ -35,6 +35,15 @@ them against unscoped numbers.
 |---|---|---|---|---|
 | payments | 4 | 3/4 | 0 | 1 (no audit log written) |
 | security | 20 | 19/24 expected findings | 8 as measured, 5 after correcting the harness | 1 (timeout at 901s) |
+| architecture | 17 | 17/18 | 0 | 0 |
+
+`architecture` is the cleanest picture so far and the only dimension measured after every harness
+repair of 2026-09-10: no false positives, no timeouts, no unmeasured fixtures, and `--recheck`
+reports no scorer gap. The single miss is a dead write
+(`job-payload-overwritten-before-consumption.php:31`, a flag assigned and never read) in a fixture
+whose larger Critical was found. Treat its 94 percent as the current ceiling reference, not as a
+target: it is one dimension on 17 fixtures, and `security` at 79 percent was measured against
+expectations that have since been shown to under-report by at least one hit.
 
 **The security false-positive count was mostly the harness, not the dimension.** The run reported 8;
 analysing each against the artifacts gave a different picture. Three came from `must_not_find`
@@ -187,6 +196,54 @@ Three options exist for that reason:
 | `--scoped` | Run `/audit <dimension>` derived from the fixture's category instead of a full audit. Far cheaper, but it measures worker recall instead of routing plus worker recall, so scoped numbers are not comparable to unscoped baselines |
 | `--timeout <sec>` | Per-fixture cap. A timed-out fixture scores as a miss, which is indistinguishable from a recall collapse, so timeouts are printed per fixture and totalled in the summary. Never read a recall number without checking that line |
 | `--validate-only` | Run only `validate_expected()` (see above) and exit. Seconds, no cost, no fixtures run — use this first |
+| `--recheck <dir>` | Re-run the scorer-gap tripwire (see below) over a stored `results/<timestamp>/` directory instead of running fixtures. Seconds, no cost — see "Scorer-gap tripwire" below |
+
+## Scorer-gap tripwire
+
+Every scoring run compares two things that should roughly agree, per dimension
+present in a fixture's `must_find`: how many real finding lines the audit log
+actually carries tagged with that dimension, against how many `must_find`
+hits the strict scorer credited for it. It only fires on a hard
+zero-vs-nonzero mismatch in either direction, never on "found more or fewer
+than expected" — a dimension where the scorer credited at least one hit never
+trips it, so a fixture that scores correctly cannot trigger it.
+
+- `SCORER_GAP`: the log carries findings tagged with the dimension, but the
+  scorer credited zero `must_find` hits for it. The audit likely reported the
+  right thing and the scorer failed to count it (a strict keyword or line
+  window mismatch) — this needs a human look, not a lower recall number.
+- `SUSPICIOUS_CREDIT`: the inverse. The scorer credited a hit while the log
+  carries no finding tagged with that dimension at all — it may have matched
+  a non-finding line (a scope/summary sentence, a table header) instead of an
+  actual finding.
+
+A finding line is recognized two ways: the canonical `[Severity][Dimension]`
+bracket tag, or the dimension's own worker-ID prefix (`dim-n-n`) followed
+within ~20 characters by a bare severity word — real sessions drift from the
+bracket shape into several punctuation variants around that same ID (a bold
+bullet, a markdown table row, a numbered list), and the ID+severity pair is
+the one thing that survives all of them. This is a rough, dimension-level
+count comparison by design, not a second scorer: it does not check that the
+reported line and the credited hit are about the same finding, only that the
+counts agree in sign. A fifth punctuation variant that also breaks the
+ID+severity adjacency is invisible to it, the same fragility the rest of this
+harness already lives with (see "Honest limitations" below).
+
+Both counters print per-fixture warning lines and a total in the summary,
+under both a normal run and `--recheck`. Measured on the 2026-09-10 security
+batch (20 fixtures): 2 `SCORER_GAP` fires, both confirmed by hand to be real
+(the audit cited the correct dimension and defect a few lines outside the
+scorer's line window) — 0 false positives on a batch where 19/24 fixtures
+scored correctly.
+
+`--recheck <dir>` runs this same comparison over a stored
+`results/<timestamp>/` directory's `*-auditlog.md` / `*-stdout.txt`
+artifacts, without executing anything — free, after the fact, on any past
+run:
+
+```bash
+bash audit/evals/run-evals.sh --recheck audit/evals/results/2026-09-10_222221
+```
 
 ## A malformed expected/*.json invalidates its own fixture, not the suite
 

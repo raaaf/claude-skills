@@ -43,12 +43,17 @@ EXPECTED_DIR="$EVALS_DIR/expected"
 #                        exit — no fixture runs, no model calls, no cost. Seconds
 #                        instead of hours. Prints a summary of errors/warnings by
 #                        class. See validate_expected() for what it checks.
+#   --recheck <dir>      re-run the scorer-gap tripwire (see score_against_log)
+#                        over a stored results/<timestamp>/ directory, reading
+#                        its *-auditlog.md / *-stdout.txt artifacts. No fixture
+#                        runs, no model calls, no cost.
 # ---------------------------------------------------------------------------
 ONLY=""
 PER_FIXTURE_TIMEOUT=1200
 SCOPED=0
 VALIDATE_ONLY=0
-USAGE="usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped] [--validate-only]"
+RECHECK_DIR=""
+USAGE="usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped] [--validate-only] [--recheck <dir>]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)
@@ -65,6 +70,9 @@ while [ $# -gt 0 ]; do
       shift 2 ;;
     --scoped)         SCOPED=1; shift ;;
     --validate-only)  VALIDATE_ONLY=1; shift ;;
+    --recheck)
+      [ $# -ge 2 ] || { echo "$USAGE" >&2; exit 2; }
+      RECHECK_DIR="$2"; shift 2 ;;
     -h|--help) echo "$USAGE"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -507,18 +515,6 @@ if [ "$VALIDATE_ONLY" -eq 1 ]; then
 fi
 validate_expected
 
-# Per-run artifact dir (gitignored via results/): session stdout + audit log
-# per fixture, for post-hoc diagnosis and rescoring without paid reruns.
-RESULTS_DIR="$EVALS_DIR/results/$(date +%Y-%m-%d_%H%M%S)"
-mkdir -p "$RESULTS_DIR"
-echo "Artifacts: $RESULTS_DIR"
-
-# Check claude CLI available
-if ! command -v claude >/dev/null 2>&1; then
-  echo "ERROR: 'claude' CLI not found. Eval runner requires non-interactive Claude Code."
-  exit 1
-fi
-
 TOTAL_EXPECTED=0
 TOTAL_FOUND=0
 TOTAL_CORRECT=0
@@ -538,6 +534,13 @@ TOTAL_NO_AUDIT_LOG=0
 TOTAL_CANDIDATES=0
 TOTAL_UNMEASURED=0
 TOTAL_INVALID_EXPECTED=0
+# Scorer-gap tripwire counters (see score_against_log): a SCORER_GAP means the
+# log clearly contains dimension findings the scorer credited none of; a
+# SUSPICIOUS_CREDIT means the inverse, a credited hit with no matching
+# dimension finding in the log at all. Both are diagnostic, never part of the
+# recall calculation.
+TOTAL_SCORER_GAP=0
+TOTAL_SUSPICIOUS_CREDIT=0
 declare -A CAT_FOUND
 declare -A CAT_CORRECT
 declare -A CAT_EXPECTED
@@ -559,6 +562,245 @@ stem_match() {
   fi
   printf '\\b%s' "$kw"
 }
+
+# Read both artifact files (audit log + session stdout, in that order, exactly
+# as a live fixture run persists them) and join wrapped bullets into single
+# physical lines. Shared by the live run (score_fixture, which passes tmp-dir
+# paths) and --recheck (which passes stored results/<timestamp>/ paths), so the
+# two can never parse the same artifact shape differently.
+build_joined_log() {
+  local logfile="$1" stdoutfile="$2"
+  { cat "$logfile" 2>/dev/null; printf '\n'; cat "$stdoutfile" 2>/dev/null; } | normalize_findings
+}
+
+# Score one fixture's already-built log against its expected/*.json, and run
+# the scorer-gap tripwire alongside it. Takes the joined (pre-tr, one bullet
+# per physical line) and tr'd (hyphen-tolerant, what must_find/must_not_find
+# actually grep against) log text so the tripwire and the real scoring share
+# one parse, never two that could drift apart. `elapsed_label` is printed
+# verbatim on the summary line ("42s" for a live run, "recheck" for a stored
+# one).
+#
+# Scorer-gap tripwire: compares, per dimension present in this fixture's
+# must_find, "how many real finding lines does the log carry tagged with this
+# dimension" against "how many must_find hits did the strict scorer credit
+# for this dimension". A finding line is recognized two ways: the canonical
+# "[Severity][Dimension]" bracket tag, or the dimension's own worker-ID prefix
+# ("dim-n-n", find.js's internal numbering) followed within ~20 characters by
+# a bare severity word. The ID-based half exists because real sessions drift
+# from the canonical bracket shape into several punctuation variants around
+# that same ID — a bold bullet ("- **payments-0-1 — Critical (CONFIRMED)**"),
+# a markdown table row ("| payments-0-1 | Critical | ... |"), and a numbered
+# list ("1. payments-0-1 (Important, CONFIRMED) file:line") were all seen in
+# real 2026-09-10 artifacts — and the ID+severity pair is the one thing that
+# stays intact across all of them, unlike the surrounding markup. A fifth
+# variant that also breaks the ID+severity adjacency is invisible to this
+# detector, same known fragility as the rest of this harness (see README
+# "Honest limitations"). It only fires on a hard 0-vs-nonzero mismatch in
+# either direction, never on
+# "audit found more/fewer than expected" — a dimension where the scorer
+# credited at least one hit never trips it, no matter how many other findings
+# the log carries in that dimension, so a fixture that scores correctly can
+# never trigger it. Deliberately rough: it does not check that the reported
+# bullet and the credited hit are about the SAME finding, only that the
+# dimension-level counts agree in sign. That is the tripwire's known limit —
+# it says "look at this fixture by hand", it is not a second scorer, and a
+# malformed must_find entry (see the line/matches ERRORs above) that shares a
+# dimension with a real finding can still fire it for a reason other than a
+# scoring bug.
+score_against_log() {
+  local base="$1" expected_file="$2" log="$3" joined_log="$4" elapsed_label="$5"
+  local category
+  category=$(jq -r '.fixture' "$expected_file" | cut -d/ -f1)
+
+  # Parse expected
+  local expected_count
+  expected_count=$(jq '.must_find | length' "$expected_file")
+  TOTAL_EXPECTED=$((TOTAL_EXPECTED + expected_count))
+  CAT_EXPECTED[$category]=$(( ${CAT_EXPECTED[$category]:-0} + expected_count ))
+
+  local hits=0
+  local -A dim_credited
+  local i=0
+  while [ "$i" -lt "$expected_count" ]; do
+    local dim line matches_csv
+    dim=$(jq -r ".must_find[$i].dimension" "$expected_file")
+    line=$(jq -r ".must_find[$i].line // empty" "$expected_file")
+    # Stem each keyword individually (see stem_match) rather than joining the
+    # raw strings: a plain join would keep matching only the exact word form
+    # named in the fixture, e.g. "idempotent", and miss a correct finding that
+    # says "idempotency key" instead.
+    matches_csv=""
+    while IFS= read -r match; do
+      [ -n "$matches_csv" ] && matches_csv="$matches_csv|"
+      matches_csv="$matches_csv$(stem_match "$match")"
+    done < <(jq -r ".must_find[$i].matches[]" "$expected_file")
+
+    # A missing/non-numeric line would otherwise become the literal string
+    # "null", which the arithmetic below treats as 0, silently producing a
+    # wrong line window. Fail this entry loudly instead.
+    case "$line" in
+      ''|*[!0-9]*)
+        echo "  ERROR: $base must_find[$i] has missing/non-numeric line ('$line') — counted as miss" >&2
+        i=$((i + 1))
+        continue
+        ;;
+    esac
+
+    # An empty matches array would make grep -iE "" match every line, counting
+    # a hit regardless of content. Treat it as a fixture config error instead.
+    if [ -z "$matches_csv" ]; then
+      echo "  ERROR: $base must_find[$i] has empty matches list — counted as miss" >&2
+      i=$((i + 1))
+      continue
+    fi
+
+    # Dimension tags in logs vary in separator/casing ([UI-Design] vs ui_design)
+    # AND in naming (sessions tag quality findings as [correctness]): normalize
+    # into a separator-tolerant pattern and add known synonyms. Shared with the
+    # must_not_find check below via dim_pattern_for() so the two paths cannot
+    # silently drift apart.
+    local dim_pat
+    dim_pat=$(dim_pattern_for "$dim")
+
+    dim_credited[$dim]=${dim_credited[$dim]:-0}
+
+    # Line numbers drift by a few lines between model judgment and fixture
+    # ground truth (observed off-by-one on sqli-laravel): accept +/-3. A
+    # range citation counts when it overlaps that window (see
+    # line_window_match), not only when a single cited number falls inside it.
+    local lo hi
+    lo=$((line > 3 ? line - 3 : 1))
+    hi=$((line + 3))
+
+    if echo "$log" | grep -iE "\\[?$dim_pat\\]?" | grep -iE "$matches_csv" | line_window_match "$lo" "$hi" | grep -q .; then
+      hits=$((hits + 1))
+      dim_credited[$dim]=$((dim_credited[$dim] + 1))
+    fi
+    i=$((i + 1))
+  done
+
+  TOTAL_FOUND=$((TOTAL_FOUND + hits))
+  TOTAL_CORRECT=$((TOTAL_CORRECT + hits))
+  CAT_FOUND[$category]=$(( ${CAT_FOUND[$category]:-0} + hits ))
+  CAT_CORRECT[$category]=$(( ${CAT_CORRECT[$category]:-0} + hits ))
+
+  # Check must_not_find
+  local fp=0
+  local fp_count
+  fp_count=$(jq '.must_not_find | length' "$expected_file")
+  local j=0
+  while [ "$j" -lt "$fp_count" ]; do
+    local bad_dim bad_line
+    bad_dim=$(jq -r ".must_not_find[$j].dimension" "$expected_file")
+    bad_line=$(jq -r ".must_not_find[$j].line // empty" "$expected_file")
+    # Only real finding lines count as FPs: they carry a severity tag. A
+    # [Clean][Security] line explaining why something is NOT a finding, or a
+    # routing/summary mention of the dimension, must not score as FP.
+    #
+    # A must_not_find entry WITH a line is a claim about that spot, so the line
+    # has to match too (same +/-3 tolerance as must_find). Without this, any
+    # fixture whose must_not_find dimension equals its must_find dimension was
+    # unscoreable: the legitimate findings themselves counted as the false
+    # positive, and 0 FPs was arithmetically impossible.
+    local bad_dim_pat
+    bad_dim_pat=$(dim_pattern_for "$bad_dim")
+    local fp_hits
+    fp_hits=$(echo "$log" | grep -iE "\\[(critical|important|minor)\\]" | grep -ivE "\\[clean\\]" | grep -iE "\\[?$bad_dim_pat\\]?" || true)
+    if [ -n "$bad_line" ]; then
+      local bad_lo bad_hi
+      bad_lo=$((bad_line > 3 ? bad_line - 3 : 1))
+      bad_hi=$((bad_line + 3))
+      fp_hits=$(echo "$fp_hits" | line_window_match "$bad_lo" "$bad_hi" || true)
+    fi
+    if [ -n "$fp_hits" ]; then
+      fp=$((fp + 1))
+    fi
+    j=$((j + 1))
+  done
+  TOTAL_FALSE_POSITIVE=$((TOTAL_FALSE_POSITIVE + fp))
+
+  # Scorer-gap tripwire (see this function's header comment for the design and
+  # its limits). Read from joined_log (pre-tr) so hyphens in a "dim-n-n" ID
+  # are intact; dim_pattern_for's own char class already tolerates a literal
+  # hyphen in the bracket-tag half, so no tr is needed here.
+  local dim
+  for dim in "${!dim_credited[@]}"; do
+    local gap_pat bracket_n id_n reported_n credited_n
+    gap_pat=$(dim_pattern_for "$dim")
+    bracket_n=$(printf '%s\n' "$joined_log" | grep -ivE '\[clean\]' | grep -iE '\[(critical|important|minor)\]' | grep -icE "\\[?${gap_pat}\\]?" || true)
+    id_n=$(printf '%s\n' "$joined_log" | grep -ivE '\[clean\]' | grep -icE "${gap_pat}-[0-9]+-[0-9]+.{0,20}(critical|important|minor)" || true)
+    reported_n=$((bracket_n + id_n))
+    credited_n=${dim_credited[$dim]}
+    if [ "$reported_n" -gt 0 ] && [ "$credited_n" -eq 0 ]; then
+      echo "  SCORER_GAP $base dimension '$dim': log carries $reported_n finding(s) tagged $dim, scorer credited 0 must_find hits — look at this fixture by hand" >&2
+      TOTAL_SCORER_GAP=$((TOTAL_SCORER_GAP + 1))
+    elif [ "$reported_n" -eq 0 ] && [ "$credited_n" -gt 0 ]; then
+      echo "  SUSPICIOUS_CREDIT $base dimension '$dim': scorer credited $credited_n hit(s), log carries no finding tagged $dim — may have matched something that is not a finding" >&2
+      TOTAL_SUSPICIOUS_CREDIT=$((TOTAL_SUSPICIOUS_CREDIT + 1))
+    fi
+  done
+
+  echo "    expected=$expected_count, hits=$hits, false-positives=$fp, $elapsed_label"
+}
+
+# Print once at the end of the live run and once at the end of --recheck, so
+# the two gap counters are never reported by two separately maintained echo
+# blocks that could drift apart.
+print_gap_summary() {
+  echo "  Scorer gaps (log had dimension findings, scorer credited none):   $TOTAL_SCORER_GAP"
+  echo "  Suspicious credits (scorer credited a hit, log had no finding):   $TOTAL_SUSPICIOUS_CREDIT"
+}
+
+if [ -n "$RECHECK_DIR" ]; then
+  if [ ! -d "$RECHECK_DIR" ]; then
+    echo "ERROR: --recheck dir '$RECHECK_DIR' does not exist." >&2
+    exit 1
+  fi
+  echo "Recheck: $RECHECK_DIR"
+  echo "========$(printf '%*s' "${#RECHECK_DIR}" '' | tr ' ' '=')"
+  echo
+  recheck_count=0
+  for expected_file in "$EXPECTED_DIR"/*.json; do
+    [ -f "$expected_file" ] || continue
+    base=$(basename "$expected_file" .json)
+    [ -n "${INVALID_EXPECTED[$base]:-}" ] && continue
+    logfile="$RECHECK_DIR/$base-auditlog.md"
+    stdoutfile="$RECHECK_DIR/$base-stdout.txt"
+    [ -f "$logfile" ] || [ -f "$stdoutfile" ] || continue
+    joined_log=$(build_joined_log "$logfile" "$stdoutfile")
+    if [ -z "$joined_log" ]; then
+      echo "  RECHECK_SKIP $base: artifact(s) present but empty" >&2
+      continue
+    fi
+    log=$(printf '%s' "$joined_log" | tr '-' ' ')
+    echo "  $base"
+    recheck_count=$((recheck_count + 1))
+    score_against_log "$base" "$expected_file" "$log" "$joined_log" "recheck"
+  done
+  echo
+  echo "Recheck summary ($recheck_count fixture(s) found in $RECHECK_DIR)"
+  echo "-------------------------------------------------"
+  if [ "$TOTAL_EXPECTED" -gt 0 ]; then
+    recall=$(awk -v c="$TOTAL_CORRECT" -v e="$TOTAL_EXPECTED" 'BEGIN { printf "%.0f", (c/e)*100 }')
+    echo "  Recall:    $TOTAL_CORRECT/$TOTAL_EXPECTED ($recall%)"
+  fi
+  echo "  False-positives: $TOTAL_FALSE_POSITIVE"
+  print_gap_summary
+  exit 0
+fi
+
+# Per-run artifact dir (gitignored via results/): session stdout + audit log
+# per fixture, for post-hoc diagnosis and rescoring without paid reruns.
+RESULTS_DIR="$EVALS_DIR/results/$(date +%Y-%m-%d_%H%M%S)"
+mkdir -p "$RESULTS_DIR"
+echo "Artifacts: $RESULTS_DIR"
+
+# Check claude CLI available
+if ! command -v claude >/dev/null 2>&1; then
+  echo "ERROR: 'claude' CLI not found. Eval runner requires non-interactive Claude Code."
+  exit 1
+fi
 
 score_fixture() {
   # fixture_rel is relative to FIXTURES_DIR: either a single fixture file
@@ -608,7 +850,22 @@ score_fixture() {
     TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
     return
   fi
-  trap "rm -rf '$tmp_dir'" RETURN
+  # Harness scratch lives OUTSIDE the audited repo. eval-settings.json and
+  # claude-stdout.txt used to be written into $tmp_dir, which IS the throwaway
+  # git repo the fixture audit runs against, so every session saw two foreign
+  # files in its own working tree. The 2026-09-11 architecture run shows one
+  # session spending a paragraph explaining that neither file is a task change.
+  # Best case that is wasted attention; worse, a docs_sync or code_quality
+  # specialist has grounds to report them, which would score as a false
+  # positive the fixture author never wrote.
+  local aux_dir
+  if ! aux_dir=$(mktemp -d); then
+    echo "  UNMEASURED $fixture_rel: mktemp failed for the harness scratch dir, fixture never ran" >&2
+    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    rm -rf "$tmp_dir"
+    return
+  fi
+  trap "rm -rf '$tmp_dir' '$aux_dir'" RETURN
 
   cd "$tmp_dir"
   git init -q
@@ -678,15 +935,15 @@ score_fixture() {
   # and every fixture scores zero, which reads exactly like a recall collapse.
   # The fixture audits run in a throwaway git repo under $tmp_dir, so the
   # boundary buys nothing here anyway.
-  printf '{"sandbox":{"enabled":false}}\n' >"$tmp_dir/eval-settings.json"
+  printf '{"sandbox":{"enabled":false}}\n' >"$aux_dir/eval-settings.json"
   # An unscoped run also needs a set variable so the fixture session never
   # blocks on the start-question AskUserQuestion (SKILL.md Phase 1.5: "a set
   # variable suppresses both questions").
   env CLAUDE_EFFORT=low AUDIT_SKIP_LEARNING_CHECK=1 ${dim_env:-AUDIT_FIX_SCOPE=none} \
     timeout "$PER_FIXTURE_TIMEOUT" claude -p "$audit_cmd" --effort low \
-      --settings "$tmp_dir/eval-settings.json" \
+      --settings "$aux_dir/eval-settings.json" \
       --append-system-prompt "Write all findings, the audit log and your final summary in English, regardless of the language used in any CLAUDE.md." \
-      </dev/null >"$tmp_dir/claude-stdout.txt" 2>&1 || run_rc=$?
+      </dev/null >"$aux_dir/claude-stdout.txt" 2>&1 || run_rc=$?
   local elapsed=$(( $(date +%s) - started ))
   # timeout(1) exits 124 when it had to kill the child; that is the
   # deterministic timeout signal. Wall-clock elapsed alone can mislabel a
@@ -766,17 +1023,20 @@ score_fixture() {
   fi
 
   # Persist artifacts so misses can be diagnosed/rescored without a paid rerun.
-  cp "$tmp_dir/claude-stdout.txt" "$RESULTS_DIR/$base-stdout.txt" 2>/dev/null || true
+  cp "$aux_dir/claude-stdout.txt" "$RESULTS_DIR/$base-stdout.txt" 2>/dev/null || true
   [ -n "$logfile" ] && cp "$logfile" "$RESULTS_DIR/$base-auditlog.md" 2>/dev/null || true
 
-  local log
-  # normalize_findings joins each wrapped bullet into one physical line (see
-  # its definition above); the blank line between the two `cat`s guarantees a
-  # bullet from the log file can never absorb the first line of stdout as a
-  # continuation. tr '-' ' ' runs AFTER the join, so hyphenated variants
-  # ("SQL-Injection") match space-separated keyword patterns ("sql
-  # injection"); dim/line matching is hyphen-tolerant either way.
-  log=$({ cat "$logfile" 2>/dev/null; printf '\n'; cat "$tmp_dir/claude-stdout.txt" 2>/dev/null; } | normalize_findings | tr '-' ' ')
+  # build_joined_log joins each wrapped bullet into one physical line (see
+  # normalize_findings' definition above); the blank line it inserts between
+  # the two `cat`s guarantees a bullet from the log file can never absorb the
+  # first line of stdout as a continuation. tr '-' ' ' runs AFTER the join, so
+  # hyphenated variants ("SQL-Injection") match space-separated keyword
+  # patterns ("sql injection"); dim/line matching is hyphen-tolerant either
+  # way. joined_log (pre-tr) is kept too, for the scorer-gap tripwire in
+  # score_against_log, which greps for intact "- [" / "- **" bullet markers.
+  local joined_log log
+  joined_log=$(build_joined_log "$logfile" "$aux_dir/claude-stdout.txt")
+  log=$(printf '%s' "$joined_log" | tr '-' ' ')
   if [ -z "$log" ]; then
     # Second known incident (2026-09-10): every nested session died instantly,
     # leaving no audit log AND no stdout, and scored as zero recall — visually
@@ -786,110 +1046,7 @@ score_fixture() {
     return
   fi
 
-  # Parse expected
-  local expected_count
-  expected_count=$(jq '.must_find | length' "$expected_file")
-  TOTAL_EXPECTED=$((TOTAL_EXPECTED + expected_count))
-  CAT_EXPECTED[$category]=$(( ${CAT_EXPECTED[$category]:-0} + expected_count ))
-
-  local hits=0
-  local i=0
-  while [ "$i" -lt "$expected_count" ]; do
-    local dim line matches_csv
-    dim=$(jq -r ".must_find[$i].dimension" "$expected_file")
-    line=$(jq -r ".must_find[$i].line // empty" "$expected_file")
-    # Stem each keyword individually (see stem_match) rather than joining the
-    # raw strings: a plain join would keep matching only the exact word form
-    # named in the fixture, e.g. "idempotent", and miss a correct finding that
-    # says "idempotency key" instead.
-    matches_csv=""
-    while IFS= read -r match; do
-      [ -n "$matches_csv" ] && matches_csv="$matches_csv|"
-      matches_csv="$matches_csv$(stem_match "$match")"
-    done < <(jq -r ".must_find[$i].matches[]" "$expected_file")
-
-    # A missing/non-numeric line would otherwise become the literal string
-    # "null", which the arithmetic below treats as 0, silently producing a
-    # wrong line window. Fail this entry loudly instead.
-    case "$line" in
-      ''|*[!0-9]*)
-        echo "  ERROR: $fixture_rel must_find[$i] has missing/non-numeric line ('$line') — counted as miss" >&2
-        i=$((i + 1))
-        continue
-        ;;
-    esac
-
-    # An empty matches array would make grep -iE "" match every line, counting
-    # a hit regardless of content. Treat it as a fixture config error instead.
-    if [ -z "$matches_csv" ]; then
-      echo "  ERROR: $fixture_rel must_find[$i] has empty matches list — counted as miss" >&2
-      i=$((i + 1))
-      continue
-    fi
-
-    # Dimension tags in logs vary in separator/casing ([UI-Design] vs ui_design)
-    # AND in naming (sessions tag quality findings as [correctness]): normalize
-    # into a separator-tolerant pattern and add known synonyms. Shared with the
-    # must_not_find check below via dim_pattern_for() so the two paths cannot
-    # silently drift apart.
-    local dim_pat
-    dim_pat=$(dim_pattern_for "$dim")
-
-    # Line numbers drift by a few lines between model judgment and fixture
-    # ground truth (observed off-by-one on sqli-laravel): accept +/-3. A
-    # range citation counts when it overlaps that window (see
-    # line_window_match), not only when a single cited number falls inside it.
-    local lo hi
-    lo=$((line > 3 ? line - 3 : 1))
-    hi=$((line + 3))
-
-    if echo "$log" | grep -iE "\\[?$dim_pat\\]?" | grep -iE "$matches_csv" | line_window_match "$lo" "$hi" | grep -q .; then
-      hits=$((hits + 1))
-    fi
-    i=$((i + 1))
-  done
-
-  TOTAL_FOUND=$((TOTAL_FOUND + hits))
-  TOTAL_CORRECT=$((TOTAL_CORRECT + hits))
-  CAT_FOUND[$category]=$(( ${CAT_FOUND[$category]:-0} + hits ))
-  CAT_CORRECT[$category]=$(( ${CAT_CORRECT[$category]:-0} + hits ))
-
-  # Check must_not_find
-  local fp=0
-  local fp_count
-  fp_count=$(jq '.must_not_find | length' "$expected_file")
-  local j=0
-  while [ "$j" -lt "$fp_count" ]; do
-    local bad_dim bad_line
-    bad_dim=$(jq -r ".must_not_find[$j].dimension" "$expected_file")
-    bad_line=$(jq -r ".must_not_find[$j].line // empty" "$expected_file")
-    # Only real finding lines count as FPs: they carry a severity tag. A
-    # [Clean][Security] line explaining why something is NOT a finding, or a
-    # routing/summary mention of the dimension, must not score as FP.
-    #
-    # A must_not_find entry WITH a line is a claim about that spot, so the line
-    # has to match too (same +/-3 tolerance as must_find). Without this, any
-    # fixture whose must_not_find dimension equals its must_find dimension was
-    # unscoreable: the legitimate findings themselves counted as the false
-    # positive, and 0 FPs was arithmetically impossible.
-    local bad_dim_pat
-    bad_dim_pat=$(dim_pattern_for "$bad_dim")
-    local fp_hits
-    fp_hits=$(echo "$log" | grep -iE "\\[(critical|important|minor)\\]" | grep -ivE "\\[clean\\]" | grep -iE "\\[?$bad_dim_pat\\]?" || true)
-    if [ -n "$bad_line" ]; then
-      local bad_lo bad_hi
-      bad_lo=$((bad_line > 3 ? bad_line - 3 : 1))
-      bad_hi=$((bad_line + 3))
-      fp_hits=$(echo "$fp_hits" | line_window_match "$bad_lo" "$bad_hi" || true)
-    fi
-    if [ -n "$fp_hits" ]; then
-      fp=$((fp + 1))
-    fi
-    j=$((j + 1))
-  done
-  TOTAL_FALSE_POSITIVE=$((TOTAL_FALSE_POSITIVE + fp))
-
-  echo "    expected=$expected_count, hits=$hits, false-positives=$fp, ${elapsed}s"
+  score_against_log "$base" "$expected_file" "$log" "$joined_log" "${elapsed}s"
 }
 
 echo "Audit Eval Suite"
@@ -921,6 +1078,7 @@ echo "  False-positives: $TOTAL_FALSE_POSITIVE"
 [ "$TOTAL_NO_AUDIT_LOG" -gt 0 ] && echo "  NO AUDIT LOG FOUND (scored from stdout fallback only, treat as unconfirmed): $TOTAL_NO_AUDIT_LOG"
 [ "$TOTAL_UNMEASURED" -gt 0 ] && echo "  UNMEASURED (no audit log AND no session output, excluded from recall above): $TOTAL_UNMEASURED / $TOTAL_CANDIDATES"
 [ "$TOTAL_INVALID_EXPECTED" -gt 0 ] && echo "  INVALID EXPECTATION (expected/*.json failed validation, never became a candidate, not a recall miss): $TOTAL_INVALID_EXPECTED"
+print_gap_summary
 echo
 echo "Per category:"
 for cat in "${!CAT_EXPECTED[@]}"; do
