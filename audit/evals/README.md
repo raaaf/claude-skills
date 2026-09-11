@@ -331,3 +331,17 @@ after the hyphen-to-space transform.
   fixtures is the only way to make this meaningful.
 - The runner parses audit-log markdown. If the log format changes, the runner
   breaks. Worth living with for now.
+
+### code_quality, 2026-09-11
+
+12 of 13, no false positives, one timeout, one scorer gap. The gap is the finding of the run:
+`lock-race-entry-clobber` reported the defect in the expectation's own words
+(`connect() mutates client and state outside the NSLock that guards every other transition`) and
+cited line 23, the `func connect` declaration, while the expectation anchors line 29, the assignment
+itself. Six lines apart, so outside the window, so scored a miss.
+
+That is the same cause as `widget-lock-time-check` in the 2026-09-10 security run (cited 47, the
+enclosing function; expected 52, the statement). Two dimensions, two fixtures, one habit: specialists
+cite the declaration that encloses the defect rather than the defect's own line. Every recall number
+measured before 2026-09-11 is therefore a floor, not a reading, and the correction is in
+`agents/prompt-template.md`, not in the scorer.

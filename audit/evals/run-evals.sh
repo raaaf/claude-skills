@@ -950,7 +950,13 @@ score_fixture() {
   # fixture that finished right at the boundary, so only 124 decides the
   # branch below, elapsed is still reported for the log.
   if [ "$run_rc" -eq 124 ]; then
-    echo "  TIMEOUT $fixture_rel after ${elapsed}s — scored as zero recall, treat this fixture as unmeasured"
+    # The old wording here claimed "scored as zero recall, treat this fixture as
+    # unmeasured", which is not what happens: scoring proceeds below against
+    # whatever the killed session had already written, so a timed-out fixture can
+    # and does credit hits (2026-09-11: reset-clean-command-gate.sh timed out and
+    # scored hits=1 under a line saying it had been scored zero). A result line
+    # that contradicts the number next to it is worse than no line.
+    echo "  TIMEOUT $fixture_rel after ${elapsed}s — session killed; whatever it had written so far is still scored below, so its number is a FLOOR, not a final result"
     TOTAL_TIMEOUT=$((TOTAL_TIMEOUT + 1))
   fi
 
@@ -1074,7 +1080,7 @@ else
   echo "  Recall:    no expected findings configured"
 fi
 echo "  False-positives: $TOTAL_FALSE_POSITIVE"
-[ "$TOTAL_TIMEOUT" -gt 0 ] && echo "  TIMED OUT (unmeasured, counted as misses): $TOTAL_TIMEOUT"
+[ "$TOTAL_TIMEOUT" -gt 0 ] && echo "  TIMED OUT (killed mid-run; partial output still scored, so these are floors): $TOTAL_TIMEOUT"
 [ "$TOTAL_NO_AUDIT_LOG" -gt 0 ] && echo "  NO AUDIT LOG FOUND (scored from stdout fallback only, treat as unconfirmed): $TOTAL_NO_AUDIT_LOG"
 [ "$TOTAL_UNMEASURED" -gt 0 ] && echo "  UNMEASURED (no audit log AND no session output, excluded from recall above): $TOTAL_UNMEASURED / $TOTAL_CANDIDATES"
 [ "$TOTAL_INVALID_EXPECTED" -gt 0 ] && echo "  INVALID EXPECTATION (expected/*.json failed validation, never became a candidate, not a recall miss): $TOTAL_INVALID_EXPECTED"

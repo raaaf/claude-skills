@@ -63,6 +63,13 @@ line in any deviation finding; isolated unusual values are not sufficient eviden
 - **A finding needs a concrete trigger.** "This could be a problem" with no visible trigger in code
   you actually read is not a finding.
 - **50 words max per finding, no code snippets.** `file:line` references only.
+- **Cite the line the defect is ON, not the declaration that encloses it.** The unguarded
+  assignment, the missing check, the concatenated string: that exact line, or the tight range it
+  spans. Naming the `function`/`class`/`func` header instead is a common reflex and it is wrong,
+  because the reader (and the fix agent) then has to search the body for what you meant. Measured
+  cost: two eval fixtures in different dimensions on 2026-09-11 had the defect identified correctly
+  and scored as misses purely because the citation pointed at the enclosing declaration several
+  lines above the defect.
 - **A denied file/tool is a blocker, reported as-is** — never guessed at or worked around.
 - **The dimension tag is one of exactly 14 ids**: `architecture`, `security`, `performance`,
   `code_quality`, `seo`, `a11y`, `typography`, `ui_design`, `ux`, `animation`, `docs_sync`,
