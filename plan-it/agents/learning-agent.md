@@ -100,6 +100,11 @@ TRENDS_BLOCK_START
 
 **Recurrers (>=3 plans):**
 - {Pattern} -- candidate for template update
+- A pattern crossing its threshold for the first time (e.g. 4/4) is marked "provisionally confirmed, keep observing", not "confirmed" -- it takes a second independent data point to close it out.
+
+**Override counts:**
+- Scope cut overruled: {N}x (of which {S}x self-override)
+- Defer recommendation overruled: {N}x (of which {S}x self-override)
 TRENDS_BLOCK_END
 
 LEARNING_RESULT_END

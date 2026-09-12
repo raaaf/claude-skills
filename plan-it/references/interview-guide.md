@@ -21,6 +21,10 @@ What to scan, depending on the topic:
 
 Every fact in the map is verified against the code or schema before it is shown, never quoted from memory.
 
+A quoted line only counts as a fact when the plan reproduces its semantics literally (e.g. "reads `default_tax_rate ?? 19`"), not just its role (e.g. "sets the rate for Kleinunternehmer"). Evidence: `CreateInvoiceDraft.php:74`.
+
+When an old, never-implemented plan is resumed, its core assumptions (exclusions, scoping) are explicitly re-checked against the current state, not carried over. Evidence: the Retainer exclusion from the 2026-07-06 plan.
+
 **Output format:** Short codebase map (3-8 bullet points) as a factual basis before the questions:
 
 ```
