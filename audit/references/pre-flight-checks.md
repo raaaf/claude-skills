@@ -2,6 +2,15 @@
 
 Loaded by `audit/SKILL.md` Phase 0. Two checks before the actual audit.
 
+**Stop here when `AUDIT_SKIP_LEARNING_CHECK=1`.** `audit/SKILL.md` already says Phase 0 is skipped
+then, but the instruction to edit and COMMIT to the skill source repo lives in this file, and a
+session that reaches this file has already passed that gate. The condition belongs where the
+irreversible step is, not only where the file is loaded. This matters most for the eval harness:
+`audit/evals/run-evals.sh` sets the variable precisely because a fixture audit runs against a
+throwaway repo while `SKILL_SOURCE` below resolves to the real `claude-skills` checkout, so a
+backlog application during a measurement run commits to the repo being measured. One such commit
+landed mid-run on 2026-09-12.
+
 ## Learning Backlog Check (Phase 0)
 
 Check whether unprocessed learning suggestions from earlier audits are still open:
