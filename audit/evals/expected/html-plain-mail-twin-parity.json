@@ -4,9 +4,23 @@
   "must_find": [
     {
       "dimension": "ux",
-      "line": 13,
-      "matches": ["plain", "text twin", "emails/text", "twin", "parity", "16", "stale", "not updated", "sync"],
-      "severity": "important"
+      "matches": [
+        "plain",
+        "text twin",
+        "emails/text",
+        "twin",
+        "parity",
+        "16",
+        "stale",
+        "not updated",
+        "sync"
+      ],
+      "severity": "important",
+      "lines": [
+        12,
+        13
+      ],
+      "notes": "12 is the route() call whose target changed in this diff, 13 the label inside the same anchor element; both are correct places to report the twin drift. The comment on line 8 that describes the drift is deliberately NOT an anchor: it documents the defect, it is not where the defect lives."
     }
   ],
   "must_not_find": [
