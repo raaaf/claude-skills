@@ -4,19 +4,39 @@
     {
       "dimension": "security",
       "line": 21,
-      "matches": ["startsWith", "substring", "prefix", "word boundary", "eine"],
+      "matches": [
+        "startsWith",
+        "substring",
+        "prefix",
+        "word boundary",
+        "eine"
+      ],
       "severity": "critical"
     },
     {
       "dimension": "security",
       "line": 18,
-      "matches": ["assent", "affirmative", "negation", "nein", "ohne", "-frei", "term presence"],
+      "matches": [
+        "assent",
+        "affirmative",
+        "negation",
+        "nein",
+        "ohne",
+        "-frei",
+        "term presence"
+      ],
       "severity": "critical"
     },
     {
       "dimension": "security",
       "line": 29,
-      "matches": ["scope", "trigger class", "whole class", "exempt"],
+      "matches": [
+        "scope",
+        "trigger class",
+        "whole class",
+        "exempt",
+        "triggerClassOf"
+      ],
       "severity": "critical"
     }
   ],

@@ -34,7 +34,7 @@ them against unscoped numbers.
 | Dimension | Fixtures | Recall | False positives | Unmeasured |
 |---|---|---|---|---|
 | payments | 4 | 3/4 | 0 | 1 (no audit log written) |
-| security | 20 | 20/24 expected findings | 8 as first measured, 4 after the harness repairs | 1 (timeout at 901s) |
+| security | 20 | 21/24 expected findings | 8 as first measured, 4 after the harness repairs | 1 (timeout at 901s) |
 | architecture | 17 | 17/18 | 0 | 0 |
 | code_quality | 12 | 12/13 | 0 | 1 (timeout, partial output still scored) |
 | docs_sync | 4 | 5/5 | 0 | 0 |
@@ -525,3 +525,28 @@ Discarded findings are now stripped before the check, by the `## Discarded` sect
 `discarded as` marker on the line. Deliberately NOT by `Minor`, `low confidence` or `never fixed`:
 every logged Minor carries "never fixed" by policy, so treating that as the signal would have
 exempted every real Minor false positive and quietly emptied the metric.
+
+### The security dimension did not need a prompt change
+
+Its four misses were analysed against the stored artifacts before touching `2-security.md`, and
+none of them supported a wording change to the highest-stakes dimension.
+
+`widget-lock-time-check` cited the enclosing `getTimeline` declaration instead of the assignment
+inside it, which the citation rule already addresses; it dissolves on a rerun.
+`destructive-git-guard` timed out at 901s and wrote no session output, so it was never measured.
+`assent-gate-substring-bypass` was found and described exactly right at line 30, inside the window,
+and failed only because the expectation asked for `trigger class` and `whole class` as spaced
+phrases while the finding wrote the identifier, `the whole triggerClassOf class`, with the
+identifier sitting between the two words. That keyword list now also carries `triggerClassOf`:
+naming the thing as the code names it, not lowering the bar, since the finding must still be about
+that specific class filter. `account-deletion-remote-wipe` is the only genuine content miss, and a
+small one: both defects are described in the prose, folded under a single citation.
+
+The two false positives that survive are the specialist following the coverage-not-filtering rule
+and reporting real secondary weaknesses that those fixtures deliberately treat as scenery. That is
+arguably the fixtures' problem rather than the prompt's, and trading recall for quiet in a security
+dimension is a bad exchange without much stronger evidence.
+
+Worth keeping: a negative result is the useful outcome here. The measurement existed to answer
+whether the dimension needs work, and the answer is that its apparent weakness was mostly the
+harness and one stale citation habit.
