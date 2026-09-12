@@ -44,6 +44,8 @@ them against unscoped numbers.
 | animation | 1 | 1/1 | 0 | 0 |
 | copy | 1 | 1/1 | 0 | 0 |
 | performance | 1 | 1/1 | 0 | 0 |
+| correctness | 7 | 2/2 of the two that ran | 0 | 5 (auth revoked mid-batch) |
+| reliability | 1 | not measured | n/a | 1 (auth revoked) |
 
 `architecture` is the cleanest picture so far and the only dimension measured after every harness
 repair of 2026-09-10: no false positives, no timeouts, no unmeasured fixtures, and `--recheck`
@@ -404,3 +406,30 @@ The uncomfortable part is the selection effect: a keyword like `eager load` was 
 `with(` silently disabled its whole entry. The rule penalised precisely the authors who wrote the
 concrete code fragment they expected to see. The numbers in the table above from before this repair
 are floors for that reason as well.
+
+### Scope comes from the expectation, not from the folder name
+
+`--scoped` derived the dimension from the fixture's category directory via `dimension_for_category`.
+That table guessed where the expectation already knew: every one of the 88 expected files names
+exactly one `must_find` dimension. Two consequences followed from the guess. `quality` and `copy`
+were simply missing from the table, so 13 fixtures ran a full unscoped audit despite `--scoped`,
+roughly ten times the agents each. And `correctness` (7 fixtures) plus `reliability` (1) were left
+unmapped on purpose, because those categories span several dimensions, even though each of their
+fixtures names one: six want `code_quality`, one `architecture`, one `correctness`, which is a
+scoring synonym for `code_quality`.
+
+The derivation now reads `must_find`, normalizes the three category-shaped names
+(`correctness`/`quality` to `code_quality`, `ui` to `ui_design`, `docs` to `docs_sync`), and falls
+back to the category table only when a fixture has no `must_find` at all, which is the case for the
+pure false-positive trap. That turned an estimated two hours and about 55 USD of unscoped runs into
+a normal scoped batch.
+
+### A revoked token is not a miss
+
+On 2026-09-12 the CLI's OAuth token was revoked partway through that batch. Six sessions exited in
+two to four seconds with `Failed to authenticate. API Error: 401`. Their stdout is not empty, so the
+existing "no log and no output" guard did not catch them, and they were scored: `correctness` was
+reported as 2 of 10, when two fixtures had run and both had passed. The runner now recognizes a
+startup failure by its message and reports those fixtures as UNMEASURED, printing the underlying
+error. Matching on the message rather than on the short runtime, since a genuinely fast audit is
+legitimate.

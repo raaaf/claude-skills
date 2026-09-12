@@ -960,7 +960,32 @@ score_fixture() {
   local dim_env=""
   if [ "$SCOPED" -eq 1 ]; then
     local dim
-    dim=$(dimension_for_category "$category")
+    # The expectation KNOWS which dimension the fixture tests; the category
+    # directory only guesses from a folder name. Derive from must_find first and
+    # keep dimension_for_category as the fallback. Two things this fixes:
+    # `quality` and `copy` were simply missing from that table, so 13 fixtures
+    # silently ran a full unscoped audit despite --scoped; and `correctness` (7
+    # fixtures) and `reliability` (1) are deliberately unmapped because they span
+    # several dimensions as a CATEGORY, while every one of their fixtures names
+    # exactly one dimension in its own must_find. Verified 2026-09-11: all 88
+    # expected files name exactly one distinct must_find dimension, so this is
+    # unambiguous for the whole suite, not just for the eight.
+    dim=$(jq -r '[.must_find[]?.dimension] | unique | join(",")' "$expected_file" 2>/dev/null || true)
+    # `quality` and `correctness` are SCORING synonyms for code_quality
+    # (dim_pattern_for treats them as one), but they are not among the 14 ids
+    # AUDIT_DIMENSIONS accepts, and the skill discards a value it does not know.
+    # Normalize before handing it over, or the two fixtures that use those names
+    # would run with an empty dimension selection.
+    # A plain `case` rather than a sed substitution: every expected file names
+    # exactly one dimension (verified across all 88 on 2026-09-11), so this is a
+    # whole-value mapping, and BSD sed on macOS has no \b to anchor a word-wise
+    # one with (tried, it silently left the value untouched).
+    case "$dim" in
+      correctness|quality) dim="code_quality" ;;
+      ui)                  dim="ui_design" ;;
+      docs)                dim="docs_sync" ;;
+    esac
+    [ -n "$dim" ] || dim=$(dimension_for_category "$category")
     # /audit takes no CLI arguments since the per-dimension pipeline rebuild
     # (2026-09-05): a scoped run sets AUDIT_DIMENSIONS instead, which also
     # suppresses the AskUserQuestion start prompt so the fixture session
@@ -1095,6 +1120,22 @@ score_fixture() {
     # leaving no audit log AND no stdout, and scored as zero recall — visually
     # identical to a real recall collapse. UNMEASURED, not a scored miss.
     echo "  UNMEASURED $fixture_rel: no audit log and no session output"
+    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    return
+  fi
+
+  # Third incident (2026-09-12): the CLI's OAuth token was revoked mid-batch, so
+  # every later session exited in 2 to 4 seconds with "Failed to authenticate.
+  # API Error: 401 OAuth access token has been revoked." That output is not
+  # empty, so the branch above does not catch it, and the fixture was scored:
+  # correctness came back "2/10 (20%)" when only two fixtures had run at all and
+  # both had passed. A session that never reached the audit is UNMEASURED for
+  # the same reason a failed mktemp is. Matching on the startup-failure text
+  # rather than on the short runtime, because a genuinely fast audit is
+  # legitimate and must not be discarded.
+  if [ -z "$logfile" ] && printf '%s' "$joined_log" | grep -qiE 'Failed to authenticate|OAuth access token has been revoked|API Error: 401|Invalid API key|credit balance is too low'; then
+    echo "  UNMEASURED $fixture_rel: the session never started (authentication or account error), nothing was audited"
+    printf '%s' "$joined_log" | grep -iE 'Failed to authenticate|OAuth|API Error|Invalid API key|credit balance' | head -1 | sed 's/^/    /'
     TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
     return
   fi
