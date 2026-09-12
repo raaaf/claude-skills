@@ -38,8 +38,8 @@ them against unscoped numbers.
 | architecture | 17 | 17/18 | 0 | 0 |
 | code_quality | 12 | 12/13 | 0 | 1 (timeout, partial output still scored) |
 | docs_sync | 4 | 5/5 | 0 | 0 |
-| a11y | 13 | 15/16 | 1 | 0 |
-| ux | 5 | 3/5 | 2 | 0 |
+| a11y | 13 | 14/16 | 0 | 0 |
+| ux | 5 | 4/5 | 1 | 0 |
 | ui_design | 2 | 2/2 | 0 | 0 |
 | animation | 1 | 1/1 | 0 | 0 |
 | copy | 1 | 1/1 | 0 | 0 |
@@ -279,6 +279,31 @@ run:
 bash audit/evals/run-evals.sh --recheck audit/evals/results/2026-09-10_222221
 ```
 
+## A discarded finding is not a false positive
+
+The `must_not_find` check only counts a real, standing finding as a false positive. A finding the
+audit pipeline itself rejected (verdict `REFUTED`, or otherwise marked discarded per
+`audit/references/audit-log-template.md`'s `## Discarded` section) is the verification stage
+working, not the audit getting it wrong, so `strip_discarded_findings()` removes it before the
+false-positive grep ever runs.
+
+Two removal rules, both deliberately narrow so a genuine false positive is never swallowed:
+
+- Section-based: any line between a bare `## Discarded` heading and the next `## ` heading.
+- Marker-based: a line containing `REFUTED`, `discarded as `, `discarded,` or `discard:`
+  (case-insensitive), the exact vocabulary `audit-log-template.md` defines for a rejected finding —
+  a fallback for a drifted log that inlines the verdict without the section.
+
+Neither rule fires on `Minor` severity, `low confidence`, or `never fixed` alone: every logged
+Minor finding reads "never fixed" by policy (Minor is never fixed, always logged), so treating that
+phrase alone as a discard signal would exempt every real Minor false positive from ever being
+counted.
+
+Found 2026-09-12: `advisory-landing-hero-auditlog.md` logged a `[Minor][security]` line under `##
+Discarded` ("Discarded as out of scope: the finding itself states the file is static markup...")
+that the false-positive check counted anyway, penalizing the `security` specialist for a finding
+its own regression pass had already rejected.
+
 ## A malformed expected/*.json invalidates its own fixture, not the suite
 
 `validate_expected()` (the same checks `--validate-only` runs, see above)
@@ -474,3 +499,29 @@ categories (`ui_design`, `animation`, `copy`, `performance`, `reliability`) hold
 each, so their percentages carry almost no weight. And a single run is not a stable measurement:
 `lang-duplicate-array-key-crash` scored 1 then 0 on consecutive days with equally correct analysis
 both times, differing only in which half of one defect it cited.
+
+### Remeasuring a11y and ux, 2026-09-12
+
+Both were rerun after the citation rule, the multi-anchor field and the own-dimension rule landed.
+All five scorer gaps and all three false positives from the first pass are gone. What remains is one
+ux gap and one ux false positive, both explained above.
+
+a11y's recall moved 15 to 14 across the two runs, which is not a regression from those rules. The
+misses simply landed elsewhere: `missing-aria` 2 of 3 and `radiogroup-arrow-keys-missed-same-file`
+1 of 2, both fixtures expecting several findings where one went unreported, while the two fixtures
+that had failed before now pass. Read that number as evidence that a single run over 13 fixtures
+varies by about one finding, not as a trend.
+
+### A discarded finding is not a false positive
+
+The false-positive check grepped severity tags and had no notion of a finding the pipeline itself
+rejected. One `[Minor][security]` line in `advisory-landing-hero` read "Discarded as out of scope:
+the finding itself states the file is static markup with no script, no interpolation and no user
+input" and still counted against the dimension, penalising it for the verification stage working
+correctly.
+
+Discarded findings are now stripped before the check, by the `## Discarded` section that
+`audit-log-template.md` defines and, as a fallback for drifted logs, by an explicit `REFUTED` or
+`discarded as` marker on the line. Deliberately NOT by `Minor`, `low confidence` or `never fixed`:
+every logged Minor carries "never fixed" by policy, so treating that as the signal would have
+exempted every real Minor false positive and quietly emptied the metric.

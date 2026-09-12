@@ -236,6 +236,44 @@ normalize_findings() {
   '
 }
 
+# Remove findings the audit pipeline itself rejected before the false-positive
+# check ever sees them: a [Severity][Dimension] line under a "## Discarded"
+# section, or one carrying an explicit refutation marker on its own physical
+# line, is the verification stage working as designed (CONFIRMED -> fixed,
+# REFUTED -> discarded, per audit/references/audit-log-template.md), not a
+# false positive of the audit. Scoring it as one penalizes the pipeline for
+# catching its own mistake (2026-09-12: a [Minor][security] line explicitly
+# marked "Discarded as out of scope" in advisory-landing-hero-auditlog.md
+# counted as a false positive).
+#
+# Bounded deliberately narrow so a genuine false positive is never swallowed:
+# - Section-based: only lines between a bare "## Discarded" heading and the
+#   next "## " heading are dropped, mirroring the parsed-contract section
+#   from audit/references/audit-log-template.md, never any other heading
+#   (a real finding under "## Findings per Dimension" is untouched even if
+#   its prose happens to contain one of the marker words below).
+# - Marker-based fallback (for drifted logs that inline the verdict instead
+#   of using the section, or a --recheck artifact from before the section was
+#   adopted): a line is also dropped if it contains "REFUTED", "discarded as
+#   ", "discarded," or "discard:" (case-insensitive) — the exact vocabulary
+#   audit-log-template.md defines for a discarded/refuted finding, per
+#   audit/SKILL.md's CONFIRMED/REFUTED/UNCERTAIN decision procedure.
+# - Deliberately NOT a marker: "Minor" severity, "low confidence", or "never
+#   fixed" alone. Every logged Minor finding reads "never fixed" by policy
+#   (Minor is never fixed, always logged — audit/SKILL.md), so treating that
+#   phrase alone as a discard signal would silently exempt every real Minor
+#   false positive from ever being counted.
+strip_discarded_findings() {
+  awk '
+    /^## / {
+      in_discarded = ($0 ~ /^## Discarded[ \t]*$/) ? 1 : 0
+      next
+    }
+    in_discarded { next }
+    { print }
+  ' | grep -viE 'refuted|discarded as |discarded,|discard:'
+}
+
 if [ ! -d "$FIXTURES_DIR" ] || [ ! -d "$EXPECTED_DIR" ]; then
   echo "ERROR: fixtures/ or expected/ missing under $EVALS_DIR"
   exit 1
@@ -803,6 +841,11 @@ score_against_log() {
   local fp=0
   local fp_count
   fp_count=$(jq '.must_not_find | length' "$expected_file")
+  # Findings the pipeline itself rejected (see strip_discarded_findings) must
+  # never count as false positives — computed once per fixture since $log is
+  # the same for every must_not_find entry below.
+  local fp_log
+  fp_log=$(printf '%s\n' "$log" | strip_discarded_findings || true)
   local j=0
   while [ "$j" -lt "$fp_count" ]; do
     local bad_dim bad_line
@@ -820,7 +863,7 @@ score_against_log() {
     local bad_dim_pat
     bad_dim_pat=$(dim_pattern_for "$bad_dim")
     local fp_hits
-    fp_hits=$(echo "$log" | grep -iE "\\[(critical|important|minor)\\]" | grep -ivE "\\[clean\\]" | grep -iE "\\[?$bad_dim_pat\\]?" || true)
+    fp_hits=$(echo "$fp_log" | grep -iE "\\[(critical|important|minor)\\]" | grep -ivE "\\[clean\\]" | grep -iE "\\[?$bad_dim_pat\\]?" || true)
     if [ -n "$bad_line" ]; then
       local bad_lo bad_hi
       bad_lo=$((bad_line > 3 ? bad_line - 3 : 1))

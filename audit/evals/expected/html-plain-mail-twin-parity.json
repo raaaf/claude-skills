@@ -17,10 +17,11 @@
       ],
       "severity": "important",
       "lines": [
+        8,
         12,
         13
       ],
-      "notes": "12 is the route() call whose target changed in this diff, 13 the label inside the same anchor element; both are correct places to report the twin drift. The comment on line 8 that describes the drift is deliberately NOT an anchor: it documents the defect, it is not where the defect lives."
+      "notes": "12 is the route() call whose target changed in this diff, 13 the label inside the same anchor element. Line 8 is the Blade comment stating the footer link target changed and that the 16 plain-text twins under emails/text/ still point at the old target; the defect itself (the unupdated twins) lives in files outside this fixture, so this comment is the ONLY place in this file where the drift is stated, making it a legitimate anchor here. This reverses an earlier rule that rejected a comment as an anchor because it merely documents a defect living in the same file — that reasoning does not hold when the defective code is elsewhere. Do not generalise: a comment is only a valid anchor when the defect it describes is outside the fixture, as here."
     }
   ],
   "must_not_find": [
