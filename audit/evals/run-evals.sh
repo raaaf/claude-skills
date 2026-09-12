@@ -289,9 +289,15 @@ correctness"
 #   and must NOT be flagged. Do not re-widen this to "windows overlap" (gap <
 #   7) — that flags gaps of 4-6 that never actually collide. Hard error
 #   (known instance: export-import-roundtrip.json, 88 vs 89).
-# - Line out of range: a cited `line` that is <=0 or past the end of the
-#   fixture file. Only checked when `fixture` names a single file that
-#   resolves; directory fixtures are skipped rather than guessed at.
+# - Line out of range: a cited `line` (or any anchor in `lines`) that is <=0
+#   or past the end of the fixture file. Only checked when `fixture` names a
+#   single file that resolves; directory fixtures are skipped rather than
+#   guessed at.
+# - Both `line` and `lines` present on one must_find entry: ambiguous about
+#   which anchor(s) apply, hard error. A must_find entry uses exactly one of
+#   the two fields; the window-collision check above folds every anchor in
+#   `lines` into the same check as a single `line`, so a collision on any one
+#   of them still gets caught.
 # - Missing fixture: `fixture` points at a path that does not exist under
 #   fixtures/.
 # - Unknown dimension: a `dimension` outside KNOWN_DIMENSIONS above.
@@ -320,7 +326,7 @@ validate_expected() {
   # output).
   local c_mnf_error=0 c_mnf_warning=0 c_window=0 c_range=0 c_missing_fixture=0
   local c_unknown_dim=0 c_unknown_sev=0 c_hyphen_warn=0 c_hyphen_error=0
-  local c_invalid_files=0
+  local c_invalid_files=0 c_both_line_fields=0
   for f in "$EXPECTED_DIR"/*.json; do
     [ -f "$f" ] || continue
     local name
@@ -368,7 +374,10 @@ validate_expected() {
     # --- window collision: must_find vs must_not_find, same dimension ------
     local collisions
     collisions=$(jq -c '
-      [.must_find[]? | select(.line != null) | {dim: .dimension, line: .line}] as $mf
+      [.must_find[]? | . as $e
+        | (((if $e.line != null then [$e.line] else [] end)
+            + (if $e.lines != null then $e.lines else [] end))[]) as $ln
+        | {dim: $e.dimension, line: $ln}] as $mf
       | [.must_not_find[]? | select(.line != null) | {dim: .dimension, line: .line}] as $mnf
       | [ $mf[] as $a | $mnf[] as $b
           | select($a.dim == $b.dim and (($a.line - $b.line) | if . < 0 then -. else . end) <= 3)
@@ -418,6 +427,15 @@ validate_expected() {
         c_unknown_dim=$((c_unknown_dim + 1))
       fi
 
+      local has_lines
+      has_lines=$(jq -r ".must_find[$i].lines != null" "$f")
+      if [ -n "$line" ] && [ "$has_lines" = "true" ]; then
+        echo "ERROR: expected/$name must_find[$i] has both 'line' and 'lines' — ambiguous, use only one." >&2
+        bad=1
+        file_bad=1; file_reasons="$file_reasons,both line and lines"
+        c_both_line_fields=$((c_both_line_fields + 1))
+      fi
+
       if [ -n "$line" ] && [ "$fixture_is_file" -eq 1 ]; then
         if [ "$line" -le 0 ] 2>/dev/null || [ "$line" -gt "$fixture_line_count" ] 2>/dev/null; then
           echo "ERROR: expected/$name must_find[$i] cites line $line but $fixture_field has $fixture_line_count lines." >&2
@@ -425,6 +443,22 @@ validate_expected() {
           file_bad=1; file_reasons="$file_reasons,line out of range"
           c_range=$((c_range + 1))
         fi
+      fi
+
+      if [ "$has_lines" = "true" ] && [ "$fixture_is_file" -eq 1 ]; then
+        local lines_count li lval
+        lines_count=$(jq ".must_find[$i].lines | length" "$f")
+        li=0
+        while [ "$li" -lt "$lines_count" ]; do
+          lval=$(jq -r ".must_find[$i].lines[$li]" "$f")
+          if [ "$lval" -le 0 ] 2>/dev/null || [ "$lval" -gt "$fixture_line_count" ] 2>/dev/null; then
+            echo "ERROR: expected/$name must_find[$i].lines[$li] cites line $lval but $fixture_field has $fixture_line_count lines." >&2
+            bad=1
+            file_bad=1; file_reasons="$file_reasons,line out of range"
+            c_range=$((c_range + 1))
+          fi
+          li=$((li + 1))
+        done
       fi
 
       local kw_count dead_count
@@ -506,6 +540,7 @@ validate_expected() {
   echo "  must_not_find missing line, same dimension as must_find (error): $c_mnf_error"
   echo "  must_not_find missing line, different dimension (warning):       $c_mnf_warning"
   echo "  window collisions (error):                                      $c_window"
+  echo "  both line and lines present, ambiguous (error):                 $c_both_line_fields"
   echo "  line out of range (error):                                      $c_range"
   echo "  missing fixture file (error):                                   $c_missing_fixture"
   echo "  unknown dimension (error):                                      $c_unknown_dim"
@@ -683,16 +718,40 @@ score_against_log() {
       matches_csv="$matches_csv$(stem_match "$match")"
     done < <(jq -r ".must_find[$i].matches[]" "$expected_file")
 
+    # An entry cites one or more line anchors, either via singular `line` or
+    # via `lines` (validate_expected() rejects both being present at once). A
+    # hit counts when a finding's cited line falls within the +/-3 window of
+    # ANY one of them — some defects (a duplicate key, a gating bug) genuinely
+    # live at two places in the source, and citing either is correct.
+    local -a anchors=()
+    if [ -n "$line" ]; then
+      case "$line" in
+        *[!0-9]*)
+          echo "  ERROR: $base must_find[$i] has non-numeric line ('$line') — counted as miss" >&2
+          i=$((i + 1))
+          continue
+          ;;
+      esac
+      anchors=("$line")
+    else
+      local lines_count li anchor_val
+      lines_count=$(jq ".must_find[$i].lines // [] | length" "$expected_file")
+      li=0
+      while [ "$li" -lt "$lines_count" ]; do
+        anchor_val=$(jq -r ".must_find[$i].lines[$li]" "$expected_file")
+        anchors+=("$anchor_val")
+        li=$((li + 1))
+      done
+    fi
+
     # A missing/non-numeric line would otherwise become the literal string
     # "null", which the arithmetic below treats as 0, silently producing a
     # wrong line window. Fail this entry loudly instead.
-    case "$line" in
-      ''|*[!0-9]*)
-        echo "  ERROR: $base must_find[$i] has missing/non-numeric line ('$line') — counted as miss" >&2
-        i=$((i + 1))
-        continue
-        ;;
-    esac
+    if [ "${#anchors[@]}" -eq 0 ]; then
+      echo "  ERROR: $base must_find[$i] has no usable line anchor ('line' and 'lines' both missing/empty) — counted as miss" >&2
+      i=$((i + 1))
+      continue
+    fi
 
     # An empty matches array would make grep -iE "" match every line, counting
     # a hit regardless of content. Treat it as a fixture config error instead.
@@ -716,11 +775,19 @@ score_against_log() {
     # ground truth (observed off-by-one on sqli-laravel): accept +/-3. A
     # range citation counts when it overlaps that window (see
     # line_window_match), not only when a single cited number falls inside it.
-    local lo hi
-    lo=$((line > 3 ? line - 3 : 1))
-    hi=$((line + 3))
+    # Reuse line_window_match per anchor rather than a second matcher: the
+    # first anchor whose window is hit counts the entry as found.
+    local matched=0 anchor lo hi
+    for anchor in "${anchors[@]}"; do
+      lo=$((anchor > 3 ? anchor - 3 : 1))
+      hi=$((anchor + 3))
+      if echo "$log" | grep -iE "\\[?$dim_pat\\]?" | grep -iE "$matches_csv" | line_window_match "$lo" "$hi" | grep -q .; then
+        matched=1
+        break
+      fi
+    done
 
-    if echo "$log" | grep -iE "\\[?$dim_pat\\]?" | grep -iE "$matches_csv" | line_window_match "$lo" "$hi" | grep -q .; then
+    if [ "$matched" -eq 1 ]; then
       hits=$((hits + 1))
       dim_credited[$dim]=$((dim_credited[$dim] + 1))
     fi

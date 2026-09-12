@@ -34,7 +34,7 @@ them against unscoped numbers.
 | Dimension | Fixtures | Recall | False positives | Unmeasured |
 |---|---|---|---|---|
 | payments | 4 | 3/4 | 0 | 1 (no audit log written) |
-| security | 20 | 19/24 expected findings | 8 as first measured, 4 after the harness repairs | 1 (timeout at 901s) |
+| security | 20 | 20/24 expected findings | 8 as first measured, 4 after the harness repairs | 1 (timeout at 901s) |
 | architecture | 17 | 17/18 | 0 | 0 |
 | code_quality | 12 | 12/13 | 0 | 1 (timeout, partial output still scored) |
 | docs_sync | 4 | 5/5 | 0 | 0 |
@@ -44,8 +44,8 @@ them against unscoped numbers.
 | animation | 1 | 1/1 | 0 | 0 |
 | copy | 1 | 1/1 | 0 | 0 |
 | performance | 1 | 1/1 | 0 | 0 |
-| correctness | 7 | 2/2 of the two that ran | 0 | 5 (auth revoked mid-batch) |
-| reliability | 1 | not measured | n/a | 1 (auth revoked) |
+| correctness | 7 | 9/10 | 1 | 0 |
+| reliability | 1 | 1/1 | 0 | 0 |
 
 `architecture` is the cleanest picture so far and the only dimension measured after every harness
 repair of 2026-09-10: no false positives, no timeouts, no unmeasured fixtures, and `--recheck`
@@ -134,6 +134,17 @@ root for `bin/detect-stripe.sh` to report `STRIPE=yes`.
   ]
 }
 ```
+
+A `must_find` entry uses either `line` (a single anchor) or `lines` (an array
+of two or more anchors), never both — `run-evals.sh` hard-errors on an entry
+that sets both, since it would be ambiguous which anchor is authoritative. Use
+`lines` when the defect genuinely lives at more than one place in the source
+(e.g. a key declared twice, a route left ungated by a middleware mounted
+elsewhere) and a citation of either place is correct; a finding counts as a
+hit when its cited line falls within the usual +/-3 window of ANY one of the
+listed anchors, not only the first. Do not use `lines` to paper over an
+imprecise citation that is genuinely wrong; only add an anchor you can justify
+from the fixture source.
 
 `matches` is a list of substrings; any one matching the finding description
 counts as a hit. Matching tolerates ordinary word-form variation: keywords of
@@ -433,3 +444,33 @@ reported as 2 of 10, when two fixtures had run and both had passed. The runner n
 startup failure by its message and reports those fixtures as UNMEASURED, printing the underlying
 error. Matching on the message rather than on the short runtime, since a genuinely fast audit is
 legitimate.
+
+### One defect, two correct places to report it
+
+`must_find` may carry `lines: [a, b]` instead of `line`, and a hit counts when a citation falls
+within plus or minus 3 of any of them. Both fields on one entry is a hard error, since the intent is
+then ambiguous.
+
+This exists because three fixtures showed the same shape, and only two of them turned out to need
+it. A PHP array declaring `queue` at line 15 and again at 25 has its defect in the pair, and both
+citations are right; `lang-duplicate-array-key-crash` cited 25 in one run and 15 in the next,
+scoring 1 and then 0 for the same correct analysis. A route gated by middleware mounted on an exact
+path has the bug at the mount (line 8, where the fix goes) and at the ungated sibling route (line
+19); `vocab-id-route-gating` cited the mount and was scored a miss.
+
+The third, `widget-lock-time-check`, deliberately did NOT get a second anchor. Citing the enclosing
+`getTimeline` declaration instead of the assignment inside it is a precision gap, not a second
+location: the function header itself does nothing wrong. That one is the citation rule's job, and
+adding an anchor would have papered over an imprecise citation.
+
+The distinction is the whole point of the field. An anchor belongs in `lines` when reporting the
+defect AT that line is genuinely correct, never because an audit happened to point there.
+
+### All 13 categories measured, 2026-09-11 and 2026-09-12
+
+Numbers move as harness repairs land, which is why several rows above carry their history rather
+than a single figure. Two things are worth keeping in view when reading the table. The small
+categories (`ui_design`, `animation`, `copy`, `performance`, `reliability`) hold one or two fixtures
+each, so their percentages carry almost no weight. And a single run is not a stable measurement:
+`lang-duplicate-array-key-crash` scored 1 then 0 on consecutive days with equally correct analysis
+both times, differing only in which half of one defect it cited.

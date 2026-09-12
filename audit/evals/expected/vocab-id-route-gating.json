@@ -3,7 +3,7 @@
   "must_find": [
     {
       "dimension": "security",
-      "line": 19,
+      "lines": [8, 19],
       "matches": ["vocab/:id", "sibling", "exact path", "ungated", "paywall bypass", "entitlement"],
       "severity": "critical"
     }

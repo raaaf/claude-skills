@@ -3,7 +3,7 @@
   "must_find": [
     {
       "dimension": "code_quality",
-      "line": 25,
+      "lines": [15, 25],
       "matches": ["duplicate", "queue", "overwrite", "last", "shadow", "silently"],
       "severity": "critical"
     }
