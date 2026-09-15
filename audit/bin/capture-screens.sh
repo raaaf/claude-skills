@@ -63,7 +63,12 @@ prepare_out() {
   # that case warns instead of appending.
   IGNORE_PATH=".claude/screenshots/"
   if git rev-parse --git-dir >/dev/null 2>&1; then
-    if ! git -C "$REPO" check-ignore -q "$OUT" 2>/dev/null; then
+    # Refuse to follow a symlinked .gitignore, same guard and same reason as
+    # cache-write.sh: appending through the link writes into the link target and
+    # re-appends on every run, since check-ignore keeps reporting not-ignored.
+    if [ -L "$REPO/.gitignore" ]; then
+      echo "NOTE $REPO/.gitignore is a symlink, refusing to follow it; add '$IGNORE_PATH' manually"
+    elif ! git -C "$REPO" check-ignore -q "$OUT" 2>/dev/null; then
       if git -C "$REPO" ls-files --error-unmatch "$IGNORE_PATH" >/dev/null 2>&1; then
         echo "NOTE $IGNORE_PATH is tracked; .gitignore cannot un-track it, screenshots will show up in the diff"
       else
@@ -143,8 +148,13 @@ capture_bounded() {
 }
 
 prepare_out
-PROFILE_DIR=$(mktemp -d 2>/dev/null) || PROFILE_DIR="${TMPDIR:-/tmp}/capture-screens-profile.$$"
-mkdir -p "$PROFILE_DIR" 2>/dev/null
+# No predictable fallback path: `$TMPDIR/capture-screens-profile.$$` is
+# guessable, and the EXIT trap below rm -rf's whatever sits there. If mktemp
+# cannot give us a private directory, skip the capture instead.
+PROFILE_DIR=$(mktemp -d 2>/dev/null) || {
+  echo "CAPTURE_RESULT=SKIP (mktemp could not create a private profile directory)"
+  exit 0
+}
 trap 'rm -rf "$PROFILE_DIR" 2>/dev/null' EXIT
 
 for vp in $VIEWPORTS; do

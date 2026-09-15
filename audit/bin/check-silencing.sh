@@ -200,8 +200,6 @@ function flush_file() {
   # false positives on the first real-history probe), and no file-independent
   # pattern separates the two.
   if (is_config && match(body, /(coverage|threshold|minScore|min_score|maxWarnings|max-warnings|max_warnings|budget|minimum|maxSize|max_size)[^0-9]*[0-9]+(\.[0-9]+)?/)) {
-    key = body
-    sub(/[^A-Za-z_-]*/, "", key)
     if (match(body, /[0-9]+(\.[0-9]+)?[^0-9]*$/)) newval = substr(body, RSTART, RLENGTH) + 0
     prev = old_num[file]
     if (prev != "" && match(prev, /[0-9]+(\.[0-9]+)?[^0-9]*$/)) {
@@ -214,7 +212,20 @@ function flush_file() {
   next
 }
 END { flush_file() }
-' || true)
+') || AWK_RC=$?
+AWK_RC=${AWK_RC:-0}
+
+# `|| AWK_RC=$?`, not a bare `|| true` and not a following `AWK_RC=$?`. The
+# bare `|| true` swallowed every awk runtime error and left HITS empty, which
+# this script reported as OK: a broken parser and a clean diff produced the
+# identical line. Assigning `$?` on the NEXT line is no better, because under
+# `set -e` a failing command substitution in an assignment aborts the script
+# before that line runs, and the caller then gets no RESULT line at all. Both
+# were observed here, in that order.
+if [ "$AWK_RC" -ne 0 ]; then
+  echo "SILENCING_RESULT=FAIL (awk exited $AWK_RC, the diff was not parsed)"
+  exit 0
+fi
 
 if [ -z "$HITS" ]; then
   echo "SILENCING_RESULT=OK"
