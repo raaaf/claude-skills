@@ -234,7 +234,15 @@ bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
 
 - no Critical is open,
 - no new test failure beyond `BASELINE_FAILURES`,
-- every selected dimension has `status: complete` (none `skipped`, none `incomplete`),
+- no selected dimension has `status: incomplete`,
+- a dimension with `status: skipped` does NOT block: `find.js:405-427` only reaches `skipped` when
+  both scouts ran without failing and returned zero files and zero clusters, so it means the
+  dimension had nothing in scope. A failed scout puts `scout:files`/`scout:clusters` into
+  `uncovered`, which makes the status `incomplete` instead, and that still blocks. Print the skipped
+  dimensions and the reason (`no relevant files`) in the log either way. This was corrected on
+  2026-09-15: the rule previously demanded `complete` for every dimension, which made the marker
+  unreachable on any repo without a frontend, since `ui_design` and `copy` report `skipped` on every
+  single run there and no re-run can change that.
 - `degradedDimensions` is empty.
 
 Coverage gates the marker because a run where dimensions did not finish is not a pre-push gate: a
@@ -242,6 +250,12 @@ real run selected all 14 dimensions and set the marker while 5 of them were `ski
 `incomplete`, which is exactly what this rule exists to stop. A partial dimension selection (Phase
 1.5) never sets it either — print the reason instead. When any condition fails, do not set the
 marker and print which dimensions were incomplete, skipped, or degraded.
+
+The `skipped` half of that original rule was too broad and is no longer part of the gate, see the
+condition above. The whole distinction rests on `find.js` keeping `skipped` to mean "both scouts
+ran and found nothing": if a future change ever lets a failure produce `skipped` instead of adding
+to `uncovered`, this rule has to be revisited in the same commit, because the gate would then pass
+on exactly the state it exists to catch.
 
 ```bash
 hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
