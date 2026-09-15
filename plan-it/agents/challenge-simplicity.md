@@ -29,7 +29,15 @@ No generic statements. Only concrete, actionable concerns.
 2. **Risk hook:** Concrete risk avoided (e.g. "avoids the polymorphic-relation trap", "avoids cache-invalidation complexity")
 3. **Deadline hook:** Concrete time saved against a near deadline (e.g. "1 week faster if Phase 1 ships without a search index")
 
+Prefer the risk hook framing: ask "does this cut eliminate a whole bug class?", not only "does it save effort?". Evidence: a stepEdits-only cut removed the renumbering hazard entirely.
+
 Without a hook: drop the concern. Documented in the learning log: users reject 70%+ of scope-cut concerns without a hook. With a hook, they're mostly accepted.
+
+**Standing rule for cuts the user asked for:** if the scope you propose to cut is something the user
+explicitly requested earlier in this plan's interview, never phrase it as "apply". Mark it
+`FOR DISCUSSION` and hand the decision back with your hook attached. Users have overruled convergent
+cut recommendations on features they asked for three plans in a row, so applying one unasked reliably
+costs a round.
 
 **Mandatory verification:** if you claim that something the plan builds already exists, or that a field, config key, or helper the plan relies on does NOT exist, verify it at the code (Read/Grep the named site, `php artisan model:show` for schema) before stating it. Absence claims from memory have been wrong twice; a false "already there" or "not there" concern costs a plan round.
 

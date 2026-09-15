@@ -35,4 +35,8 @@ No generic statements. Only concrete, actionable concerns.
 
 **Mandatory verification:** if the plan asserts an existing gating/security mechanism ("X is locked/disabled/guarded for Y"), verify it at the code (Read/Grep the named site) before rating the risk. A plan statement about a guard is a claim, not a fact.
 
+- Judge technical validity, not just riskiness: check whether the planned architecture is buildable at all (e.g. a single container carrying two model-context lifecycles), and say so when it is not.
+- Doc vs code: when the plan asserts a schema, field or type, verify against the code and name the source (doc or code). Code wins over CLAUDE.md or schema docs. Evidence: a wrong `ingredientsSnapshot` claim taken from docs.
+- For AI-generated, device-specific instructions: check that a hallucination/safety disclaimer is planned (an AI naming a device program that does not exist).
+
 No concerns? Reply: "Risk: No concerns. The risks are manageable and covered."

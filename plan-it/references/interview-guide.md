@@ -18,6 +18,10 @@ What to scan, depending on the topic:
 | Field extension / new model attribute | Grep **every** form variant that writes the model, not just the one named in the request (e.g. invoice + quote + recurring). One missed variant is a silent data gap. |
 | Re-implementing or relocating something that once existed | `git log -S`/`git blame` the old spot first: find out why it was removed or moved before drafting v1. A removed feature usually died for a reason the plan has to answer. |
 | "Do we already have X?" (assets, settings, uploads, flags) | A service/controller grep is not enough. Check the settings/config model fields directly (`php artisan model:show Setting`, `model:show User`, migration grep on the column name). Evidence: `signature_path` existed on the model and stayed undetected until interview round 3. |
+| Infra named in CLAUDE.md (URLs, services, hosts) | Verify it is actually live and in use before planning against it. Documented infra has been stale. |
+| "Reuses existing component X" | Open the init/method signature and check API compatibility, not just that the file exists. |
+| Migration target / refactor target | Physically open at least one call site per target, do not infer behaviour from naming or comments. Evidence: repeated in plans 6 and 7. |
+| Feature syncs data through a backend or shared store | Read the payload caps and body limits of the target store (e.g. `JSON_PAYLOAD_CAP_BYTES`, bodyLimit) BEFORE asking sync questions. Evidence: one wasted question loop. |
 
 Every fact in the map is verified against the code or schema before it is shown, never quoted from memory.
 
@@ -63,11 +67,27 @@ Two questions get skipped or deferred over and over, and both cost a whole extra
 
 **Onboarding.** Whenever a plan touches a user-facing flow, permission, or setting: does this need an onboarding step, or does it work via toggle plus settings? Ask it directly, do not write "onboarding TBD" into the plan. Red flag: if onboarding first comes up in round 3+, the interview went wrong.
 
+**Where does it run.** Whenever a plan touches more than one machine, service or runtime (a repo plus an automation host, a local tool plus a cloud API, a worker plus a web app): ask in round 1 which side owns which part, before drafting anything. Put the candidates side by side, with what each one costs and what it forces. Red flag: if the plan's v1 assumes a split and the user corrects it later, the whole architecture section gets rewritten. Evidence: late-stage rewrites in two plans running.
+
 **Scope split.** Before proposing any MVP cut or phase split, answer for yourself: is this a real saving in complexity or differentiation, or does it tear apart something the user sees as one coherent feature? Only propose the split in the first case. When in doubt, ask in exactly those terms:
 
 ```
 Split this into phase 1 / phase 2, or in one go?
 → My assessment: {one go | split}, because {real complexity saving | it's one coherent surface}
+```
+
+**Native framework first.** For Apple-platform plans the default is the native Apple framework; a third party dependency carries the burden of proof and needs an explicit reason.
+
+```
+Native framework or third party library?
+→ My assessment: {native framework}, unless {concrete reason for the dependency}
+```
+
+**Container topology.** For multi-user or shared-data features on CloudKit: ask dual container vs single container explicitly in round 1, never assume it.
+
+```
+Dual container or single container?
+→ My assessment: {dual container | single container}, because {reason}
 ```
 
 ## Detecting Dependencies

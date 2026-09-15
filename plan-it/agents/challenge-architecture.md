@@ -41,4 +41,6 @@ Deliver 0-3 concrete concerns. Each concern:
 
 No generic statements. Only concrete, actionable concerns.
 
+**Mandatory verification:** physically open the call sites of any migration or refactor target, at least one function per target, before judging the approach. Do not infer behaviour from naming or comments.
+
 No concerns? Reply: "Architecture: No concerns. The technical approach is solid."

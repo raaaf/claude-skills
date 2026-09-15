@@ -51,6 +51,7 @@ Every step gets a verify criterion. A step without a checkable outcome is not a 
 
 ### Effort
 {Rough estimate: S (<0.5 day) / M (0.5-2 days) / L (3-5 days) / XL (>1 week) — plus the single biggest item in 1 sentence.}
+Floor check: roughly 30min per UI file, 1h per service file, 2h per schema migration — check the estimate above against this floor.
 
 ### Affected Files
 - `path/to/file` — {what changes}
@@ -60,6 +61,9 @@ Every step gets a verify criterion. A step without a checkable outcome is not a 
 
 ## Edge Cases
 - {Case}: {Handling}
+
+## Known Costs
+- {What a rejected simplicity cut or a rejected "measure first" objection costs}: {one line}
 
 ## Done Criteria
 Machine-checkable, ALL must hold — commands with expected result, no prose like "works correctly":
@@ -91,6 +95,13 @@ Stop and report (do not improvise) when:
 - Data flow diagram (ASCII or Mermaid)
 - Migration strategy
 - Rollback plan
+
+## Conditional Sub-Templates
+
+Added to the plan when it matches:
+- **Schema migration** (any SwiftData/DB schema bump): rollback plan, test against real data, lightweight vs custom stage check, tombstone vs in-place.
+- **CloudKit**: schema deploy phase (pre-flight, manual Console fields), conflict strategy, race scenarios, container topology.
+- **iOS plan**: privacy and secrets hygiene, target membership / `project.yml` regeneration, known limitations. For an iOS major-version migration additionally: API fallback plan per new framework, Swift 6 hotspot list, capability matrix (region x language x model x device).
 
 ## Plan Log Format (Phase 4)
 

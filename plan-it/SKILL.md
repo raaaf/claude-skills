@@ -132,6 +132,8 @@ Before we compare — what's the actual goal?
 → My take: {likely goal based on context}
 ```
 
+**Framing symptom check:** when the user's question is a surface or label question (naming, wording, which brand, which label), first check whether a feature gap sits behind it before answering the surface question. Evidence: 4 of 8 plans had a hidden real goal.
+
 ### Step B: Codebase Scan (MANDATORY for every plan, skip if `SKIP_CODEBASE_SCAN=1`)
 
 Before asking the first clarifying question, **scan the codebase**. Many questions answer themselves this way.
@@ -160,8 +162,32 @@ Every idea is a tree of decisions that depend on each other. One answer opens ne
 - If the codebase can answer a question: don't ask, look it up, present it as a fact
 - Don't stop too early. Keep asking until every branch is resolved
 - Phrase things naturally
+- For open "think this through" requests without a spec: after each framing round ask explicitly whether the current framing is the anchor or still moving. Prevents endless drift. Evidence: 5 of 11 plans pivoted.
 
 **With every question: include your own recommendation** (format + examples in `references/interview-guide.md`).
+
+### When the interview is done
+
+"Keep asking until every branch is resolved" has no counterweight on its own, and an interview with
+no stopping rule either stops arbitrarily or grinds. Two rules, both checkable, no confidence
+percentage: a number nobody calibrates is theatre, and the plan template already states what the
+interview owes.
+
+**Completeness test (the reason to stop).** The interview is finished when you can fill every
+required section of `references/plan-templates.md` from what you now know, without writing a
+placeholder: steps each with a verify criterion, machine-checkable done criteria, affected files,
+edge cases, out of scope, STOP conditions. Name the section that is still empty and ask about THAT.
+When none is empty, stop asking and write the plan, even if further questions are imaginable.
+
+**No-progress rule (the reason to stop anyway).** If a round of questions changed neither the facts
+map nor the set of open branches, do not open a fourth round on the same level. Say what is still
+unresolved, state the assumption you would proceed on, and ask the user to confirm or correct that
+one assumption. Three rounds that move nothing mean the question is wrong, not that the answer is
+missing, and each further round costs the user a turn for nothing.
+
+Either rule firing ends Phase 1. An unresolved branch does not block the plan: it goes into the
+plan's `## Open Questions` section with the assumption you chose, where the challenge panel can
+attack it, which is cheaper than another interview round.
 
 ---
 
@@ -231,6 +257,11 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
    applied silently, even when convergent. List it under "Zur Diskussion" with the hook the agents
    gave, and let the user decide. Users have overruled convergent cut/defer recommendations three
    plans in a row; applying them unasked costs a round.
+
+   **Known costs:** when a simplicity cut or a product objection ("measure usage first") is rejected
+   in favour of the fuller solution, record the price it buys in the plan's "Known Costs" section
+   (e.g. custom migration stage instead of lightweight, no usage signal before build). The user
+   consistently picks the full solution, so the cost has to be visible rather than silently dropped.
 
 ### Finalize the Plan
 

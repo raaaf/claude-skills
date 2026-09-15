@@ -110,6 +110,9 @@ Agent(
 
     {PLAN_INHALT}
 
+    [When the plan changes the semantics of an existing function, paste the relevant function
+    bodies into this brief instead of describing them abstractly.]
+
     PROJECT GUIDELINES (take precedence over generic best practices):
     {PROJECT_GUIDELINES}
 
@@ -130,6 +133,10 @@ Agent(
     - Monitoring/alerting blind spots: failure modes the plan doesn't make observable?
     - Existing feature overlap: similar features in the codebase that should be reused?
     - Optimization levers: parallelization, caching, batch processing — where can effort be reduced?
+    - Were user decisions that overruled a challenge recommendation carried through consistently, or does a conflict remain in the plan?
+    - For AI/ML features: capability matrix checked (language x region x model availability x device class)?
+    - PR consolidation: can the planned PRs be merged into fewer, or should one be split?
+    - Non-functional requirements checked: logging strategy, telemetry, accessibility, simulator vs production differences?
 
     At the end: an overall verdict in ONE sentence.
     If changes are recommended: at most 3 concrete suggestions.",
