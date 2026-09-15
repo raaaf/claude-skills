@@ -61,6 +61,7 @@ fi
 bash "$AUDIT_BIN/check-i18n-keys.sh"; bash "$AUDIT_BIN/check-duplicate-array-keys.sh"
 bash "$AUDIT_BIN/check-number-format-locale.sh"; bash "$AUDIT_BIN/check-swift-deprecations.sh"
 bash "$AUDIT_BIN/check-token-contrast.sh"; bash "$AUDIT_BIN/check-test-count-drift.sh"
+bash "$AUDIT_BIN/check-silencing.sh"   # HITS: a check silenced instead of satisfied. Re-run after the fix wave (Phase 3c), fix agents are the likeliest source
 bash "$AUDIT_BIN/check-docs-path-drift.sh" "$BASE_REF"; bash "$AUDIT_BIN/check-docs-claims.sh"
 
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
@@ -192,6 +193,8 @@ Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/f
 Touch the in-progress marker again after the Notification. Read `{fixes, verdicts, regressions, rejected, blockingRegressions}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
 
 Run the full suite exactly once via `test-lock.sh` after the fix wave (fix-verifiers only ran filtered tests). A `blockingRegressions` entry (Critical/Important from the regression pass) becomes an open point and blocks the marker below.
+
+Re-run `bash "$AUDIT_BIN/check-silencing.sh"` and `bash "$AUDIT_BIN/check-test-count-drift.sh"` now, against the diff the fix wave just produced. A green suite is exactly what a silenced check looks like: a fix agent that added `@ts-ignore`, skipped a failing test or lowered a threshold makes the tests pass without the finding being fixed, and no other stage in the pipeline looks for that. A `SILENCING_HIT` on a line a fix agent wrote is an open point and blocks the marker; a hit that was already in the diff before the fix wave is an ordinary Phase 1 finding.
 
 ## Phase 4: Log, marker, run-ledger
 

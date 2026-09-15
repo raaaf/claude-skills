@@ -20,6 +20,12 @@ Security is not a feature you bolt on at the end — it is a property of every l
 - XV. Supply Chain (2026)
 - XVI. Blade Escaping Context: `{{ }}` inside `<style>` / `<script>` (RAWTEXT)
 - XVII. New Sensitive or Derived Field: Check EVERY Sink in One Round
+- XVIII. User-Confirmation Gates over Model Behavior
+- XIX. Host and Origin Allowlists: Suffix Checks Need the Dot
+- XX. Every Livewire Action Is a Public Endpoint
+- XXI. New Telemetry, Logging or Error-Tracking Sink: Inventory the Forwarded Fields
+- XXII. Widening a Content Guard to a New Field
+- XXIII. Deletion Completes Everywhere, or Reports That It Did Not
 
 ## I. Output Escaping & XSS Prevention
 
@@ -335,7 +341,7 @@ This is a condensed checklist mapped to the detailed sections above. Each item m
 7. **Authentication Failures** — Strong password policies. Account lockout after failed attempts. Multi-factor authentication for admin accounts. Session invalidation on password change.
 8. **Data Integrity Failures** — Verify signatures on webhooks. Validate data from external APIs. Use signed URLs for sensitive operations.
 9. **Logging & Monitoring Failures** — Log authentication events, authorization failures, and input validation failures. Never log passwords, tokens, or full credit card numbers. Alert on anomalous patterns.
-10. **SSRF (Server-Side Request Forgery)** — Validate and allowlist URLs before making server-side HTTP requests. Block requests to internal networks (`127.0.0.1`, `10.x.x.x`, `169.254.169.254`). Never let user input control the destination of server-side requests without validation.
+10. **SSRF (Server-Side Request Forgery)** — Validate and allowlist URLs before making server-side HTTP requests. Block requests to internal networks (`127.0.0.1`, `10.x.x.x`, `169.254.169.254`). Never let user input control the destination of server-side requests without validation. Two bypasses make a hostname allowlist useless on its own and are their own finding: resolve EVERY address the hostname returns and reject if any is private, since a name that resolves to one public and one internal address passes a check that looks only at the first; and refuse redirects (`redirect: 'error'`, `CURLOPT_FOLLOWLOCATION=false`, or re-validate each hop), since an allowlisted host that answers with a 302 to an internal address otherwise reaches it with the allowlist satisfied.
 
 ## XI. GoBD / Record Immutability
 
@@ -526,3 +532,17 @@ Wiring a sink (Sentry, Crashlytics, a log shipper, a metrics endpoint) is a data
 ## XXII. Widening a Content Guard to a New Field
 
 When a fix extends an existing content/keyword guard to an additional field, the guard's false-positive surface grows with it. Before the widening counts as done, run the guard against the EXISTING benign content of the new field (a sample of real rows, the seed data, the fixtures), not only against the example that motivated the fix; and decide per field whether a hit blocks or degrades, because a free-text preferences field is not a chat input (2026-08-03: a stage-1 guard widened to a preferences field hard-blocked "Krieg der Sterne"). Confidence: guard widened without a benign-content check in the same change -> Important.
+
+## XXIII. Deletion Completes Everywhere, or Reports That It Did Not
+
+A deletion path is a security surface, not a correctness detail: what stays behind is data the user is entitled to have gone, still reachable by anyone who reaches the store it stayed in.
+
+**Name every store, not just the row.** A delete that sets a flag (`deleted_at`, `is_deleted`, `status = 'deleted'`) is not an erasure when the caller's contract is erasure. Data written by a feature lives wherever that feature put it: related rows no cascade reaches, cached copies, queued jobs carrying a snapshot of the record, search indices, the error tracker, analytics, exports, backups, and third-party systems (payment provider, CRM, mailing list, file storage). A deletion path that touches fewer stores than the write paths that filled them is incomplete, and the gap is the finding.
+
+**A multi-store deletion needs a resume marker that survives the failure.** When the local half succeeds and a remote half can fail, something has to record that the remote half is still outstanding. Clearing that marker unconditionally, in a `defer`, a `finally`, or a cleanup at the end of the happy path, drops the only record of the outstanding work and makes the recovery code that reads it dead on exactly the path it exists for.
+
+**A swallowed remote failure never reaches the success report.** An error that is caught, logged, and falls through to the same completion callback as the success path makes a network failure, a signed-out account and a real deletion indistinguishable, to the user and to the audit trail. Either the failure propagates, or the reported state names what is still pending.
+
+**An irreversible external step is ordered against a marker.** Cancelling a subscription, removing a third-party account, or deleting remote files cannot be rolled back by the surrounding database transaction. A crash between that step and the local delete must leave a recoverable state, not an orphan.
+
+Confidence: an erasure contract with data provably retained in a store the path never touches -> Critical; a resume marker cleared on the error path, or a swallowed remote failure reported as success -> Critical; a soft delete whose contract is ambiguous, or an external step with no record that it ran -> Important.

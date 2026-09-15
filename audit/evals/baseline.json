@@ -1,0 +1,20 @@
+{
+  "recorded": "2026-09-10",
+  "mode": "scoped",
+  "note": "Per-category recall as measured after the 2026-09-10 harness repairs, narrated in README.md. `mode` is part of the contract: a scoped run measures worker recall for one dimension, an unscoped run measures routing plus worker recall, and the two are not comparable. The ratchet only compares a run in this mode, and only for a category whose fixtures were measured in full. security and payments predate the three prompt rules of 2026-09-11 and are therefore floors, not ceilings: raise them after the next full measurement of those two.",
+  "categories": {
+    "a11y":         { "hits": 14, "total": 16 },
+    "animation":    { "hits": 1,  "total": 1 },
+    "architecture": { "hits": 17, "total": 18 },
+    "copy":         { "hits": 1,  "total": 1 },
+    "correctness":  { "hits": 9,  "total": 10 },
+    "docs":         { "hits": 5,  "total": 5 },
+    "payments":     { "hits": 3,  "total": 4 },
+    "performance":  { "hits": 1,  "total": 1 },
+    "quality":      { "hits": 12, "total": 13 },
+    "reliability":  { "hits": 1,  "total": 1 },
+    "security":     { "hits": 21, "total": 24 },
+    "ui":           { "hits": 2,  "total": 2 },
+    "ux":           { "hits": 4,  "total": 5 }
+  }
+}

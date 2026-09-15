@@ -13,6 +13,7 @@ allowed-tools:
   - TodoWrite
   - AskUserQuestion
   - SendMessage
+  - SendUserFile
 ---
 
 # Delegate: Analysis (expensive) → Implementation (Sonnet) → Review (expensive)
@@ -77,6 +78,37 @@ Inline (no file), executor-ready — the executor does not know this session:
 **STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
 ```
 
+## Phase 3.5: Before-screenshot (visual tasks only)
+
+Only when the mini-spec's affected files contain a frontend file (`FRONTEND_EXT_RE` in
+`audit/bin/lib-git-base.sh` is the repo's single definition of that) or the task names a screen,
+page or component. Everything else skips this phase silently.
+
+The before-image can only be taken here, before the executor touches anything. That is the whole
+reason this is its own phase and not part of the review.
+
+Resolve a target, in this order, and skip the phase when none resolves. Never guess a URL: a
+screenshot of a connection error looks like a result.
+
+1. A URL the user named in the task.
+2. `.claude/launch.json` in the repo: a configuration's `url`, else `http://localhost:<port>`.
+   Start the server first if nothing is serving; leave it running for Phase 5.
+3. iOS: a booted simulator (the script checks; it skips when there is none).
+
+```bash
+CAPTURE=""
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/capture-screens.sh" \
+         "$HOME/.claude/skills/audit/bin/capture-screens.sh"; do
+  [ -f "$c" ] && { CAPTURE="$c"; break; }
+done
+# web:  bash "$CAPTURE" --label before --url "$TARGET_URL" --name "$SCREEN_NAME"
+# iOS:  bash "$CAPTURE" --label before --ios --name "$SCREEN_NAME"
+```
+
+Note the `SCREEN_NAME` and the target in the mini-spec so Phase 5 captures the same thing. A
+`CAPTURE_RESULT=SKIP` is not a failure and never blocks the task: say one line why, and continue
+without an after-image, rather than pretending a comparison exists.
+
 ## Phase 4: Dispatch the executor (Sonnet)
 
 Default: directly in the working tree (review happens before every commit). Isolated worktree (`isolation: worktree`) only when: the user says `--worktree`, the working tree contains foreign uncommitted changes, or the task is risky (migrations, > 5 files).
@@ -111,6 +143,12 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the fix line when in doubt (a happy-path test stays green while the new branch ships untested).
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
+6. **After-screenshot**, when Phase 3.5 captured a before-image: rerun the same command with
+   `--label after` and the same `--name`, against the same target. Open both files and say what
+   actually changed visually, in one or two sentences. A pair of images with no reading of them is
+   decoration. If the before-image was skipped, do not capture an after-image either: a single
+   picture invites a comparison the run cannot make.
+
 **Verdict:**
 
 | Verdict | Action |
@@ -140,7 +178,12 @@ Verdict: APPROVE ({N} revision rounds)
 Changed: {files with 1-line what}
 Verified: {command → result, per done criterion}
 Executor NOTES: {if relevant}
+Visual: {what changed between before and after, or omit the line entirely}
 Open: {nothing | deliberately deferred with reason}
 ```
+
+When before/after images exist, attach them with `SendUserFile` (before first, then after) so the
+user sees the change instead of reading a path. They live under `.claude/screenshots/`, which the
+script adds to `.gitignore`, so they never reach a commit.
 
 Tests red or criterion not achievable: say so honestly, never sugarcoat. Afterward normal rules apply: commit only on explicit request, /audit before push.

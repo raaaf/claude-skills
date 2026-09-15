@@ -26,6 +26,25 @@ No fixture started a session in that window; every run reported 0 recall and exi
 recorded from this harness in that period is void. The calibration figures in the root `CLAUDE.md`
 are NOT from this harness and stand unaffected.
 
+### The ratchet (`baseline.json`)
+
+The table below is also machine-readable, in `baseline.json`, and `run-evals.sh` compares every
+run against it. A category that comes in under its recorded number prints `BELOW BASELINE` and the
+run exits non-zero. That is the whole point of having measured at all: before this, a prompt edit
+that cost a dimension two findings produced a number nobody was holding against anything.
+
+It abstains rather than guess in two cases, because a ratchet that cries wolf gets ignored:
+
+- **Mode mismatch.** `baseline.json` records `"mode": "scoped"`. An unscoped run measures routing
+  plus worker recall, a scoped run measures worker recall alone, and comparing them is meaningless.
+  A run in the other mode prints one line saying it was not compared.
+- **Partial category.** A `--only` subset that measures 2 of a category's 5 expected findings is
+  too small to call a regression on, so it prints as partial and is not compared.
+
+When a number genuinely improves, the run says so and asks you to update `baseline.json` once it
+reproduces. Do not edit the file to make a failing run pass. That is the same move as adjusting an
+expectation so a fixture passes, and `check-silencing.sh` exists because of how easily it happens.
+
 ### Baseline, 2026-09-10 (first valid measurement after the repair)
 
 Both runs `--scoped`, so they measure worker recall for one dimension, never routing. Do not compare
@@ -541,6 +560,18 @@ identifier sitting between the two words. That keyword list now also carries `tr
 naming the thing as the code names it, not lowering the bar, since the finding must still be about
 that specific class filter. `account-deletion-remote-wipe` is the only genuine content miss, and a
 small one: both defects are described in the prose, folded under a single citation.
+
+**Re-measured 2026-09-15 after `guidelines/security.md` gained section XXIII (deletion completes
+everywhere, or reports that it did not): 0/2 becomes 1/2.** The guideline is what closed it. The
+run now names the unconditional `defer` at the right line, the swallowed CloudKit error, the dead
+recovery guard, and a per-step-state gap the expectation does not even list. The remaining miss is
+not a content miss any more: the swallow is found and described correctly, but cited on the
+enclosing `do {` (line 44) instead of the `print` that swallows (line 50), six lines outside the
+window. That is the citation rule in `agents/prompt-template.md` not being followed, the same class
+that cost two fixtures on 2026-09-11, and it is the reason the expectation was left untouched.
+The one false positive is the known two-defects-under-one-citation problem at line 63: the entry
+excludes the claim that clearing the flag after a SUCCESSFUL delete is wrong, while the run made
+the different and correct claim that `try?` on the retry abandons a FAILING one.
 
 The two false positives that survive are the specialist following the coverage-not-filtering rule
 and reporting real secondary weaknesses that those fixtures deliberately treat as scenery. That is

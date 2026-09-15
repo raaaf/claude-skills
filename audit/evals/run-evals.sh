@@ -569,7 +569,11 @@ validate_expected() {
       echo "WARNING: fixture '${fx#"$FIXTURES_DIR"/}' has no expected/$b.json, so it can never be scored. Write one or remove the fixture."
       c_orphan_fixture=$((c_orphan_fixture + 1))
     fi
-  done < <(find "$FIXTURES_DIR" -mindepth 2 -maxdepth 2 2>/dev/null | sort)
+  # `-not -path '*/.*'`: tooling leaves hidden directories under fixtures/ (a
+  # nested session dropped an empty `.claude/.cc-writes` there on 2026-09-15),
+  # and every one of them warns as an unscoreable fixture forever. A fixture
+  # category is never a dotfile.
+  done < <(find "$FIXTURES_DIR" -mindepth 2 -maxdepth 2 -not -path '*/.*' 2>/dev/null | sort)
 
   echo
   echo "Validation summary"
@@ -635,6 +639,11 @@ TOTAL_SUSPICIOUS_CREDIT=0
 declare -A CAT_FOUND
 declare -A CAT_CORRECT
 declare -A CAT_EXPECTED
+# Categories whose number this run cannot be held against a baseline: a
+# timed-out fixture is still scored against whatever it had written, so its
+# hits are a floor and the category total is unchanged. That is exactly the
+# shape of a real regression and must not be reported as one.
+declare -A CAT_DEGRADED
 
 # Trim a keyword's trailing 3 characters when doing so still leaves a >=6 char
 # prefix, so ordinary morphological variants — plurals, -ed/-ing, and
@@ -1140,6 +1149,7 @@ score_fixture() {
     # that contradicts the number next to it is worse than no line.
     echo "  TIMEOUT $fixture_rel after ${elapsed}s — session killed; whatever it had written so far is still scored below, so its number is a FLOOR, not a final result"
     TOTAL_TIMEOUT=$((TOTAL_TIMEOUT + 1))
+    CAT_DEGRADED["${fixture_rel%%/*}"]="timeout"
   fi
 
   # Score against the audit log; headless low-effort sessions do not reliably
@@ -1291,6 +1301,53 @@ for cat in "${!CAT_EXPECTED[@]}"; do
   echo "  $cat: $c/$e"
 done
 
+# --- Ratchet against audit/evals/baseline.json -------------------------------
+# The per-category numbers above are the product of days of measurement and
+# they were guarded by nothing: a prompt edit that dropped a dimension's recall
+# looked exactly like a normal run. This compares what was just measured
+# against the recorded floor and fails the run when a category fell below it.
+#
+# Two deliberate abstentions, because a false alarm here would train the reader
+# to ignore the line:
+#   - a run whose mode differs from the baseline mode is not compared at all
+#     (scoped measures worker recall for one dimension, unscoped measures
+#     routing as well, and the two numbers are not the same question)
+#   - a category is only compared when this run measured ALL of its expected
+#     findings; a --only subset of one category is too small a sample to call
+#     a regression, so it prints as partial instead.
+BASELINE_FILE="$EVALS_DIR/baseline.json"
+BASELINE_REGRESSION=0
+if [ -f "$BASELINE_FILE" ]; then
+  baseline_mode=$(jq -r '.mode // "unknown"' "$BASELINE_FILE" 2>/dev/null || echo unknown)
+  run_mode="unscoped"; [ "$SCOPED" -eq 1 ] && run_mode="scoped"
+  echo
+  if [ "$baseline_mode" != "$run_mode" ]; then
+    echo "Baseline: not compared (this run is $run_mode, baseline.json was recorded $baseline_mode)"
+  else
+    echo "Baseline (recorded $(jq -r '.recorded // "?"' "$BASELINE_FILE"), $baseline_mode):"
+    for cat in "${!CAT_EXPECTED[@]}"; do
+      c="${CAT_CORRECT[$cat]:-0}"
+      e="${CAT_EXPECTED[$cat]}"
+      b_hits=$(jq -r --arg c "$cat" '.categories[$c].hits // empty' "$BASELINE_FILE" 2>/dev/null)
+      b_total=$(jq -r --arg c "$cat" '.categories[$c].total // empty' "$BASELINE_FILE" 2>/dev/null)
+      if [ -n "${CAT_DEGRADED[$cat]:-}" ]; then
+        echo "  $cat: $c/$e (${CAT_DEGRADED[$cat]} in this category, hits are a floor, not compared)"
+      elif [ -z "$b_hits" ] || [ -z "$b_total" ]; then
+        echo "  $cat: $c/$e (no baseline recorded, nothing to compare)"
+      elif [ "$e" -ne "$b_total" ]; then
+        echo "  $cat: $c/$e (partial category, baseline is $b_hits/$b_total, not compared)"
+      elif [ "$c" -lt "$b_hits" ]; then
+        echo "  $cat: $c/$e BELOW BASELINE $b_hits/$b_total" >&2
+        BASELINE_REGRESSION=1
+      elif [ "$c" -gt "$b_hits" ]; then
+        echo "  $cat: $c/$e above baseline $b_hits/$b_total (update baseline.json once this reproduces)"
+      else
+        echo "  $cat: $c/$e holds the baseline"
+      fi
+    done
+  fi
+fi
+
 # Exit-code contract: 0 means at least one fixture was actually measured.
 # A run where every candidate fixture was UNMEASURED (mktemp failed, or every
 # session died before producing an audit log or stdout) is indistinguishable
@@ -1305,5 +1362,11 @@ done
 if [ "$TOTAL_CANDIDATES" -eq 0 ] || [ "$TOTAL_UNMEASURED" -eq "$TOTAL_CANDIDATES" ]; then
   echo
   echo "ERROR: nothing was measured ($TOTAL_UNMEASURED/$TOTAL_CANDIDATES candidate fixtures unmeasured, $TOTAL_INVALID_EXPECTED skipped as invalid) — this is a harness failure, not a zero-recall result" >&2
+  exit 1
+fi
+
+if [ "$BASELINE_REGRESSION" -eq 1 ]; then
+  echo
+  echo "ERROR: at least one category fell below the recorded baseline (see the Baseline block above). Either the change under test lowered recall, or the baseline is stale — do not update baseline.json to make this pass without a reason you can name." >&2
   exit 1
 fi
