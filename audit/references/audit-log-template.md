@@ -77,7 +77,7 @@ for that finding regardless of how correct or well-argued it was.
 ## Mandatory Tagging Convention
 
 Every finding line carries both tags: severity (`[Critical]`/`[Important]`/`[Minor]`) and
-dimension, one of the 13 canonical ids exactly as spelled in `prompt-template.md`'s cross-cutting
+dimension, one of the 14 canonical ids exactly as spelled in `prompt-template.md`'s cross-cutting
 rules (`architecture`, `security`, `performance`, `code_quality`, `seo`, `a11y`, `typography`,
 `ui_design`, `ux`, `animation`, `docs_sync`, `copy`, `privacy`). No aliases (`accessibility`,
 `A11Y`, `docs`): free variants broke the top-category metric before (2026-08-06).
@@ -87,7 +87,9 @@ rules (`architecture`, `security`, `performance`, `code_quality`, `seo`, `a11y`,
 Two mechanical checks on the log file just written:
 
 1. **Severity tags restricted to `{Critical, Important, Minor}`** and dimension tags restricted to
-   the 13 canonical ids above. A non-canonical tag is a bug in the line that wrote it: fix it to
+   the 14 canonical ids above (`payments` included: it is conditional, not non-canonical, and
+   `audit/SKILL.md` Phase 4 gives a worked `[Critical][payments]` example). A non-canonical tag is a
+   bug in the line that wrote it: fix it to
    the correct one, do not invent a fourth category.
 2. **If any `CONFIRMED` verdict occurred this run, `patterns.json` must be newer than the log file
    about to be written.** Compare mtimes; if the store is older or missing, the per-verdict

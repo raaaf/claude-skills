@@ -43,6 +43,14 @@ If `>= 1`: implement the open suggestions without asking — changes to `plan-it
 which ones were applied. Leave a suggestion open (and say so) only when implementing it needs a
 decision the log does not contain.
 
+**Commit the applied items right away**, in the skill source repo, same rule and same reason as
+`audit/references/pre-flight-checks.md`: one commit, no push, only the files this application
+changed, and if the repo already had unrelated uncommitted changes, stage only your own and say so.
+Without this the edits sit in the working tree with nothing recording which run wrote them. That is
+not hypothetical: on 2026-09-15 seven modified `plan-it/*` files were found uncommitted, the
+learning log carried no matching marker, and the evidence claims in the new text ("4 of 8 plans")
+could not be traced to any log in the repo.
+
 If `0`: go straight to Phase 0.5.
 
 Skip via env var `PLAN_SKIP_LEARNING_CHECK=1`.

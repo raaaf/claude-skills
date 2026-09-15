@@ -174,7 +174,14 @@ repo's scope was 132 KB, another session refused to inline 104 KB and bypassed t
 and a follow-up session routed every dimension through `dimensionFiles` to dodge it, which starved
 every content floor and left five of fourteen dimensions skipped or incomplete.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: ALLE_DATEIEN, dimensions: AUDIT_DIMENSIONS, effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
+`files` and `dimensions` are JSON ARRAYS, not the newline/comma strings the shell variables hold:
+`find.js:726` validates `dimensions` with `Array.isArray` and throws `args.dimensions must be an
+array of supported dimension ids` before dispatching anything, and `files` is used as an array
+throughout (`files.slice`, `files.filter`). Split `ALLE_DATEIEN` on newlines and `AUDIT_DIMENSIONS`
+on commas when building the call. A real run on 2026-09-15 failed here in 14ms because this line
+read as if the shell values could be passed through unchanged.
+
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
 `payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
 

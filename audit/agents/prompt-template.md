@@ -79,7 +79,7 @@ line in any deviation finding; isolated unusual values are not sufficient eviden
   findings in a dimension from a worker that never loaded its guidelines.
 - **The dimension tag is one of exactly 14 ids**: `architecture`, `security`, `performance`,
   `code_quality`, `seo`, `a11y`, `typography`, `ui_design`, `ux`, `animation`, `docs_sync`,
-  `copy`, `privacy`, `payments`. No aliases. `payments` is conditional: it exists only on a repo where `bin/detect-stripe.sh` reports `STRIPE=yes`.
+  `copy`, `privacy`, `payments`. No aliases. `payments` is conditional: it runs only when `bin/detect-stripe.sh` reports `STRIPE=yes` AND the diff touches the payment surface it found (`audit/SKILL.md` Phase 1.5 computes that intersection).
 
 ## Structured coverage contract
 

@@ -53,7 +53,7 @@ done
 - Targeted codebase scan: read affected files, **grep every identifier to be changed repo-wide** (parallel implementations, wizard duplicates — never assume there's only one spot).
 - Identify conventions + an exemplar file (components instead of raw HTML, error pattern, test style).
 - Determine the repo's verification commands (test runner, linter, typecheck) — do NOT guess, read from package.json/composer.json/CI. Only diff-scoped tests, never the full suite.
-- **Test authority:** exactly ONE instance runs tests at a time. When the orchestrator runs tests itself, executor subagents must NOT start their own test runs (especially `composer test`/`composer test:parallel` — shared test databases corrupt each other). Decide up front who tests, and say so in the executor briefing.
+- **Test authority:** exactly ONE instance runs tests at a time. When the orchestrator runs tests itself, executor subagents must NOT start their own test runs (especially `composer test`/`composer test:parallel` — shared test databases corrupt each other). Decide up front who tests, and say so in the executor briefing. Whoever tests runs the command through `audit/bin/test-lock.sh`, the same mkdir-spinlock `/audit` uses: the briefing is a convention between this skill and its own executor, while the lock also holds against an `/audit` fix wave or a second session running in the same worktree, which the briefing cannot reach.
 - List assumptions explicitly.
 
 ## Phase 2: Clarifying questions (only genuine ambiguities)
@@ -98,7 +98,8 @@ screenshot of a connection error looks like a result.
 ```bash
 CAPTURE=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/capture-screens.sh" \
-         "$HOME/.claude/skills/audit/bin/capture-screens.sh"; do
+         "$HOME/.claude/skills/audit/bin/capture-screens.sh" \
+         "$HOME/.claude/skills/claude-skills/audit/bin/capture-screens.sh"; do
   [ -f "$c" ] && { CAPTURE="$c"; break; }
 done
 # web:  bash "$CAPTURE" --label before --url "$TARGET_URL" --name "$SCREEN_NAME"

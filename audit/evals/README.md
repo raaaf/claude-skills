@@ -90,8 +90,12 @@ is a claim about the measuring tool until each case has been read against the ar
 on an aggregate here without doing that.
 
 `hash-verified-earlier-in-file.php` is a pure trap with `expected: 0` and it passes, which is worth
-knowing: what separates it from the failures is that its rule (`guidelines/security.md:26-28`) names
-the exact failure shape and its bar is a single binary outcome.
+knowing: what separates it from the failures is that the evidence is local and the bar is a single
+binary outcome. The value written near the bottom of the file was hashed near the top of the same
+method, so one careful read of one file settles it, with no rule to weigh and nothing to trade off.
+(The earlier version of this sentence credited a rule at `guidelines/security.md:26-28`. Those lines
+are table-of-contents entries, and the file carries no such rule at all; the citation was wrong when
+it was written and the growing TOC only made it look stale.)
 
 The remaining 11 dimensions are unmeasured since the break. Roughly five minutes per fixture
 scoped, so budget accordingly before starting a category.

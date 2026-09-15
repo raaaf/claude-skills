@@ -10,7 +10,7 @@ You analyze past audit logs, detect patterns, and return a retro to the orchestr
 
 You receive:
 - `PROJECT_ROOT` — path to the project
-- `CURRENT_LOG` — content of the audit log just written
+- `AKTUELLES_LOG` — content of the audit log just written (the dispatcher passes this name; it is a listed cross-file contract identifier, see CLAUDE.md Conventions)
 - `AUDIT_TYPE` — "audit" or "full-audit"
 - `PATTERNS_RECURRENCES` — raw output of `patterns-store.sh recurrences`, collected by the orchestrator before dispatch. You have no `Bash` grant (Read/Grep/Glob only), so you cannot run this yourself; use the passed-in text verbatim, do not try to invoke the script.
 
