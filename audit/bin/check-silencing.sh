@@ -134,7 +134,11 @@ function flush_file() {
   # Published build output is third-party code the repo only carries. 27 of 38
   # hits on the first real probe of a second repo were the published JS
   # bundles of one framework.
-  skip = (file ~ /audit\/evals\/fixtures\// || file ~ /(^|\/)(vendor|node_modules|Pods|\.git)\// ||
+  # The source of this script states every pattern it looks for, so it reports
+  # itself on any diff that touches it. Its own path is excluded for the same
+  # reason the fixtures are: defining a rule is not an instance of the rule.
+  skip = (file ~ /(^|\/)check-silencing\.sh$/ ||
+          file ~ /audit\/evals\/fixtures\// || file ~ /(^|\/)(vendor|node_modules|Pods|\.git)\// ||
           file ~ /(^|\/)\.claude\// ||
           file ~ /(^|\/)(dist|build|out|\.next|\.nuxt|coverage)\// ||
           file ~ /(^|\/)public\/(js|css|build|vendor)\// ||
