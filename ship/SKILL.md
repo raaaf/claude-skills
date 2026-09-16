@@ -46,7 +46,6 @@ Detect deploy method and health check URL (check in priority order):
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
 DEPLOY_COMMAND=$(orch_ship_value deploy-command) || DEPLOY_COMMAND=""
 HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
-TEST_COMMAND=$(orch_test_command_declared) || TEST_COMMAND=""   # declared only, on purpose: no manifest fallback on ship day
 
 # 2. Detect deploy method from known files
 if [ -z "$DEPLOY_COMMAND" ]; then
@@ -376,9 +375,9 @@ gh run list --limit 1 --json status,conclusion,url 2>/dev/null
 # because every block is a fresh shell (six audit runs named the unguarded curl, 2026-09-16).
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
 HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
-HEALTH_HOST=$(printf '%s' "$HEALTH_URL" | sed -nE 's#^https?://([^/:?]+).*#\1#p')
+HEALTH_HOST=$(printf '%s' "$HEALTH_URL" | sed -nE 's#^https?://([^/@]*@)?(\[[^]]+\]|[^/:?@]+).*#\2#p')   # userinfo dropped first, bracketed IPv6 kept whole
 case "$HEALTH_URL" in http://*|https://*) ;; "") ;; *) echo "Health: refusing non-http(s) URL from .claude/ship.md"; HEALTH_URL="";; esac
-case "$HEALTH_HOST" in localhost|127.*|0.0.0.0|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|*.local|*.internal) echo "Health: refusing loopback/private/link-local host $HEALTH_HOST"; HEALTH_URL="";; esac
+case "$HEALTH_HOST" in ""|localhost|127.*|0.0.0.0|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|*.local|*.internal|"[::1]"|"[::]"|"[fc"*|"[fd"*|"[fe80"*|"[::ffff:"*) echo "Health: refusing loopback/private/link-local host $HEALTH_HOST"; HEALTH_URL="";; esac
 if [ -n "$HEALTH_URL" ]; then
   HTTP_STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 15 "$HEALTH_URL" 2>/dev/null)
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then

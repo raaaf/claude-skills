@@ -53,7 +53,7 @@ FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
 FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
 SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
 PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
-bash "$AUDIT_BIN/pre-checks.sh"
+PRECHECK_OUT="$(bash "$AUDIT_BIN/pre-checks.sh")"; printf '%s\n' "$PRECHECK_OUT"   # SECRET_SCAN_RESULT=FINDINGS: every `SECRET file:line: type` line is a [Critical][security] finding in the log and blocks the marker (Phase 4); LOCKFILE_DRIFT_RESULT=FINDINGS: [Important][security]
 bash "$AUDIT_BIN/check-ci-hardening.sh" "$(git rev-parse --show-toplevel)"   # HITS become Important security findings, no specialist needed
 orch_parse_stripe "$(git rev-parse --show-toplevel)"   # sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES
 if echo "$ALLE_DATEIEN" | grep -qE '(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Podfile(\.lock)?|Package\.(swift|resolved)|pubspec\.(yaml|lock)|build\.gradle)'; then
@@ -112,6 +112,7 @@ if [ "${STRIPE:-no}" = "yes" ]; then
     echo "payments: skipped, diff did not touch the payment surface"
   fi
 fi
+echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS"   # carry THIS printed value into every later block that reads it (Phase 2 dispatch, Phase 4 counts): each block is a fresh shell
 ```
 
 `guidelines/payments.md` carries an `applies_to` path regex, so a diff that only touches a generic
@@ -247,6 +248,7 @@ orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; 
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(pwd | sed 's#/#-#g')"
 bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # cost line for the log header + run-ledger
 COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}"
+AUDIT_DIMENSIONS="{the value Phase 1.5 printed as AUDIT_DIMENSIONS=..., payments included when it was appended}"   # fresh shell: the Phase 1.5 variable does not exist here; a bare test of it was always false (2026-09-16, Critical)
 if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
   COUNTS="$COUNTS,payments_head=$(git rev-parse HEAD)"
 fi
@@ -256,7 +258,7 @@ bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
 
 **Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when ALL of these hold, all derived from the Phase 2 `find.js` result:
 
-- no Critical is open,
+- no Critical is open, including every `SECRET ...` line Phase 1's `pre-checks.sh` printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
 - no new test failure beyond `BASELINE_FAILURES`,
 - no selected dimension has `status: incomplete`,
 - a dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when

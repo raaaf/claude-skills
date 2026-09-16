@@ -208,7 +208,9 @@ if (ALL_DIMENSIONS.length !== DIMENSION_TABLE.length ||
 
 // Mirrors audit/bin/lib-git-base.sh FRONTEND_EXT_RE (single source of truth is the
 // shared bash lib; kept in sync here because find.js runs outside bash).
-const FRONTEND_EXT_RE = /\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$/i;
+// Case-sensitive like the bash consumers of the same pattern (grep -E, no -i); the /i this
+// carried until 2026-09-16 made find.js the only path that classified `.TSX` as frontend.
+const FRONTEND_EXT_RE = /\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$/;
 const TRANSLATION_RE = /(^|\/)(lang|locales|translations|messages|i18n)\/.*\.(php|json|ya?ml|po|ts)$/i;
 const MIGRATION_RE = /(^|\/)(migrations?|db\/migrate)\//i;
 const DOCS_RE = /(^|\/)(README\.md|CLAUDE\.md|docs\/.*\.md|\.env\.example)$/i;

@@ -37,6 +37,9 @@
 #   orch_ship_value <key> [root]   prints `<key>:` from .claude/ship.md (test-command, deploy-command, health-check), else nothing (rc 1)
 #   orch_test_command_declared [root]   = orch_ship_value test-command
 #   orch_test_command [root]  declared value, else a manifest guess (composer/npm/swift/pytest), else nothing (rc 1)
+#   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
+#   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
+#   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
 #
 # The two hash conventions are deliberately two functions with two names. They
 # differ by one trailing newline, reading one family with the other produces a
@@ -58,7 +61,6 @@ orch_resolve_audit_root() {
   local c
   for c in "${CLAUDE_SKILL_DIR:-}" \
            "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
-           "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit}" \
            "$HOME/.claude/skills/audit"; do
     [ -n "$c" ] && [ -d "$c/agents" ] && [ -f "$c/bin/verify-agents.sh" ] && { AUDIT_ROOT="$c"; break; }
   done
@@ -74,8 +76,10 @@ orch_helper() {
   printf '%s' "$AUDIT_BIN/$1"
 }
 
-orch_progress_claim()   { touch "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
+# Claim and touch are the same operation on the same file (a plain touch); the
+# two names exist so a SKILL.md reads as "claim once, touch after each wave".
 orch_progress_touch()   { touch "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
+orch_progress_claim()   { orch_progress_touch; }
 orch_progress_release() { rm -f "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
 
 orch_verify_agents() {

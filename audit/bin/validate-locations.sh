@@ -20,6 +20,7 @@ while IFS="$(printf '\t')" read -r path line _rest; do
   [ -n "$path" ] || continue
   N=$((N+1))
   case "$line" in ''|*[!0-9]*) echo "HALLUCINATION $path:$line line is not a number"; HITS=$((HITS+1)); continue;; esac
+  [ "$line" -ge 1 ] || { echo "HALLUCINATION $path:$line line 0 does not exist"; HITS=$((HITS+1)); continue; }
   case "$path" in /*|*/../*|../*|*/..|..) echo "HALLUCINATION $path:$line path is absolute or escapes the repo"; HITS=$((HITS+1)); continue;; esac
   if [ ! -f "$ROOT/$path" ]; then echo "HALLUCINATION $path:$line file missing"; HITS=$((HITS+1)); continue; fi
   total=$(wc -l < "$ROOT/$path" | tr -d ' ')

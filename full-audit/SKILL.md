@@ -40,7 +40,7 @@ orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; 
 FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
 FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
 SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
-bash "$AUDIT_BIN/pre-checks.sh"
+PRECHECK_OUT="$(bash "$AUDIT_BIN/pre-checks.sh")"; printf '%s\n' "$PRECHECK_OUT"   # SECRET lines are [Critical][security] findings in the log (no marker here, but never silent)
 bash "$AUDIT_BIN/check-ci-hardening.sh" "$(git rev-parse --show-toplevel)"
 bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)"
 orch_parse_stripe "$(git rev-parse --show-toplevel)"   # sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES (lib-orchestrator.sh)
@@ -162,11 +162,10 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)` to the `--counts` argument,
   same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
   the next run.
-- Every finding line, same as `audit/SKILL.md` Phase 4, MUST be exactly `- [Severity][Dimension]
-  file:line: description` on one physical line, e.g. `- [Critical][payments] app/Jobs/Charge.php:27:
-  PaymentIntent::create has no idempotency_key, a queue retry double-charges the customer.`
-  `audit/evals/run-evals.sh`'s `normalize_findings()` parses exactly this shape; any other shape
-  scores zero recall for every finding on it.
+- Every finding line follows the machine-parsed contract stated once in `audit/SKILL.md` Phase 4
+  (one physical line, `- [Severity][Dimension] file:line: description`); this file no longer
+  repeats the wording, since a rewording that lands in one copy and not the other is how that
+  contract drifted unnoticed on 2026-09-10.
 
 `runId` for both the find and fix workflows goes into the same log-header position `audit/SKILL.md`
 uses, so `Workflow({ scriptPath, resumeFromRunId })` resumes a full-audit run exactly like a

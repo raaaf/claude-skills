@@ -253,3 +253,7 @@ Note: the feed for the two 2026-09-15 runs was back-filled at Phase 5 (30 confir
 - [x] `audit/agents/learning-agent.md`: append-vs-replace contradiction at line 28 vs 171 (applied 2026-09-16: `4265a58`, line 28 now says replace at the top).
 - [x] `delegate/SKILL.md:132` EXEC_REF loop: the agent proposed adding the third candidate path to match the CAPTURE loop. Resolved the OTHER way (applied 2026-09-16: `4265a58`): `~/.claude/skills/claude-skills/...` resolves nowhere since the 2026-09-10 symlink layout, so the dead candidate was removed from all nine loops instead. Do not re-add it.
 - [x] `audit/references/learning-phase.md`: fixes applied by the orchestrator outside `fix.js` carry the per-verdict `recur` duty themselves; back-fill is the repair for forgetting, not an alternative (applied 2026-09-16: `learning-phase.md` Step 0.5).
+
+## Open decision (carried once here, not repeated per audit log)
+
+- [ ] `audit/workflows/find.js` `runDimension` / `audit/SKILL.md` Phase 4: one `UNCERTAIN` verifier verdict makes the dimension `incomplete` and blocks the push marker, even for a Minor (runs 5 and 7 on 2026-09-16). The contract exists so an unverified finding cannot vanish; whether a Minor should carry that weight is a product decision, not a triage one. NEEDS A DECISION, do not apply without one: options are (a) keep, (b) `UNCERTAIN` blocks only at Critical/Important, (c) `UNCERTAIN` never blocks and is always logged under Unverified.

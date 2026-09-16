@@ -4,7 +4,7 @@ Retained for `/design-audit`. `/audit` and `/full-audit` use independent dimensi
 
 - **subagent_type:** `ui-ux-reviewer`
 - **model:** `sonnet`
-- **maxTurns:** `30`   # equals the prompt-template tool-call budget; the two move together
+- **maxTurns:** `30`   # one full file read per assigned file plus the guideline reads; prompt-template.md sets no budget of its own
 - **covers dimensions:** `a11y`, `typography`, `ui_design`, `ux`, `animation`
 
 ## Why one worker instead of five
