@@ -227,7 +227,8 @@ if (changedFiles.length) {
     const result = await agent(
       ROOT_HEADER +
       `Read the diffs of these files (git diff for each) and check for regressions across all ` +
-      `13 dimensions, using the specialist schema. Diffs only, no unrelated reading.\n` +
+      `every selected dimension (the 13 unconditional ones plus payments when it was selected for this run; ` +
+      `ALL_DIMENSIONS in find.js has 14 entries), using the specialist schema. Diffs only, no unrelated reading.\n` +
       `Return coverage={status:"complete"|"incomplete",files:[reviewed paths]}. Only mark complete after reviewing every assigned file.\n` +
       `FILES=${JSON.stringify(group)}`,
       { agentType: 'code-reviewer', model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Regress' }

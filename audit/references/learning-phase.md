@@ -1,6 +1,6 @@
 # Learning Phase (Phase 5)
 
-Runs after the audit log is written and before the push marker. Skipped entirely when `SKIP_LEARNING=1` (low effort).
+Runs after the audit log is written and before the push marker. Skipped entirely when `CLAUDE_EFFORT=low` (`audit/SKILL.md` Phase 5 tests that variable directly; `SKIP_LEARNING` is plan-it's name for the same switch).
 
 The learning agent returns a **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection, even in the foreground and with bypassPermissions). The orchestrator parses the output and writes it itself — `.claude/audits/*.md` and `.claude/audits/suppressions.json` are among the allowed orchestrator edits.
 
@@ -12,7 +12,7 @@ bash "$AUDIT_BIN/run-stats.sh"
 
 `RUNSTATS_RESULT=OK` or `SKIP (reason)`: no action, go to Step 1. `RUNSTATS_RESULT=ANOMALIES (N)`: append every `RUNSTAT <key>: <detail>` line to the current audit log's `## Open Points` section (create the heading if the log has none yet), tagged `AGED` and placed at the top of that section — the same escalation `full-audit/SKILL.md` Phase 4 already applies to a recurring open point or gap, labelled "open/present 3x+ — decision overdue": `run-stats.sh` only reports a condition once it has recurred, so every anomaly it surfaces already qualifies.
 
-**Step 0.5: verify the recurrence feed was fed (mandatory, before dispatching the learning agent).** The per-verdict `patterns-store.sh recur` duty in `fix-loop.md` (Step D.7, or Step E at `floor=high`) is what populates `patterns.json`; the learning agent only reads it. On 2026-08-26 a run confirmed 10 findings and wrote 0 store entries, and nothing noticed until the retro. Check it here, deterministically:
+**Step 0.5: verify the recurrence feed was fed (mandatory, before dispatching the learning agent).** The per-verdict `patterns-store.sh recur` duty (in `workflows/fix.js` and `agents/fix-agent.md` since the 2026-09-05 rebuild; `fix-loop.md`, which used to carry it, was deleted then) is what populates `patterns.json`; the learning agent only reads it. On 2026-08-26 a run confirmed 10 findings and wrote 0 store entries, and nothing noticed until the retro. Check it here, deterministically:
 
 ```bash
 TODAY=$(date +%Y-%m-%d)
@@ -22,7 +22,7 @@ FED_N=$(jq -r --arg d "$TODAY" '[.recurrences[] | objects | select(.last_seen ==
 echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
 ```
 
-**Fixes applied by the orchestrator directly, outside `fix.js`, carry the recur duty themselves.** The per-verdict `recur` lives in `fix-loop.md` because `fix.js` is the normal path; when the orchestrator decides and applies fixes by hand (as on 2026-09-15, twice), nothing runs it, and Step 0.5 then finds `FED_N=0` for a run with 30 confirmed findings. Call `patterns-store.sh recur {pattern}` at the moment each finding is confirmed, whichever path applies the fix; the back-fill below is the repair for having forgotten, not an alternative.
+**Fixes applied by the orchestrator directly, outside `fix.js`, carry the recur duty themselves.** The per-verdict `recur` rides with `fix.js` (via `agents/fix-agent.md`) because that is the normal path; when the orchestrator decides and applies fixes by hand (as on 2026-09-15, twice), nothing runs it, and Step 0.5 then finds `FED_N=0` for a run with 30 confirmed findings. Call `patterns-store.sh recur {pattern}` at the moment each finding is confirmed, whichever path applies the fix; the back-fill below is the repair for having forgotten, not an alternative.
 
 `FED_N >= CONFIRMED_N` (or `CONFIRMED_N=0`): go to Step 1. `FED_N < CONFIRMED_N`: back-fill NOW, before the agent runs: call `patterns-store.sh recur {pattern}` once per confirmed finding that has no entry yet (same normalized pattern string the verdict table would have used), re-run the check, and write one line under `## Notes` in the current audit log (`Recurrence feed: {CONFIRMED_N - FED_N}/{CONFIRMED_N} confirmed findings back-filled at Phase 5, per-verdict recur was skipped`). A back-fill is a process failure worth recording, not a silent repair: the learning agent must see the note so the retro can name it.
 

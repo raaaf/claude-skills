@@ -36,8 +36,7 @@ for candidate in \
   [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
 done
 [ -z "$AUDIT_ROOT" ] && { echo "ERROR: audit skill not found. Install audit alongside full-audit."; exit 1; }
-AUDIT_AGENTS="$AUDIT_ROOT/agents"; AUDIT_BIN="$AUDIT_ROOT/bin"; AUDIT_REFS="$AUDIT_ROOT/references"
-bash "$AUDIT_BIN/run-log.sh" --start --skill full-audit
+AUDIT_AGENTS="$AUDIT_ROOT/agents"; AUDIT_BIN="$AUDIT_ROOT/bin"; bash "$AUDIT_BIN/run-log.sh" --start --skill full-audit
 bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
 FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
 FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
