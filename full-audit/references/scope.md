@@ -106,7 +106,7 @@ EXCLUDE='-not -path */node_modules/* -not -path */vendor/* -not -path */.next/* 
 # a quoted array below and no longer subject to SC2086.
 find "${SOURCE_DIRS_ARR[@]}" \( -name "*.php" -o -name "*.blade.php" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.vue" -o -name "*.svelte" -o -name "*.astro" -o -name "*.py" -o -name "*.swift" -o -name "*.kt" -o -name "*.java" -o -name "*.m" -o -name "*.mm" -o -name "*.h" -o -name "*.go" -o -name "*.rs" -o -name "*.sh" -o -name "*.bash" -o -name "*.zsh" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-files.txt
 # Prompt template files — LLM prompt templates (*.md under prompt[s]/) are security targets
-# (untrusted-placeholder isolation, see guidelines/security.md section XII) but are not caught
+# (untrusted-placeholder isolation, see guidelines/security-2026.md section XII) but are not caught
 # by the standard globs. Include them so template files are never missed.
 # shellcheck disable=SC2086 -- EXCLUDE only, see note above.
 find "${SOURCE_DIRS_ARR[@]}" \( -path "*/prompts/*" -o -path "*/prompt/*" \) -name "*.md" $EXCLUDE 2>/dev/null | sort >> /tmp/full-audit-files.txt

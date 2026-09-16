@@ -167,8 +167,7 @@ fi
 ```bash
 RUN_LOG=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
 # Run-ledger start marker — this is the true beginning of the run, before commit/audit/test/push/deploy.

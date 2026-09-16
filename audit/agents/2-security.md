@@ -2,7 +2,7 @@
 
 ## Look for
 
-Secrets, injection, OWASP Top 10, dependencies. Read `guidelines/security.md` in full.
+Secrets, injection, OWASP Top 10, dependencies. Read `guidelines/security.md` and `guidelines/security-2026.md` in full (split 2026-09-16 at section XII, numbering continues across the two files).
 
 - **Sibling-field guard check:** a field that gains a sanitization/security guard needs the same
   guard on structurally identical siblings (`first_name`/`last_name`/`name`, `email`/`phone`,
@@ -19,7 +19,7 @@ Secrets, injection, OWASP Top 10, dependencies. Read `guidelines/security.md` in
 - **Prompt templates** (`src/prompts/*.md` or similar): every `{{placeholder}}` with a value from
   external data must be wrapped by an `<<<UNTRUSTED_*_START>>>` block with fence tokens stripped
   from the substituted value — a bare external placeholder is indirect prompt injection
-  (`guidelines/security.md` section XII).
+  (`guidelines/security-2026.md` section XII).
 - **XSS/injection findings:** cross-check the associated store/form-request validation or
   sanitization first. Already validated/sanitized → no finding.
 - **Enum findings:** check the enum case exists before flagging. Alpine `x-data`: only `>`/`>=` risk.

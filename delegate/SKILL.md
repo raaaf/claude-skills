@@ -40,8 +40,7 @@ Once classified as Trivial, Normal, or Large-with-delegate-chosen (i.e. this run
 ```bash
 RUN_LOG=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill delegate
@@ -98,8 +97,7 @@ screenshot of a connection error looks like a result.
 ```bash
 CAPTURE=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/capture-screens.sh" \
-         "$HOME/.claude/skills/audit/bin/capture-screens.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/capture-screens.sh"; do
+         "$HOME/.claude/skills/audit/bin/capture-screens.sh"; do
   [ -f "$c" ] && { CAPTURE="$c"; break; }
 done
 # web:  bash "$CAPTURE" --label before --url "$TARGET_URL" --name "$SCREEN_NAME"
@@ -163,8 +161,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 ```bash
 RUN_LOG=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill delegate --outcome "{APPROVE|BLOCK}" \

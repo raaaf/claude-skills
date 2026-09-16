@@ -506,12 +506,10 @@ validate_expected() {
       while [ "$k" -lt "$kw_count" ]; do
         local kw
         kw=$(jq -r ".must_find[$i].matches[$k]" "$f")
-        case "$kw" in
-          *-*)
-            echo "WARNING: expected/$name must_find[$i].matches[$k] '$kw' contains a hyphen — score_fixture runs the log through tr '-' ' ' before matching, so this keyword can never match. Write it space-separated." >&2
-            c_hyphen_warn=$((c_hyphen_warn + 1))
-            dead_count=$((dead_count + 1)) ;;
-        esac
+        # Hyphenated keywords used to be dead here (the log lost its hyphens,
+        # the keyword kept them). stem_match now applies the same tr to the
+        # keyword, so the old warning would be false; nothing to check.
+        : "$kw"
         k=$((k + 1))
       done
       if [ "$kw_count" -gt 0 ] && [ "$dead_count" -eq "$kw_count" ]; then
@@ -679,7 +677,12 @@ ere_escape() {
 }
 
 stem_match() {
-  local kw="$1"
+  # Same normalisation the log gets (`tr '-' ' '` at the two scoring sites):
+  # without it a hyphenated keyword could never match a log that had already
+  # lost its hyphens, and 34 expectation keywords sat dead behind a validator
+  # warning nobody was ever going to act on by rewriting fixtures.
+  local kw
+  kw=$(printf '%s' "$1" | tr '-' ' ')
   local len=${#kw}
   if [ "$len" -ge 9 ]; then
     kw="${kw:0:$((len - 3))}"

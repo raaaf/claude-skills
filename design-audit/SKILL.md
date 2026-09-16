@@ -38,8 +38,7 @@ Two finding classes, kept strictly separate:
 AUDIT_ROOT=""
 for candidate in \
   "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
-  "$HOME/.claude/skills/audit" \
-  "$HOME/.claude/skills/claude-skills/audit"; do
+  "$HOME/.claude/skills/audit"; do
   [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
 done
 [ -z "$AUDIT_ROOT" ] && { echo "ERROR: audit skill not found. Install audit alongside design-audit."; exit 1; }
@@ -282,8 +281,7 @@ Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background:
 ```bash
 RUN_LOG=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill design-audit --outcome "{fixed|reported_only}" \

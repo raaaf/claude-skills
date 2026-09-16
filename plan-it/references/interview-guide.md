@@ -2,6 +2,9 @@
 
 Detail for Phase 1 (understanding). Read by the orchestrator when the assessment is difficult.
 
+> `Evidence:` notes below are counts from the plan-it learning retro over per-project plan logs
+> (`.claude/plans/logs/`, gitignored in each project); see `plan-it/SKILL.md` Phase 1.
+
 ## Step B: Codebase Scan Table
 
 What to scan, depending on the topic:

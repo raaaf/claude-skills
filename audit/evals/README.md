@@ -565,7 +565,7 @@ naming the thing as the code names it, not lowering the bar, since the finding m
 that specific class filter. `account-deletion-remote-wipe` is the only genuine content miss, and a
 small one: both defects are described in the prose, folded under a single citation.
 
-**Re-measured 2026-09-15 after `guidelines/security.md` gained section XXIII (deletion completes
+**Re-measured 2026-09-15 after `guidelines/security.md` gained section XXIII (since the 2026-09-16 split it lives in `security-2026.md`; deletion completes
 everywhere, or reports that it did not): 0/2 becomes 1/2.** The guideline is what closed it. The
 run now names the unconditional `defer` at the right line, the swallowed CloudKit error, the dead
 recovery guard, and a per-step-state gap the expectation does not even list. The remaining miss is

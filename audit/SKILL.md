@@ -20,7 +20,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: bash -c 'for c in "$HOME/.claude/skills/audit" "$HOME/.claude/skills/claude-skills/audit"; do [ -f "$c/hooks/pretooluse-bash.sh" ] && exec bash "$c/hooks/pretooluse-bash.sh"; done; exit 0'
+          command: bash -c 'for c in "$HOME/.claude/skills/audit"; do [ -f "$c/hooks/pretooluse-bash.sh" ] && exec bash "$c/hooks/pretooluse-bash.sh"; done; exit 0'
 ---
 
 # Audit: per-dimension pipeline

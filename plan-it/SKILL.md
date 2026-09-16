@@ -89,8 +89,7 @@ echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUA
 # into another.
 RUN_LOG=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill plan-it
@@ -139,6 +138,11 @@ If the initial question is a **dichotomy** (`Should we do X?`, `A or B?`, `Is Y 
 Before we compare — what's the actual goal?
 → My take: {likely goal based on context}
 ```
+
+> `Evidence:` notes in this skill and in `references/interview-guide.md` cite counts from the plan-it
+> learning retro (`agents/learning-agent.md`) over the per-project plan logs in each project's
+> `.claude/plans/logs/`, which are gitignored there. They are reproducible from those logs, not from
+> this repo, which is why a grep here finds nothing behind them (2026-09-15).
 
 **Framing symptom check:** when the user's question is a surface or label question (naming, wording, which brand, which label), first check whether a feature gap sits behind it before answering the surface question. Evidence: 4 of 8 plans had a hidden real goal.
 
@@ -313,8 +317,7 @@ Evaluation: {overall verdict}
 ```bash
 RUN_LOG=""
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/claude-skills/audit/bin/run-log.sh"; do
+         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
   [ -f "$c" ] && { RUN_LOG="$c"; break; }
 done
 [ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill plan-it --outcome plan_written \

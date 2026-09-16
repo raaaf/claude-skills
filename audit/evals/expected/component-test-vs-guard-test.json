@@ -1,0 +1,10 @@
+{
+  "fixture": "docs/component-test-vs-guard-test",
+  "must_find": [],
+  "must_not_find": [
+    {
+      "dimension": "docs_sync",
+      "reason": "table-checkbox.test.ts renders one component and asserts its own markup; it is a unit test, not a guard test, so no CLAUDE.md convention line is due. naming-convention.test.ts is the contrast and is untouched by the diff. Expected: zero docs_sync findings (fixture README, incident 2026-08-07)."
+    }
+  ]
+}

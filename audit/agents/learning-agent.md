@@ -25,7 +25,7 @@ Read (read-only, no writes):
 
 ### 2. Compute metrics
 
-Extract from past audit log files (`.claude/audits/*-*.md`) and have the orchestrator append a trends block to the end of `learning-log.md`:
+Extract from past audit log files (`.claude/audits/*-*.md`) into a trends block that the orchestrator places at the TOP of `learning-log.md`, replacing the previous one (see "Orchestrator behavior for TRENDS_BLOCK" below and `references/learning-phase.md`; an earlier version of this line said "append to the end" and contradicted both):
 
 - Total number of audits
 - Last 3 audits: critical counts → trend (declining/rising/stable)

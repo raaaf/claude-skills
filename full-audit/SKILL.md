@@ -32,8 +32,7 @@ AUDIT_ROOT=""
 for candidate in \
   "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
   "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit}" \
-  "$HOME/.claude/skills/audit" \
-  "$HOME/.claude/skills/claude-skills/audit"; do
+  "$HOME/.claude/skills/audit"; do
   [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
 done
 [ -z "$AUDIT_ROOT" ] && { echo "ERROR: audit skill not found. Install audit alongside full-audit."; exit 1; }
@@ -162,7 +161,9 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   say the same thing they would check: any dimension that came back `skipped` or `status:
   incomplete`, and the `degradedDimensions` array from the Phase 2 `find.js` result, go in the log
   under `## Not completed` same as `audit/SKILL.md`. Everything else (log finalization,
-  `run-cost.sh`, `run-log.sh --counts`, in-progress marker release, learning phase) is identical,
+  `run-cost.sh`, `run-log.sh --counts` with `--skill full-audit` (not the literal `--skill audit`
+  that `audit/SKILL.md` writes; the ledger keys per skill and the start marker at line 41 already
+  says `full-audit`), in-progress marker release, learning phase) is identical,
   plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)` to the `--counts` argument,
   same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
   the next run.

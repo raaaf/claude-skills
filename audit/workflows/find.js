@@ -465,12 +465,26 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       ? `CLUSTER=${JSON.stringify(c.cluster)}`
       : `FILES=${JSON.stringify(c.files)}`;
     const dimContext = (ctx.dimensionContext && ctx.dimensionContext[dimension]) || '';
+    // The coverage contract is restated per chunk, with the exact assigned paths,
+    // because the abstract version at the end of prompt-template.md was not
+    // enough: on 2026-09-15 one specialist read "the relevant sections" of its
+    // four files citing a tool-call budget that does not exist, and another
+    // reported the files it had wandered into instead of the ones it was given.
+    // Both made hasCompleteCoverage fail and the dimension `incomplete`.
+    const assigned = c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files;
+    const coverageClause =
+      `\nCOVERAGE CONTRACT for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
+      `Read every one of these files in full. There is no tool-call budget on this pass; a partial ` +
+      `read is exactly what status "incomplete" exists to report. coverage.files must list exactly ` +
+      `the assigned paths you read in full, spelled as given here (no ./ or absolute prefix) and ` +
+      `nothing else: not guideline files, not files you opened while following a lead. Could not ` +
+      `read one in full? Leave it out and set status "incomplete".`;
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
       `for DIMENSION=${dimension}.\nCHUNK_INDEX=${i}\n${briefing}\n` +
       `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
-      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : ''),
+      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause,
       { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
     if (warnIfNull(logFn, result, `${dimension}: specialist for chunk ${i} returned null`)) return null;
@@ -480,8 +494,20 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   logFn(`${dimension}: ${specialists.length}/${chunks.length} specialists done`);
 
   chunks.forEach((c, i) => {
-    if (!hasCompleteCoverage(specialistResults[i], c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files)) {
+    const assigned = c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files;
+    if (!hasCompleteCoverage(specialistResults[i], assigned)) {
       uncovered.push(c.kind === 'cluster' ? c.cluster.id : c.files.join(','));
+      // Say WHY, or the log only ever shows a cluster id and the cause has to be
+      // dug out of the journal by hand (which is how the two causes above were
+      // found). Three shapes: the specialist said incomplete, it listed files
+      // outside its assignment, or it left assigned files out.
+      const cov = specialistResults[i] && specialistResults[i].coverage;
+      const reported = (cov && Array.isArray(cov.files)) ? cov.files : [];
+      const extra = reported.filter((path) => !assigned.includes(path));
+      const missing = assigned.filter((path) => !reported.includes(path));
+      logFn(`${dimension}: chunk ${i} not covered (status=${cov ? cov.status : 'none'}` +
+        (extra.length ? `, extra=${extra.join(',')}` : '') +
+        (missing.length ? `, missing=${missing.join(',')}` : '') + ')');
     }
   });
 

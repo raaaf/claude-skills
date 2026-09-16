@@ -7,6 +7,122 @@
     "cat:process|fix agent self-designed test table clean|finds real defect": 3,
     "cat:architecture|audit-owned infrastructure (hooks, guidelines, bin scripts)|only found incidentally": 5,
     "cat:security|guard exemption grepped whole command string instead per segment": 1,
-    "cat:process|measurement harness under-reports, green zero number|until instrument checked": 1
+    "cat:process|measurement harness under-reports, green zero number|until instrument checked": 1,
+    "cat:security|phase applies open learning-backlog items `plan-it/agents/*.md` `plan-it/referenc": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:security|`audit_dimensions`/`audit_fix_scope` suppress phase 1.5 consent gate check": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|input documented `current_log` while dispatcher passes `aktuelles_log`, listed": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|the `capture-screens.sh` resolution loop tries two|every run-log loo": {
+      "count": 2,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|one test authority briefing convention only,|same shared resou": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|the mandatory-verification guard independently re-derived three challenger specs.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|`architektur-notiz` `{dateiliste}` listed live contract identifiers; repo-wide": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|says canonical dimension ids instructs reader|anything else bug,": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|describes payments gate one condition `audit/skill.md` phase 1.5 documents": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|credits rule `guidelines/security.md:26-28` does exist file.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|one german row otherwise english skill roster.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:code_quality|same two-vs-three candidate-path inconsistency architecture finding, reported indep": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:performance|`validate_expected()` spawns 5-8 `jq` subprocesses per|entry instead one": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:code_quality|the awk pipeline ended `|| true`|awk runtime error": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:code_quality|`key` computed stripped never read.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:code_quality|the .gitignore block copied cache-write.sh without symlink guard.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:security|predictable `$tmpdir/...$$` fallback profile directory, removed exit trap.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|prose said canonical ids above list|missing list reader": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|instructs orchestrator append trends block while|same file says": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|opens ledger `--skill full-audit` defers phase audit/skill.md, lit": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|the new test-lock claim does hold|separate agent definiti": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:architecture|plan-it's learning subsystem independently built parallel copy audit's.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:security|the invariant \"subagents cannot write under|five times absol": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:security|the nested eval session runs sandbox|reading fixtures deli": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|`\"keine findings.\"` listed live contract identifier; appears active agent": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|the mandatory framing check justified \"evidence: plans\", exact citation": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|seven `evidence:` citations anchor mandatory rules plan logs gitignored": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "cat:docs_sync|the effort section states plan-it's default never /audit's (`medium`).": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    },
+    "[minor][performance] audit/evals/run-evals.sh:444 :754: `validate_expected()` `score_against_log()` spawn|per expectation entry.": {
+      "count": 1,
+      "last_seen": "2026-09-16"
+    }
   }
 }
