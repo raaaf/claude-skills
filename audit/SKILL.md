@@ -64,6 +64,7 @@ bash "$AUDIT_BIN/check-number-format-locale.sh"; bash "$AUDIT_BIN/check-swift-de
 bash "$AUDIT_BIN/check-token-contrast.sh"; bash "$AUDIT_BIN/check-test-count-drift.sh"
 bash "$AUDIT_BIN/check-silencing.sh"   # HITS: a check silenced instead of satisfied. Re-run after the fix wave (Phase 3c), fix agents are the likeliest source
 bash "$AUDIT_BIN/check-docs-path-drift.sh" "$BASE_REF"; bash "$AUDIT_BIN/check-docs-claims.sh"
+bash "$AUDIT_BIN/check-workflow-dupes.sh"   # HITS: find.js/fix.js shared helpers drifted; Important code_quality, no specialist needed
 
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
 PROJECT_GUIDELINES=""
