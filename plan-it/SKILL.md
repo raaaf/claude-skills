@@ -84,9 +84,8 @@ esac
 echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run) | Learning=$([ $SKIP_LEARNING -eq 1 ] && echo skip || echo run)"
 
 # Run-ledger start marker (see audit/bin/run-log.sh header) — before any real
-# work. Re-resolved here independently of the Phase 4 lookup: each SKILL.md
-# Bash block is a fresh shell, so a path found in one block does not survive
-# into another.
+# work. Each SKILL.md Bash block is a fresh shell, so every block that calls an
+# orch_ function sources the lib again (Phase 4 does too).
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
          "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -f "$c" ] && { . "$c"; break; }
@@ -315,6 +314,7 @@ Evaluation: {overall verdict}
 **Run log (shared step, fires whether or not learning runs):**
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_run_log --skill plan-it --outcome plan_written \
   --counts "challenges={N},learning={run|skip}"
 ```

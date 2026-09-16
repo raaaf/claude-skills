@@ -95,6 +95,7 @@ screenshot of a connection error looks like a result.
 3. iOS: a booted simulator (the script checks; it skips when there is none).
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""   # lib sourced in Phase 0
 # web:  bash "$CAPTURE" --label before --url "$TARGET_URL" --name "$SCREEN_NAME"
 # iOS:  bash "$CAPTURE" --label before --ios --name "$SCREEN_NAME"
@@ -155,6 +156,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 **Run log (fires once a terminal verdict — APPROVE or BLOCK — is reached; REVISE is not terminal):**
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_run_log --skill delegate --outcome "{APPROVE|BLOCK}" \
   --counts "revision_rounds={N}"
 ```

@@ -182,31 +182,25 @@ throughout (`files.slice`, `files.filter`). Split `ALLE_DATEIEN` on newlines and
 on commas when building the call. A real run on 2026-09-15 failed here in 14ms because this line
 read as if the shell values could be passed through unchanged.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
 `payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
-Touch the in-progress marker again (`orch_progress_touch`, staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
+Touch the in-progress marker again (a fresh Bash block: the source line, then `orch_progress_touch`; staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
 
 **Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
 
 ## Phase 3: Fix
 
-Derive `TEST_COMMAND` first; nothing earlier in this file sets it (found by the 2026-09-16 audit of
-this file: Phase 3 used it as if Phase 1 had produced it). Same source order `/ship` uses for its
-test gate, then the manifest, then none:
+Derive `TEST_COMMAND` first; nothing earlier in this file sets it. `orch_test_command` reads `.claude/ship.md`
+`test-command:` with the same parser `/ship` uses (two hand-written parsers disagreed until 2026-09-16), then
+falls back to the manifest, then to none:
 
 ```bash
-TEST_COMMAND=$(sed -n 's/^test-command:[[:space:]]*//p' "$PROJECT_ROOT/.claude/ship.md" 2>/dev/null | head -1)
-if [ -z "$TEST_COMMAND" ]; then
-  if   jq -e '.scripts.test' "$PROJECT_ROOT/composer.json" >/dev/null 2>&1; then TEST_COMMAND="composer test"
-  elif jq -e '.scripts.test' "$PROJECT_ROOT/package.json"  >/dev/null 2>&1; then TEST_COMMAND="npm test"
-  elif [ -f "$PROJECT_ROOT/Package.swift" ];                                 then TEST_COMMAND="swift test"
-  elif [ -f "$PROJECT_ROOT/pytest.ini" ] || [ -f "$PROJECT_ROOT/pyproject.toml" ]; then TEST_COMMAND="pytest"
-  fi
-fi
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+TEST_COMMAND=$(orch_test_command "$PROJECT_ROOT") || TEST_COMMAND=""   # declared test-command:, else the manifest's own; one parser shared with /ship
 echo "TEST_COMMAND=${TEST_COMMAND:-<none>}"
 ```
 
@@ -279,10 +273,11 @@ to `uncovered`, this rule has to be revisited in the same commit, because the ga
 on exactly the state it exists to catch.
 
 ```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 touch "/tmp/claude-audit-passed-$(orch_hash_passed)"   # only on the conditions above; passed-family hash (no trailing newline)
 ```
 
-Release the in-progress marker: `orch_progress_release`.
+Release the in-progress marker: `orch_progress_release` (it runs inside the Phase 4 block above, which sources the lib first).
 
 ## Phase 5: Learning
 

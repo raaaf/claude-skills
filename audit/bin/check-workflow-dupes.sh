@@ -2,7 +2,7 @@
 #
 # The Workflow tool forbids imports, so find.js and fix.js each carry a copy of
 # the helpers they share (hasCompleteCoverage, FINDINGS_SCHEMA, warnIfNull,
-# chunk). Copies drift: on 2026-09-16 fix.js's hasCompleteCoverage had grown a
+# chunk, ROOT_HEADER). Copies drift: on 2026-09-16 fix.js's hasCompleteCoverage had grown a
 # stricter check find.js never got. This is the mechanical guard for that: it
 # extracts each duplicated top-level definition from both files and diffs them.
 #
@@ -14,17 +14,22 @@ ROOT="${1:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
 A="$ROOT/audit/workflows/find.js"; B="$ROOT/audit/workflows/fix.js"
 [ -f "$A" ] && [ -f "$B" ] || { echo "WORKFLOW_DUPES_RESULT=SKIP (workflow scripts not found under $ROOT)"; exit 0; }
 
-# Print one top-level definition: from its first line to the first line that is
-# exactly `}` or `};` at column 0.
+# Print one top-level definition. A `function` ends at the first `}` at column 0;
+# a `const` ends at the first line that ends with `;` (an object literal closes
+# with `};`, a concatenated string with `';`). The first version knew only
+# `}`/`};` and read ROOT_HEADER, which ends with `';`, to end of file, so two
+# identical definitions compared as different (2026-09-16).
 extract() {
   awk -v sym="$2" '
-    $0 ~ "^(const|function) "sym"[ (=]" { on=1 }
+    !on && $0 ~ "^function "sym"[ (]" { on=1; kind="fn" }
+    !on && $0 ~ "^const "sym"[ =]"    { on=1; kind="const" }
     on { print }
-    on && ($0 == "}" || $0 == "};") { exit }
+    on && kind == "fn"    && $0 == "}"   { exit }
+    on && kind == "const" && $0 ~ /;$/  { exit }
   ' "$1"
 }
 HITS=0
-for sym in hasCompleteCoverage FINDINGS_SCHEMA warnIfNull chunk; do
+for sym in hasCompleteCoverage FINDINGS_SCHEMA warnIfNull chunk ROOT_HEADER; do
   a=$(extract "$A" "$sym"); b=$(extract "$B" "$sym")
   if [ -z "$a" ] || [ -z "$b" ]; then
     echo "WORKFLOW_DUPES_HIT $sym: missing in $([ -z "$a" ] && echo find.js || echo fix.js)"; HITS=$((HITS+1)); continue

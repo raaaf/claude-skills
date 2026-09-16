@@ -40,11 +40,11 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestra
          "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -f "$c" ] && { . "$c"; break; }
 done
-type orch_resolve_audit_root >/dev/null 2>&1 || { echo "ERROR: audit skill not found (lib-orchestrator.sh). Install audit alongside design-audit."; exit 1; }
-orch_resolve_audit_root || { echo "ERROR: audit skill root not found."; exit 1; }
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — audit-Skill nicht gefunden (lib-orchestrator.sh). audit neben design-audit installieren."; exit 1; }
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
 AUDIT_AGENTS="$AUDIT_AGENTS_DIR"
 AUDIT_GUIDELINES="$AUDIT_ROOT/guidelines"
-orch_verify_agents || { echo "ERROR: missing agent files in $AUDIT_AGENTS."; exit 1; }
+orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien in $AUDIT_AGENTS."; exit 1; }
 
 # In-progress marker is RUN-scoped (same model /audit adopted on 2026-09-05): claim once here,
 # touch after each wave's Notification (45-minute staleness), release once in Phase 7. The
@@ -79,6 +79,7 @@ echo "Effort=$CLAUDE_EFFORT | MaxElevation=$MAX_ELEVATION | BatchSize=$BATCH_SIZ
 ## Phase 1: Scope — the frontend surface
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Capture and parse rather than just printing: the native scope filter below
 # BRANCHES on $PLATFORM, and an unset variable there would apply the native
@@ -149,7 +150,7 @@ Consumption:
 
 ## Phase 2: Worker wave (fixed dimensions, no triage)
 
-**Touch the in-progress marker after each wave's Notification** (`orch_progress_touch`; the marker was
+**Touch the in-progress marker after each wave's Notification, the Phase 6 fix wave included** (a fresh Bash block: the source line, then `orch_progress_touch`; the marker was
 claimed once in Phase 0 and is released once in Phase 7). The 45-minute staleness window is per
 touch, so a long wave gets one touch when it returns, not a re-claim before every dispatch.
 
@@ -261,6 +262,9 @@ Same machinery as /audit Phase 2 E/E.5:
 4. Post-fix: re-run the linter step from `$AUDIT_ROOT/references/linters-and-tests.md` (formatter + linter only, diff-scoped; no test suites unless the project's `.claude/audit-guidelines.md` names one).
 5. Summarize: fixed / failed / reverted, appended to the design log.
 
+After the fix wave's Notification, touch the marker (a fresh block: the source line, then
+`orch_progress_touch`), same cadence as `/audit` after `fix.js`.
+
 ## Phase 7: Learning + cleanup
 
 Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background: false`, because a backgrounded learning agent returns after the orchestrator is done, so the pass is lost) with `AUDIT_TYPE=design-audit` and the design log; orchestrator writes learning-log/suppressions exactly as /audit Phase 5 (subagents cannot write under `.claude/`).
@@ -268,6 +272,7 @@ Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background:
 **Run log (fires here — every run reaches Phase 7 regardless of what Phase 5 selected):**
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_run_log --skill design-audit --outcome "{fixed|reported_only}" \
   --counts "critical={N},important={N},minor={N},elevation_offered={N},selected={N},fixed={N}"
 orch_progress_release   # the single release for the run (claimed in Phase 0)

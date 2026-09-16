@@ -205,7 +205,7 @@ const DOCS_RE = /(^|\/)(README\.md|CLAUDE\.md|docs\/.*\.md|\.env\.example)$/i;
 const SEO_RE = /(sitemap|robots\.txt|routes?\/|templates?\/)/i;
 
 // Deterministic floor: which dimensions this file is assigned to regardless of
-// what a scout picks, per CLAUDE.md "Triage routing has a deterministic floor".
+// what a scout picks, per the CLAUDE.md gotcha "The scout floor is content-based and calibrated, not extension-based".
 function floorDimensionsForFile(path) {
   const dims = [];
   if (FRONTEND_EXT_RE.test(path)) {
@@ -232,7 +232,7 @@ function floorDimensionsForFile(path) {
 // FILE FLOOR vs. DIMENSION GATE: floorDimensionsForFile is a per-file SIGNAL
 // (which dimensions this file's path is relevant to), not a per-file
 // OBLIGATION. Measured 2026-09-06 against the real 257-file corpus (CLAUDE.md
-// gotcha "Triage routing has a deterministic floor" describes the floor at
+// gotcha "The scout floor is content-based and calibrated, not extension-based" describes the floor at
 // DIMENSION granularity, i.e. "should this dimension run at all" — it never
 // claimed "this file must appear in the dimension's scout list"):
 //   security 238, performance 238, code_quality 238, seo 122, a11y 122,
@@ -495,7 +495,8 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
       `for DIMENSION=${dimension}.\nCHUNK_INDEX=${i}\n${briefing}\n` +
       `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
-      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause,
+      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause +
+      (ctx.projectGuidelines ? `\nPROJECT_GUIDELINES (the audited repo's .claude/audit-guidelines.md, precedence over MATCHED_GUIDELINES):\n${ctx.projectGuidelines}` : ''),
       { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
     if (warnIfNull(logFn, result, `${dimension}: specialist for chunk ${i} returned null`)) return null;
@@ -541,6 +542,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/finding-verifier.md and verify these findings.\n` +
+      (ctx.projectGuidelines ? `PROJECT_GUIDELINES=${ctx.projectGuidelines}\n` : '') +
       `FINDINGS=${JSON.stringify(group)}`,
       { agentType: 'code-reviewer', model: 'sonnet', schema: VERDICTS_SCHEMA, phase: 'Verify' }
     );
@@ -741,7 +743,9 @@ function dimensionFileName(dim) {
 // Entry point: this script body IS the run, invoked by the Workflow tool with
 // `agent`, `parallel`, `log`, `args` already in scope as globals.
 // args: { repoRoot, scope: 'diff'|'repo', files, dimensions, effort, promptDir, guidelinesDir,
-//         guidelines (flat TSV list, verbatim from match-guidelines.sh), dimensionDoc,
+//         guidelines (flat TSV list, verbatim from match-guidelines.sh), projectGuidelines
+//         (optional string: the audited repo's .claude/audit-guidelines.md, appended to every
+//         specialist and verifier briefing as PROJECT_GUIDELINES), dimensionDoc,
 //         floorFiles (optional, object keyed by dimension id, e.g. { security: [...] }): the
 //         content-based scout floor, precomputed by audit/bin/compute-floor.mjs from
 //         audit/floor-signals.json since find.js has no filesystem access and no longer reads
@@ -785,6 +789,10 @@ const ctx = {
   files: args.files || [],
   dimensionFiles,
   dimensionContext: args.dimensionContext || {},
+  // .claude/audit-guidelines.md of the audited repo, verbatim. Read by the orchestrator in
+  // Phase 1 since the rebuild and passed nowhere until 2026-09-16, so "takes precedence over
+  // global guidelines" (CLAUDE.md) was true of the read and false of the pipeline.
+  projectGuidelines: args.projectGuidelines || '',
   promptDir: args.promptDir,
   guidelinesDir: args.guidelinesDir || '',
   guidelines: args.guidelines || '',

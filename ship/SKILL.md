@@ -45,7 +45,8 @@ Detect deploy method and health check URL (check in priority order):
 # 1. Project config wins — read the values if present
 DEPLOY_COMMAND=$(grep '^deploy-command:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
 HEALTH_URL=$(grep '^health-check:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
-TEST_COMMAND=$(grep '^test-command:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+TEST_COMMAND=$(orch_test_command_declared) || TEST_COMMAND=""   # declared only, on purpose: no manifest fallback on ship day; same parser as /audit
 
 # 2. Detect deploy method from known files
 if [ -z "$DEPLOY_COMMAND" ]; then
@@ -175,7 +176,7 @@ type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run lo
 orch_run_log --start --skill ship
 ```
 
-Every later "run the log call" below means: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
+Every later "run the log call" below means, in a block that starts with the lib source line: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
 
 ## Phase 0.8: Docs Sync
 
@@ -269,6 +270,7 @@ the remote unscanned (2026-09-16 audit, Critical). `pre-checks.sh` scans file CO
 changed and staged file with the same patterns `/audit` uses and prints `file:line: pattern-name`
 only, never the value:
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 git diff --cached --name-only | grep -iE '(\.env|secret|credential|\.pem|\.key)'   # -i: SECRET.txt and DB_CREDENTIAL.json are the same class
 PRECHECK=$(orch_helper pre-checks.sh) && bash "$PRECHECK" | grep -E '^SECRET_SCAN_RESULT=|^SECRET '
 ```
