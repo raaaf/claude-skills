@@ -265,7 +265,7 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
    lies outside the plan's scope. Report one line per concern (incorporated / dropped + reason).
    Convergent concerns are never dropped.
    **Exception, scope cuts:** a concern that says "drop X" or "defer X to a later phase" is NOT
-   applied silently, even when convergent. List it under "Zur Diskussion" with the hook the agents
+   applied silently, even when convergent. List it under "For discussion" (the `FOR DISCUSSION` marker the simplicity agent uses) with the hook the agents
    gave, and let the user decide. Users have overruled convergent cut/defer recommendations three
    plans in a row; applying them unasked costs a round.
 

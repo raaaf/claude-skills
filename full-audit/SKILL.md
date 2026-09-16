@@ -30,9 +30,8 @@ allowed-tools:
 ```bash
 # Shared prologue (audit/bin/lib-orchestrator.sh); finding it is the one loop that stays inline.
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
-         "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit/bin/lib-orchestrator.sh}" \
          "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
-  [ -n "$c" ] && [ -f "$c" ] && { . "$c"; break; }
+  [ -f "$c" ] && { . "$c"; break; }
 done
 type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — audit-Skill nicht gefunden (lib-orchestrator.sh). audit neben full-audit installieren."; exit 1; }
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }

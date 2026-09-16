@@ -213,7 +213,14 @@ Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" 
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
 
-Touch the in-progress marker again after the Notification. Read `{fixes, verdicts, regressions, rejected, blockingRegressions}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
+Touch the in-progress marker again after the Notification:
+
+```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_progress_touch
+```
+
+Read `{fixes, verdicts, regressions, rejected, blockingRegressions}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
 
 Run the full suite exactly once via `test-lock.sh` after the fix wave (fix-verifiers only ran filtered tests). A `blockingRegressions` entry (Critical/Important from the regression pass) becomes an open point and blocks the marker below.
 
@@ -232,7 +239,8 @@ this shape to score recall; any other shape makes every finding on it unparseabl
 capability regression (recall collapsed to zero) rather than what it actually is, a formatting slip.
 
 ```bash
-AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }   # sets AUDIT_BIN with the same fallbacks as Phase 1
 # A Claude Code session has no env var pointing at its own transcript dir:
 # derive the projects dir from cwd using the same slug convention as
 # ~/.claude/projects/ (every "/" becomes "-").
@@ -251,7 +259,7 @@ bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
 - no Critical is open,
 - no new test failure beyond `BASELINE_FAILURES`,
 - no selected dimension has `status: incomplete`,
-- a dimension with `status: skipped` does NOT block: `find.js:405-427` only reaches `skipped` when
+- a dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when
   both scouts ran without failing and returned zero files and zero clusters, so it means the
   dimension had nothing in scope. A failed scout puts `scout:files`/`scout:clusters` into
   `uncovered`, which makes the status `incomplete` instead, and that still blocks. Print the skipped

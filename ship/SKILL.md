@@ -371,7 +371,14 @@ Stream output. `SHIP_DEPLOY=executed` if it exits zero. If command exits non-zer
 # CI run status
 gh run list --limit 1 --json status,conclusion,url 2>/dev/null
 
-# Health check — HEALTH_URL was resolved in Phase 0
+# Health check. HEALTH_URL comes from the repo's own .claude/ship.md (or its deploy config), so it
+# is repo-supplied: only http(s), never a loopback, private or link-local host, and re-derived here
+# because every block is a fresh shell (six audit runs named the unguarded curl, 2026-09-16).
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
+HEALTH_HOST=$(printf '%s' "$HEALTH_URL" | sed -nE 's#^https?://([^/:?]+).*#\1#p')
+case "$HEALTH_URL" in http://*|https://*) ;; "") ;; *) echo "Health: refusing non-http(s) URL from .claude/ship.md"; HEALTH_URL="";; esac
+case "$HEALTH_HOST" in localhost|127.*|0.0.0.0|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|*.local|*.internal) echo "Health: refusing loopback/private/link-local host $HEALTH_HOST"; HEALTH_URL="";; esac
 if [ -n "$HEALTH_URL" ]; then
   HTTP_STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 15 "$HEALTH_URL" 2>/dev/null)
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
