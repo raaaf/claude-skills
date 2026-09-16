@@ -87,12 +87,12 @@ echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUA
 # work. Re-resolved here independently of the Phase 4 lookup: each SKILL.md
 # Bash block is a fresh shell, so a path found in one block does not survive
 # into another.
-RUN_LOG=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
-  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
+         "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
+  [ -f "$c" ] && { . "$c"; break; }
 done
-[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill plan-it
+type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run log and helpers unavailable"
+orch_run_log --start --skill plan-it
 ```
 
 | Level | Challenges | Codebase Scan | Evaluation | Learning |
@@ -315,12 +315,7 @@ Evaluation: {overall verdict}
 **Run log (shared step, fires whether or not learning runs):**
 
 ```bash
-RUN_LOG=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
-  [ -f "$c" ] && { RUN_LOG="$c"; break; }
-done
-[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill plan-it --outcome plan_written \
+orch_run_log --skill plan-it --outcome plan_written \
   --counts "challenges={N},learning={run|skip}"
 ```
 

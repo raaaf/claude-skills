@@ -38,12 +38,12 @@ The task is `$ARGUMENTS` (free text, plus an optional `--worktree` flag; empty w
 Once classified as Trivial, Normal, or Large-with-delegate-chosen (i.e. this run is actually going to implement something, not leaving the skill), before Phase 1 or Phase 3 begins — run-ledger start marker (see audit/bin/run-log.sh header):
 
 ```bash
-RUN_LOG=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
-  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
+         "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
+  [ -f "$c" ] && { . "$c"; break; }
 done
-[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill delegate
+type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run log and helpers unavailable"
+orch_run_log --start --skill delegate
 ```
 
 ## Phase 1: Analysis (orchestrator, expensive)
@@ -95,11 +95,7 @@ screenshot of a connection error looks like a result.
 3. iOS: a booted simulator (the script checks; it skips when there is none).
 
 ```bash
-CAPTURE=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/capture-screens.sh" \
-         "$HOME/.claude/skills/audit/bin/capture-screens.sh"; do
-  [ -f "$c" ] && { CAPTURE="$c"; break; }
-done
+CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""   # lib sourced in Phase 0
 # web:  bash "$CAPTURE" --label before --url "$TARGET_URL" --name "$SCREEN_NAME"
 # iOS:  bash "$CAPTURE" --label before --ios --name "$SCREEN_NAME"
 ```
@@ -159,12 +155,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 **Run log (fires once a terminal verdict — APPROVE or BLOCK — is reached; REVISE is not terminal):**
 
 ```bash
-RUN_LOG=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
-  [ -f "$c" ] && { RUN_LOG="$c"; break; }
-done
-[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill delegate --outcome "{APPROVE|BLOCK}" \
+orch_run_log --skill delegate --outcome "{APPROVE|BLOCK}" \
   --counts "revision_rounds={N}"
 ```
 

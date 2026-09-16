@@ -82,7 +82,7 @@ const SCOUT_CLUSTERS_SCHEMA = {
 
 function hasCompleteCoverage(result, paths) {
   const coverage = result && result.coverage;
-  return coverage && coverage.status === 'complete' && Array.isArray(coverage.files) &&
+  return result && Array.isArray(result.findings) && coverage && coverage.status === 'complete' && Array.isArray(coverage.files) &&
     coverage.files.every((path) => typeof path === 'string' && paths.includes(path)) &&
     paths.every((path) => coverage.files.includes(path));
 }
@@ -295,10 +295,10 @@ function dimensionHasFloorSignal(dimension, files) {
   return files.some((f) => floorDimensionsForFile(f).includes(dimension));
 }
 
-function chunk(files, size) {
+function chunk(items, size) {
   const out = [];
-  for (let i = 0; i < files.length; i += size) {
-    out.push(files.slice(i, i + size));
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
   }
   return out;
 }

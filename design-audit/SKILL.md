@@ -34,32 +34,30 @@ Two finding classes, kept strictly separate:
 ## Phase 0: Pre-flight — paths + effort
 
 ```bash
-# Resolve audit skill root — same candidate logic as full-audit.
-AUDIT_ROOT=""
-for candidate in \
-  "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
-  "$HOME/.claude/skills/audit"; do
-  [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
+# Shared prologue (audit root, helpers, marker, run log): audit/bin/lib-orchestrator.sh.
+# Finding the lib is the one loop that stays inline.
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
+         "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
+  [ -f "$c" ] && { . "$c"; break; }
 done
-[ -z "$AUDIT_ROOT" ] && { echo "ERROR: audit skill not found. Install audit alongside design-audit."; exit 1; }
-
-AUDIT_AGENTS="$AUDIT_ROOT/agents"
-AUDIT_BIN="$AUDIT_ROOT/bin"
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "ERROR: audit skill not found (lib-orchestrator.sh). Install audit alongside design-audit."; exit 1; }
+orch_resolve_audit_root || { echo "ERROR: audit skill root not found."; exit 1; }
+AUDIT_AGENTS="$AUDIT_AGENTS_DIR"
 AUDIT_GUIDELINES="$AUDIT_ROOT/guidelines"
+orch_verify_agents || { echo "ERROR: missing agent files in $AUDIT_AGENTS."; exit 1; }
 
-bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "ERROR: missing agent files in $AUDIT_AGENTS."; exit 1; }
+# In-progress marker is RUN-scoped (same model /audit adopted on 2026-09-05): claim once here,
+# touch after each wave's Notification (45-minute staleness), release once in Phase 7. The
+# per-dispatch claim/release this skill carried until 2026-09-16 contradicted itself between
+# Phase 0 and Phase 4 and re-claimed before dispatches Phase 2.5 does not perform.
+orch_progress_claim
 
-# PreCompact protection is WAVE-scoped (same marker family as /audit): no marker here. Claimed at
-# the Phase 2 dispatch, released once Phase 3 has written the report to .claude/audits/ — from
-# there the selection/fix phases can survive a compaction. Rationale + the first attempt's
-# defects: $AUDIT_ROOT/references/context-budget.md. Hash inline at every site (defect 1).
-AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+# Wave-shared scratch dir (constants for the worker briefings). The marker is handled above.
+AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-$(orch_hash_progress)"
 if mkdir -p "$AUDIT_TMP" 2>/dev/null && [ -w "$AUDIT_TMP" ]; then
   echo "AUDIT_TMP=$AUDIT_TMP"
 else
-  # Fallback = run-scoped: Marker EINMAL jetzt claimen, Release erst am Run-Ende-Cleanup.
-  echo "WARN: AUDIT_TMP nicht beschreibbar — wave-shared-Datei auslassen, Konstanten inline briefen, Marker laeuft run-scoped"
-  touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+  echo "WARN: AUDIT_TMP not writable, skipping the wave-shared file; brief the constants inline"
 fi
 
 # Run-ledger start marker (see run-log.sh header) — before any real work
@@ -137,7 +135,7 @@ The worker wave sees only files that exist — a missing 404 page, empty state, 
 
 `SURFACE_TAXONOMY` = `${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/design-audit}/references/surface-taxonomy.md`. If the file is missing, skip this phase silently — same report structure without it.
 
-Dispatch ONE mapping agent (`subagent_type: general-purpose`, `model: sonnet`, `run_in_background: false`; no dedicated agent file, the briefing below is the full contract). Input: the frontend file list, the taxonomy file, and an instruction to read the project's route/navigation definitions itself (route files, app-router directories, nav components). Briefing rules: the taxonomy's "Expectation rules" section is binding — a surface is missing only when the domain clearly calls for it, uncertain entries are omitted. Output contract, one line each:
+Dispatch ONE mapping agent (`subagent_type: design-surface-mapper`, `model: sonnet`, `run_in_background: false`; worker spec `agents/surface-mapper.md` in this skill, registered in the repo's `agents/` since 2026-09-16). Input: the frontend file list, the taxonomy file, and an instruction to read the project's route/navigation definitions itself (route files, app-router directories, nav components). Briefing rules: the taxonomy's "Expectation rules" section is binding — a surface is missing only when the domain clearly calls for it, uncertain entries are omitted. Output contract, one line each:
 
 ```
 SURFACES_PRESENT: {taxonomy name} -> {entry files}
@@ -151,14 +149,9 @@ Consumption:
 
 ## Phase 2: Worker wave (fixed dimensions, no triage)
 
-**Claim the compaction block (inline hash, released after the Phase 3 report is on disk) — and
-RE-claim with the same command before every later agent dispatch inside the audit part (Phase 2.5
-reference-verdict agents, Phase 3 finding-verifier wave): the hook's 45-minute stale window covers
-the gap between two dispatches, not the whole audit part.**
-
-```bash
-touch "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
-```
+**Touch the in-progress marker after each wave's Notification** (`orch_progress_touch`; the marker was
+claimed once in Phase 0 and is released once in Phase 7). The 45-minute staleness window is per
+touch, so a long wave gets one touch when it returns, not a re-claim before every dispatch.
 
 Write the shared worker context (`PROJECT_CONTEXT`, `PROJECT_GUIDELINES`, `DECIDED_TRADEOFFS`,
 `SUPPRESSIONS`, the frontend file list, the surface map) ONCE to
@@ -173,8 +166,8 @@ Dispatch in **one message block** via the Agent tool (`run_in_background: false`
 | `w3-frontend.md` | sonnet | ALL five visual dimensions in one pass per batch: typography, ui_design, ux, animation, plus **visual a11y ONLY** (contrast ratios, focus visibility, target sizes, reduced-motion/transparency). Explicitly OUT of scope: ARIA, semantics, forms, keyboard handlers, copy — say so in the briefing. |
 
 One worker instead of five siblings: the five dimensions read the same templates and interlock;
-five parallel agents paid for every file five times and none saw the others' context (collapse
-rationale: `$AUDIT_ROOT/references/context-budget.md`). Per BATCH of `BATCH_SIZE` files dispatch
+five parallel agents paid for every file five times and none saw the others' context (collapse rationale: five parallel agents paid for every file five times and none saw the
+others' context; the `context-budget.md` that used to hold this was deleted in the 2026-09-05 rebuild). Per BATCH of `BATCH_SIZE` files dispatch
 ONE `w3-frontend.md` agent with `DIMENSIONEN: a11y,typography,ui_design,ux,animation` and the
 design-audit mode flag (Defect/Elevation split, visual-only scope) — batches still run in
 parallel with each other. `12-copy.md` deliberately does NOT run — words are not visuals; /audit
@@ -195,7 +188,7 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 
 1. **Mobbin MCP** (`mcp__mobbin__search_flows` / `search_screens` / `search_sections`, load via ToolSearch if deferred): for the 2-4 core surfaces of the app (from Phase 1.5 `SURFACES_PRESENT` when available, else derive from the file list: checkout, settings, onboarding, dashboard, ...), query how leading products solve the same screen type. Use the results ONLY to ground Elevation suggestions ("reference: how {app} handles {pattern}") and to calibrate what "distinctive" means against the current industry baseline — never to copy a competitor's look, and never as a source of Defects (a deviation from Mobbin references is not a violation).
 
-   **Reference verdict (forced ranking):** when Mobbin returned screens for a core surface, do not stop at inspiration. Dispatch ONE fresh-context agent per surface (`subagent_type: general-purpose`, `model: sonnet`, max 3 surfaces, `run_in_background: false`; the input/output contract in this paragraph is the briefing): input is the project's view files for that surface plus the reference screens' structure as returned by Mobbin (patterns, states, density — never a look to copy). Output contract, one line per surface: `surface|VERDICT: reference|ours|par|gap1; gap2; gap3`. Each gap must be anchored `file:line` in OUR code and passes the normal Elevation Gate before it enters the report — it competes for the `MAX_ELEVATION` cap like any other candidate, it does not bypass it. A verdict of `ours` or `par` with no gaps is a valid result and is listed under "Already Right". Verdicts are never Defects. Fail-open unchanged: no Mobbin, no verdict stage, same report structure.
+   **Reference verdict (forced ranking):** when Mobbin returned screens for a core surface, do not stop at inspiration. Dispatch ONE fresh-context agent per surface (`subagent_type: design-reference-verdict`, `model: sonnet`, max 3 surfaces, `run_in_background: false`; worker spec `agents/reference-verdict.md` in this skill): input is the project's view files for that surface plus the reference screens' structure as returned by Mobbin (patterns, states, density — never a look to copy). Output contract, one line per surface: `surface|VERDICT: reference|ours|par|gap1; gap2; gap3`. Each gap must be anchored `file:line` in OUR code and passes the normal Elevation Gate before it enters the report — it competes for the `MAX_ELEVATION` cap like any other candidate, it does not bypass it. A verdict of `ours` or `par` with no gaps is a valid result and is listed under "Already Right". Verdicts are never Defects. Fail-open unchanged: no Mobbin, no verdict stage, same report structure.
 2. **Anthropic design skills** (if listed in this session: `rams`, `dataviz`, brand/design skills): when the report will contain Elevation items in their domain (visual review taste, chart/dataviz styling), the orchestrator MAY invoke the matching skill via the Skill tool during Phase 3 consolidation and use its output as a second opinion on the Elevation ranking. Never dispatch product-file edits from those skills — fixing stays with Phase 6.
 
 ## Phase 3: Consolidate + validate
@@ -243,12 +236,8 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 
 Write the same content to `.claude/audits/design-{date +%Y-%m-%d_%H%M%S}-{branch}.md` (severity+dimension dual tags per line, log conventions from `$AUDIT_ROOT/references/audit-log-template.md`).
 
-**Then release the compaction block** — the findings are on disk now, and the selection/fix phases
-must not carry the wave's peak context (inline hash):
-
-```bash
-rm -f "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
-```
+The in-progress marker stays claimed through selection and fixes and is released once in Phase 7;
+Phase 6 dispatches fixers, and a released marker there would leave them unprotected.
 
 ## Phase 5: User selection — nothing is fixed without it
 
@@ -279,16 +268,9 @@ Dispatch `$AUDIT_AGENTS/learning-agent.md` (sonnet, explicit `run_in_background:
 **Run log (fires here — every run reaches Phase 7 regardless of what Phase 5 selected):**
 
 ```bash
-RUN_LOG=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
-  [ -f "$c" ] && { RUN_LOG="$c"; break; }
-done
-[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill design-audit --outcome "{fixed|reported_only}" \
+orch_run_log --skill design-audit --outcome "{fixed|reported_only}" \
   --counts "critical={N},important={N},minor={N},elevation_offered={N},selected={N},fixed={N}"
-
-# Belt-and-braces fuer Abbruchpfade; Hash inline, ${CWD_HASH} aus Phase 0 ist hier laengst tot:
-rm -f "/tmp/claude-audit-in-progress-$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)"
+orch_progress_release   # the single release for the run (claimed in Phase 0)
 ```
 
 No push marker is written — /design-audit is not a push gate. If the user wants to push afterwards, /audit runs as usual (its diff will contain the design fixes).

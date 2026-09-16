@@ -28,27 +28,23 @@ allowed-tools:
 ## Phase 0: Resolve audit root + pre-checks
 
 ```bash
-AUDIT_ROOT=""
-for candidate in \
-  "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
-  "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit}" \
-  "$HOME/.claude/skills/audit"; do
-  [ -n "$candidate" ] && [ -d "$candidate/agents" ] && { AUDIT_ROOT="$candidate"; break; }
+# Shared prologue (audit/bin/lib-orchestrator.sh); finding it is the one loop that stays inline.
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
+         "${CLAUDE_PROJECT_DIR:+${CLAUDE_PROJECT_DIR%/full-audit}/audit/bin/lib-orchestrator.sh}" \
+         "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
+  [ -n "$c" ] && [ -f "$c" ] && { . "$c"; break; }
 done
-[ -z "$AUDIT_ROOT" ] && { echo "ERROR: audit skill not found. Install audit alongside full-audit."; exit 1; }
-AUDIT_AGENTS="$AUDIT_ROOT/agents"; AUDIT_BIN="$AUDIT_ROOT/bin"; bash "$AUDIT_BIN/run-log.sh" --start --skill full-audit
-bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS" || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "ERROR: audit skill not found. Install audit alongside full-audit."; exit 1; }
+orch_resolve_audit_root || { echo "ERROR: audit skill root not found."; exit 1; }
+AUDIT_AGENTS="$AUDIT_AGENTS_DIR"; orch_run_log --start --skill full-audit
+orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
 FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"
 FRAMEWORK=$(printf '%s\n' "$FW_OUT" | sed -n 's/^FRAMEWORK=//p')
 SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
 bash "$AUDIT_BIN/pre-checks.sh"
 bash "$AUDIT_BIN/check-ci-hardening.sh" "$(git rev-parse --show-toplevel)"
 bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)"
-STRIPE_OUT="$(bash "$AUDIT_BIN/detect-stripe.sh" "$(git rev-parse --show-toplevel)")"
-STRIPE=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE=//p')
-STRIPE_MODE=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE_MODE=//p')
-STRIPE_RECURRING=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE_RECURRING=//p')
-STRIPE_FILES=$(printf '%s\n' "$STRIPE_OUT" | sed -n '/^STRIPE_FILES<<END$/,/^END$/{/^STRIPE_FILES<<END$/d;/^END$/d;p;}')
+orch_parse_stripe "$(git rev-parse --show-toplevel)"   # sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES (lib-orchestrator.sh)
 
 # project_path for the run ledger: the MAIN checkout via --git-common-dir, not
 # the worktree (see run-log.sh header comment — run-stats.sh keys per-repo
@@ -99,8 +95,9 @@ glob and bash block — execute it here):
 `SOURCE_DIRS` walked for the fixed extension list plus `scope-extensions:` from
 `.claude/audit-guidelines.md`. `PROJECT_GUIDELINES` read the same way as `/audit` Phase 1.
 
-CWD_HASH=... In-progress marker claim: same commands as `audit/SKILL.md` Phase 1 (claim now, touch
-after find.js, touch after fix.js, release at Phase 4).
+In-progress marker: `orch_progress_claim` now, `orch_progress_touch` after the find.js and fix.js
+Notifications, `orch_progress_release` at Phase 4 (same run-scoped model as `audit/SKILL.md`, same
+lib functions).
 
 ## Phase 1.5: Start questions
 

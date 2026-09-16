@@ -165,16 +165,17 @@ fi
 **Run log setup (resolve once, used by every phase below — fail open, never blocks ship):**
 
 ```bash
-RUN_LOG=""
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/run-log.sh" \
-         "$HOME/.claude/skills/audit/bin/run-log.sh"; do
-  [ -f "$c" ] && { RUN_LOG="$c"; break; }
+# Shared prologue (audit/bin/lib-orchestrator.sh); finding it is the one loop that stays inline.
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
+         "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
+  [ -f "$c" ] && { . "$c"; break; }
 done
+type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run log unavailable, ship continues"
 # Run-ledger start marker — this is the true beginning of the run, before commit/audit/test/push/deploy.
-[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --start --skill ship
+orch_run_log --start --skill ship
 ```
 
-Every later "run the log call" below means: `[ -n "$RUN_LOG" ] && bash "$RUN_LOG" --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
+Every later "run the log call" below means: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
 
 ## Phase 0.8: Docs Sync
 
@@ -276,8 +277,7 @@ If commit fails (hook rejection, empty): run the log call (`outcome=commit_faile
 ## Phase 2: Audit Gate
 
 ```bash
-CWD_HASH=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
-MARKER="/tmp/claude-audit-passed-${CWD_HASH}"
+MARKER="/tmp/claude-audit-passed-$(orch_hash_passed)"   # passed-family hash (no trailing newline), lib-orchestrator.sh
 
 if [ -f "$MARKER" ]; then
   AGE=$(( $(date +%s) - $(stat -f%m "$MARKER" 2>/dev/null || stat -c%Y "$MARKER" 2>/dev/null) ))

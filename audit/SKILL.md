@@ -35,10 +35,15 @@ Learning backlog question + open `audit-finding` issues/PR dedup context:
 ## Phase 1: Scope & pre-checks
 
 ```bash
-AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
-AUDIT_AGENTS_DIR="${CLAUDE_SKILL_DIR}/agents"
-bash "$AUDIT_BIN/run-log.sh" --start --skill audit
-bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR" || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
+# Shared prologue: audit root, helpers, marker, run log (audit/bin/lib-orchestrator.sh).
+# Finding the lib is the one loop that stays inline; here it is this skill's own bin/.
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
+  [ -f "$c" ] && { . "$c"; break; }
+done
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Audit abgebrochen — lib-orchestrator.sh nicht gefunden."; exit 1; }
+orch_resolve_audit_root || { echo "Audit abgebrochen — audit root nicht gefunden."; exit 1; }
+orch_run_log --start --skill audit
+orch_verify_agents || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
 SCOPE_OUT="$(bash "$AUDIT_BIN/collect-scope.sh")"
 BASE_REF=$(printf '%s\n' "$SCOPE_OUT" | sed -n 's/^BASE_REF=//p')
 ALLE_DATEIEN=$(printf '%s\n' "$SCOPE_OUT" | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p;}')
@@ -50,11 +55,7 @@ SOURCE_DIRS=$(printf '%s\n' "$FW_OUT" | sed -n 's/^SOURCE_DIRS=//p')
 PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
 bash "$AUDIT_BIN/pre-checks.sh"
 bash "$AUDIT_BIN/check-ci-hardening.sh" "$(git rev-parse --show-toplevel)"   # HITS become Important security findings, no specialist needed
-STRIPE_OUT="$(bash "$AUDIT_BIN/detect-stripe.sh" "$(git rev-parse --show-toplevel)")"
-STRIPE=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE=//p')
-STRIPE_MODE=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE_MODE=//p')
-STRIPE_RECURRING=$(printf '%s\n' "$STRIPE_OUT" | sed -n 's/^STRIPE_RECURRING=//p')
-STRIPE_FILES=$(printf '%s\n' "$STRIPE_OUT" | sed -n '/^STRIPE_FILES<<END$/,/^END$/{/^STRIPE_FILES<<END$/d;/^END$/d;p;}')
+orch_parse_stripe "$(git rev-parse --show-toplevel)"   # sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES
 if echo "$ALLE_DATEIEN" | grep -qE '(package(-lock)?\.json|composer\.(json|lock)|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|pyproject\.toml|Podfile(\.lock)?|Package\.(swift|resolved)|pubspec\.(yaml|lock)|build\.gradle)'; then
   bash "$AUDIT_BIN/check-outdated.sh" "$(git rev-parse --show-toplevel)"
 fi
@@ -72,8 +73,7 @@ eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"
 GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)
 
 # In-progress marker: run-scoped (claim now, touch after find.js, touch after fix.js, release at Phase 4).
-CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-in-progress-${CWD_HASH}"
+orch_progress_claim   # progress-family hash (pwd WITH newline); touched after each Notification, released in Phase 4
 ```
 
 Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`SUPPRESSIONS`/`PROJECT_CONTEXT`/`DECIDED_TRADEOFFS`: `references/scope-and-pre-checks.md`. Prose gate (`DIFF_CLASS=prose`, from `bin/classify-diff.sh`) limits the dimension preselection to `docs_sync`+`copy` and the fix-scope preselection to "find only": `references/prose-gate.md`.
@@ -186,7 +186,7 @@ where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One ca
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
-Touch the in-progress marker again (`touch "/tmp/claude-audit-in-progress-${CWD_HASH}"`, staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
+Touch the in-progress marker again (`orch_progress_touch`, staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
 
 **Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
 
@@ -277,11 +277,10 @@ to `uncovered`, this rule has to be revisited in the same commit, because the ga
 on exactly the state it exists to catch.
 
 ```bash
-hash=$(echo -n "$PWD" | md5 2>/dev/null || echo -n "$PWD" | md5sum 2>/dev/null | cut -d' ' -f1)
-touch "/tmp/claude-audit-passed-$hash"   # only on the conditions above
+touch "/tmp/claude-audit-passed-$(orch_hash_passed)"   # only on the conditions above; passed-family hash (no trailing newline)
 ```
 
-Release the in-progress marker: `rm -f "/tmp/claude-audit-in-progress-${CWD_HASH}"`.
+Release the in-progress marker: `orch_progress_release`.
 
 ## Phase 5: Learning
 

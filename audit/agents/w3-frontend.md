@@ -12,8 +12,9 @@ Retained for `/design-audit`. `/audit` and `/full-audit` use independent dimensi
 The five visual dimensions read the SAME templates and stylesheets; five separate agents paid for
 every file five times and could not see each other's context, although the dimensions interlock
 (a contrast fix changes the color system, a density change moves hit areas). One reader with the
-merged rubric sees the interplay and reads each file once. Collapse rationale + measurement:
-`references/context-budget.md`. Security stays separate; this worker never handles it.
+merged rubric sees the interplay and reads each file once. The `context-budget.md` that held the collapse
+measurement was deleted in the 2026-09-05 rebuild; the rationale is the paragraph above. Security
+stays separate; this worker never handles it.
 
 ## How to work
 
