@@ -22,6 +22,8 @@ FED_N=$(jq -r --arg d "$TODAY" '[.recurrences[] | objects | select(.last_seen ==
 echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
 ```
 
+**Fixes applied by the orchestrator directly, outside `fix.js`, carry the recur duty themselves.** The per-verdict `recur` lives in `fix-loop.md` because `fix.js` is the normal path; when the orchestrator decides and applies fixes by hand (as on 2026-09-15, twice), nothing runs it, and Step 0.5 then finds `FED_N=0` for a run with 30 confirmed findings. Call `patterns-store.sh recur {pattern}` at the moment each finding is confirmed, whichever path applies the fix; the back-fill below is the repair for having forgotten, not an alternative.
+
 `FED_N >= CONFIRMED_N` (or `CONFIRMED_N=0`): go to Step 1. `FED_N < CONFIRMED_N`: back-fill NOW, before the agent runs: call `patterns-store.sh recur {pattern}` once per confirmed finding that has no entry yet (same normalized pattern string the verdict table would have used), re-run the check, and write one line under `## Notes` in the current audit log (`Recurrence feed: {CONFIRMED_N - FED_N}/{CONFIRMED_N} confirmed findings back-filled at Phase 5, per-verdict recur was skipped`). A back-fill is a process failure worth recording, not a silent repair: the learning agent must see the note so the retro can name it.
 
 **Step 1: dispatch the learning agent**

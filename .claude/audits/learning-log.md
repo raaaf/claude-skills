@@ -2,22 +2,23 @@
 
 Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
-## Trends (as of 2026-08-11)
+## Trends (as of 2026-09-16)
 
 | Metric | Value |
 |---|---|
-| Total audits | 7 (6 regular `/audit` + 1 `/full-audit`) |
-| Critical trend (last 3 regular) | 0 -> 2 -> 0 (unchanged, no new regular audit since 2026-08-05) |
-| Important trend (last 3 regular) | 9 -> 6 -> 6 (unchanged) |
-| Top category (last 5 regular) | Docs/Docs-Sync (14x cumulative, 4th audit in a row top category) |
-| Avg findings/audit (last 5 regular) | 11.6 |
-| Full-audit outlier (2026-08-11) | 3 Critical / 51 Important / 35 Minor across 146 files, 5 batches (excluded from the trend and average above per methodology) |
+| Total audits | 9 raw logs on disk (8 regular + 1 full-audit outlier); the previous block (2026-08-11) predates this window and is not diffable against it |
+| Critical trend (last 3 regular) | 0 -> 0 -> 0 (stable) |
+| Important trend (last 3 regular) | unknown -> 8 -> 13 (rising; the two 2026-09-15 runs audited the same growing branch, so the second count includes defects the first run's fixes introduced) |
+| Top category (last 5 regular) | architecture (9x across the two 2026-09-15 runs) |
+| Avg findings/audit (last 5 regular) | 10.5 over the two runs tallied here; the three earlier runs were not re-tallied |
 
-**Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
-- 7x meta doc drift (CLAUDE.md / README / SKILL.md on skill or feature changes)
-- 4x audit-owned infrastructure carries invisible defects, found only incidentally
-- 3x self-tested-clean, verifier finds real bug
+**Repeat offenders (from `patterns-store.sh recurrences`, >=2):**
+- 7x meta doc drift (claude readme skill / skill feature changes), last seen unknown (legacy entry)
+- 5x audit-owned infrastructure (hooks, guidelines, bin scripts) only found incidentally, last seen unknown (legacy entry)
+- 3x fix agent self-designed test table clean finds real defect, last seen unknown (legacy entry)
+- 2x resolution loop with two candidate paths vs three, last seen 2026-09-16; resolved by removing the dead third path everywhere (`4265a58`), not by adding it
 
+Note: the feed for the two 2026-09-15 runs was back-filled at Phase 5 (30 confirmed findings), so the counts above moved only after the fact; see the retro below and `learning-phase.md` Step 0.5.
 
 ## Retro — 2026-07-07 — main (audit)
 
@@ -223,3 +224,32 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 - [x] `full-audit/SKILL.md` Phase 1 (scope collection): assert the collected file list is non-empty and not wildly smaller than `git ls-files | wc -l` before dispatching batches; abort loudly instead of proceeding. Mirror wherever `audit/SKILL.md` consumes `detect-framework.sh` output for scope.
 - [x] `audit/agents/prompt-template.md`: a worker that stops before covering every assigned file (budget/turn exhaustion) must name the unread files explicitly in its reply, so the orchestrator can auto-schedule a follow-up round instead of relying on manual detection.
 - [x] eval-fixture: security/guard-exemption-whole-string-grep — a bash guard whose exemption check greps the whole command string instead of evaluating per logical segment (`&&`/`;`/`$()`), letting one read-only mention (e.g. `git stash list`) disarm protection for a mutating command elsewhere in the same line.
+
+---
+
+## Retro — 2026-09-15 — main (audit, two runs)
+
+### Statistics
+- Total audits in the project: 9 (8 regular `/audit` + 1 `/full-audit` outlier)
+- Most frequent finding category: architecture (9x across both runs)
+- Findings: 8 confirmed in run 1, 13 in run 2, 0 Critical in both
+
+### What went well
+- Every finding in code the branch introduced was fixed the same day (`08d118e`, `20fcefe`, `29ae56e`).
+- Run 2 did not iterate a third time once the coverage gate looked structurally unreachable; it stopped and asked.
+- The cause of the `incomplete` dimensions was found in the journal and fixed in `find.js` (`4265a58`): a specialist assumed a tool-call budget that exists nowhere, another reported the files it read instead of the files it was assigned.
+
+### What went poorly
+- Recurrence feed dead for both runs: 30 confirmed findings back-filled at Phase 5, because the orchestrator applied fixes directly and `fix.js`'s per-verdict `recur` never ran.
+- Three manual push-marker bypasses in 48 hours across two repos (this one, apps/events). Operators routing around a gate is a statement about the gate.
+
+### What was missing
+- Nothing tied the recur duty to the act of confirming a finding; it lived only in `fix-loop.md`, so any fix path other than `fix.js` skipped it.
+
+### Detected patterns
+- Self-contradicting doc inside audit-owned infrastructure (append vs replace, 13 vs 14 ids, two vs three candidate paths) keeps recurring; the 5x legacy entry is the same class.
+
+### Suggested improvements
+- [x] `audit/agents/learning-agent.md`: append-vs-replace contradiction at line 28 vs 171 (applied 2026-09-16: `4265a58`, line 28 now says replace at the top).
+- [x] `delegate/SKILL.md:132` EXEC_REF loop: the agent proposed adding the third candidate path to match the CAPTURE loop. Resolved the OTHER way (applied 2026-09-16: `4265a58`): `~/.claude/skills/claude-skills/...` resolves nowhere since the 2026-09-10 symlink layout, so the dead candidate was removed from all nine loops instead. Do not re-add it.
+- [x] `audit/references/learning-phase.md`: fixes applied by the orchestrator outside `fix.js` carry the per-verdict `recur` duty themselves; back-fill is the repair for forgetting, not an alternative (applied 2026-09-16: `learning-phase.md` Step 0.5).
