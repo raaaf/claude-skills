@@ -48,6 +48,11 @@ echo "SKILL_SOURCE=${SKILL_SOURCE:-NOT_FOUND}"
 After editing the source, commit in the skill repo right away (decided 2026-09-03, so applied items no longer sit uncommitted for weeks). One commit per repo touched, no push, only the files this backlog application changed:
 
 ```bash
+SKILL_SOURCE=""   # fresh shell per block: resolve again
+for c in "$HOME/Developer/claude/skills" "$HOME/Local Sites/claude-skills" "$(readlink "$HOME/.claude/skills/audit" 2>/dev/null | xargs -I{} dirname {} 2>/dev/null)"; do
+  [ -n "$c" ] && [ -f "$c/audit/SKILL.md" ] && [ -d "$c/.git" ] && { SKILL_SOURCE="$c"; break; }
+done
+SKILL_SOURCE_PERSONAL="${SKILL_SOURCE%/skills}/skills-personal"
 cd "$SKILL_SOURCE" && git add -A -- . ':!.claude' && git commit -q -m "chore(audit): apply learning backlog $(date +%Y-%m-%d)" && git log -1 --oneline
 # same for "$SKILL_SOURCE_PERSONAL" when a personal skill was edited
 ```

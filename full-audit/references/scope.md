@@ -230,6 +230,15 @@ find "${SOURCE_DIRS_ARR[@]}" \( -name "*.blade.php" -o -name "*.css" -o -name "*
 # Translation files
 # shellcheck disable=SC2086 -- EXCLUDE only, see note above.
 find "${SOURCE_DIRS_ARR[@]}" \( -path "*/lang/*" -o -path "*/locales/*" -o -path "*/locale/*" -o -path "*/translations/*" -o -path "*/messages/*" -o -path "*/i18n/*" \) \( -name "*.php" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.po" -o -name "*.pot" -o -name "*.ts" -o -name "*.js" \) $EXCLUDE 2>/dev/null | sort > /tmp/full-audit-translations.txt
+
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again (the scope walk runs after Phase 0's claim, so this save is safe)
+ALLE_DATEIEN=$(cat /tmp/full-audit-files.txt)
+orch_resolve_audit_root || exit 1
+PROJECT_GUIDELINES_FILE="$PROJECT_ROOT/.claude/audit-guidelines.md"
+PROJECT_GUIDELINES=""
+[ -f "$PROJECT_GUIDELINES_FILE" ] && PROJECT_GUIDELINES=$(cat "$PROJECT_GUIDELINES_FILE")
+GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "$AUDIT_ROOT/guidelines" 2>/dev/null)
+orch_state_save ALLE_DATEIEN FRAMEWORK SOURCE_DIRS PLATFORM PROJECT_GUIDELINES GUIDELINE_MATCHES   # read back by full-audit/SKILL.md Phase 1.5 and the audit/SKILL.md blocks Phases 2-5 run
 ```
 
 Variables from the outputs:

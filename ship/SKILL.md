@@ -44,6 +44,7 @@ Detect deploy method and health check URL (check in priority order):
 ```bash
 # 1. Project config wins — read the values if present, all three through the one parser in the lib
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+orch_state_clear   # /ship has no in-progress claim; start this run's cross-block state empty
 DEPLOY_COMMAND=$(orch_ship_value deploy-command) || DEPLOY_COMMAND=""
 HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
 
@@ -130,6 +131,7 @@ if [ -z "$HEALTH_URL" ]; then
   # Fastlane / iOS: no HTTP health check applicable
   # Xcode Cloud / TestFlight: no HTTP health check applicable
 fi
+orch_state_save DEPLOY_COMMAND HEALTH_URL
 ```
 
 Log what was detected:
@@ -152,6 +154,9 @@ If no deploy method found: AskUserQuestion with options:
 
 Save to `.claude/ship.md` if not already present (never overwrite existing config):
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+orch_state_load
+DEPLOY_COMMAND="{the resolved command: the fastlane lane or the chosen option when a question above was asked, else the detected value}"
 if [ ! -f .claude/ship.md ]; then
   mkdir -p .claude
   {
@@ -160,6 +165,7 @@ if [ ! -f .claude/ship.md ]; then
   } > .claude/ship.md
   echo "Created .claude/ship.md"
 fi
+orch_state_save DEPLOY_COMMAND
 ```
 
 **Run log setup (resolve once, used by every phase below — fail open, never blocks ship):**
@@ -175,7 +181,7 @@ type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run lo
 orch_run_log --start --skill ship
 ```
 
-Every later "run the log call" below means, in a block that starts with the lib source line: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`.
+Every later "run the log call" below means, in a block that starts with the lib source line and `orch_state_load`: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`. Every `SHIP_*=` assignment this file names happens inside a sourced block that ends with `orch_state_save <that name>`; without that, every block read `n/a` (fresh shell per block) and the ledger recorded a gate that never fired.
 
 ## Phase 0.8: Docs Sync
 
@@ -235,6 +241,12 @@ edits do not invalidate a fresh audit marker: they are prose by the same definit
 Set `SHIP_DOCS` to the number of doc files updated, or `none` when the diff touched no documented
 surface. `none` is a legitimate outcome for a pure refactor, not a reason to skip the check.
 
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+SHIP_DOCS={N|none}
+orch_state_save SHIP_DOCS
+```
+
 ## Phase 1: Commit
 
 Show what will be committed:
@@ -288,27 +300,26 @@ If commit fails (hook rejection, empty): run the log call (`outcome=commit_faile
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 MARKER="/tmp/claude-audit-passed-$(orch_hash_passed)"   # passed-family hash (no trailing newline), lib-orchestrator.sh
-
 if [ -f "$MARKER" ]; then
   AGE=$(( $(date +%s) - $(stat -f%m "$MARKER" 2>/dev/null || stat -c%Y "$MARKER" 2>/dev/null) ))
-  if [ "$AGE" -lt 1800 ]; then
-    echo "Audit marker fresh (${AGE}s ago). Proceeding to push."
-    SHIP_GATE=passed
+  if [ "$AGE" -ge 1800 ]; then
+    echo "STALE: Audit marker is ${AGE}s old (limit: 1800s)."; SHIP_GATE=stale
+  elif ! orch_marker_matches; then
+    echo "STALE: the audit marker certifies a different tree than the one just committed (edited after /audit ran, or a marker from before tree binding)."; SHIP_GATE=stale
   else
-    echo "STALE: Audit marker is ${AGE}s old (limit: 1800s)."
-    MARKER_FRESH=0
+    echo "Audit marker fresh (${AGE}s ago) and bound to this tree. Proceeding to push."; SHIP_GATE=passed
   fi
 else
-  echo "MISSING: No audit marker found."
-  MARKER_FRESH=0
+  echo "MISSING: No audit marker found."; SHIP_GATE=missing
 fi
+orch_state_save SHIP_GATE
 ```
 
 If marker missing or stale: AskUserQuestion:
 - "Run /audit now" → invoke the audit skill (`/audit`), then re-check marker. `SHIP_GATE=passed-after-rerun` on success (not `passed`: the gate DID fire, the ledger must show that, otherwise `run-stats.sh` reports a gate that never blocks even when it blocked-and-reran every time; 17 such runs on 2026-08-28). On failure: `SHIP_GATE=blocked`, run the log call (`outcome=audit_failed`), then stop.
 - "Push without audit (risky)" → `SHIP_GATE=bypassed`, log the bypass and continue with a warning in the output
 
-Never silently skip the audit. The bypass must be an explicit user choice.
+Never silently skip the audit. The bypass must be an explicit user choice. Each of these is set in a sourced block ending with `orch_state_save SHIP_GATE` (4a).
 
 ## Phase 2b: Test Gate
 
@@ -317,8 +328,9 @@ Re-derived here, not carried over from Phase 0: every block is a fresh shell.
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-TEST_COMMAND=$(orch_test_command_declared) || { echo "SHIP_TESTS=not_configured"; exit 0; }
-eval "$TEST_COMMAND"
+TEST_COMMAND=$(orch_test_command_declared) || { SHIP_TESTS=not_configured; orch_state_save SHIP_TESTS; echo "SHIP_TESTS=not_configured"; exit 0; }
+if eval "$TEST_COMMAND"; then SHIP_TESTS=passed; else SHIP_TESTS=failed; fi
+orch_state_save SHIP_TESTS; echo "SHIP_TESTS=$SHIP_TESTS"
 ```
 
 Green → `SHIP_TESTS=passed`, continue to push. Red → `SHIP_TESTS=failed`, run the log call (`outcome=test_failed`), then STOP. Report the failing tests and do not push. Fixing them is
@@ -345,7 +357,7 @@ If push fails:
 
 ## Phase 4: Deploy
 
-If `DEPLOY_COMMAND` is `ci`: skip this phase (`SHIP_DEPLOY=ci`). CI/CD will deploy from the push.
+If `DEPLOY_COMMAND` is `ci`: skip this phase (`SHIP_DEPLOY=ci`, sourced block, `orch_state_save SHIP_DEPLOY`). CI/CD will deploy from the push. Phase 5 waits for that CI run before the health check.
 
 `DEPLOY_COMMAND` is read from the audited repo's own `.claude/ship.md` (same trust boundary as
 `TEST_COMMAND` in Phase 2b — see CLAUDE.md Gotchas). Everywhere else in this pipeline, a
@@ -354,12 +366,14 @@ exception, because it is the one step that is both irreversible and production-f
 because `DEPLOY_COMMAND` is persisted once (Phase 0) and then reused silently on every later run —
 nothing else in the pipeline shows it again before it executes. AskUserQuestion:
 - "Deploy" (default) — show the resolved `{DEPLOY_COMMAND}` in the question text
-- "Skip deploy" → `SHIP_DEPLOY=skipped`, skip Phase 5 (nothing new was deployed, a health check would only re-check the
+- "Skip deploy" → `SHIP_DEPLOY=skipped` (sourced block, `orch_state_save SHIP_DEPLOY`), skip Phase 5 (nothing new was deployed, a health check would only re-check the
   old version) and go straight to Summary Output with `Deploy: skipped by user`
 
 Otherwise run the detected/configured deploy command:
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
 {DEPLOY_COMMAND}
+SHIP_DEPLOY=$([ $? -eq 0 ] && echo executed || echo failed); orch_state_save SHIP_DEPLOY; echo "SHIP_DEPLOY=$SHIP_DEPLOY"
 ```
 
 Stream output. `SHIP_DEPLOY=executed` if it exits zero. If command exits non-zero: `SHIP_DEPLOY=failed`, jump to Phase 6.
@@ -367,17 +381,32 @@ Stream output. `SHIP_DEPLOY=executed` if it exits zero. If command exits non-zer
 ## Phase 5: Verify
 
 ```bash
-# CI run status
-gh run list --limit 1 --json status,conclusion,url 2>/dev/null
-
-# Health check. HEALTH_URL comes from the repo's own .claude/ship.md (or its deploy config), so it
-# is repo-supplied: only http(s), never a loopback, private or link-local host, and re-derived here
-# because every block is a fresh shell (six audit runs named the unguarded curl, 2026-09-16).
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
-HEALTH_HOST=$(printf '%s' "$HEALTH_URL" | sed -nE 's#^https?://([^/@]*@)?(\[[^]]+\]|[^/:?@]+).*#\2#p')   # userinfo dropped first, bracketed IPv6 kept whole
+orch_state_load   # DEPLOY_COMMAND, HEALTH_URL from Phase 0
+# CI deploy: the deploy happens in the workflow the push triggered. A health check before that
+# run finishes tests the previous version and reports OK for a deploy that has not happened
+# (run 11, 2026-09-16). Wait for it; `gh run watch` blocks without sleeping. Call this block with
+# the Bash tool's timeout at 600000 and re-run it when the tool times out: it re-finds the run.
+CI_STATUS=n/a
+if [ "$DEPLOY_COMMAND" = "ci" ]; then
+  RUN_ID=$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)
+  if [ -n "$RUN_ID" ]; then
+    gh run watch "$RUN_ID" --exit-status --interval 15 >/dev/null 2>&1
+    CI_STATUS=$(gh run view "$RUN_ID" --json status,conclusion --jq 'if .status=="completed" then .conclusion else .status end' 2>/dev/null || echo unknown)
+    gh run view "$RUN_ID" --json url --jq .url 2>/dev/null
+  else
+    CI_STATUS=no_run_found   # the push may not have registered yet: re-run this block once
+  fi
+  echo "CI_STATUS=$CI_STATUS"
+  [ "$CI_STATUS" = "success" ] || { echo "Health: skipped, CI run is $CI_STATUS (nothing new is deployed)"; HEALTH_URL=""; }
+fi
+
+# Health check. HEALTH_URL is repo-supplied (.claude/ship.md): only http(s), never a loopback,
+# private, link-local or non-canonical numeric host; the parser and the filter live in the lib
+# (orch_url_host / orch_host_public, 21-case test in the commit that added them).
 case "$HEALTH_URL" in http://*|https://*) ;; "") ;; *) echo "Health: refusing non-http(s) URL from .claude/ship.md"; HEALTH_URL="";; esac
-case "$HEALTH_HOST" in ""|localhost|127.*|0.0.0.0|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|*.local|*.internal|"[::1]"|"[::]"|"[fc"*|"[fd"*|"[fe80"*|"[::ffff:"*) echo "Health: refusing loopback/private/link-local host $HEALTH_HOST"; HEALTH_URL="";; esac
+HEALTH_HOST=$(orch_url_host "$HEALTH_URL")
+if [ -n "$HEALTH_URL" ] && ! orch_host_public "$HEALTH_HOST"; then echo "Health: refusing loopback/private/link-local/non-canonical host $HEALTH_HOST"; HEALTH_URL=""; fi
 if [ -n "$HEALTH_URL" ]; then
   HTTP_STATUS=$(curl -so /dev/null -w "%{http_code}" --max-time 15 "$HEALTH_URL" 2>/dev/null)
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
@@ -392,6 +421,8 @@ fi
 ```
 
 ## Phase 6: Failure Handling
+
+If `CI_STATUS` is not `success` for a `ci` deploy: run the log call (`outcome=deploy_failed`), report the run URL, stop.
 
 If deploy failed: run the log call (`outcome=deploy_failed`), then:
 ```

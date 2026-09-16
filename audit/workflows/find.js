@@ -339,9 +339,10 @@ function chunkByDirectory(files) {
     }
   }
   if (current.length) chunks.push(current);
-  // Re-merge any trailing chunk under 5 files into the previous one.
+  // Re-merge a trailing chunk under 5 files into the previous one, but never past the 8-file cap
+  // a specialist is briefed for (a 4-file tail after an 8-file chunk stays its own chunk).
   for (let i = chunks.length - 1; i > 0; i--) {
-    if (chunks[i].length < 5) {
+    if (chunks[i].length < 5 && chunks[i - 1].length + chunks[i].length <= 8) {
       chunks[i - 1] = chunks[i - 1].concat(chunks[i]);
       chunks.splice(i, 1);
     }

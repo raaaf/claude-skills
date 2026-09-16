@@ -76,12 +76,15 @@ case "$CLAUDE_EFFORT" in
   high|*) MAX_ELEVATION=7;  BATCH_SIZE=15; VERIFY_FIXES=1 ;;
 esac
 echo "Effort=$CLAUDE_EFFORT | MaxElevation=$MAX_ELEVATION | BatchSize=$BATCH_SIZE"
+orch_state_save AUDIT_TMP AUDIT_AGENTS AUDIT_GUIDELINES MAX_ELEVATION BATCH_SIZE VERIFY_FIXES   # read back by later blocks
 ```
 
 ## Phase 1: Scope — the frontend surface
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }   # AUDIT_BIN for detect-framework.sh
+orch_state_load
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Capture and parse rather than just printing: the native scope filter below
 # BRANCHES on $PLATFORM, and an unset variable there would apply the native
@@ -122,6 +125,7 @@ fi
 FRONTEND_COUNT=$(echo "$FRONTEND_FILES" | grep -c . || echo 0)
 echo "Frontend-Oberflaeche: $FRONTEND_COUNT Dateien"
 [ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; orch_progress_release; exit 0; }   # marker was claimed in Phase 0, release it on this exit too
+orch_state_save PROJECT_ROOT FRAMEWORK PLATFORM FRONTEND_COUNT SCOPE_PREFIX
 ```
 
 The path filter is a heuristic, not a contract: a project that keeps views somewhere else loses them here. Print the resulting list and eyeball it before Phase 2 — a count that collapses to a handful on a real app means the convention did not match, and the fix is to widen the pattern for that project, not to audit five files and call the surface covered.
@@ -214,6 +218,7 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
    the values into `F='{datei}'` was a Critical on 2026-09-16: a path containing a quote broke out.)
    ```bash
    for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+   orch_state_load   # AUDIT_TMP from Phase 0, PROJECT_ROOT from Phase 1
    bash "$(orch_helper validate-locations.sh)" "${AUDIT_TMP}/locations.tsv" "$PROJECT_ROOT"
    ```
    A `HALLUCINATION` line drops that finding before Phase 4.

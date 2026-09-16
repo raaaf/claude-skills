@@ -126,8 +126,8 @@ function groupForRegression(files) {
   for (let i = 0; i < files.length; i += 7) {
     groups.push(files.slice(i, i + 7));
   }
-  // Merge a trailing group under 5 into the previous one when there is one.
-  if (groups.length > 1 && groups[groups.length - 1].length < 5) {
+  // Merge a trailing group under 5 into the previous one when the result stays within the 7-file group size.
+  if (groups.length > 1 && groups[groups.length - 1].length < 5 && groups[groups.length - 2].length + groups[groups.length - 1].length <= 7) {
     const last = groups.pop();
     groups[groups.length - 1] = groups[groups.length - 1].concat(last);
   }

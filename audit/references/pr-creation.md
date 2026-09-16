@@ -17,6 +17,8 @@ Abort if:
 ## Step 2 — Gather Data
 
 ```bash
+DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
 # Commits since base branch
 git log origin/$DEFAULT_BRANCH..HEAD --oneline
 
@@ -39,7 +41,7 @@ Title: Conventional Commit style, derived from the commits. Examples:
 Body via HEREDOC:
 
 ```bash
-gh pr create --title "$TITLE" --body "$(cat <<'EOF'
+gh pr create --title "{title}" --body "$(cat <<'EOF'
 ## Summary
 - What was done
 - Why

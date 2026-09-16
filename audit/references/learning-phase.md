@@ -7,6 +7,8 @@ The learning agent returns a **structured output**. **Subagents cannot write to 
 **Step 0: check the run ledger (mandatory, before dispatching the learning agent).** This is the moment the check happens — the point every `/audit` and `/full-audit` run already passes through — not a new ritual; do not replace it with a separate dashboard.
 
 ```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || exit 1
 bash "$AUDIT_BIN/run-stats.sh"
 ```
 

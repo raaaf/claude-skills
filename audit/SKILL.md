@@ -76,6 +76,7 @@ GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/g
 
 # In-progress marker: run-scoped (claim now, touch after find.js, touch after fix.js, release at Phase 4).
 orch_progress_claim   # progress-family hash (pwd WITH newline); touched after each Notification, released in Phase 4
+orch_state_save ALLE_DATEIEN BASE_REF FRAMEWORK SOURCE_DIRS PLATFORM PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_GUIDELINES GUIDELINE_MATCHES   # later blocks read these back with orch_state_load (fresh shell per block, lib header); after the claim, which clears the state
 ```
 
 Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`SUPPRESSIONS`/`PROJECT_CONTEXT`/`DECIDED_TRADEOFFS`: `references/scope-and-pre-checks.md`. Prose gate (`DIFF_CLASS=prose`, from `bin/classify-diff.sh`) limits the dimension preselection to `docs_sync`+`copy` and the fix-scope preselection to "find only": `references/prose-gate.md`.
@@ -103,6 +104,10 @@ of defect this dimension exists to catch.
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from Phase 1
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from question (a); all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
+[ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
+AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-{none|critical|all from question (b)}}"
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
   if [ -n "$STRIPE_TOUCHED" ]; then
@@ -112,7 +117,8 @@ if [ "${STRIPE:-no}" = "yes" ]; then
     echo "payments: skipped, diff did not touch the payment surface"
   fi
 fi
-echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS"   # carry THIS printed value into every later block that reads it (Phase 2 dispatch, Phase 4 counts): each block is a fresh shell
+echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS AUDIT_FIX_SCOPE=$AUDIT_FIX_SCOPE"
+orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES   # Phase 2 and Phase 4 load these; a hand-substituted copy in Phase 4 was the previous mechanism
 ```
 
 `guidelines/payments.md` carries an `applies_to` path regex, so a diff that only touches a generic
@@ -132,6 +138,7 @@ the integration does recurring billing at all.
 ## Phase 2: Find
 
 ```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 GIT_COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir)"
 case "$GIT_COMMON_DIR" in
   */.git) PROJECT_ROOT="${GIT_COMMON_DIR%/.git}" ;;
@@ -146,22 +153,26 @@ AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
 AUDIT_BRANCH=$(git branch --show-current | tr '/' '-')
 [ -n "$AUDIT_BRANCH" ] || AUDIT_BRANCH="detached-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 LOGFILE="$AUDIT_DIR/$(date +%Y-%m-%d_%H%M%S)-${AUDIT_BRANCH}.md"
+orch_state_save PROJECT_ROOT AUDIT_DIR LOGFILE
 ```
 
 The orchestrator does not read scope files at all — `find.js` has no filesystem access and the scout
 and specialist subagents read the audited repo themselves, so there is nothing content-based left for
-the orchestrator to inline. Before dispatch, compute the content-based scout floor with the helper
-instead of reading files: `FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")`, which prints `{"<dimension>": ["<path>", ...], ...}`
-on stdout for every dimension in `AUDIT_DIMENSIONS`. `STRIPE_FILES` is deliberately NOT unioned into
-`ALLE_DATEIEN`: it is not part of the diff scope, and unioning it in would widen what every other
-dimension audits. It IS passed to the helper, in a second invocation, because the helper reads files
-from disk itself, so handing it the surface costs the orchestrator nothing, and `payments` should get
-a deterministic floor over the surface it actually scouts, not just whatever of that surface the diff
-happened to touch:
+the orchestrator to inline. Before dispatch, the block below computes the content-based scout floor
+with the helper and prints it. `STRIPE_FILES` is deliberately NOT unioned into `ALLE_DATEIEN`: it is
+not part of the diff scope, and unioning it in would widen what every other dimension audits. It IS
+passed to the helper, in a second invocation, because the helper reads files from disk itself, so
+handing it the surface costs the orchestrator nothing, and `payments` should get a deterministic
+floor over the surface it actually scouts, not just whatever of that surface the diff happened to
+touch:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
+orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT from the blocks above
+FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
 FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
+printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
 ```
 
 This matters because two real sessions hit the old inline-content approach's cost directly: one
@@ -202,8 +213,10 @@ falls back to the manifest, then to none:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+orch_state_load   # PROJECT_ROOT from Phase 2
 TEST_COMMAND=$(orch_test_command "$PROJECT_ROOT") || TEST_COMMAND=""   # declared test-command:, else the manifest's own; one parser shared with /ship
 echo "TEST_COMMAND=${TEST_COMMAND:-<none>}"
+orch_state_save TEST_COMMAND
 ```
 
 `TEST_COMMAND` empty: skip the baseline, pass `testCommand: ""` to `fix.js` (it tells fixers and
@@ -242,13 +255,13 @@ capability regression (recall collapsed to zero) rather than what it actually is
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }   # sets AUDIT_BIN with the same fallbacks as Phase 1
+orch_state_load   # AUDIT_DIMENSIONS as Phase 1.5 saved it, payments included when it was appended
 # A Claude Code session has no env var pointing at its own transcript dir:
 # derive the projects dir from cwd using the same slug convention as
 # ~/.claude/projects/ (every "/" becomes "-").
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(pwd | sed 's#/#-#g')"
 bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # cost line for the log header + run-ledger
 COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}"
-AUDIT_DIMENSIONS="{the value Phase 1.5 printed as AUDIT_DIMENSIONS=..., payments included when it was appended}"   # fresh shell: the Phase 1.5 variable does not exist here; a bare test of it was always false (2026-09-16, Critical)
 if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
   COUNTS="$COUNTS,payments_head=$(git rev-parse HEAD)"
 fi
@@ -256,7 +269,7 @@ bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
   --counts "$COUNTS" --gate "{blocked|partial|passed}"
 ```
 
-**Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when ALL of these hold, all derived from the Phase 2 `find.js` result:
+**Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when ALL of these hold, all derived from the Phase 2 `find.js` result. The marker records the tree it certified (tracked working-tree content via `git stash create`), not just a time: `/ship`'s gate refuses a marker whose tree is not the one being shipped, so an edit made after the audit inside the 30-minute window no longer ships as audited (run 11, 2026-09-16).
 
 - no Critical is open, including every `SECRET ...` line Phase 1's `pre-checks.sh` printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
 - no new test failure beyond `BASELINE_FAILURES`,
@@ -285,7 +298,7 @@ on exactly the state it exists to catch.
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-touch "/tmp/claude-audit-passed-$(orch_hash_passed)"   # only on the conditions above; passed-family hash (no trailing newline)
+orch_marker_write   # only on the conditions above; writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
 ```
 
 Release the in-progress marker, unconditionally (the block above only runs when the gate passed):

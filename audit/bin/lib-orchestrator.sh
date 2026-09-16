@@ -23,13 +23,33 @@
 # difference is intentional, not drift. A block that only sets shell variables from a
 # previous block's output cannot exist: re-derive or re-read, never assume.
 #
+# VARIABLES DO NOT CROSS BLOCKS EITHER. Runs 8, 10 and 11 of 2026-09-16 each found one
+# (`TEST_COMMAND`, `AUDIT_DIMENSIONS`, `STRIPE_FILES`): set in one block, tested in a later one
+# where it was empty, and the test silently took the wrong branch. The mechanism since then is
+# orch_state_save / orch_state_load: a block that produces a value a later block needs ends with
+# `orch_state_save NAME...`, and every block that reads a carried value calls `orch_state_load`
+# right after the source line. The state dir is cleared by orch_progress_claim (a new run starts
+# empty), so a value that was never saved this run reads as unset, never as last run's.
+# check-fresh-shell.sh enforces both halves: a block reading a variable it did not set must load,
+# and the name must be saved by some scanned SKILL.md or references block (the state dir is shared per cwd).
+#
 # Functions (all bash 3.2, no arrays exported, no side effects beyond the
 # variables named):
 #   orch_resolve_audit_root   sets AUDIT_ROOT, AUDIT_BIN, AUDIT_AGENTS_DIR; returns 1 if none found
 #   orch_helper <script.sh>   prints "$AUDIT_BIN/<script>" if it exists, else nothing (rc 1)
 #   orch_hash_passed          md5 of $PWD WITHOUT newline  -> /tmp/claude-audit-passed-*
 #   orch_hash_progress        md5 of pwd  WITH newline     -> /tmp/claude-audit-in-progress-*
-#   orch_progress_claim | orch_progress_touch | orch_progress_release
+#   orch_progress_claim | orch_progress_touch | orch_progress_release   (claim also clears the state dir)
+#   orch_state_save NAME...   writes each named variable's value to the run's state dir (one file per name)
+#   orch_state_load           reads every saved variable back into the current shell; the answer to
+#                             "a value set in an earlier block" (see the block rule below)
+#   orch_state_clear          removes the state dir; called by orch_progress_claim, and by skills without a claim (ship) at their start
+#   orch_tree_hash            tree object id of the working tree (tracked files) via `git stash create`, HEAD's tree when clean
+#   orch_marker_write         writes orch_tree_hash into /tmp/claude-audit-passed-*; the marker certifies a tree, not a moment
+#   orch_marker_matches       rc 0 when the passed marker's recorded tree equals orch_tree_hash now
+#   orch_url_host <url>       prints the host of an http(s) URL (userinfo dropped, [IPv6] kept whole), else nothing
+#   orch_host_public <host>   rc 0 unless loopback/private/link-local/ULA/mapped, *.local/*.internal, or a
+#                             numeric host that is not a canonical dotted quad (decimal, octal, hex, short forms)
 #   orch_verify_agents        runs verify-agents.sh against AUDIT_AGENTS_DIR; returns its rc
 #   orch_parse_stripe [root]  sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES
 #   orch_run_log <args...>    calls run-log.sh if present; never fails the caller
@@ -76,11 +96,90 @@ orch_helper() {
   printf '%s' "$AUDIT_BIN/$1"
 }
 
-# Claim and touch are the same operation on the same file (a plain touch); the
-# two names exist so a SKILL.md reads as "claim once, touch after each wave".
+# Claim and touch are the same touch on the same file; claim additionally starts the
+# run's variable state from empty (orch_state_clear), so the two names read as
+# "claim once, touch after each wave". Release removes the marker only: the learning
+# phase runs after it and still reads saved values; the next claim clears them.
 orch_progress_touch()   { touch "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
-orch_progress_claim()   { orch_progress_touch; }
+orch_progress_claim()   { orch_state_clear; orch_progress_touch; }
 orch_progress_release() { rm -f "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
+
+# Cross-block variable state. One file per variable, raw bytes, under a 0700 dir the
+# current user owns; nothing is ever eval'd or sourced from it, values come back through
+# `read -r -d ''`, so a value containing `$(...)` or quotes is inert text. Names are
+# restricted to what a SKILL.md can assign (uppercase identifiers) minus the ones a
+# shell or git would act on, as defence in depth behind the ownership check.
+orch_state_dir() { printf '/tmp/claude-audit-state-%s' "$(orch_hash_progress)"; }
+
+orch__state_dir_ok() {
+  local d="$1"
+  [ ! -L "$d" ] && [ -d "$d" ] && [ -O "$d" ]
+}
+
+orch__state_name_ok() {
+  case "$1" in
+    ""|*[!A-Z0-9_]*|[0-9]*) return 1 ;;
+    PATH|IFS|HOME|TMPDIR|ENV|CDPATH|PS4|SHELLOPTS|BASHOPTS|PROMPT_COMMAND|EDITOR|VISUAL|PAGER) return 1 ;;
+    BASH*|GIT_*|LD_*|DYLD_*|CLAUDE_*) return 1 ;;
+  esac
+  return 0
+}
+
+orch_state_clear() {
+  local d; d="$(orch_state_dir)"
+  [ -e "$d" ] || [ -L "$d" ] || return 0
+  if [ -L "$d" ]; then rm -f "$d"; return 0; fi
+  orch__state_dir_ok "$d" || { echo "orch_state_clear: refusing $d (not a directory owned by $USER)" >&2; return 1; }
+  rm -rf "$d"
+}
+
+# orch_state_save NAME [NAME...]   an unset name is saved as empty and reported on stderr
+orch_state_save() {
+  local d n; d="$(orch_state_dir)"
+  if [ ! -e "$d" ]; then (umask 077; mkdir "$d") || return 1; fi
+  orch__state_dir_ok "$d" || { echo "orch_state_save: refusing $d (not a directory owned by $USER)" >&2; return 1; }
+  for n in "$@"; do
+    orch__state_name_ok "$n" || { echo "orch_state_save: refusing name $n" >&2; continue; }
+    [ -n "${!n+x}" ] || echo "orch_state_save: $n is unset in this block (saved as empty)" >&2
+    printf '%s' "${!n-}" > "$d/$n"
+  done
+}
+
+orch_state_load() {
+  local d f n; d="$(orch_state_dir)"
+  [ -e "$d" ] || return 0
+  orch__state_dir_ok "$d" || { echo "orch_state_load: refusing $d (not a directory owned by $USER)" >&2; return 1; }
+  for f in "$d"/*; do
+    [ -f "$f" ] && [ ! -L "$f" ] || continue
+    n="${f##*/}"
+    orch__state_name_ok "$n" || continue
+    IFS= read -r -d '' "$n" < "$f" || true
+  done
+}
+
+# The passed marker used to be an empty file whose mtime was the whole claim, so an
+# edit made after the audit but inside the 30-minute window shipped as "audited"
+# (run 11, 2026-09-16). It now records the tree it certified: the working tree's
+# tracked content (what /ship's `git add -u` will commit), via `git stash create`,
+# which writes a dangling commit and touches neither index nor working tree; a
+# clean tree has no stash to create and is HEAD's tree. /ship compares after its
+# own commit, when HEAD's tree is that same tree if nothing changed in between.
+# The PreToolUse push hook still checks existence and age only (it has no run
+# context); /ship's gate is the consumer that binds.
+orch_tree_hash() {
+  local c; c=$(git stash create 2>/dev/null); c="${c:-HEAD}"
+  git rev-parse "$c^{tree}" 2>/dev/null
+}
+orch_marker_write() {
+  local t; t=$(orch_tree_hash) || t=""
+  printf '%s\n' "$t" > "/tmp/claude-audit-passed-$(orch_hash_passed)"
+}
+orch_marker_matches() {
+  local m="/tmp/claude-audit-passed-$(orch_hash_passed)" rec now
+  [ -f "$m" ] || return 1
+  rec=$(head -1 "$m" 2>/dev/null); now=$(orch_tree_hash) || return 1
+  [ -n "$rec" ] && [ "$rec" = "$now" ]
+}
 
 orch_verify_agents() {
   [ -n "${AUDIT_BIN:-}" ] || orch_resolve_audit_root || { echo "verify-agents: audit root not found"; return 1; }
@@ -192,4 +291,30 @@ orch_patterns_from_file() {
     n=$((n+1))
   done < "$file"
   echo "PATTERNS_FED=$n"
+}
+
+# /ship's health check curls a URL the audited repo wrote into .claude/ship.md. Six audit
+# runs named the unfiltered curl; run 10 filtered by host, run 11 found the numeric
+# bypasses (2130706433, 0177.0.0.1, 0x7f000001, 127.1 all reach loopback). A host that is
+# only digits and dots must be a canonical dotted quad with every octet in range, and
+# only then is it matched against the private ranges; hex and short forms are refused
+# outright. IPv6 stays bracketed so the ranges match on the bracket form.
+orch_url_host() {
+  printf '%s' "$1" | sed -nE 's#^https?://([^/@]*@)?(\[[^]]+\]|[^/:?@]+).*#\2#p'
+}
+orch_host_public() {
+  local h="$1" o
+  case "$h" in
+    ""|localhost|*.local|*.internal) return 1 ;;
+    "[::1]"|"[::]"|"[fc"*|"[fd"*|"[fe80"*|"[::ffff:"*|"[::FFFF:"*) return 1 ;;
+    0[xX]*) return 1 ;;
+    *[!0-9.]*) return 0 ;;
+  esac
+  # numeric host: canonical dotted quad only
+  printf '%s' "$h" | grep -Eq '^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}$' || return 1
+  for o in $(printf '%s' "$h" | tr '.' ' '); do [ "$o" -le 255 ] || return 1; done
+  case "$h" in
+    127.*|0.*|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 1 ;;
+  esac
+  return 0
 }

@@ -88,6 +88,7 @@ if [ "$STRIPE" = "yes" ]; then
   fi
 fi
 orch_progress_claim   # run-scoped in-progress marker: claimed here, touched after each Notification, released in Phase 4
+orch_state_save FRAMEWORK SOURCE_DIRS PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_PATH PAYMENTS_RERUN PAYMENTS_SKIP_NOTE   # read back by later blocks with orch_state_load
 ```
 
 **Scope** (equivalent of `collect-scope.sh --all`, `full-audit/references/scope.md` for the exact
@@ -95,9 +96,9 @@ glob and bash block — execute it here):
 `SOURCE_DIRS` walked for the fixed extension list plus `scope-extensions:` from
 `.claude/audit-guidelines.md`. `PROJECT_GUIDELINES` read the same way as `/audit` Phase 1.
 
-In-progress marker: `orch_progress_claim` now, `orch_progress_touch` after the find.js and fix.js
-Notifications, `orch_progress_release` at Phase 4 (same run-scoped model as `audit/SKILL.md`, same
-lib functions).
+In-progress marker: claimed in the Phase 0 block above; the touch after each Notification and the
+release at Phase 4 are the `audit/SKILL.md` blocks that Phases 2-5 run (same lib functions, same
+state dir).
 
 ## Phase 1.5: Start questions
 
@@ -110,18 +111,29 @@ the answer, so a partial selection here has no gate consequence, only a smaller 
 with `SCOPE=repo`, i.e. the whole `STRIPE_FILES` surface, not a diff-based subset — `/full-audit`
 has no diff to intersect against, that gating only exists in `/audit`. Whether it actually *runs*
 this time is `PAYMENTS_RERUN` from Phase 0: `1` → add `payments` to `AUDIT_DIMENSIONS`; `0` →
-leave it out and print `payments: skipped, no change since $PAYMENTS_SKIP_NOTE`.
-
-When `payments` is added to `AUDIT_DIMENSIONS`, append the guideline (same lib call as `audit/SKILL.md` Phase 1.5):
+leave it out and print `payments: skipped, no change since $PAYMENTS_SKIP_NOTE`. It appends
+`payments.md<TAB>mandatory<TAB>scoped` if `match-guidelines.sh` did not already emit it:
+`guidelines/payments.md`'s `applies_to` regex may not match a generic file in the payment surface,
+but the dimension only runs once the repo is already known to be a Stripe integration, so the
+guideline always applies when it runs.
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")
+orch_state_load   # STRIPE, PAYMENTS_RERUN, PAYMENTS_SKIP_NOTE from Phase 0; GUIDELINE_MATCHES from the scope walk
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from question (a); all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here
+[ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
+AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-{none|critical|all from question (b)}}"
+if [ "$STRIPE" = "yes" ]; then
+  if [ "$PAYMENTS_RERUN" = "1" ]; then
+    AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:+$AUDIT_DIMENSIONS,}payments"
+    GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")   # payments.md always applies once the dimension runs (lib)
+  else
+    echo "payments: skipped, no change since $PAYMENTS_SKIP_NOTE"
+  fi
+fi
+echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS AUDIT_FIX_SCOPE=$AUDIT_FIX_SCOPE"
+orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES
 ```
-
-It appends `payments.md<TAB>mandatory<TAB>scoped` if `match-guidelines.sh` did not already emit it: `guidelines/payments.md`'s `applies_to` regex may not match
-a generic file in the payment surface, but the dimension only runs once the repo is already known to
-be a Stripe integration, so the guideline always applies when it runs.
 
 ## Phase 2-5: same as `audit/SKILL.md`, with `SCOPE=repo`, no marker
 
@@ -130,7 +142,8 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
 - `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `floorFiles`
   built the same way as `audit/SKILL.md` Phase 2: the orchestrator never reads scope-file content at
   all, since `find.js` has no filesystem access and the scout/specialist subagents read the repo
-  themselves; instead run `FLOOR_FILES=$(node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS" < /tmp/full-audit-files.txt)` (`ALLE_DATEIEN`, the same Phase 0 scope-walk list `references/scope.md` produces) and pass its JSON stdout as `floorFiles`. `STRIPE_FILES` is
+  themselves; the block below computes `FLOOR_FILES` with the helper and prints it, using
+  `ALLE_DATEIEN`, the same Phase 0 scope-walk list `references/scope.md` produces. `STRIPE_FILES` is
   deliberately NOT unioned into `files`: it is not part of the Phase 0 repo walk's scope, and
   unioning it in would widen what every other dimension audits. It IS passed to the helper, in a
   second invocation, because the helper reads files from disk itself, so handing it the surface costs
@@ -139,7 +152,11 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
 
   ```bash
   for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+  orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
+  orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT from the blocks above
+  FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
   FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # same lib call as /audit Phase 2
+  printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
   ```
 
   Inlining the surface's content, back when the floor ran inline in the orchestrator, cost about

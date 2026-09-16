@@ -9,26 +9,12 @@ presented in the Custom multi-select and never part of any preset unless `detect
 reports `STRIPE=yes` for the current repo; a repo without Stripe never sees it at all. Gating and
 scope resolution live in `audit/SKILL.md` Phase 1.5 and `full-audit/SKILL.md`, not in this file.
 
-**Skip via ENV:**
-
-```bash
-if [ -n "${AUDIT_DIMENSIONS:-}" ] || [ -n "${AUDIT_FIX_SCOPE:-}" ]; then
-  case "${AUDIT_DIMENSIONS:-all}" in
-    all|"")
-      SELECTED_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"
-      [ "${STRIPE:-no}" = "yes" ] && SELECTED_DIMENSIONS="$SELECTED_DIMENSIONS,payments"
-      ;;
-    *) SELECTED_DIMENSIONS="$AUDIT_DIMENSIONS" ;;
-  esac
-  case "${CLAUDE_EFFORT:-medium}" in
-    low) FIX_SCOPE_DEFAULT=none ;;
-    high|xhigh) FIX_SCOPE_DEFAULT=all ;;
-    *) FIX_SCOPE_DEFAULT=critical ;;
-  esac
-  AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-$FIX_SCOPE_DEFAULT}"
-  echo "Dimensions via ENV: $SELECTED_DIMENSIONS | Fix scope: $AUDIT_FIX_SCOPE"
-fi
-```
+**Skip via ENV:** a set `AUDIT_DIMENSIONS` (comma list of dimension ids, or `all`) or `AUDIT_FIX_SCOPE`
+(`none|critical|all`) skips both questions. The Phase 1.5 block in each orchestrator (`audit/SKILL.md`,
+`full-audit/SKILL.md`) applies them with `${NAME:-answer}` and expands `all` to the 13 ids;
+`payments` is added by the block's own `STRIPE=yes` gate, never by the env value itself. When only
+`AUDIT_DIMENSIONS` is set, the fix-scope default follows `${CLAUDE_EFFORT:-medium}`: `low` → `none`,
+`medium` → `critical`, `high`/`xhigh` → `all`.
 
 **Otherwise via `AskUserQuestion`, one round, two questions:**
 
