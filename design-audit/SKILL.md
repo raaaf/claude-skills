@@ -299,4 +299,4 @@ No push marker is written — /design-audit is not a push gate. If the user want
 - No new dependencies, no framework or styling-system migrations as elevation.
 - No gradients/glow/decorative-blur suggestions (slop heuristics apply to OUR suggestions too).
 - No screenshot/live-rendering claims: this skill reads code, not a running site; rendered-state checks are out of scope here.
-- Never `AUDIT_STATUS:` lines (that marker belongs to /audit's Stop hook contract).
+- Never an `Audit: {C} Critical, {I} Important offen | Push ...` terminal line (that is /audit's contract; the older `AUDIT_STATUS:` marker it replaced is gone since 2026-09-05).

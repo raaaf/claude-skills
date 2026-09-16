@@ -70,7 +70,6 @@ PROJECT_GUIDELINES=""
 bash "$AUDIT_BIN/diff-size-gate.sh"
 eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"
 GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)
-AUDIT_BASE_HEAD=$(git rev-parse HEAD)
 
 # In-progress marker: run-scoped (claim now, touch after find.js, touch after fix.js, release at Phase 4).
 CWD_HASH=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
@@ -92,7 +91,7 @@ Otherwise ask exactly one `AskUserQuestion` round, two questions, presets from `
 
 Result: `AUDIT_DIMENSIONS` (comma list) and `AUDIT_FIX_SCOPE` (`none|critical|all`). A partial selection at (a) never writes the push marker (same rule as before), and the log names the dimensions not checked.
 
-**`payments` (CONDITIONAL 14th dimension):** joins `SELECTED_DIMENSIONS` only when BOTH hold:
+**`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when BOTH hold:
 `STRIPE=yes` (from Phase 1) AND the changed-file set intersects `STRIPE_FILES`. The intersection is
 computed against `STRIPE_FILES`, the precomputed Stripe surface `detect-stripe.sh` already found,
 never by grepping the diff text for "stripe": half of a payments checklist is about an *absent*
@@ -104,7 +103,7 @@ of defect this dimension exists to catch.
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
   if [ -n "$STRIPE_TOUCHED" ]; then
-    SELECTED_DIMENSIONS="$SELECTED_DIMENSIONS,payments"
+    AUDIT_DIMENSIONS="$AUDIT_DIMENSIONS,payments"   # the SAME variable Phase 2 splits for find.js; a separate SELECTED_DIMENSIONS was appended here until 2026-09-16 and never reached the dispatch
     if ! printf '%s\n' "$GUIDELINE_MATCHES" | grep -q '^payments\.md'; then
       GUIDELINE_MATCHES=$(printf '%s\npayments.md\tmandatory\tscoped' "$GUIDELINE_MATCHES")
     fi
@@ -193,7 +192,27 @@ Touch the in-progress marker again (`touch "/tmp/claude-audit-in-progress-${CWD_
 
 ## Phase 3: Fix
 
-Measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" {TEST_COMMAND}` → `BASELINE_FAILURES`.
+Derive `TEST_COMMAND` first; nothing earlier in this file sets it (found by the 2026-09-16 audit of
+this file: Phase 3 used it as if Phase 1 had produced it). Same source order `/ship` uses for its
+test gate, then the manifest, then none:
+
+```bash
+TEST_COMMAND=$(sed -n 's/^test-command:[[:space:]]*//p' "$PROJECT_ROOT/.claude/ship.md" 2>/dev/null | head -1)
+if [ -z "$TEST_COMMAND" ]; then
+  if   jq -e '.scripts.test' "$PROJECT_ROOT/composer.json" >/dev/null 2>&1; then TEST_COMMAND="composer test"
+  elif jq -e '.scripts.test' "$PROJECT_ROOT/package.json"  >/dev/null 2>&1; then TEST_COMMAND="npm test"
+  elif [ -f "$PROJECT_ROOT/Package.swift" ];                                 then TEST_COMMAND="swift test"
+  elif [ -f "$PROJECT_ROOT/pytest.ini" ] || [ -f "$PROJECT_ROOT/pyproject.toml" ]; then TEST_COMMAND="pytest"
+  fi
+fi
+echo "TEST_COMMAND=${TEST_COMMAND:-<none>}"
+```
+
+`TEST_COMMAND` empty: skip the baseline, pass `testCommand: ""` to `fix.js` (it tells fixers and
+verifiers there is no suite rather than handing them `test-lock.sh undefined`), and the fix wave's
+verification rests on the fix-verifier's read alone. This repo is that case.
+
+Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" $TEST_COMMAND` → `BASELINE_FAILURES`.
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
 
@@ -223,7 +242,7 @@ AUDIT_BIN="${CLAUDE_SKILL_DIR}/bin"
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(pwd | sed 's#/#-#g')"
 bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # cost line for the log header + run-ledger
 COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}"
-if [ "${SELECTED_DIMENSIONS#*payments}" != "$SELECTED_DIMENSIONS" ]; then
+if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
   COUNTS="$COUNTS,payments_head=$(git rev-parse HEAD)"
 fi
 bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \

@@ -363,7 +363,7 @@ validate_expected() {
   # Summary counters, printed by class at the end (also the --validate-only
   # output).
   local c_mnf_error=0 c_mnf_warning=0 c_window=0 c_range=0 c_missing_fixture=0
-  local c_unknown_dim=0 c_unknown_sev=0 c_hyphen_warn=0 c_hyphen_error=0
+  local c_unknown_dim=0 c_unknown_sev=0
   local c_invalid_files=0 c_both_line_fields=0
   for f in "$EXPECTED_DIR"/*.json; do
     [ -f "$f" ] || continue
@@ -499,25 +499,8 @@ validate_expected() {
         done
       fi
 
-      local kw_count dead_count
-      kw_count=$(jq ".must_find[$i].matches | length" "$f")
-      dead_count=0
-      local k=0
-      while [ "$k" -lt "$kw_count" ]; do
-        local kw
-        kw=$(jq -r ".must_find[$i].matches[$k]" "$f")
-        # Hyphenated keywords used to be dead here (the log lost its hyphens,
-        # the keyword kept them). stem_match now applies the same tr to the
-        # keyword, so the old warning would be false; nothing to check.
-        : "$kw"
-        k=$((k + 1))
-      done
-      if [ "$kw_count" -gt 0 ] && [ "$dead_count" -eq "$kw_count" ]; then
-        echo "ERROR: expected/$name must_find[$i] has every keyword hyphenated — this entry can never match after tr '-' ' ', not just a weakened one." >&2
-        bad=1
-        file_bad=1; file_reasons="$file_reasons,all keywords hyphenated"
-        c_hyphen_error=$((c_hyphen_error + 1))
-      fi
+      # Hyphenated keywords used to be validated here as unmatchable; stem_match now
+      # normalises them like the log, so there is nothing left to check per keyword.
 
       i=$((i + 1))
     done
@@ -585,8 +568,6 @@ validate_expected() {
   echo "  missing fixture file (error):                                   $c_missing_fixture"
   echo "  unknown dimension (error):                                      $c_unknown_dim"
   echo "  unknown severity (error):                                       $c_unknown_sev"
-  echo "  hyphenated keyword, never matches (warning):                    $c_hyphen_warn"
-  echo "  entry fully unsatisfiable, all keywords hyphenated (error):     $c_hyphen_error"
   echo "  fixtures invalidated (error, skipped in a normal run):          $c_invalid_files"
 
   if [ "$bad" -eq 1 ]; then

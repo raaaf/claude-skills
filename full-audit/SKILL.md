@@ -113,10 +113,10 @@ the answer, so a partial selection here has no gate consequence, only a smaller 
 **`payments` (CONDITIONAL 14th dimension):** on `STRIPE=yes` (from Phase 0), `payments` is in scope
 with `SCOPE=repo`, i.e. the whole `STRIPE_FILES` surface, not a diff-based subset — `/full-audit`
 has no diff to intersect against, that gating only exists in `/audit`. Whether it actually *runs*
-this time is `PAYMENTS_RERUN` from Phase 0: `1` → add `payments` to `SELECTED_DIMENSIONS`; `0` →
+this time is `PAYMENTS_RERUN` from Phase 0: `1` → add `payments` to `AUDIT_DIMENSIONS`; `0` →
 leave it out and print `payments: skipped, no change since $PAYMENTS_SKIP_NOTE`.
 
-When `payments` is added to `SELECTED_DIMENSIONS`, append `payments.md<TAB>mandatory<TAB>scoped` to
+When `payments` is added to `AUDIT_DIMENSIONS`, append `payments.md<TAB>mandatory<TAB>scoped` to
 `GUIDELINE_MATCHES` if `match-guidelines.sh` did not already emit it, same reason and same
 condition as `audit/SKILL.md` Phase 1.5: `guidelines/payments.md`'s `applies_to` regex may not match
 a generic file in the payment surface, but the dimension only runs once the repo is already known to
@@ -129,7 +129,7 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
 - `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `floorFiles`
   built the same way as `audit/SKILL.md` Phase 2: the orchestrator never reads scope-file content at
   all, since `find.js` has no filesystem access and the scout/specialist subagents read the repo
-  themselves; instead run `FLOOR_FILES=$(node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$SELECTED_DIMENSIONS" < /tmp/full-audit-files.txt)` (`ALLE_DATEIEN`, the same Phase 0 scope-walk list `references/scope.md` produces) and pass its JSON stdout as `floorFiles`. `STRIPE_FILES` is
+  themselves; instead run `FLOOR_FILES=$(node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS" < /tmp/full-audit-files.txt)` (`ALLE_DATEIEN`, the same Phase 0 scope-walk list `references/scope.md` produces) and pass its JSON stdout as `floorFiles`. `STRIPE_FILES` is
   deliberately NOT unioned into `files`: it is not part of the Phase 0 repo walk's scope, and
   unioning it in would widen what every other dimension audits. It IS passed to the helper, in a
   second invocation, because the helper reads files from disk itself, so handing it the surface costs
@@ -137,7 +137,7 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   actually scouts, same as `audit/SKILL.md` Phase 2:
 
   ```bash
-  if [ "${SELECTED_DIMENSIONS#*payments}" != "$SELECTED_DIMENSIONS" ]; then
+  if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
     if command -v jq >/dev/null 2>&1; then
       PAYMENTS_FLOOR=$(printf '%s\n' "$STRIPE_FILES" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "payments")
       FLOOR_FILES=$(jq -s '.[0] * .[1]' <(printf '%s' "$FLOOR_FILES") <(printf '%s' "$PAYMENTS_FLOOR"))
@@ -152,7 +152,7 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   session then routed every dimension through `dimensionFiles` to dodge it, which starved every
   content floor and left five of fourteen dimensions skipped or incomplete). A dimension absent from
   `floorFiles` simply falls back to the scout for that dimension. One `find.js` call for every
-  selected dimension, same as `audit/SKILL.md` Phase 2: when `payments` is in `SELECTED_DIMENSIONS`,
+  selected dimension, same as `audit/SKILL.md` Phase 2: when `payments` is in `AUDIT_DIMENSIONS`,
   pass `dimensionFiles: { payments: STRIPE_FILES }` and `dimensionContext: { payments: "STRIPE_MODE=" +
   STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING }` alongside the shared `files`/`dimensions`/
   `guidelines` args, otherwise both default to `{}`.

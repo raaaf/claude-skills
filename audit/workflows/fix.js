@@ -141,6 +141,13 @@ const budget = args.budget || 25;
 const auditBin = args.auditBin;
 const promptDir = args.promptDir || `${auditBin}/../agents`;
 const testCommand = args.testCommand;
+// An absent test command must not render as `test-lock.sh undefined`. The
+// orchestrator derives TEST_COMMAND in audit/SKILL.md Phase 3 and passes '' when
+// the repo has none; fixers and verifiers then get told so explicitly instead of
+// being handed a command that fails for a reason unrelated to their fix.
+const testLine = testCommand
+  ? `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}`
+  : 'TEST_COMMAND= (none: this repo declares no test command; do not run tests, verify by reading, and say so in NOTES)';
 const baselineFailures = args.baselineFailures || [];
 
 const excluded = (args.fixes || []).flatMap((f) => f.findings.filter((finding) => finding.severity === 'Minor').map((finding) => finding.id));
@@ -154,7 +161,7 @@ const fixerSlots = await parallel(requested.map((f) => async () => {
     ROOT_HEADER +
     `Read ${promptDir}/fix-agent.md and fix every finding below in ${f.file}. Do not touch any other ` +
     `file.\nFINDINGS=${JSON.stringify(f.findings)}\n` +
-    `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}\n` +
+    `${testLine}\n` +
     `BASELINE_FAILURES=${JSON.stringify(baselineFailures)}\nBUDGET=${budget}`,
     { agentType: 'audit-fix-agent', model: 'sonnet', schema: FIX_SCHEMA, phase: 'Fix' }
   );
@@ -181,7 +188,7 @@ const verifierResults = await parallel(verifierGroups.map((group) => async () =>
     ROOT_HEADER +
     `Read ${promptDir}/fix-verifier.md and verify these fixes.\nFIXES=${JSON.stringify(group)}\n` +
     `BASELINE_FAILURES=${JSON.stringify(baselineFailures)}\n` +
-    `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}`,
+    `${testLine}`,
     { agentType: 'audit-fix-verifier', model: 'sonnet', schema: FIX_VERDICT_SCHEMA, phase: 'Verify' }
   );
   if (warnIfNull(log, result, `fix.js: a fix-verifier group returned null (${group.length} fixes unverified)`)) {

@@ -222,7 +222,7 @@ Filename: `{YYYY-MM-DD}-{slug}.md`. Plan format template in `references/plan-tem
 3. Incorporate → v2
 4. Repeat until the user is satisfied
 
-After **every** incorporation round (not only round 1), re-verify all cited `file:line` references against HEAD — a reference can go stale between rounds. Evidence: stale `billProjectInGroup` reference, seen a second time.
+After **every** incorporation round (not only round 1), re-verify all cited `file:line` references against HEAD — a reference can go stale between rounds. Evidence: stale `billProjectInGroup` reference, seen a second time (Evidence provenance: see the note at the top of Phase 1).
 
 **Round heuristic** (recommendation, not a hard limit) in `references/plan-templates.md`. Short version: 2 rounds for simple plans, 3 for medium ones, 4+ for pivots.
 

@@ -263,7 +263,7 @@ git add -u
 
 Check staged diff for sensitive files:
 ```bash
-git diff --cached --name-only | grep -E '(\.env|secret|credential|\.pem|\.key)'
+git diff --cached --name-only | grep -iE '(\.env|secret|credential|\.pem|\.key)'   # -i: SECRET.txt and DB_CREDENTIAL.json are the same class
 ```
 If found: warn and AskUserQuestion — continue or abort?
 

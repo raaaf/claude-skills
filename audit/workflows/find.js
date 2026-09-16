@@ -431,14 +431,25 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   // A cluster naming fewer than 2 files is not a cluster (scout-clusters.md
   // "at least two files"); drop it rather than dispatching a specialist that
   // sees a single file with no comparison to make.
+  // A file with count 0 is allowed inside a cluster: for a drift cluster the file
+  // where the pattern is ABSENT is often the point (2026-09-16: the scout put the
+  // freshly split security-2026.md, count 0, into a cluster about the split, and
+  // the old `count > 0` on every file threw the whole cluster out and left
+  // docs_sync `incomplete`). What must hold: at least two files with a positive
+  // count, so the cluster still has real anchors and is not two absences.
   clusters = clusters.filter((cluster, index) => {
+    const files = Array.isArray(cluster && cluster.files) ? cluster.files : [];
+    const wellFormed = files.every((file) => file && typeof file.path === 'string' && file.path.trim() &&
+      Number.isInteger(file.count) && file.count >= 0);
+    const anchors = files.filter((file) => file && file.count > 0).length;
     const valid = cluster && typeof cluster.id === 'string' && cluster.id.trim() &&
       typeof cluster.pattern === 'string' && cluster.pattern.trim() &&
-      Array.isArray(cluster.files) && cluster.files.length >= 2 &&
-      cluster.files.every((file) => file && typeof file.path === 'string' && file.path.trim() &&
-        Number.isInteger(file.count) && file.count > 0) &&
-      new Set(cluster.files.map((file) => file.path)).size === cluster.files.length;
-    if (!valid) uncovered.push(`cluster:${cluster && cluster.id || index}`);
+      files.length >= 2 && wellFormed && anchors >= 2 &&
+      new Set(files.map((file) => file.path)).size === files.length;
+    if (!valid) {
+      uncovered.push(`cluster:${cluster && cluster.id || index}`);
+      logFn(`${dimension}: cluster ${cluster && cluster.id || index} rejected (files=${files.length}, anchors=${anchors}, wellFormed=${wellFormed})`);
+    }
     return valid;
   });
   const fileChunks = chunkByDirectory(filePaths).map((group) => ({ kind: 'files', files: group }));
