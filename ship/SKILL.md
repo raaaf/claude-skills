@@ -286,6 +286,7 @@ If commit fails (hook rejection, empty): run the log call (`outcome=commit_faile
 ## Phase 2: Audit Gate
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 MARKER="/tmp/claude-audit-passed-$(orch_hash_passed)"   # passed-family hash (no trailing newline), lib-orchestrator.sh
 
 if [ -f "$MARKER" ]; then

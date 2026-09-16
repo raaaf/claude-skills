@@ -124,7 +124,7 @@ audit_store_root() {
 # a11y/UI/UX/animation workers too (see PLATFORM in detect-framework.sh).
 # Over-matching is the safe direction here — an extra dimension running costs
 # a worker, a missed one costs coverage.
-FRONTEND_EXT_RE='\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$'
+FRONTEND_EXT_RE='\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$'
 
 # The 12 audit dimensions in worker order. Shared by check-skips.sh (routing
 # floor) and referenced by verify-agents.sh's agent-file list. Keep in sync

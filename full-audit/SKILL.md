@@ -88,6 +88,7 @@ if [ "$STRIPE" = "yes" ]; then
     fi
   fi
 fi
+orch_progress_claim   # run-scoped in-progress marker: claimed here, touched after each Notification, released in Phase 4
 ```
 
 **Scope** (equivalent of `collect-scope.sh --all`, `full-audit/references/scope.md` for the exact
@@ -112,9 +113,9 @@ has no diff to intersect against, that gating only exists in `/audit`. Whether i
 this time is `PAYMENTS_RERUN` from Phase 0: `1` → add `payments` to `AUDIT_DIMENSIONS`; `0` →
 leave it out and print `payments: skipped, no change since $PAYMENTS_SKIP_NOTE`.
 
-When `payments` is added to `AUDIT_DIMENSIONS`, append `payments.md<TAB>mandatory<TAB>scoped` to
-`GUIDELINE_MATCHES` if `match-guidelines.sh` did not already emit it, same reason and same
-condition as `audit/SKILL.md` Phase 1.5: `guidelines/payments.md`'s `applies_to` regex may not match
+When `payments` is added to `AUDIT_DIMENSIONS`, run `GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")`
+(same lib call as `audit/SKILL.md` Phase 1.5), which appends `payments.md<TAB>mandatory<TAB>scoped`
+if `match-guidelines.sh` did not already emit it: `guidelines/payments.md`'s `applies_to` regex may not match
 a generic file in the payment surface, but the dimension only runs once the repo is already known to
 be a Stripe integration, so the guideline always applies when it runs.
 
@@ -133,14 +134,8 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   actually scouts, same as `audit/SKILL.md` Phase 2:
 
   ```bash
-  if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
-    if command -v jq >/dev/null 2>&1; then
-      PAYMENTS_FLOOR=$(printf '%s\n' "$STRIPE_FILES" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "payments")
-      FLOOR_FILES=$(jq -s '.[0] * .[1]' <(printf '%s' "$FLOOR_FILES") <(printf '%s' "$PAYMENTS_FLOOR"))
-    else
-      echo "payments floor: skipped (jq unavailable), payments floor computed over repo scope only"
-    fi
-  fi
+  for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+  FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # same lib call as /audit Phase 2
   ```
 
   Inlining the surface's content, back when the floor ran inline in the orchestrator, cost about

@@ -120,3 +120,42 @@ orch_test_command() {
   else return 1
   fi
 }
+
+# "Which files are frontend?" has exactly one definition, FRONTEND_EXT_RE in
+# lib-git-base.sh (CLAUDE.md Gotchas). design-audit carried its own regex until
+# 2026-09-16 and the two had drifted (styl, tailwind.config vs xml, storyboard).
+# Prints the shared pattern; the literal fallback mirrors collect-scope.sh.
+orch_frontend_ext_re() {
+  local lib="${AUDIT_BIN:-$HOME/.claude/skills/audit/bin}/lib-git-base.sh"
+  # shellcheck disable=SC1090
+  [ -f "$lib" ] && . "$lib"
+  printf '%s' "${FRONTEND_EXT_RE:-\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$}"
+}
+
+# payments.md always applies once the payments dimension runs (the detector has
+# already established a Stripe integration), but its applies_to path regex may
+# not match a generic file in the surface, so match-guidelines.sh can omit it.
+# Prints GUIDELINE_MATCHES with the line appended when missing. Was pasted in
+# audit and full-audit until 2026-09-16.
+orch_payments_guidelines() {
+  local matches="$1"
+  if printf '%s\n' "$matches" | grep -q '^payments\.md'; then printf '%s' "$matches"
+  else printf '%s\npayments.md\tmandatory\tscoped' "$matches"
+  fi
+}
+
+# Merges the payments scout floor (computed over STRIPE_FILES, not the shared
+# scope) into the FLOOR_FILES JSON. Usage:
+#   FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")
+# No payments in the selection, or no jq: prints the input unchanged (a NOTE on
+# stderr for the jq case). Was pasted in audit and full-audit until 2026-09-16.
+orch_payments_floor() {
+  local dims="$1" stripe_files="$2" root="$3" floor="$4" pay
+  case ",$dims," in *,payments,*) ;; *) printf '%s' "$floor"; return 0;; esac
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "NOTE payments floor: jq unavailable, payments floor computed over the shared scope only" >&2
+    printf '%s' "$floor"; return 0
+  fi
+  pay=$(printf '%s\n' "$stripe_files" | node "${AUDIT_BIN:?}/compute-floor.mjs" "$root" "payments") || { printf '%s' "$floor"; return 0; }
+  jq -s '.[0] * .[1]' <(printf '%s' "$floor") <(printf '%s' "$pay")
+}

@@ -40,10 +40,10 @@ Learning backlog question + open `audit-finding` issues/PR dedup context:
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -f "$c" ] && { . "$c"; break; }
 done
-type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Audit abgebrochen — lib-orchestrator.sh nicht gefunden."; exit 1; }
-orch_resolve_audit_root || { echo "Audit abgebrochen — audit root nicht gefunden."; exit 1; }
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orchestrator.sh nicht gefunden."; exit 1; }
+orch_resolve_audit_root || { echo "Abgebrochen — audit root nicht gefunden."; exit 1; }
 orch_run_log --start --skill audit
-orch_verify_agents || { echo "Audit abgebrochen — fehlende Agent-Dateien."; exit 1; }
+orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
 SCOPE_OUT="$(bash "$AUDIT_BIN/collect-scope.sh")"
 BASE_REF=$(printf '%s\n' "$SCOPE_OUT" | sed -n 's/^BASE_REF=//p')
 ALLE_DATEIEN=$(printf '%s\n' "$SCOPE_OUT" | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p;}')
@@ -65,6 +65,7 @@ bash "$AUDIT_BIN/check-token-contrast.sh"; bash "$AUDIT_BIN/check-test-count-dri
 bash "$AUDIT_BIN/check-silencing.sh"   # HITS: a check silenced instead of satisfied. Re-run after the fix wave (Phase 3c), fix agents are the likeliest source
 bash "$AUDIT_BIN/check-docs-path-drift.sh" "$BASE_REF"; bash "$AUDIT_BIN/check-docs-claims.sh"
 bash "$AUDIT_BIN/check-workflow-dupes.sh"   # HITS: find.js/fix.js shared helpers drifted; Important code_quality, no specialist needed
+bash "$AUDIT_BIN/check-fresh-shell.sh"      # HITS: a SKILL.md bash block calls orch_* without sourcing the lib; Critical architecture (the function is undefined there), no specialist needed
 
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
 PROJECT_GUIDELINES=""
@@ -101,13 +102,12 @@ absence never shows up as a line in a diff — a diff-text grep would silently m
 of defect this dimension exists to catch.
 
 ```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
   if [ -n "$STRIPE_TOUCHED" ]; then
     AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:+$AUDIT_DIMENSIONS,}payments"   # no leading comma on an empty selection; the SAME variable Phase 2 splits for find.js; a separate SELECTED_DIMENSIONS was appended here until 2026-09-16 and never reached the dispatch
-    if ! printf '%s\n' "$GUIDELINE_MATCHES" | grep -q '^payments\.md'; then
-      GUIDELINE_MATCHES=$(printf '%s\npayments.md\tmandatory\tscoped' "$GUIDELINE_MATCHES")
-    fi
+    GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")   # payments.md always applies once the dimension runs (lib)
   else
     echo "payments: skipped, diff did not touch the payment surface"
   fi
@@ -159,14 +159,8 @@ a deterministic floor over the surface it actually scouts, not just whatever of 
 happened to touch:
 
 ```bash
-if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    PAYMENTS_FLOOR=$(printf '%s\n' "$STRIPE_FILES" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "payments")
-    FLOOR_FILES=$(jq -s '.[0] * .[1]' <(printf '%s' "$FLOOR_FILES") <(printf '%s' "$PAYMENTS_FLOOR"))
-  else
-    echo "payments floor: skipped (jq unavailable), payments floor computed over diff scope only"
-  fi
-fi
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
 ```
 
 This matters because two real sessions hit the old inline-content approach's cost directly: one
@@ -188,7 +182,14 @@ where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One ca
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
-Touch the in-progress marker again (a fresh Bash block: the source line, then `orch_progress_touch`; staleness 45 min) once the Notification arrives, then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
+Once the Notification arrives, touch the in-progress marker (staleness 45 min):
+
+```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_progress_touch
+```
+
+Then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
 
 **Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
 
