@@ -65,7 +65,7 @@ Field list verified against `code.claude.com/docs/en/sub-agents`, August 2026.
 [Optional: when this worker should be skipped]
 ```
 
-Section headers are English (matches the migrated audit/plan-it agents: Focus, Skip When, Project-Specific Context). The literal reply sentinel "Keine Findings." is a cross-file contract and stays as-is.
+Section headers are English (matches the migrated audit/plan-it agents: Focus, Skip When, Project-Specific Context). The literal reply sentinel "Keine Findings." was a cross-file contract until 2026-09-16; no active skill or agent file emits or parses it any more, and CLAUDE.md removed it from the contract list that day.
 
 ## Triage pattern
 

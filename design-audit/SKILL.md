@@ -22,7 +22,7 @@ allowed-tools:
 
 **Start directly with Phase 0; there is nothing to confirm first.**
 
-> **Architecture note:** This skill has NO worker agents of its own. It uses the definitions from `../audit/agents/*.md` and the guidelines from `../audit/guidelines/*.md` (single source of truth — edit there). Unlike /audit it is NOT diff-scoped and NOT a push gate: it sweeps the whole frontend surface, reports, and fixes only what the user selects.
+> **Architecture note:** The dimension workers are NOT this skill's own: it uses the definitions from `../audit/agents/*.md` and the guidelines from `../audit/guidelines/*.md` (single source of truth — edit there). Since 2026-09-16 it owns exactly two small agents of its own, `agents/surface-mapper.md` and `agents/reference-verdict.md` (registered as `design-surface-mapper` / `design-reference-verdict`), for the two steps no audit worker covers. Unlike /audit it is NOT diff-scoped and NOT a push gate: it sweeps the whole frontend surface, reports, and fixes only what the user selects.
 
 **Mission:** make the existing UI better, more consistent, more distinctive, smarter. This skill is **100% visual**: layout, spacing, type, color, surfaces, motion, visual hierarchy, visual consistency. Non-visual concerns (ARIA/semantics, copy wording, SEO, performance, security) are out of scope here — /audit and /full-audit cover them. And it **dissects**: every file in scope is read and taken apart against the checklists; sampling or skimming is a failed run, "this view is fine" is only valid after the view was actually dissected.
 
@@ -114,7 +114,7 @@ fi
 
 FRONTEND_COUNT=$(echo "$FRONTEND_FILES" | grep -c . || echo 0)
 echo "Frontend surface: $FRONTEND_COUNT files"
-[ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; exit 0; }   # kein Marker-Cleanup noetig: geclaimt wird erst in Phase 2
+[ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; orch_progress_release; exit 0; }   # marker was claimed in Phase 0, release it on this exit too
 ```
 
 The path filter is a heuristic, not a contract: a project that keeps views somewhere else loses them here. Print the resulting list and eyeball it before Phase 2 — a count that collapses to a handful on a real app means the convention did not match, and the fix is to widen the pattern for that project, not to audit five files and call the surface covered.

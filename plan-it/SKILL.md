@@ -60,7 +60,7 @@ Skip via env var `PLAN_SKIP_LEARNING_CHECK=1`.
 ## Phase 0.5: Effort Configuration
 
 ```bash
-CLAUDE_EFFORT="${CLAUDE_EFFORT:-xhigh}"
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"   # matches the frontmatter effort, which is what this variable receives at runtime
 case "$CLAUDE_EFFORT" in
   low)
     CHALLENGE_DIMS="product,architecture,risk"  # 3 of 5

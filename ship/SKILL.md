@@ -262,11 +262,18 @@ git add -u
 # Plus any already-staged files
 ```
 
-Check staged diff for sensitive files:
+Check the staged diff for sensitive files AND for secret-shaped content. The filename grep alone is
+not a secret check: a token pasted into `config/services.php` has an innocent name, and the audit
+marker Phase 2 accepts may be up to 1800s old, so a secret added after that audit ran would reach
+the remote unscanned (2026-09-16 audit, Critical). `pre-checks.sh` scans file CONTENT of every
+changed and staged file with the same patterns `/audit` uses and prints `file:line: pattern-name`
+only, never the value:
 ```bash
 git diff --cached --name-only | grep -iE '(\.env|secret|credential|\.pem|\.key)'   # -i: SECRET.txt and DB_CREDENTIAL.json are the same class
+PRECHECK=$(orch_helper pre-checks.sh) && bash "$PRECHECK" | grep -E '^SECRET_SCAN_RESULT=|^SECRET '
 ```
-If found: warn and AskUserQuestion — continue or abort?
+Filename hit: warn and AskUserQuestion — continue or abort? `SECRET_SCAN_RESULT=FINDINGS`: stop, do
+not commit, name the `file:line` lines; this one is not a question.
 
 ```bash
 git commit -m "{message}"

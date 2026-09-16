@@ -34,8 +34,8 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestra
          "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -n "$c" ] && [ -f "$c" ] && { . "$c"; break; }
 done
-type orch_resolve_audit_root >/dev/null 2>&1 || { echo "ERROR: audit skill not found. Install audit alongside full-audit."; exit 1; }
-orch_resolve_audit_root || { echo "ERROR: audit skill root not found."; exit 1; }
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — audit-Skill nicht gefunden (lib-orchestrator.sh). audit neben full-audit installieren."; exit 1; }
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
 AUDIT_AGENTS="$AUDIT_AGENTS_DIR"; orch_run_log --start --skill full-audit
 orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
 FW_OUT="$(bash "$AUDIT_BIN/detect-framework.sh")"

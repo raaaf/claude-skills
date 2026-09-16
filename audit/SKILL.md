@@ -104,7 +104,7 @@ of defect this dimension exists to catch.
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
   if [ -n "$STRIPE_TOUCHED" ]; then
-    AUDIT_DIMENSIONS="$AUDIT_DIMENSIONS,payments"   # the SAME variable Phase 2 splits for find.js; a separate SELECTED_DIMENSIONS was appended here until 2026-09-16 and never reached the dispatch
+    AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:+$AUDIT_DIMENSIONS,}payments"   # no leading comma on an empty selection; the SAME variable Phase 2 splits for find.js; a separate SELECTED_DIMENSIONS was appended here until 2026-09-16 and never reached the dispatch
     if ! printf '%s\n' "$GUIDELINE_MATCHES" | grep -q '^payments\.md'; then
       GUIDELINE_MATCHES=$(printf '%s\npayments.md\tmandatory\tscoped' "$GUIDELINE_MATCHES")
     fi
@@ -175,8 +175,9 @@ and a follow-up session routed every dimension through `dimensionFiles` to dodge
 every content floor and left five of fourteen dimensions skipped or incomplete.
 
 `files` and `dimensions` are JSON ARRAYS, not the newline/comma strings the shell variables hold:
-`find.js:726` validates `dimensions` with `Array.isArray` and throws `args.dimensions must be an
-array of supported dimension ids` before dispatching anything, and `files` is used as an array
+the `args.dimensions` guard at the top of `find.js`'s `args` block (search for the message, line
+numbers in that file move) validates `dimensions` with `Array.isArray` and throws `args.dimensions
+must be an array of supported dimension ids` before dispatching anything, and `files` is used as an array
 throughout (`files.slice`, `files.filter`). Split `ALLE_DATEIEN` on newlines and `AUDIT_DIMENSIONS`
 on commas when building the call. A real run on 2026-09-15 failed here in 14ms because this line
 read as if the shell values could be passed through unchanged.

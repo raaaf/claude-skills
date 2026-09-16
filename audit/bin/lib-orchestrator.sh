@@ -7,7 +7,9 @@
 # parse and the agent-roster guard, with variations; three audit runs named
 # the drift as one condition, so it is one file now.
 #
-# The ONE thing that stays inline in every SKILL.md is finding this file:
+# The ONE thing that stays inline in every SKILL.md is finding this file. Five skills use
+# the loop below; audit/SKILL.md, which owns this bin/, tries "${CLAUDE_SKILL_DIR}/bin/..."
+# first and full-audit adds a CLAUDE_PROJECT_DIR-derived candidate it needed before:
 #   for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
 #            "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
 #     [ -f "$c" ] && { . "$c"; break; }
