@@ -6,11 +6,11 @@ Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
 | Metric | Value |
 |---|---|
-| Total audits | 9 raw logs on disk (8 regular + 1 full-audit outlier); the previous block (2026-08-11) predates this window and is not diffable against it |
-| Critical trend (last 3 regular) | 0 -> 0 -> 0 (stable) |
-| Important trend (last 3 regular) | unknown -> 8 -> 13 (rising; the two 2026-09-15 runs audited the same growing branch, so the second count includes defects the first run's fixes introduced) |
-| Top category (last 5 regular) | architecture (9x across the two 2026-09-15 runs) |
-| Avg findings/audit (last 5 regular) | 10.5 over the two runs tallied here; the three earlier runs were not re-tallied |
+| Total audits | 23 raw logs on disk (22 regular + 1 full-audit outlier); counted from `.claude/audits/` on 2026-09-16, not carried over |
+| Critical trend (last 3 regular) | 0 -> 0 -> 0 (stable) (from the 2026-09-10 sample, not recomputed) |
+| Important trend (last 3 regular) | unknown -> 8 -> 13 (rising; the two 2026-09-15 runs audited the same growing branch, so the second count includes defects the first run's fixes introduced) (from the 2026-09-10 sample, not recomputed) |
+| Top category (last 5 regular) | architecture (9x across the two 2026-09-15 runs) (from the 2026-09-10 sample, not recomputed) |
+| Avg findings/audit (last 5 regular) | 10.5 over the two runs tallied here; the three earlier runs were not re-tallied (from the 2026-09-10 sample, not recomputed) |
 
 **Repeat offenders (from `patterns-store.sh recurrences`, >=2):**
 - 7x meta doc drift (claude readme skill / skill feature changes), last seen unknown (legacy entry)

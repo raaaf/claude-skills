@@ -1,8 +1,8 @@
 # Subagent: Surface Mapper
 
 - **subagent_type:** `design-surface-mapper`
-- **model:** `sonnet`
-- **maxTurns:** `12`
+- **model:** see `agents/design-surface-mapper.md` frontmatter (single source since 2026-09-16)
+- **maxTurns:** see `agents/design-surface-mapper.md` frontmatter (single source since 2026-09-16)
 
 ## Purpose
 

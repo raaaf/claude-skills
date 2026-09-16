@@ -168,7 +168,7 @@ touch:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; orch_progress_release; exit 1; }
 orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT from the blocks above
 FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
 FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
@@ -254,7 +254,7 @@ capability regression (recall collapsed to zero) rather than what it actually is
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }   # sets AUDIT_BIN with the same fallbacks as Phase 1
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; orch_progress_release; exit 1; }   # sets AUDIT_BIN with the same fallbacks as Phase 1
 orch_state_load   # AUDIT_DIMENSIONS as Phase 1.5 saved it, payments included when it was appended
 # A Claude Code session has no env var pointing at its own transcript dir:
 # derive the projects dir from cwd using the same slug convention as

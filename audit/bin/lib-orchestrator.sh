@@ -39,7 +39,7 @@
 #   orch_helper <script.sh>   prints "$AUDIT_BIN/<script>" if it exists, else nothing (rc 1)
 #   orch_hash_passed          md5 of $PWD WITHOUT newline  -> /tmp/claude-audit-passed-*
 #   orch_hash_progress        md5 of pwd  WITH newline     -> /tmp/claude-audit-in-progress-*
-#   orch_progress_claim | orch_progress_touch | orch_progress_release   (claim also clears the state dir)
+#   orch_progress_claim | orch_progress_touch | orch_progress_release   (claim also clears the state dir; every marker access refuses a symlink or a file another user owns)
 #   orch_state_save NAME...   writes each named variable's value to the run's state dir (one file per name)
 #   orch_state_load           reads every saved variable back into the current shell; the answer to
 #                             "a value set in an earlier block" (see the block rule below)
@@ -100,9 +100,15 @@ orch_helper() {
 # run's variable state from empty (orch_state_clear), so the two names read as
 # "claim once, touch after each wave". Release removes the marker only: the learning
 # phase runs after it and still reads saved values; the next claim clears them.
-orch_progress_touch()   { touch "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
+# Both marker paths are predictable (md5 of cwd) under a shared /tmp, so every access
+# refuses a symlink and a file another user owns (same guard as the state dir below);
+# nine runs named the unguarded touch before this landed (2026-09-16).
+orch__marker_ok() { [ ! -L "$1" ] && { [ ! -e "$1" ] || [ -O "$1" ]; }; }
+orch__progress_path() { printf '/tmp/claude-audit-in-progress-%s' "$(orch_hash_progress)"; }
+orch__passed_path()   { printf '/tmp/claude-audit-passed-%s' "$(orch_hash_passed)"; }
+orch_progress_touch()   { local m; m=$(orch__progress_path); orch__marker_ok "$m" || { echo "orch_progress_touch: refusing $m (symlink or not owned by $USER)" >&2; return 1; }; touch "$m"; }
 orch_progress_claim()   { orch_state_clear; orch_progress_touch; }
-orch_progress_release() { rm -f "/tmp/claude-audit-in-progress-$(orch_hash_progress)"; }
+orch_progress_release() { local m; m=$(orch__progress_path); [ -L "$m" ] && { rm -f "$m"; return 0; }; orch__marker_ok "$m" || return 1; rm -f "$m"; }
 
 # Cross-block variable state. One file per variable, raw bytes, under a 0700 dir the
 # current user owns; nothing is ever eval'd or sourced from it, values come back through
@@ -171,12 +177,13 @@ orch_tree_hash() {
   git rev-parse "$c^{tree}" 2>/dev/null
 }
 orch_marker_write() {
-  local t; t=$(orch_tree_hash) || t=""
-  printf '%s\n' "$t" > "/tmp/claude-audit-passed-$(orch_hash_passed)"
+  local t m; t=$(orch_tree_hash) || t=""; m=$(orch__passed_path)
+  orch__marker_ok "$m" || { echo "orch_marker_write: refusing $m (symlink or not owned by $USER)" >&2; return 1; }
+  printf '%s\n' "$t" > "$m"
 }
 orch_marker_matches() {
-  local m="/tmp/claude-audit-passed-$(orch_hash_passed)" rec now
-  [ -f "$m" ] || return 1
+  local m rec now; m=$(orch__passed_path)
+  [ -f "$m" ] && orch__marker_ok "$m" || return 1
   rec=$(head -1 "$m" 2>/dev/null); now=$(orch_tree_hash) || return 1
   [ -n "$rec" ] && [ "$rec" = "$now" ]
 }
@@ -303,10 +310,11 @@ orch_url_host() {
   printf '%s' "$1" | sed -nE 's#^https?://([^/@]*@)?(\[[^]]+\]|[^/:?@]+).*#\2#p'
 }
 orch_host_public() {
-  local h="$1" o
+  local h o
+  h=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')   # DNS and the literals below are case-insensitive; LOCALHOST and [FC00::1] slipped past (run 12)
   case "$h" in
     ""|localhost|*.local|*.internal) return 1 ;;
-    "[::1]"|"[::]"|"[fc"*|"[fd"*|"[fe80"*|"[::ffff:"*|"[::FFFF:"*) return 1 ;;
+    "[::1]"|"[::]"|"[fc"*|"[fd"*|"[fe80"*|"[::ffff:"*) return 1 ;;
     0[xX]*) return 1 ;;
     *[!0-9.]*) return 0 ;;
   esac

@@ -1,8 +1,8 @@
 # Subagent: Reference Verdict
 
 - **subagent_type:** `design-reference-verdict`
-- **model:** `sonnet`
-- **maxTurns:** `10`
+- **model:** see `agents/design-reference-verdict.md` frontmatter (single source since 2026-09-16)
+- **maxTurns:** see `agents/design-reference-verdict.md` frontmatter (single source since 2026-09-16)
 
 ## Purpose
 
