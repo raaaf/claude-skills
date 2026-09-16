@@ -167,23 +167,29 @@ const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
   'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
   'Do not use the current working directory, it may be a different repository.\n\n';
 
-// agentType per dimension (Step 4 of the plan).
-const AGENT_TYPE_BY_DIMENSION = {
-  security: 'security-auditor',
-  privacy: 'security-auditor',
-  performance: 'performance-auditor',
-  a11y: 'ui-ux-reviewer',
-  ui_design: 'ui-ux-reviewer',
-  ux: 'ui-ux-reviewer',
-  typography: 'ui-ux-reviewer',
-  animation: 'ui-ux-reviewer',
-  architecture: 'code-reviewer',
-  code_quality: 'code-reviewer',
-  seo: 'code-reviewer',
-  docs_sync: 'code-reviewer',
-  copy: 'code-reviewer',
-  payments: 'security-auditor'
-};
+// One row per dimension: prompt-file number and slug, and the agent type that
+// audits it. Three hand-kept maps over the same ids (agent type, file number,
+// file slug) had to agree by discipline until 2026-09-16; they are derived from
+// this table now. ALL_DIMENSIONS below stays a literal array on purpose:
+// audit/evals/run-evals.sh scrapes that exact `const ALL_DIMENSIONS = [` line
+// at runtime, and the assertion after it keeps the two in step.
+const DIMENSION_TABLE = [
+  { id: 'architecture', n: 1,  slug: 'architecture', agent: 'code-reviewer' },
+  { id: 'security',     n: 2,  slug: 'security',     agent: 'security-auditor' },
+  { id: 'performance',  n: 3,  slug: 'performance',  agent: 'performance-auditor' },
+  { id: 'code_quality', n: 4,  slug: 'code-quality', agent: 'code-reviewer' },
+  { id: 'seo',          n: 5,  slug: 'seo',          agent: 'code-reviewer' },
+  { id: 'a11y',         n: 6,  slug: 'a11y',         agent: 'ui-ux-reviewer' },
+  { id: 'typography',   n: 7,  slug: 'typography',   agent: 'ui-ux-reviewer' },
+  { id: 'ui_design',    n: 8,  slug: 'ui-design',    agent: 'ui-ux-reviewer' },
+  { id: 'ux',           n: 9,  slug: 'ux',           agent: 'ui-ux-reviewer' },
+  { id: 'animation',    n: 10, slug: 'animation',    agent: 'ui-ux-reviewer' },
+  { id: 'docs_sync',    n: 11, slug: 'docs-sync',    agent: 'code-reviewer' },
+  { id: 'copy',         n: 12, slug: 'copy',         agent: 'code-reviewer' },
+  { id: 'privacy',      n: 13, slug: 'privacy',      agent: 'security-auditor' },
+  { id: 'payments',     n: 14, slug: 'payments',     agent: 'security-auditor' }
+];
+const AGENT_TYPE_BY_DIMENSION = Object.fromEntries(DIMENSION_TABLE.map((d) => [d.id, d.agent]));
 
 // Dimensions that use ONLY the cluster scout (no file scout).
 const CLUSTER_ONLY_DIMENSIONS = ['architecture', 'docs_sync'];
@@ -195,10 +201,14 @@ const ALL_DIMENSIONS = [
   'typography', 'ui_design', 'ux', 'animation', 'docs_sync', 'copy', 'privacy',
   'payments'
 ];
+if (ALL_DIMENSIONS.length !== DIMENSION_TABLE.length ||
+    ALL_DIMENSIONS.some((id, i) => DIMENSION_TABLE[i].id !== id)) {
+  throw new Error('ALL_DIMENSIONS and DIMENSION_TABLE disagree; edit both in the same commit');
+}
 
 // Mirrors audit/bin/lib-git-base.sh FRONTEND_EXT_RE (single source of truth is the
 // shared bash lib; kept in sync here because find.js runs outside bash).
-const FRONTEND_EXT_RE = /\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$/i;
+const FRONTEND_EXT_RE = /\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$/i;
 const TRANSLATION_RE = /(^|\/)(lang|locales|translations|messages|i18n)\/.*\.(php|json|ya?ml|po|ts)$/i;
 const MIGRATION_RE = /(^|\/)(migrations?|db\/migrate)\//i;
 const DOCS_RE = /(^|\/)(README\.md|CLAUDE\.md|docs\/.*\.md|\.env\.example)$/i;
@@ -726,18 +736,9 @@ function dedupeFindings(findings, dimension, logFn) {
 }
 
 function dimensionFileName(dim) {
-  const numbers = {
-    architecture: 1, security: 2, performance: 3, code_quality: 4, seo: 5, a11y: 6,
-    typography: 7, ui_design: 8, ux: 9, animation: 10, docs_sync: 11, copy: 12, privacy: 13,
-    payments: 14
-  };
-  const slugs = {
-    architecture: 'architecture', security: 'security', performance: 'performance',
-    code_quality: 'code-quality', seo: 'seo', a11y: 'a11y', typography: 'typography',
-    ui_design: 'ui-design', ux: 'ux', animation: 'animation', docs_sync: 'docs-sync',
-    copy: 'copy', privacy: 'privacy', payments: 'payments'
-  };
-  return `${numbers[dim]}-${slugs[dim]}.md`;
+  const row = DIMENSION_TABLE.find((d) => d.id === dim);
+  if (!row) throw new Error(`unknown dimension id: ${dim}`);
+  return `${row.n}-${row.slug}.md`;
 }
 
 // Entry point: this script body IS the run, invoked by the Workflow tool with

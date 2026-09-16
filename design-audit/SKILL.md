@@ -199,16 +199,17 @@ Two optional signal sources sharpen the Elevation list. Both are strictly option
 ## Phase 3: Consolidate + validate
 
 1. **Dedupe** across agents (same location → one finding, strictest severity wins).
-2. **Hallucination validator** (deterministic, every finding and elevation):
+2. **Hallucination validator** (deterministic, every finding and elevation). A finding's path and
+   line are audited-repo content and never enter a command line: write them to a file with the
+   Write tool, one `path<TAB>line` per row, at `{AUDIT_TMP}/locations.tsv` (literal path from Phase
+   0), then run the script on that file. It rejects non-integer lines, absolute or `..` paths, missing
+   files and out-of-range lines, and prints one line per pair. (An inline template that substituted
+   the values into `F='{datei}'` was a Critical on 2026-09-16: a path containing a quote broke out.)
    ```bash
-   # {datei}/{zeile} come from a finding, i.e. from audited-repo content: assign, then validate the
-   # shape before either is used, never interpolate them bare into a command.
-   F='{datei}'; L='{zeile}'
-   case "$L" in ''|*[!0-9]*) echo "HALLUCINATION: line is not a number"; L=0;; esac
-   case "$F" in /*|*..*) echo "HALLUCINATION: path escapes the repo"; F="";; esac
-   [ -n "$F" ] && { test -f "$F" || echo "HALLUCINATION: file missing"; }
-   [ -n "$F" ] && [ -f "$F" ] && { [ "$(wc -l < "$F")" -ge "$L" ] || echo "HALLUCINATION: line out of range"; }
+   for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+   bash "$(orch_helper validate-locations.sh)" "${AUDIT_TMP}/locations.tsv" "$PROJECT_ROOT"
    ```
+   A `HALLUCINATION` line drops that finding before Phase 4.
 3. **Defect verification:** every `confidence: low` or `medium` Defect goes through a fresh-context `$AUDIT_AGENTS/finding-verifier.md` subagent (sonnet, parallel, max 10 per block, each with `run_in_background: false` since its verdict gates the same round's report) before it reaches the report, same stage as `/audit` Step D.7, and for the same reason: the workers report for coverage, so the filter belongs to an agent that did not produce the finding. `CONFIRMED` → into the report (apply `SEVERITY_CORRECTION`) + `bash "$AUDIT_ROOT/bin/patterns-store.sh" recur {pattern}` at the verdict, same duty as `/audit` Step D.7 (this skill never called the store before 2026-09-03, which is why the recurrence feed showed nothing for design-audit runs); `REFUTED` → dropped, never into the report, + `patterns-store.sh dismissed {pattern}`; `UNCERTAIN` → into the report's `Unverified` list with the reason, never a fix candidate. A missing or unparseable verifier reply counts as `UNCERTAIN`, never as `CONFIRMED`: an unanswered verification is not a pass. Unlike `/audit` and `/full-audit`, this selection is not scaled by `CONFIDENCE_FLOOR` — design-audit has no confidence-floor concept and always verifies every low/medium-confidence Defect regardless of effort level. Elevation entries with confidence low are dropped silently, elevation must be convincing or absent.
 4. **Consistency map** (orchestrator, from worker output): 3-6 bullet summary of the design system's actual state — token coverage, component variant sprawl, spacing/type scale adherence, motion vocabulary coherence.
 

@@ -126,10 +126,13 @@ audit_store_root() {
 # a worker, a missed one costs coverage.
 FRONTEND_EXT_RE='\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$'
 
-# The 12 audit dimensions in worker order. Shared by check-skips.sh (routing
-# floor) and referenced by verify-agents.sh's agent-file list. Keep in sync
-# with audit/agents/{1..12}-*.md.
-AUDIT_DIMS="architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy"
+# The 13 unconditional audit dimensions in worker order (audit/agents/{1..13}-*.md);
+# the conditional 14th, payments, is deliberately not listed, its gate lives in
+# audit/SKILL.md Phase 1.5. Only consumer today: check-skips.sh, itself unwired
+# since the 2026-09-05 rebuild (see CLAUDE.md Commands). verify-agents.sh keeps
+# its own hardcoded roster and never reads this. The canonical list is
+# DIMENSION_TABLE in audit/workflows/find.js.
+AUDIT_DIMS="architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy privacy"
 
 # Dependency, build and tooling directories that no audit check should walk
 # into (grep -E form, matches a path segment). Consumers that use `find`

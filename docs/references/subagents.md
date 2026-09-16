@@ -132,7 +132,7 @@ Every worker output must be strict, not free prose:
 - Cap length per finding ("max 50 words per item")
 - Structured format (table, fixed line format, or JSON)
 - Confidence label per finding (high | medium | low)
-- "No findings? Reply exactly 'Keine Findings.'" — avoids parsing edge cases
+- A fixed "no findings" reply shape, so an empty result is not a parsing edge case. (The repo-wide `"Keine Findings."` sentinel was retired on 2026-09-16, see line 68; pick a shape per agent and state it in the contract.)
 
 For finder-style workers, split coverage from filtering: tell the worker its job is to report
 everything it has evidence for, including low-severity and uncertain items, and let a separate

@@ -42,11 +42,11 @@ If no tracked changes and no staged files: report and stop. Nothing to ship.
 Detect deploy method and health check URL (check in priority order):
 
 ```bash
-# 1. Project config wins — read the values if present
-DEPLOY_COMMAND=$(grep '^deploy-command:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
-HEALTH_URL=$(grep '^health-check:' .claude/ship.md 2>/dev/null | cut -d' ' -f2-)
+# 1. Project config wins — read the values if present, all three through the one parser in the lib
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-TEST_COMMAND=$(orch_test_command_declared) || TEST_COMMAND=""   # declared only, on purpose: no manifest fallback on ship day; same parser as /audit
+DEPLOY_COMMAND=$(orch_ship_value deploy-command) || DEPLOY_COMMAND=""
+HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
+TEST_COMMAND=$(orch_test_command_declared) || TEST_COMMAND=""   # declared only, on purpose: no manifest fallback on ship day
 
 # 2. Detect deploy method from known files
 if [ -z "$DEPLOY_COMMAND" ]; then
@@ -171,7 +171,7 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestra
          "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -f "$c" ] && { . "$c"; break; }
 done
-type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run log unavailable, ship continues"
+type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run log and helpers unavailable (skill continues)"
 # Run-ledger start marker — this is the true beginning of the run, before commit/audit/test/push/deploy.
 orch_run_log --start --skill ship
 ```
@@ -272,7 +272,8 @@ only, never the value:
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 git diff --cached --name-only | grep -iE '(\.env|secret|credential|\.pem|\.key)'   # -i: SECRET.txt and DB_CREDENTIAL.json are the same class
-PRECHECK=$(orch_helper pre-checks.sh) && bash "$PRECHECK" | grep -E '^SECRET_SCAN_RESULT=|^SECRET '
+PRECHECK=$(orch_helper pre-checks.sh) || { echo "pre-checks.sh not found: the content secret scan cannot run, refusing to commit"; exit 1; }
+bash "$PRECHECK" | grep -E '^SECRET_SCAN_RESULT=|^SECRET '
 ```
 Filename hit: warn and AskUserQuestion — continue or abort? `SECRET_SCAN_RESULT=FINDINGS`: stop, do
 not commit, name the `file:line` lines; this one is not a question.
@@ -312,9 +313,12 @@ Never silently skip the audit. The bypass must be an explicit user choice.
 
 ## Phase 2b: Test Gate
 
-Only when `TEST_COMMAND` is set (`test-command:` in `.claude/ship.md`). Skip silently otherwise (`SHIP_TESTS=not_configured`).
+Only when `test-command:` is set in `.claude/ship.md`. Skip silently otherwise (`SHIP_TESTS=not_configured`).
+Re-derived here, not carried over from Phase 0: every block is a fresh shell.
 
 ```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+TEST_COMMAND=$(orch_test_command_declared) || { echo "SHIP_TESTS=not_configured"; exit 0; }
 eval "$TEST_COMMAND"
 ```
 

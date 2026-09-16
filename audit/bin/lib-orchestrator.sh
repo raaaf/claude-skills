@@ -32,7 +32,8 @@
 #   orch_verify_agents        runs verify-agents.sh against AUDIT_AGENTS_DIR; returns its rc
 #   orch_parse_stripe [root]  sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES
 #   orch_run_log <args...>    calls run-log.sh if present; never fails the caller
-#   orch_test_command_declared [root]   prints `test-command:` from .claude/ship.md, else nothing (rc 1)
+#   orch_ship_value <key> [root]   prints `<key>:` from .claude/ship.md (test-command, deploy-command, health-check), else nothing (rc 1)
+#   orch_test_command_declared [root]   = orch_ship_value test-command
 #   orch_test_command [root]  declared value, else a manifest guess (composer/npm/swift/pytest), else nothing (rc 1)
 #
 # The two hash conventions are deliberately two functions with two names. They
@@ -100,12 +101,19 @@ orch_run_log() {
 # One parser for `.claude/ship.md` `test-command:`. Before 2026-09-16 /ship used
 # `grep | cut -d' ' -f2-` (breaks on a tab, keeps trailing spaces) and /audit used
 # `sed -n 's/^test-command:[[:space:]]*//p'`; two readers of one line disagreed.
-orch_test_command_declared() {
-  local root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}" v
-  v=$(sed -n 's/^test-command:[[:space:]]*//p' "$root/.claude/ship.md" 2>/dev/null | head -1 | sed 's/[[:space:]]*$//')
+# One parser for every `key: value` line in .claude/ship.md (test-command,
+# deploy-command, health-check). /ship parsed deploy-command and health-check
+# with `grep | cut -d' ' -f2-` until 2026-09-16, the pattern already replaced for
+# test-command one commit earlier: a tab after the colon broke it and trailing
+# spaces survived into the command. Prints the value, rc 1 when absent/empty.
+orch_ship_value() {
+  local key="$1" root="${2:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}" v
+  v=$(sed -n "s/^${key}:[[:space:]]*//p" "$root/.claude/ship.md" 2>/dev/null | head -1 | sed 's/[[:space:]]*$//')
   [ -n "$v" ] || return 1
   printf '%s' "$v"
 }
+
+orch_test_command_declared() { orch_ship_value test-command "${1:-}"; }
 
 # /audit's variant: the declared command, else the manifest's own. /ship deliberately
 # uses only the declared one, so a repo that never configured a test gate does not

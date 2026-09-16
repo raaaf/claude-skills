@@ -7,6 +7,7 @@ tools:
   - Glob
 model: sonnet
 effort: medium
+maxTurns: 12
 ---
 
 # Design Surface Mapper

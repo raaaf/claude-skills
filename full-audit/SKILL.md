@@ -113,9 +113,14 @@ has no diff to intersect against, that gating only exists in `/audit`. Whether i
 this time is `PAYMENTS_RERUN` from Phase 0: `1` → add `payments` to `AUDIT_DIMENSIONS`; `0` →
 leave it out and print `payments: skipped, no change since $PAYMENTS_SKIP_NOTE`.
 
-When `payments` is added to `AUDIT_DIMENSIONS`, run `GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")`
-(same lib call as `audit/SKILL.md` Phase 1.5), which appends `payments.md<TAB>mandatory<TAB>scoped`
-if `match-guidelines.sh` did not already emit it: `guidelines/payments.md`'s `applies_to` regex may not match
+When `payments` is added to `AUDIT_DIMENSIONS`, append the guideline (same lib call as `audit/SKILL.md` Phase 1.5):
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")
+```
+
+It appends `payments.md<TAB>mandatory<TAB>scoped` if `match-guidelines.sh` did not already emit it: `guidelines/payments.md`'s `applies_to` regex may not match
 a generic file in the payment surface, but the dimension only runs once the repo is already known to
 be a Stripe integration, so the guideline always applies when it runs.
 

@@ -40,7 +40,7 @@ Learning backlog question + open `audit-finding` issues/PR dedup context:
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -f "$c" ] && { . "$c"; break; }
 done
-type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orchestrator.sh nicht gefunden."; exit 1; }
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orchestrator.sh nicht gefunden (audit/bin/ fehlt oder ist nicht verlinkt; sync-skills.sh ausfuehren)."; exit 1; }
 orch_resolve_audit_root || { echo "Abgebrochen — audit root nicht gefunden."; exit 1; }
 orch_run_log --start --skill audit
 orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
@@ -278,7 +278,12 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 touch "/tmp/claude-audit-passed-$(orch_hash_passed)"   # only on the conditions above; passed-family hash (no trailing newline)
 ```
 
-Release the in-progress marker: `orch_progress_release` (it runs inside the Phase 4 block above, which sources the lib first).
+Release the in-progress marker, unconditionally (the block above only runs when the gate passed):
+
+```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_progress_release
+```
 
 ## Phase 5: Learning
 
