@@ -2,6 +2,11 @@
 #
 # Captures before/after screenshots for a visual change, with no project
 # dependency: headless Chrome for web, `simctl` for a booted iOS simulator.
+# Xcode 27 replaced Simulator.app with Device Hub; `xcrun simctl` (list, io screenshot) is
+# unchanged and this script was verified against a Device-Hub-booted iPhone 17 on 2026-09-16.
+# The Claude desktop app's own simulator pane does not work under Xcode 27 yet
+# (anthropics/claude-code#79991); this script does not depend on it. Physical devices are out
+# of scope: `devicectl` has no screenshot subcommand.
 # Used by /delegate (visual task: once before the executor runs, once after the
 # review), never on its own schedule.
 #

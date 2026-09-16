@@ -44,6 +44,7 @@ const FIX_VERDICT_SCHEMA = {
   required: ['verdict', 'regressions', 'tests']
 };
 
+// Duplicated from find.js (the Workflow tool forbids imports); check-workflow-dupes.sh diffs the copies.
 function hasCompleteCoverage(result, paths) {
   const coverage = result && result.coverage;
   return result && Array.isArray(result.findings) && coverage && coverage.status === 'complete' && Array.isArray(coverage.files) &&
@@ -105,11 +106,13 @@ function warnIfNull(logFn, result, message) {
 // Prepended to every agent briefing so a fixer/verifier reads the audited
 // repo, not the directory the Workflow tool happened to launch from (same
 // round-2 defect as find.js).
+// Duplicated from find.js; check-workflow-dupes.sh diffs the copies.
 const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
   'Audit and edit source files only inside REPO_ROOT. Relative source paths resolve as REPO_ROOT/<path>. ' +
   'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
   'Do not use the current working directory, it may be a different repository.\n\n';
 
+// Duplicated from find.js; check-workflow-dupes.sh diffs the copies.
 function chunk(items, size) {
   const out = [];
   for (let i = 0; i < items.length; i += size) {
@@ -136,10 +139,10 @@ function groupForRegression(files) {
 
 // Entry point: this script body IS the run, invoked by the Workflow tool with
 // `agent`, `parallel`, `log`, `args` already in scope as globals.
-// args: { repoRoot, fixes: [{file, findings}], testCommand, baselineFailures, budget, auditBin, promptDir }
+// args: { repoRoot, fixes: [{file, findings}], testCommand, baselineFailures, budget, auditBin }
 const budget = args.budget || 25;
 const auditBin = args.auditBin;
-const promptDir = args.promptDir || `${auditBin}/../agents`;
+const promptDir = `${auditBin}/../agents`;   // always derived from auditBin; an args.promptDir override existed here with no caller (run 12)
 const testCommand = args.testCommand;
 // An absent test command must not render as `test-lock.sh undefined`. The
 // orchestrator derives TEST_COMMAND in audit/SKILL.md Phase 3 and passes '' when

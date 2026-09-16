@@ -56,7 +56,7 @@ orch_progress_claim
 AUDIT_TMP="${TMPDIR:-/tmp}/claude-audit-$(orch_hash_progress)"
 # Predictable path under a shared tmp: refuse a pre-existing symlink, later phases Write finding data here.
 if [ -L "$AUDIT_TMP" ]; then echo "WARN: $AUDIT_TMP is a symlink, refusing it; brief the constants inline"; AUDIT_TMP=""
-elif mkdir -p "$AUDIT_TMP" 2>/dev/null && [ -w "$AUDIT_TMP" ]; then
+elif mkdir -p "$AUDIT_TMP" 2>/dev/null && [ -w "$AUDIT_TMP" ] && [ -O "$AUDIT_TMP" ]; then   # -O: a pre-existing dir another user owns is refused too (run 12)
   echo "AUDIT_TMP=$AUDIT_TMP"
 else
   echo "WARN: AUDIT_TMP not writable, skipping the wave-shared file; brief the constants inline"

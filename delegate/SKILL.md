@@ -92,7 +92,7 @@ screenshot of a connection error looks like a result.
 1. A URL the user named in the task.
 2. `.claude/launch.json` in the repo: a configuration's `url`, else `http://localhost:<port>`.
    Start the server first if nothing is serving; leave it running for Phase 5.
-3. iOS: a booted simulator (the script checks; it skips when there is none).
+3. iOS: a booted simulator, under Simulator.app or Xcode 27's Device Hub alike (the script checks via `simctl`; it skips when there is none). Physical devices are not captured.
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again

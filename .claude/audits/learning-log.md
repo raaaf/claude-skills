@@ -256,7 +256,7 @@ Note: the feed for the two 2026-09-15 runs was back-filled at Phase 5 (30 confir
 
 ## Open decision (carried once here, not repeated per audit log)
 
-- [ ] `audit/workflows/find.js` `runDimension` / `audit/SKILL.md` Phase 4: one `UNCERTAIN` verifier verdict makes the dimension `incomplete` and blocks the push marker, even for a Minor (runs 5 and 7 on 2026-09-16). The contract exists so an unverified finding cannot vanish; whether a Minor should carry that weight is a product decision, not a triage one. NEEDS A DECISION, do not apply without one: options are (a) keep, (b) `UNCERTAIN` blocks only at Critical/Important, (c) `UNCERTAIN` never blocks and is always logged under Unverified.
+- [x] (decided 2026-09-16, option (b), applied in `find.js` `runDimension` and `audit/SKILL.md` Phase 4) `audit/workflows/find.js` `runDimension` / `audit/SKILL.md` Phase 4: one `UNCERTAIN` verifier verdict makes the dimension `incomplete` and blocks the push marker, even for a Minor (runs 5 and 7 on 2026-09-16). The contract exists so an unverified finding cannot vanish; whether a Minor should carry that weight is a product decision, not a triage one. NEEDS A DECISION, do not apply without one: options are (a) keep, (b) `UNCERTAIN` blocks only at Critical/Important, (c) `UNCERTAIN` never blocks and is always logged under Unverified.
 
 ### 2026-09-16 run 11 (retro addendum)
 

@@ -80,6 +80,7 @@ const SCOUT_CLUSTERS_SCHEMA = {
   required: ['clusters']
 };
 
+// Duplicated in fix.js (the Workflow tool forbids imports); check-workflow-dupes.sh diffs the copies.
 function hasCompleteCoverage(result, paths) {
   const coverage = result && result.coverage;
   return result && Array.isArray(result.findings) && coverage && coverage.status === 'complete' && Array.isArray(coverage.files) &&
@@ -162,6 +163,7 @@ function warnIfNull(logFn, result, message) {
 // not the directory the Workflow tool happened to launch from (round-2 defect:
 // 4 of 6 specialists answered "file does not exist" because the briefing never
 // named the repo root).
+// Duplicated in fix.js; check-workflow-dupes.sh diffs the copies.
 const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
   'Audit and edit source files only inside REPO_ROOT. Relative source paths resolve as REPO_ROOT/<path>. ' +
   'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
@@ -307,6 +309,7 @@ function dimensionHasFloorSignal(dimension, files) {
   return files.some((f) => floorDimensionsForFile(f).includes(dimension));
 }
 
+// Duplicated in fix.js; check-workflow-dupes.sh diffs the copies.
 function chunk(items, size) {
   const out = [];
   for (let i = 0; i < items.length; i += size) {
@@ -611,8 +614,17 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     });
   }
 
+  // Decided 2026-09-16 (open since run 5): an unverified finding blocks the dimension only
+  // at Critical/Important. A Minor is never fixed regardless of verdict, so an UNCERTAIN
+  // Minor changes no action and still appears under Unverified in the log; an UNCERTAIN
+  // Critical/Important is a possible push-blocker nobody has ruled on, and that stays
+  // `incomplete` until a re-verification or a human decision.
+  const blockingUnverified = unverified.filter((id) => {
+    const f = allFindings.find((x) => x.id === id);
+    return !f || f.severity === 'Critical' || f.severity === 'Important';
+  });
   return {
-    status: uncovered.length || unverified.length || unrefuted.length ? 'incomplete' : 'complete',
+    status: uncovered.length || blockingUnverified.length || unrefuted.length ? 'incomplete' : 'complete',
     files: filePaths,
     chunks: chunks.length,
     findings: allFindings,
@@ -823,7 +835,7 @@ const ctx = {
 // computed", not "computed, no match".
 const dimMeta = dimensions.map((d) => {
   const scopeFiles = scopeFilesFor(ctx, d);
-  const floorCount = computeFloorFiles(d, scopeFiles, ctx.floorFiles, log).length;
+  const floorCount = computeFloorFiles(d, scopeFiles, ctx.floorFiles, null).length;   // ordering only, no log: runFileScout computes and logs the same floor once
   const floorComputed = Object.prototype.hasOwnProperty.call(floorFiles, d);
   const degraded = scopeFiles.length > 0 && !floorComputed;
   if (degraded) {

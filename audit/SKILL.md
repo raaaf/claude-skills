@@ -41,7 +41,7 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
   [ -f "$c" ] && { . "$c"; break; }
 done
 type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orchestrator.sh nicht gefunden (audit/bin/ fehlt oder ist nicht verlinkt; sync-skills.sh ausfuehren)."; exit 1; }
-orch_resolve_audit_root || { echo "Abgebrochen — audit root nicht gefunden."; exit 1; }
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
 orch_run_log --start --skill audit
 orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
 SCOPE_OUT="$(bash "$AUDIT_BIN/collect-scope.sh")"
@@ -89,7 +89,7 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 
 Otherwise ask exactly one `AskUserQuestion` round, two questions, presets from `references/dimension-selection.md`:
 
-- **(a) Dimensions:** All (default) | Backend | Frontend | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
+- **(a) Dimensions:** Everything (default) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
 - **(b) Fix scope:** find & log only | fix Critical | fix Critical and Important. Preselection from `${CLAUDE_EFFORT:-medium}`: `low` → find only, `medium` → Critical, `high`/`xhigh` → Critical and Important.
 
 Result: `AUDIT_DIMENSIONS` (comma list) and `AUDIT_FIX_SCOPE` (`none|critical|all`). A partial selection at (a) never writes the push marker (same rule as before), and the log names the dimensions not checked.
@@ -273,7 +273,11 @@ bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
 
 - no Critical is open, including every `SECRET ...` line Phase 1's `pre-checks.sh` printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
 - no new test failure beyond `BASELINE_FAILURES`,
-- no selected dimension has `status: incomplete`,
+- no selected dimension has `status: incomplete`. Since 2026-09-16 an `UNCERTAIN` verdict makes a
+  dimension `incomplete` only for a Critical or Important finding (decided after runs 5 and 7: a
+  Minor is never fixed whatever its verdict, so an unverified Minor changes no action and is only
+  listed under `### Unverified`; an unverified Critical/Important is a possible push-blocker nobody
+  has ruled on and blocks until re-verified or decided),
 - a dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when
   both scouts ran without failing and returned zero files and zero clusters, so it means the
   dimension had nothing in scope. A failed scout puts `scout:files`/`scout:clusters` into

@@ -305,7 +305,7 @@ if [ -f "$MARKER" ]; then
   if [ "$AGE" -ge 1800 ]; then
     echo "STALE: Audit marker is ${AGE}s old (limit: 1800s)."; SHIP_GATE=stale
   elif ! orch_marker_matches; then
-    echo "STALE: the audit marker certifies a different tree than the one just committed (edited after /audit ran, or a marker from before tree binding)."; SHIP_GATE=stale
+    echo "STALE: Audit marker certifies a different tree than the one just committed (edited after /audit ran, or a marker from before tree binding)."; SHIP_GATE=stale
   else
     echo "Audit marker fresh (${AGE}s ago) and bound to this tree. Proceeding to push."; SHIP_GATE=passed
   fi

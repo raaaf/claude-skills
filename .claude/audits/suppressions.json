@@ -1,1 +1,16 @@
-{"suppressions": []}
+{
+  "suppressions": [
+    {
+      "pattern": "[Security] marker paths /tmp/claude-audit-passed and in-progress predictable from md5(cwd) without salt",
+      "reason": "decision 2026-09-16 after ten runs: single-user /tmp convention shared with the PreToolUse hook and pre-compact.sh; the actionable half (a planted symlink or foreign-owned file) is refused by orch__marker_ok since 944e075, and a salt would have to change hook, lib and pre-compact.sh in one step for no remaining attack",
+      "added": "2026-09-16",
+      "expires": "2027-09-16"
+    },
+    {
+      "pattern": "[Architecture] plan-it Phase 4 reimplements the audit learning-agent dispatch and parse instead of reusing audit/references/learning-phase.md",
+      "reason": "decision 2026-09-16 after five runs: only the reply wire contract is shared; agent, log file and the audit-specific Step 0/0.5 differ on purpose (CLAUDE.md Gotchas)",
+      "added": "2026-09-16",
+      "expires": "2027-09-16"
+    }
+  ]
+}
