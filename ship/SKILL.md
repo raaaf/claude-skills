@@ -235,8 +235,9 @@ Hard rules:
   section to add to.
 
 Phase 1 stages these with `git add -u`, since every file touched here was already tracked. Doc-only
-edits do not invalidate a fresh audit marker: they are prose by the same definition
-`classify-diff.sh` uses, so Phase 2 still checks marker age only.
+edits do not invalidate a fresh audit marker: the marker is bound to the audited tree, and Phase 2
+accepts a delta whose every path is prose by `classify-diff.sh`'s own definition
+(`orch_marker_matches` rc 2); a code path in the delta makes the marker stale.
 
 Set `SHIP_DOCS` to the number of doc files updated, or `none` when the diff touched no documented
 surface. `none` is a legitimate outcome for a pure refactor, not a reason to skip the check.
@@ -302,10 +303,13 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestra
 MARKER="/tmp/claude-audit-passed-$(orch_hash_passed)"   # passed-family hash (no trailing newline), lib-orchestrator.sh
 if [ -f "$MARKER" ]; then
   AGE=$(( $(date +%s) - $(stat -f%m "$MARKER" 2>/dev/null || stat -c%Y "$MARKER" 2>/dev/null) ))
+  orch_marker_matches; MATCH_RC=$?
   if [ "$AGE" -ge 1800 ]; then
     echo "STALE: Audit marker is ${AGE}s old (limit: 1800s)."; SHIP_GATE=stale
-  elif ! orch_marker_matches; then
-    echo "STALE: Audit marker certifies a different tree than the one just committed (edited after /audit ran, or a marker from before tree binding)."; SHIP_GATE=stale
+  elif [ "$MATCH_RC" -eq 1 ]; then
+    echo "STALE: Audit marker certifies a different tree than the one just committed (a code path changed after /audit ran; changed since the audit:)"; orch_marker_delta; SHIP_GATE=stale
+  elif [ "$MATCH_RC" -eq 2 ]; then
+    echo "Audit marker fresh (${AGE}s ago); only prose changed since the audited tree (docs sync), accepted:"; orch_marker_delta; SHIP_GATE=passed
   else
     echo "Audit marker fresh (${AGE}s ago) and bound to this tree. Proceeding to push."; SHIP_GATE=passed
   fi
@@ -372,7 +376,8 @@ nothing else in the pipeline shows it again before it executes. AskUserQuestion:
 Otherwise run the detected/configured deploy command:
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-{DEPLOY_COMMAND}
+orch_state_load   # DEPLOY_COMMAND as Phase 0 saved it, after the questions
+eval "$DEPLOY_COMMAND"   # the value the AskUserQuestion above showed; same trust boundary as the test gate's eval
 SHIP_DEPLOY=$([ $? -eq 0 ] && echo executed || echo failed); orch_state_save SHIP_DEPLOY; echo "SHIP_DEPLOY=$SHIP_DEPLOY"
 ```
 

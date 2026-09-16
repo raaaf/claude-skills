@@ -46,7 +46,9 @@
 #   orch_state_clear          removes the state dir; called by orch_progress_claim, and by skills without a claim (ship) at their start
 #   orch_tree_hash            tree object id of the working tree (tracked files) via `git stash create`, HEAD's tree when clean
 #   orch_marker_write         writes orch_tree_hash into /tmp/claude-audit-passed-*; the marker certifies a tree, not a moment
-#   orch_marker_matches       rc 0 when the passed marker's recorded tree equals orch_tree_hash now
+#   orch_marker_matches       rc 0 when the passed marker's tree equals orch_tree_hash now, rc 2 when the
+#                             delta is prose-only (classify-diff.sh --paths), rc 1 otherwise
+#   orch_marker_delta         prints the paths that changed since the marker's tree
 #   orch_url_host <url>       prints the host of an http(s) URL (userinfo dropped, [IPv6] kept whole), else nothing
 #   orch_host_public <host>   rc 0 unless loopback/private/link-local/ULA/mapped, *.local/*.internal, or a
 #                             numeric host that is not a canonical dotted quad (decimal, octal, hex, short forms)
@@ -181,11 +183,25 @@ orch_marker_write() {
   orch__marker_ok "$m" || { echo "orch_marker_write: refusing $m (symlink or not owned by $USER)" >&2; return 1; }
   printf '%s\n' "$t" > "$m"
 }
+# rc 0: the marker certifies exactly the current tree. rc 2: the trees differ but every
+# path in the delta is prose by classify-diff.sh's definition (a /ship docs-sync edit,
+# a README fix), which the audit would have gated as prose anyway. rc 1: anything else.
 orch_marker_matches() {
-  local m rec now; m=$(orch__passed_path)
+  local m rec now delta cls; m=$(orch__passed_path)
   [ -f "$m" ] && orch__marker_ok "$m" || return 1
   rec=$(head -1 "$m" 2>/dev/null); now=$(orch_tree_hash) || return 1
-  [ -n "$rec" ] && [ "$rec" = "$now" ]
+  [ -n "$rec" ] || return 1
+  [ "$rec" = "$now" ] && return 0
+  delta=$(git diff --name-only "$rec" "$now" 2>/dev/null) || return 1
+  [ -n "$delta" ] || return 1
+  cls=$(printf '%s\n' "$delta" | bash "$(orch_helper classify-diff.sh)" --paths 2>/dev/null | sed -n 's/^DIFF_CLASS=//p')
+  [ "$cls" = "prose" ] && return 2
+  return 1
+}
+orch_marker_delta() {   # the paths that changed since the marker's tree, for the gate's message
+  local m rec now; m=$(orch__passed_path)
+  rec=$(head -1 "$m" 2>/dev/null) || return 1; now=$(orch_tree_hash) || return 1
+  git diff --name-only "$rec" "$now" 2>/dev/null
 }
 
 orch_verify_agents() {

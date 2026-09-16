@@ -123,7 +123,7 @@ if [ "$PLATFORM" != "web" ]; then
 fi
 
 FRONTEND_COUNT=$(echo "$FRONTEND_FILES" | grep -c . || echo 0)
-echo "Frontend-Oberflaeche: $FRONTEND_COUNT Dateien"
+echo "Frontend-Oberfläche: $FRONTEND_COUNT Dateien"
 [ "$FRONTEND_COUNT" -eq 0 ] && { echo "Keine Frontend-Dateien im Scope — nichts zu auditieren."; orch_progress_release; exit 0; }   # marker was claimed in Phase 0, release it on this exit too
 orch_state_save PROJECT_ROOT FRAMEWORK PLATFORM FRONTEND_COUNT FRONTEND_FILES SCOPE_PREFIX
 ```

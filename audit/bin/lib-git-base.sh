@@ -149,3 +149,37 @@ hash_of() {
     shasum -a 256 "$1" | awk '{print $1}'
   fi
 }
+
+# Shared with cache-write.sh, patterns-store.sh and capture-screens.sh: add
+# rel_path to repo_root/.gitignore, but only when it would actually change
+# something. Skips a no-op mutation on a tracked file (a .gitignore entry
+# cannot un-track it) and a redundant append when a broader rule already
+# covers the path (check-ignore, not a literal grep, so ".claude/audits/"
+# still matches "cache.json"). Any mutation that does happen is announced on
+# stdout so it shows up in the audit log instead of being a silent side
+# effect on a file the audit run does not own.
+#
+# Usage: gitignore_ensure <repo_root> <rel_path> [<check_path>]
+# check_path defaults to rel_path -- pass a more specific path (e.g. the
+# actual output directory) when rel_path itself is a pattern rather than a
+# path that exists yet.
+gitignore_ensure() {
+  local repo_root="$1" rel_path="$2" check_path="${3:-$2}"
+  # A symlinked .gitignore is never written to: ">>" follows the symlink and
+  # would append outside the repo, and git itself ignores a symlinked
+  # .gitignore (check-ignore never reports it as covering anything), so the
+  # else branch below would otherwise re-append on every single run
+  # (reproduced: three runs against a symlinked .gitignore produced three
+  # appended lines in the link target). -L checks the link itself, no
+  # dereference.
+  if [ -L "$repo_root/.gitignore" ]; then
+    echo "NOTE: $repo_root/.gitignore is a symlink; refusing to follow it. Not touching it -- add '$rel_path' to it manually if needed."
+  elif git -C "$repo_root" ls-files --error-unmatch "$rel_path" >/dev/null 2>&1; then
+    echo "NOTE: $rel_path is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $rel_path' if that was not intended."
+  elif git -C "$repo_root" check-ignore -q "$check_path" 2>/dev/null; then
+    echo "$rel_path already ignored, .gitignore left unchanged"
+  else
+    printf '\n%s\n' "$rel_path" >> "$repo_root/.gitignore"
+    echo "Added $rel_path to .gitignore (was not previously ignored)"
+  fi
+}

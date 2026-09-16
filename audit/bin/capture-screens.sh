@@ -29,6 +29,9 @@
 # bash 3.2 compatible. BSD-safe.
 set -uo pipefail
 
+# shellcheck disable=SC1091
+[ -f "$(dirname "$0")/lib-git-base.sh" ] && . "$(dirname "$0")/lib-git-base.sh"
+
 LABEL=""; URL=""; NAME="screen"; IOS=0
 VIEWPORTS="1440x900 390x844"
 
@@ -61,26 +64,13 @@ COUNT=0
 prepare_out() {
   REPO=$(git rev-parse --show-toplevel 2>/dev/null) || REPO="$PWD"
   OUT="$REPO/.claude/screenshots/$LABEL"
+  if [ -L "$OUT" ] || { [ -e "$OUT" ] && [ ! -O "$OUT" ]; }; then echo "CAPTURE_RESULT=FAIL ($OUT is a symlink or not owned by $USER)"; exit 0; fi
   mkdir -p "$OUT" 2>/dev/null || { echo "CAPTURE_RESULT=FAIL (cannot create $OUT)"; exit 0; }
 
-  # .gitignore courtesy: only when no existing rule already covers the path, and
-  # never silently. A tracked file cannot be un-tracked by a .gitignore line, so
-  # that case warns instead of appending.
-  IGNORE_PATH=".claude/screenshots/"
-  if git rev-parse --git-dir >/dev/null 2>&1; then
-    # Refuse to follow a symlinked .gitignore, same guard and same reason as
-    # cache-write.sh: appending through the link writes into the link target and
-    # re-appends on every run, since check-ignore keeps reporting not-ignored.
-    if [ -L "$REPO/.gitignore" ]; then
-      echo "NOTE $REPO/.gitignore is a symlink, refusing to follow it; add '$IGNORE_PATH' manually"
-    elif ! git -C "$REPO" check-ignore -q "$OUT" 2>/dev/null; then
-      if git -C "$REPO" ls-files --error-unmatch "$IGNORE_PATH" >/dev/null 2>&1; then
-        echo "NOTE $IGNORE_PATH is tracked; .gitignore cannot un-track it, screenshots will show up in the diff"
-      else
-        printf '%s\n' "$IGNORE_PATH" >> "$REPO/.gitignore" 2>/dev/null &&
-          echo "NOTE added '$IGNORE_PATH' to .gitignore"
-      fi
-    fi
+  # .gitignore courtesy: see gitignore_ensure in lib-git-base.sh. Skipped
+  # entirely outside a git repo, or when the lib could not be sourced.
+  if git rev-parse --git-dir >/dev/null 2>&1 && command -v gitignore_ensure >/dev/null 2>&1; then
+    gitignore_ensure "$REPO" ".claude/screenshots/" "$OUT"
   fi
 }
 
@@ -164,6 +154,7 @@ trap 'rm -rf "$PROFILE_DIR" 2>/dev/null' EXIT
 
 for vp in $VIEWPORTS; do
   W="${vp%x*}"; H="${vp#*x}"
+  case "$W$H" in *[!0-9]*|"") echo "NOTE skipping viewport '$vp' (not WxH)"; continue;; esac
   TARGET="$OUT/$NAME--${W}x${H}.png"
   # --user-data-dir into a throwaway profile: without it headless refuses to
   # start while the user has Chrome open, and it would otherwise touch their

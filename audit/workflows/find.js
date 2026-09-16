@@ -454,17 +454,17 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   // docs_sync `incomplete`). What must hold: at least two files with a positive
   // count, so the cluster still has real anchors and is not two absences.
   clusters = clusters.filter((cluster, index) => {
-    const files = Array.isArray(cluster && cluster.files) ? cluster.files : [];
-    const wellFormed = files.every((file) => file && typeof file.path === 'string' && file.path.trim() &&
+    const clusterFiles = Array.isArray(cluster && cluster.files) ? cluster.files : [];
+    const wellFormed = clusterFiles.every((file) => file && typeof file.path === 'string' && file.path.trim() &&
       Number.isInteger(file.count) && file.count >= 0);
-    const anchors = files.filter((file) => file && file.count > 0).length;
+    const anchors = clusterFiles.filter((file) => file && file.count > 0).length;
     const valid = cluster && typeof cluster.id === 'string' && cluster.id.trim() &&
       typeof cluster.pattern === 'string' && cluster.pattern.trim() &&
-      files.length >= 2 && wellFormed && anchors >= 2 &&
-      new Set(files.map((file) => file.path)).size === files.length;
+      clusterFiles.length >= 2 && wellFormed && anchors >= 2 &&
+      new Set(clusterFiles.map((file) => file.path)).size === clusterFiles.length;
     if (!valid) {
       uncovered.push(`cluster:${cluster && cluster.id || index}`);
-      logFn(`${dimension}: cluster ${cluster && cluster.id || index} rejected (files=${files.length}, anchors=${anchors}, wellFormed=${wellFormed})`);
+      logFn(`${dimension}: cluster ${cluster && cluster.id || index} rejected (files=${clusterFiles.length}, anchors=${anchors}, wellFormed=${wellFormed})`);
     }
     return valid;
   });

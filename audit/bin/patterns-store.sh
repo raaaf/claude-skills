@@ -54,6 +54,8 @@ command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 # Canonical keys (already "cat:...|...") pass through unchanged (verified
 # idempotent), so existing counters keep incrementing, not forking.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck disable=SC1091
+[ -f "$SCRIPT_DIR/lib-git-base.sh" ] && source "$SCRIPT_DIR/lib-git-base.sh"
 NORMALIZE_SCRIPT="$SCRIPT_DIR/normalize-suppression.sh"
 normalize_pattern() {
   local p="$1"
@@ -314,27 +316,8 @@ case "$CMD" in
     ;;
 esac
 
-# Ensure .gitignore entry exists (only on add, not every call). Same
-# tracked/already-ignored guard as cache-write.sh: skip a no-op mutation on a
-# tracked file, skip a redundant append when a broader rule already covers
-# it, announce it on stdout when it actually changes .gitignore.
-if [ "$CMD" = "add" ]; then
-  GITIGNORE_REL='.claude/audits/patterns.json'
-  # A symlinked .gitignore is never written to: ">>" follows the symlink and
-  # would append outside the repo, and git itself ignores a symlinked
-  # .gitignore (check-ignore never reports it as covering anything), so the
-  # else branch below would otherwise re-append on every single run
-  # (reproduced: three runs against a symlinked .gitignore produced three
-  # appended lines in the link target). -L checks the link itself, no
-  # dereference.
-  if [ -L "$PROJECT_ROOT/.gitignore" ]; then
-    echo "NOTE: $PROJECT_ROOT/.gitignore is a symlink; refusing to follow it. Not touching it -- add '$GITIGNORE_REL' to it manually if needed."
-  elif git -C "$PROJECT_ROOT" ls-files --error-unmatch "$GITIGNORE_REL" >/dev/null 2>&1; then
-    echo "NOTE: $GITIGNORE_REL is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $GITIGNORE_REL' if that was not intended."
-  elif git -C "$PROJECT_ROOT" check-ignore -q "$GITIGNORE_REL" 2>/dev/null; then
-    echo "$GITIGNORE_REL already ignored, .gitignore left unchanged"
-  else
-    printf '\n%s\n' "$GITIGNORE_REL" >> "$PROJECT_ROOT/.gitignore"
-    echo "Added $GITIGNORE_REL to .gitignore (was not previously ignored)"
-  fi
+# .gitignore courtesy (only on add, not every call): see gitignore_ensure in
+# lib-git-base.sh.
+if [ "$CMD" = "add" ] && command -v gitignore_ensure >/dev/null 2>&1; then
+  gitignore_ensure "$PROJECT_ROOT" '.claude/audits/patterns.json'
 fi

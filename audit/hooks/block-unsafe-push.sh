@@ -152,8 +152,32 @@ marker="/tmp/claude-audit-passed-$hash"
 # sequentially. The marker expires via TTL (30 min) and is harmless after that.
 marker_mtime=$(stat -f%m "$marker" 2>/dev/null || stat -c%Y "$marker" 2>/dev/null || echo 0)
 if [ "$marker_mtime" -gt 0 ] && [ $(( $(date +%s) - marker_mtime )) -lt 1800 ]; then
+  # Since 2026-09-16 the marker records the tree /audit certified (first line; empty in a
+  # marker from before that). A fresh marker for a different tree means the code was edited
+  # after the audit: ask, unless every changed path is prose by classify-diff.sh's own
+  # definition (a docs-sync edit). Same rule as /ship's gate (orch_marker_matches). A symlink
+  # or a file another user owns is not a marker at all.
+  if [ -L "$marker" ] || [ ! -O "$marker" ]; then
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Der /audit-Marker ist ein Symlink oder gehört einem anderen Benutzer und wird nicht anerkannt. Audit jetzt starten, oder direkt pushen?"}}\n'
+    exit 0
+  fi
+  recorded=$(head -1 "$marker" 2>/dev/null || true)
+  if [ -n "$recorded" ] && git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
+    stash=$(git -C "$cwd" stash create 2>/dev/null || true)
+    current=$(git -C "$cwd" rev-parse "${stash:-HEAD}^{tree}" 2>/dev/null || true)
+    if [ -n "$current" ] && [ "$current" != "$recorded" ]; then
+      delta=$(git -C "$cwd" diff --name-only "$recorded" "$current" 2>/dev/null || true)
+      classify="$(dirname "$0")/../bin/classify-diff.sh"
+      cls=""
+      [ -n "$delta" ] && [ -f "$classify" ] && cls=$(printf '%s\n' "$delta" | (cd "$cwd" && bash "$classify" --paths 2>/dev/null) | sed -n 's/^DIFF_CLASS=//p')
+      if [ "$cls" != "prose" ]; then
+        printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Der /audit-Marker gehört zu einem anderen Stand: seit dem Audit wurden Code-Dateien geändert. Audit erneut laufen lassen, oder direkt pushen?"}}\n'
+        exit 0
+      fi
+    fi
+  fi
   exit 0
 fi
 
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Kein /audit-Marker vorhanden (oder aelter als 30 Min). Vor dem Push wurde kein /audit ausgefuehrt. Soll ich den Audit jetzt starten, oder direkt pushen?"}}\n'
+printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Kein /audit-Marker vorhanden (oder älter als 30 Min). Vor dem Push wurde kein /audit ausgeführt. Soll ich den Audit jetzt starten, oder direkt pushen?"}}\n'
 exit 0

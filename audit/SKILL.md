@@ -40,7 +40,7 @@ Learning backlog question + open `audit-finding` issues/PR dedup context:
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
   [ -f "$c" ] && { . "$c"; break; }
 done
-type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orchestrator.sh nicht gefunden (audit/bin/ fehlt oder ist nicht verlinkt; sync-skills.sh ausfuehren)."; exit 1; }
+type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orchestrator.sh nicht gefunden (audit/bin/ fehlt oder ist nicht verlinkt; sync-skills.sh ausführen)."; exit 1; }
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
 orch_run_log --start --skill audit
 orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
@@ -238,7 +238,7 @@ Read `{fixes, verdicts, regressions, rejected, blockingRegressions}`. A `REJECT`
 
 Run the full suite exactly once via `test-lock.sh` after the fix wave (fix-verifiers only ran filtered tests). A `blockingRegressions` entry (Critical/Important from the regression pass) becomes an open point and blocks the marker below.
 
-Re-run `bash "$AUDIT_BIN/check-silencing.sh"` and `bash "$AUDIT_BIN/check-test-count-drift.sh"` now, against the diff the fix wave just produced. A green suite is exactly what a silenced check looks like: a fix agent that added `@ts-ignore`, skipped a failing test or lowered a threshold makes the tests pass without the finding being fixed, and no other stage in the pipeline looks for that. A `SILENCING_HIT` on a line a fix agent wrote is an open point and blocks the marker; a hit that was already in the diff before the fix wave is an ordinary Phase 1 finding.
+Re-run `pre-checks.sh`, `check-silencing.sh` and `check-test-count-drift.sh` now (each as `bash "$AUDIT_BIN/<script>"` in a sourced block after `orch_resolve_audit_root`), against the diff the fix wave just produced. A green suite is exactly what a silenced check looks like: a fix agent that added `@ts-ignore`, skipped a failing test or lowered a threshold makes the tests pass without the finding being fixed, and no other stage in the pipeline looks for that. A `SILENCING_HIT` on a line a fix agent wrote is an open point and blocks the marker; a hit that was already in the diff before the fix wave is an ordinary Phase 1 finding. A `SECRET` line from this second `pre-checks.sh` run blocks the marker exactly like a Phase 1 one: a fix agent can paste a credential as easily as a human, and the marker binds to the post-fix tree, so the scan must cover it (run 13, 2026-09-16).
 
 ## Phase 4: Log, marker, run-ledger
 
@@ -265,13 +265,12 @@ COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}"
 if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
   COUNTS="$COUNTS,payments_head=$(git rev-parse HEAD)"
 fi
-bash "$AUDIT_BIN/run-log.sh" --skill audit --outcome "{gate}" \
-  --counts "$COUNTS" --gate "{blocked|partial|passed}"
+orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocked|partial|passed}"
 ```
 
 **Marker** (`/tmp/claude-audit-passed-{md5 cwd}`, never in the same Bash call as `git push`): set only when ALL of these hold, all derived from the Phase 2 `find.js` result. The marker records the tree it certified (tracked working-tree content via `git stash create`), not just a time: `/ship`'s gate refuses a marker whose tree is not the one being shipped, so an edit made after the audit inside the 30-minute window no longer ships as audited (run 11, 2026-09-16).
 
-- no Critical is open, including every `SECRET ...` line Phase 1's `pre-checks.sh` printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
+- no Critical is open, including every `SECRET ...` line either `pre-checks.sh` run (Phase 1, and again after the fix wave in Phase 3) printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
 - no new test failure beyond `BASELINE_FAILURES`,
 - no selected dimension has `status: incomplete`. Since 2026-09-16 an `UNCERTAIN` verdict makes a
   dimension `incomplete` only for a Critical or Important finding (decided after runs 5 and 7: a

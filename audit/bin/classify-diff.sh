@@ -30,6 +30,13 @@
 # over-auditing prose is merely annoying.
 set -euo pipefail
 
+# --paths: classify a path list read from stdin (one per line) instead of the
+# current diff. Used by /ship's audit gate and the push hook to decide whether
+# the delta between the tree the marker certified and the tree being pushed is
+# prose-only (2026-09-16): the same EXEC/CONF/TPL/YAML definition, one place.
+PATHS_MODE=0
+[ "${1:-}" = "--paths" ] && PATHS_MODE=1
+
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || {
   printf 'DIFF_CLASS=%q\n' code
   printf 'DIFF_CLASS_REASON=%q\n' "not a git repository, failing open"
@@ -73,12 +80,16 @@ else
   fi
 fi
 
+if [ "$PATHS_MODE" -eq 1 ]; then
+  FILES=$(sed 's/^"//; s/"$//' | sort -u | grep -v '^$' || true)
+else
 FILES=$(
   {
     git status --porcelain 2>/dev/null | sed 's/^...//; s/^.* -> //'
     git diff --name-only "$COMMIT_RANGE" 2>/dev/null || true
   } | sed 's/^"//; s/"$//' | sort -u | grep -v '^$' || true
 )
+fi
 
 if [ -z "$FILES" ]; then
   printf 'DIFF_CLASS=%q\n' prose

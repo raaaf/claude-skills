@@ -96,14 +96,15 @@ screenshot of a connection error looks like a result.
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""   # lib sourced in Phase 0
-# web:  bash "$CAPTURE" --label before --url "$TARGET_URL" --name "$SCREEN_NAME"
-# iOS:  bash "$CAPTURE" --label before --ios --name "$SCREEN_NAME"
+CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
+SCREEN_NAME="{slug for the screen, e.g. settings}"; CAPTURE_TARGET="{--url http://localhost:PORT/path | --ios}"
+[ -n "$CAPTURE" ] && bash "$CAPTURE" --label before $CAPTURE_TARGET --name "$SCREEN_NAME"
+orch_state_save SCREEN_NAME CAPTURE_TARGET   # Phase 5 captures the same thing
 ```
 
-Note the `SCREEN_NAME` and the target in the mini-spec so Phase 5 captures the same thing. A
-`CAPTURE_RESULT=SKIP` is not a failure and never blocks the task: say one line why, and continue
-without an after-image, rather than pretending a comparison exists.
+Phase 5 reads `SCREEN_NAME` and `CAPTURE_TARGET` back from the state, so the after-image is of the
+same screen. A `CAPTURE_RESULT=SKIP` is not a failure and never blocks the task: say one line why,
+and continue without an after-image, rather than pretending a comparison exists.
 
 ## Phase 4: Dispatch the executor (Sonnet)
 
@@ -144,6 +145,13 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
    actually changed visually, in one or two sentences. A pair of images with no reading of them is
    decoration. If the before-image was skipped, do not capture an after-image either: a single
    picture invites a comparison the run cannot make.
+
+   ```bash
+   for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+   orch_state_load   # SCREEN_NAME, CAPTURE_TARGET from Phase 3.5
+   CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
+   [ -n "$CAPTURE" ] && [ -n "${SCREEN_NAME:-}" ] && bash "$CAPTURE" --label after $CAPTURE_TARGET --name "$SCREEN_NAME"
+   ```
 
 **Verdict:**
 
