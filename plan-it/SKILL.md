@@ -151,6 +151,13 @@ Before asking the first clarifying question, **scan the codebase**. Many questio
 
 Scan table per topic and output format in `references/interview-guide.md`. Short version: show the user 3-8 bullet points as a facts map BEFORE asking questions.
 
+**Scan dispatched to subagents: wait, do not re-scan.** Once scan agents are out, the main thread does
+not grep the same questions itself. If an agent shows as idle without having delivered, send it one
+`SendMessage` asking for its report and wait for the reply. Only an agent that stays silent after that
+follow-up gets its questions scanned in the main thread, and only those questions. Evidence: in the
+2026-09-17 plan all four agents delivered after one follow-up, while the main thread had already
+repeated most of their greps.
+
 ### Principle: Decision Tree, Not Checklist
 
 Every idea is a tree of decisions that depend on each other. One answer opens new branches, closes others.

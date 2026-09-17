@@ -39,6 +39,12 @@ explicitly requested earlier in this plan's interview, never phrase it as "apply
 cut recommendations on features they asked for three plans in a row, so applying one unasked reliably
 costs a round.
 
+**Present a cut as an option, not as the recommendation.** Since then the pattern held for a fourth
+plan (both cuts rejected in the 2026-09-17 journal plan). A cut therefore reads "Option: cut X. Saves:
+... Costs: ..." with the trade-off stated evenly, never "Recommendation: cut X". The orchestrator puts
+the fuller solution first in its question to the user, because that is what the user picks, and
+records the cut's saving under Known Costs when it is rejected.
+
 **Mandatory verification:** if you claim that something the plan builds already exists, or that a field, config key, or helper the plan relies on does NOT exist, verify it at the code (Read/Grep the named site, `php artisan model:show` for schema) before stating it. Absence claims from memory have been wrong twice; a false "already there" or "not there" concern costs a plan round.
 
 No concerns? Reply: "Simplicity: No concerns. The plan is appropriately lean."

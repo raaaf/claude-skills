@@ -128,6 +128,7 @@ File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
 ## Meta
 - Date: {DATE}
 - Rounds Phase 1 (understanding): {N}
+- Effort per version: {v1: S/M/L/XL, v2: ..., final: ...} (one entry per plan version, so growth across rounds is visible in the log instead of only at the end)
 - Plan file: docs/plans/{date}-{slug}.md
 
 ## Questions & Answers
