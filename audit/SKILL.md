@@ -227,6 +227,8 @@ Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" 
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
 
+Hold back any finding that rewrites an intent doc (`DESIGN.md`, `PRODUCT.md`, or any doc whose job is to state current product/architecture status) out of this round: send it through its own later `fix.js` call after the rest of the fix wave above has landed and been verified, not in the same batch. Rewriting the doc in parallel with the code it describes leaves it stale before the round even finishes (2nd confirmed occurrence, 2026-09-17).
+
 Touch the in-progress marker again after the Notification:
 
 ```bash

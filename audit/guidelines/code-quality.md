@@ -303,6 +303,8 @@ grep -rn "dispatch('eventName'\|@eventName\|addEventListener('eventName'\|Custom
 
 A dispatched event with no listener (or vice versa) is a finding. Watch especially for a parallel Alpine path and a plain-JS path listening for the same name — they drift independently.
 
+**Design-system / style rollout — grep the whole codebase, not only the diff.** When a diff introduces or updates a shared component or style (a new button variant, a spacing token, a card surface style), the diff's own files are not the full blast radius: other files already have hand-rolled variants of that same look that the rollout was meant to replace. Grep the repo for the OLD pattern (raw styling that duplicates the new component/style, not just its literal name) before closing the finding, not only the files the diff touched. One run found 4 such divergences in a single pass (two view-level style helpers and two hand-rolled CTA button variants) that a diff-scoped grep would have missed.
+
 ## X. Comments
 
 Comments that explain *what* the code does are a sign the code should be rewritten. Comments that explain *why* are valuable.

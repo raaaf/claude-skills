@@ -25,6 +25,7 @@ File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
 ## Meta
 - Planned at: commit `{git rev-parse --short HEAD}`, {DATE}
+- Status: {omit or leave as "Spec" while planning; set to "Implemented"/past tense only after the implementation commit has actually landed, never in the same session that writes the code, so the line never claims a status the codebase does not yet have (3rd confirmed occurrence of this doc going stale immediately)}
 
 ## Problem
 {What is the problem — in 1-3 sentences. The PROBLEM, not the solution.}

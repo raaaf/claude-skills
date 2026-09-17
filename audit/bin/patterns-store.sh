@@ -202,6 +202,22 @@ jq -e '.recurrences' "$STORE" >/dev/null 2>&1 || {
   jq '.recurrences = {}' "$STORE" > "$STORE.new" && mv "$STORE.new" "$STORE"
 }
 
+# Shrink guard: .recurrences should only grow or merge across runs, never
+# lose keys outright (a merge changes a key's name, it does not drop the
+# count). BASELINE_FILE remembers the key count seen at the end of the last
+# invocation; a drop below it is loud but non-blocking (fail-open) -- this
+# incident (2026-09-13 retro: a run's store lost all 14 prior entries with
+# no explanation in any log) needs visibility, not a hard stop that could
+# take down an unrelated audit run over a store-file problem.
+BASELINE_FILE="$STORE_DIR/.patterns-recurrence-baseline"
+if [ -f "$BASELINE_FILE" ]; then
+  PREV_COUNT=$(cat "$BASELINE_FILE" 2>/dev/null || echo 0)
+  CUR_COUNT=$(jq -r '.recurrences | length' "$STORE" 2>/dev/null || echo 0)
+  if [ "$PREV_COUNT" -gt 0 ] 2>/dev/null && [ "$CUR_COUNT" -lt "$PREV_COUNT" ] 2>/dev/null; then
+    echo "WARNING: patterns.json .recurrences key count dropped from $PREV_COUNT to $CUR_COUNT since the last run -- it should only grow or merge, never shrink. Investigate before trusting this store." >&2
+  fi
+fi
+
 CMD="${1:-list}"
 
 trap 'rm -f "$STORE.new"' EXIT
@@ -320,4 +336,10 @@ esac
 # lib-git-base.sh.
 if [ "$CMD" = "add" ] && command -v gitignore_ensure >/dev/null 2>&1; then
   gitignore_ensure "$PROJECT_ROOT" '.claude/audits/patterns.json'
+  gitignore_ensure "$PROJECT_ROOT" '.claude/audits/.patterns-recurrence-baseline'
 fi
+
+# Refresh the shrink-guard baseline with the current key count, unconditionally
+# (fail-open: a failed write here never blocks the command's own exit status).
+jq -r '.recurrences | length' "$STORE" 2>/dev/null > "$BASELINE_FILE.new" 2>/dev/null \
+  && mv "$BASELINE_FILE.new" "$BASELINE_FILE" 2>/dev/null || rm -f "$BASELINE_FILE.new" 2>/dev/null || true

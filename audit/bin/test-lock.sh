@@ -143,4 +143,21 @@ trap release EXIT INT TERM
 ) &
 HB_PID=$!
 
-"$@"
+# Run the wrapped command through tee so a failure can be classified without
+# changing the caller-visible behavior: STATUS is still the wrapped command's
+# own exit code (via PIPESTATUS), stdout/stderr still stream live. Detection
+# is best-effort and fail-open -- if the temp file can't be created, fall
+# back to running the command directly exactly as before.
+ENV_CHECK=$(mktemp "${TMPDIR:-/tmp}/audit-test-lock-output.XXXXXX" 2>/dev/null) || ENV_CHECK=""
+if [ -n "$ENV_CHECK" ]; then
+  "$@" 2>&1 | tee "$ENV_CHECK"
+  STATUS=${PIPESTATUS[0]}
+  if [ "$STATUS" -ne 0 ] && grep -qiE 'simdiskimaged|CoreSimulatorService|unable to boot device|no devices are booted|could not find.*(simulator|runtime)|no runtimes discoverable|xcresult.*(operation not permitted|permission denied)' "$ENV_CHECK" 2>/dev/null; then
+    echo "TEST_LOCK_ENV_ERROR: CoreSimulator looks unreachable from this sandboxed shell (simdiskimaged/no runtimes/xcresult write denial) -- this is an environment failure, not a test failure or an incomplete fix." >&2
+  fi
+  rm -f "$ENV_CHECK" 2>/dev/null
+else
+  "$@"
+  STATUS=$?
+fi
+exit "$STATUS"

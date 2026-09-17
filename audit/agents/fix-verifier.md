@@ -39,7 +39,8 @@ You share ONE working tree with the fix agents and the orchestrator. The worktre
     Bash and put the result in `tests`; a `VERIFIED` backed by a green run beats a static-only one.
     Skip only when no runnable check exists, and say so in `tests`. If the command exists but
     cannot run in YOUR shell for environment reasons (no `APP_KEY`/`.env`, sandbox denial, DB role
-    error, missing binary), `tests` starts with `static-only ({reason})`, verbatim, and the
+    error, missing binary, or a `TEST_LOCK_ENV_ERROR:` line from `test-lock.sh` itself — CoreSimulator
+    unreachable from a sandboxed shell), `tests` starts with `static-only ({reason})`, verbatim, and the
     verdict is provisional: the orchestrator re-runs the test itself before accepting it (`fix.js`
     Stage 3). Never fabricate env values to get the run going, and never present a read-only
     review as if the tests had passed (incident 2026-08-31). **ALWAYS wrap the test command in the
