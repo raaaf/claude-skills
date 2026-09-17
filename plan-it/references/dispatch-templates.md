@@ -26,6 +26,15 @@ elif [ -f "$PROJECT_ROOT/package.json" ] && grep -q '"next"' "$PROJECT_ROOT/pack
 elif [ -f "$PROJECT_ROOT/nuxt.config.ts" ] || [ -f "$PROJECT_ROOT/nuxt.config.js" ]; then
   FRAMEWORK="nuxt"
   SOURCE_DIRS_ARR=("$PROJECT_ROOT/components/" "$PROJECT_ROOT/composables/" "$PROJECT_ROOT/pages/" "$PROJECT_ROOT/layouts/" "$PROJECT_ROOT/server/")
+elif [ -f "$PROJECT_ROOT/project.yml" ] || ls "$PROJECT_ROOT"/*.xcodeproj >/dev/null 2>&1 || ls "$PROJECT_ROOT"/Package.swift >/dev/null 2>&1; then
+  # Swift/iOS: the source root is a target directory named after the module, not src/.
+  # Without this branch the generic fallback probes src|lib|app, finds nothing, and the
+  # architecture and risk challengers review the plan with an empty file structure.
+  FRAMEWORK="swift-ios"
+  SOURCE_DIRS_ARR=()
+  while IFS= read -r dir; do
+    SOURCE_DIRS_ARR+=("$dir")
+  done < <(find "$PROJECT_ROOT" -maxdepth 2 -name '*.swift' -not -path '*/.build/*' -exec dirname {} \; 2>/dev/null | sort -u | head -20)
 elif [ -f "$PROJECT_ROOT/manage.py" ]; then
   FRAMEWORK="django"
   SOURCE_DIRS_ARR=()
@@ -125,7 +134,7 @@ Agent(
 
     1. Completeness — Are steps missing? Gaps between 'what the plan says' and 'what actually needs to be done'?
     2. Ordering — Is the sequence right? Dependencies wrong or not considered at all?
-    3. Effort — Re-estimate the effort yourself from the step list, independently; do NOT just sanity-check the author's number. Name the biggest item and say where your estimate differs from the plan's.
+    3. Effort — Re-estimate the effort yourself from the step list, independently; do NOT just sanity-check the author's number. Name the biggest item and say where your estimate differs from the plan's. If the plan introduces a view or interaction pattern with no precedent in the repo (chat thread, story engine, masonry grid, custom drawer), require its own line item and reject an estimate that folds it into the overall block: the first build of a pattern costs more than an edit to an existing view, because states, gestures, focus, Dynamic Type and both appearances all start from zero.
     4. Risks — What is the biggest risk the plan doesn't address?
     5. Actionability — Can a developer take the plan and start right away? Does every step have a checkable verify criterion?
 
