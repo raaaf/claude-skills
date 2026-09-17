@@ -178,7 +178,31 @@ orch_tree_hash() {
   local c; c=$(git stash create 2>/dev/null); c="${c:-HEAD}"
   git rev-parse "$c^{tree}" 2>/dev/null
 }
+# orch_marker_write <selected> <skipped> <incomplete> <degraded>
+#
+# The coverage arguments are mandatory, and that is the point: the gate used to live only in
+# SKILL.md prose, so an orchestrator that misread its own run result could call this helper and
+# get a green marker anyway. On 2026-09-17 three runs passed find.js its arguments by pointer
+# instead of by value, every scout got an empty scope, 13 of 14 dimensions came back `skipped`,
+# and the marker was written over a diff nobody had examined. Refusing here makes the numbers
+# impossible to skip past.
 orch_marker_write() {
+  local selected="${1-}" skipped="${2-}" incomplete="${3-}" degraded="${4-}"
+  for n in "$selected" "$skipped" "$incomplete" "$degraded"; do
+    case "$n" in
+      ''|*[!0-9]*)
+        echo "orch_marker_write: needs <selected> <skipped> <incomplete> <degraded> as counts from the find.js result" >&2
+        return 1 ;;
+    esac
+  done
+  [ "$selected" -gt 0 ] || { echo "orch_marker_write: refusing, no dimension was selected" >&2; return 1; }
+  [ "$incomplete" -eq 0 ] || { echo "orch_marker_write: refusing, $incomplete dimension(s) incomplete" >&2; return 1; }
+  [ "$degraded" -eq 0 ] || { echo "orch_marker_write: refusing, $degraded dimension(s) degraded" >&2; return 1; }
+  # One empty dimension is a repo without a frontend; most of them empty is a broken run.
+  if [ $((skipped * 2)) -gt "$selected" ]; then
+    echo "orch_marker_write: refusing, $skipped of $selected dimension(s) skipped (more than half)" >&2
+    return 1
+  fi
   local t m; t=$(orch_tree_hash) || t=""; m=$(orch__passed_path)
   orch__marker_ok "$m" || { echo "orch_marker_write: refusing $m (symlink or not owned by $USER)" >&2; return 1; }
   printf '%s\n' "$t" > "$m"

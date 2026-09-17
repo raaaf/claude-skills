@@ -799,6 +799,22 @@ if ((!args.files || args.files.length === 0) && Object.keys(dimensionFiles).leng
     'args.files is empty/absent while args.dimensionFiles is not.');
 }
 
+// The Workflow tool hands `args` to this script verbatim, so a caller that passes a
+// pointer instead of the values (an `argsFile` path, say) leaves every field undefined.
+// Nothing downstream notices: REPO_ROOT prints as "undefined" in each briefing, the scouts
+// get no files, every dimension ends `skipped`, and the run reports `complete` after burning
+// its full agent budget on nothing. Real runs on 2026-09-17 did that three times, 119 agents
+// in total, and still wrote the push marker. Refuse the run instead.
+if (typeof args.repoRoot !== 'string' || args.repoRoot === '') {
+  throw new Error('args.repoRoot must be the absolute path of the audited repo. ' +
+    'Pass the audit arguments inline as `args: { repoRoot, scope, files, ... }`; ' +
+    'the Workflow tool does not expand a file path or any other indirection.');
+}
+if ((args.scope ?? 'diff') === 'diff' && (!Array.isArray(args.files) || args.files.length === 0)) {
+  throw new Error('args.files must be a non-empty array for scope "diff". ' +
+    'Split the newline-separated scope list before passing it.');
+}
+
 const ctx = {
   repoRoot: args.repoRoot,
   scope: args.scope,

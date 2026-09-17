@@ -279,7 +279,7 @@ orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocke
   Minor is never fixed whatever its verdict, so an unverified Minor changes no action and is only
   listed under `### Unverified`; an unverified Critical/Important is a possible push-blocker nobody
   has ruled on and blocks until re-verified or decided),
-- a dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when
+- a single dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when
   both scouts ran without failing and returned zero files and zero clusters, so it means the
   dimension had nothing in scope. A failed scout puts `scout:files`/`scout:clusters` into
   `uncovered`, which makes the status `incomplete` instead, and that still blocks. Print the skipped
@@ -287,6 +287,13 @@ orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocke
   2026-09-15: the rule previously demanded `complete` for every dimension, which made the marker
   unreachable on any repo without a frontend, since `ui_design` and `copy` report `skipped` on every
   single run there and no re-run can change that.
+- **but MORE THAN HALF the selected dimensions `skipped` DOES block.** One empty dimension is a
+  repo without a frontend; most of them empty is a broken run, and the two are indistinguishable
+  from the result alone. On 2026-09-17 three runs passed their args by pointer instead of by value,
+  so every scout got `REPO_ROOT=undefined` and an empty file list; 13 of 14 dimensions came back
+  `skipped`, the run reported `complete`, and the marker was written. 119 agents produced a green
+  gate over an unexamined diff. Compute it as `skipped > selected / 2` and name the count in the
+  refusal, so the next such run stops at the gate instead of shipping.
 - `degradedDimensions` is empty.
 
 Coverage gates the marker because a run where dimensions did not finish is not a pre-push gate: a
@@ -303,7 +310,10 @@ on exactly the state it exists to catch.
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_marker_write   # only on the conditions above; writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
+# Counts from the Phase 2 find.js result: how many dimensions were selected, and how many came
+# back skipped / incomplete / degraded. They are mandatory, and the helper refuses on its own if
+# they do not hold, so the gate no longer depends on this prose being read correctly.
+orch_marker_write "$N_SELECTED" "$N_SKIPPED" "$N_INCOMPLETE" "$N_DEGRADED"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
 ```
 
 Release the in-progress marker, unconditionally (the block above only runs when the gate passed):
