@@ -24,21 +24,44 @@ set -euo pipefail
 EVALS_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES_DIR="$EVALS_DIR/fixtures"
 EXPECTED_DIR="$EVALS_DIR/expected"
+# Absolute path to this script, for --jobs > 1's `bash "$SELF_PATH"
+# --internal-run-one ...` re-invocation — resolved once, here, so it stays
+# correct regardless of what score_fixture_run's `cd "$tmp_dir"` later does to
+# the process's working directory.
+SELF_PATH="$EVALS_DIR/$(basename "$0")"
 
 # ---------------------------------------------------------------------------
 # Options. A full unscoped run is ~10 subagents and 40+ guideline reads PER
-# fixture (measured 2026-08-04: ~8-15 min each, so 4-7 h for the whole set).
-# That is fine for a release-grade run and useless for iterating on a prompt,
-# hence: run a subset, cap the per-fixture time, and optionally scope the audit
-# to the dimension the fixture actually tests.
+# fixture (measured 2026-08-04: ~8-15 min each, so 4-7 h for the whole set at
+# --jobs 1). --jobs N runs the slow part (the claude -p session per fixture)
+# concurrently, so the wall-clock cost drops roughly by a factor of N; see
+# --jobs below for what stays serial and why.
 #
 #   --only <substring>   only fixtures whose path contains the substring
-#   --timeout <seconds>  per-fixture timeout (default 1200)
+#   --timeout <seconds>  per-fixture timeout (default 1200; auto-scaled when
+#                        --jobs > 1 and this flag is NOT given, see --jobs)
 #   --scoped             run "/audit <dimension>" instead of a full "/audit",
 #                        derived from the fixture's category directory. Much
 #                        cheaper (1-2 workers), measures worker recall rather
 #                        than routing + worker recall, so DO NOT compare scoped
 #                        numbers against unscoped baselines.
+#   --jobs <N>           run N fixture sessions concurrently (default 1, i.e.
+#                        today's fully serial behaviour, same code path).
+#                        Split in two phases: phase A (parallel, under
+#                        xargs -P N) sets up each fixture's temp repo and runs
+#                        its "claude -p" session, writing the exact artifacts
+#                        a serial run already writes (*-auditlog.md,
+#                        *-stdout.txt) plus a small *.meta file recording
+#                        whether that fixture timed out; phase B (serial, the
+#                        existing --recheck scoring path) reads those
+#                        artifacts and updates the TOTAL_*/CAT_* counters —
+#                        those are shell state in the parent process and
+#                        cannot be written from a backgrounded subshell, which
+#                        is also why score_fixture() itself is not
+#                        parallelised. A run with --jobs > 1 is NOT compared
+#                        against baseline.json (see the Baseline block below):
+#                        concurrency changes the measurement (see --timeout),
+#                        not only its speed.
 #   --validate-only      run validate_expected() over every expected/*.json and
 #                        exit — no fixture runs, no model calls, no cost. Seconds
 #                        instead of hours. Prints a summary of errors/warnings by
@@ -50,10 +73,17 @@ EXPECTED_DIR="$EVALS_DIR/expected"
 # ---------------------------------------------------------------------------
 ONLY=""
 PER_FIXTURE_TIMEOUT=1200
+TIMEOUT_EXPLICIT=0
 SCOPED=0
 VALIDATE_ONLY=0
 RECHECK_DIR=""
-USAGE="usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped] [--validate-only] [--recheck <dir>]"
+JOBS=1
+# --internal-run-one is not a public option: it is how the parent process
+# invokes itself (one process per fixture, under xargs -P) to run phase A in
+# parallel. Not listed in USAGE on purpose.
+INTERNAL_RUN_ONE=0
+INTERNAL_FIXTURE_REL=""
+USAGE="usage: run-evals.sh [--only <substring>] [--timeout <sec>] [--scoped] [--jobs <N>] [--validate-only] [--recheck <dir>]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)
@@ -67,16 +97,43 @@ while [ $# -gt 0 ]; do
           echo "ERROR: --timeout requires a positive integer (seconds), got: '$PER_FIXTURE_TIMEOUT'" >&2
           exit 2 ;;
       esac
+      TIMEOUT_EXPLICIT=1
       shift 2 ;;
     --scoped)         SCOPED=1; shift ;;
+    --jobs)
+      [ $# -ge 2 ] || { echo "$USAGE" >&2; exit 2; }
+      JOBS="$2"
+      case "$JOBS" in
+        ''|*[!0-9]*|0)
+          echo "ERROR: --jobs requires a positive integer, got: '$JOBS'" >&2
+          exit 2 ;;
+      esac
+      shift 2 ;;
     --validate-only)  VALIDATE_ONLY=1; shift ;;
     --recheck)
       [ $# -ge 2 ] || { echo "$USAGE" >&2; exit 2; }
       RECHECK_DIR="$2"; shift 2 ;;
+    --internal-run-one)
+      [ $# -ge 2 ] || { echo "$USAGE" >&2; exit 2; }
+      INTERNAL_RUN_ONE=1; INTERNAL_FIXTURE_REL="$2"; shift 2 ;;
     -h|--help) echo "$USAGE"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+
+# Timeout auto-scaling for --jobs > 1: N concurrent "claude -p" sessions are
+# API-latency bound, not CPU bound (each one mostly waits on model responses),
+# so contention under concurrency is real but sublinear in N — it is not "N
+# sessions fully serialise". Chosen factor: +30% of the base timeout per
+# additional concurrent job (1 + (N-1)*0.3), so --jobs 2 scales 1200s to 1560s
+# and --jobs 4 to 2280s. This is a starting point, not a measured constant; if real runs show
+# jobs still hitting the scaled timeout, raise the 0.3 factor rather than
+# disabling the scaling. An explicit --timeout always wins: a user who states
+# a number gets exactly that number, scaled or not.
+if [ "$JOBS" -gt 1 ] && [ "$TIMEOUT_EXPLICIT" -eq 0 ]; then
+  PER_FIXTURE_TIMEOUT=$(awk -v t="$PER_FIXTURE_TIMEOUT" -v n="$JOBS" \
+    'BEGIN { printf "%d", t * (1 + (n - 1) * 0.3) + 0.999 }')
+fi
 
 # Fixture category -> audit dimension for --scoped. Categories without a clean
 # 1:1 dimension stay unscoped (empty value = full audit for that fixture).
@@ -587,7 +644,15 @@ if [ "$VALIDATE_ONLY" -eq 1 ]; then
   echo "--validate-only: no fixtures were run."
   exit 0
 fi
-validate_expected
+# A --internal-run-one child re-runs validate_expected() itself (population of
+# INVALID_EXPECTED must happen in every process, it is not shared across the
+# process boundary --jobs > 1 introduces) but stays quiet about it — the
+# parent already printed this exactly once, on the same expected/*.json set.
+if [ "$INTERNAL_RUN_ONE" -eq 1 ]; then
+  validate_expected >/dev/null 2>&1
+else
+  validate_expected
+fi
 
 TOTAL_EXPECTED=0
 TOTAL_FOUND=0
@@ -941,10 +1006,26 @@ if [ -n "$RECHECK_DIR" ]; then
 fi
 
 # Per-run artifact dir (gitignored via results/): session stdout + audit log
-# per fixture, for post-hoc diagnosis and rescoring without paid reruns.
-RESULTS_DIR="$EVALS_DIR/results/$(date +%Y-%m-%d_%H%M%S)"
-mkdir -p "$RESULTS_DIR"
-echo "Artifacts: $RESULTS_DIR"
+# per fixture, for post-hoc diagnosis and rescoring without paid reruns. A
+# --internal-run-one child process is one fixture of an already-started
+# --jobs > 1 run, so it writes into the PARENT's dir (passed via env, not
+# recomputed from date +%s — a fresh timestamp per child would scatter one
+# run's artifacts across N directories) and must not recreate it.
+if [ "$INTERNAL_RUN_ONE" -eq 1 ]; then
+  RESULTS_DIR="$EVAL_RESULTS_DIR"
+else
+  RESULTS_DIR="$EVALS_DIR/results/$(date +%Y-%m-%d_%H%M%S)"
+  mkdir -p "$RESULTS_DIR"
+  echo "Artifacts: $RESULTS_DIR"
+  # run-meta.json records the concurrency this run measured under, so a later
+  # --recheck or a human comparing results/ directories can tell a --jobs 4
+  # run apart from a --jobs 1 one without re-reading the console log. See the
+  # Baseline block near the end for why jobs > 1 also abstains from the
+  # baseline comparison itself.
+  run_mode_for_meta="unscoped"; [ "$SCOPED" -eq 1 ] && run_mode_for_meta="scoped"
+  printf '{"jobs": %s, "mode": "%s", "timeout": %s}\n' \
+    "$JOBS" "$run_mode_for_meta" "$PER_FIXTURE_TIMEOUT" > "$RESULTS_DIR/run-meta.json"
+fi
 
 # Check claude CLI available
 if ! command -v claude >/dev/null 2>&1; then
@@ -952,7 +1033,31 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 1
 fi
 
-score_fixture() {
+# Writes the small per-fixture status file phase B reads to redo the
+# TOTAL_*/CAT_DEGRADED bookkeeping score_fixture() used to do inline. Shared
+# by every score_fixture_run() return point so that bookkeeping can never
+# drift between exit paths.
+write_fixture_meta() {
+  local base="$1" decision="$2" unmeasured="$3" timeout_flag="$4" no_audit_log="$5" elapsed="$6"
+  {
+    echo "DECISION=$decision"
+    echo "UNMEASURED=$unmeasured"
+    echo "TIMEOUT=$timeout_flag"
+    echo "NO_AUDIT_LOG=$no_audit_log"
+    echo "ELAPSED=$elapsed"
+  } > "$RESULTS_DIR/$base.meta"
+}
+
+# Phase A: everything slow and parallelisable — set up the fixture's temp
+# repo and run its "claude -p" session — for exactly ONE fixture. Writes the
+# same artifacts a serial run always wrote (*-auditlog.md, *-stdout.txt) plus
+# a *.meta file (see write_fixture_meta) recording what phase B needs to redo
+# the TOTAL_*/CAT_DEGRADED bookkeeping without re-parsing the session output.
+# Touches NO TOTAL_*/CAT_* counters itself: those live in the parent process
+# and a --jobs > 1 run executes this function in a separate `claude` process
+# (via --internal-run-one) that cannot write them back. score_fixture_score()
+# (phase B, below) does that bookkeeping instead, from the meta file.
+score_fixture_run() {
   # fixture_rel is relative to FIXTURES_DIR: either a single fixture file
   # (category/name.ext) or a directory fixture (category/name/, several files
   # forming one scenario, e.g. docs/test-count-drift/{README.md,widget.test.ts}).
@@ -977,6 +1082,7 @@ score_fixture() {
   local expected_file="$EXPECTED_DIR/$base.json"
   if [ ! -f "$expected_file" ]; then
     echo "  SKIP $fixture_rel (no expected/$base.json)"
+    write_fixture_meta "$base" "SKIP" 0 0 0 0
     return
   fi
 
@@ -986,10 +1092,14 @@ score_fixture() {
   # at validate_expected() for what counts as invalidating vs. a warning.
   if [ -n "${INVALID_EXPECTED[$base]:-}" ]; then
     echo "  INVALID_EXPECTED $fixture_rel (expected/$base.json: ${INVALID_EXPECTED[$base]}) — skipped, not scored"
-    TOTAL_INVALID_EXPECTED=$((TOTAL_INVALID_EXPECTED + 1))
+    write_fixture_meta "$base" "INVALID_EXPECTED" 0 0 0 0
     return
   fi
-  TOTAL_CANDIDATES=$((TOTAL_CANDIDATES + 1))
+  # TOTAL_CANDIDATES itself is counted in phase B (score_fixture_score), from
+  # DECISION=CANDIDATE below — every path past this point writes that decision
+  # regardless of what happens next (mktemp failure, timeout, ...), exactly
+  # mirroring where the old score_fixture() incremented it: unconditionally,
+  # before the mktemp attempt.
 
   # Setup temp repo. A failed mktemp must not silently vanish as a zero-recall
   # fixture (2026-09-10 incident: it did, with exit 0) — count it as UNMEASURED
@@ -997,7 +1107,7 @@ score_fixture() {
   local tmp_dir
   if ! tmp_dir=$(mktemp -d); then
     echo "  UNMEASURED $fixture_rel: mktemp failed, fixture never ran" >&2
-    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    write_fixture_meta "$base" "CANDIDATE" 1 0 0 0
     return
   fi
   # Harness scratch lives OUTSIDE the audited repo. eval-settings.json and
@@ -1011,7 +1121,7 @@ score_fixture() {
   local aux_dir
   if ! aux_dir=$(mktemp -d); then
     echo "  UNMEASURED $fixture_rel: mktemp failed for the harness scratch dir, fixture never ran" >&2
-    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    write_fixture_meta "$base" "CANDIDATE" 1 0 0 0
     rm -rf "$tmp_dir"
     return
   fi
@@ -1123,7 +1233,12 @@ score_fixture() {
   # timeout(1) exits 124 when it had to kill the child; that is the
   # deterministic timeout signal. Wall-clock elapsed alone can mislabel a
   # fixture that finished right at the boundary, so only 124 decides the
-  # branch below, elapsed is still reported for the log.
+  # branch below, elapsed is still reported for the log. timeout_flag feeds
+  # write_fixture_meta so phase B can set TOTAL_TIMEOUT/CAT_DEGRADED exactly
+  # as the old inline code did — that signal must survive across the process
+  # boundary a --jobs > 1 run introduces, or a killed session would silently
+  # score as if it had finished.
+  local timeout_flag=0
   if [ "$run_rc" -eq 124 ]; then
     # The old wording here claimed "scored as zero recall, treat this fixture as
     # unmeasured", which is not what happens: scoring proceeds below against
@@ -1132,8 +1247,7 @@ score_fixture() {
     # scored hits=1 under a line saying it had been scored zero). A result line
     # that contradicts the number next to it is worse than no line.
     echo "  TIMEOUT $fixture_rel after ${elapsed}s — session killed; whatever it had written so far is still scored below, so its number is a FLOOR, not a final result"
-    TOTAL_TIMEOUT=$((TOTAL_TIMEOUT + 1))
-    CAT_DEGRADED["${fixture_rel%%/*}"]="timeout"
+    timeout_flag=1
   fi
 
   # Score against the audit log; headless low-effort sessions do not reliably
@@ -1187,6 +1301,7 @@ score_fixture() {
   if [ "$logfile_count" -gt 1 ]; then
     echo "  MULTI_LOG $fixture_rel: $logfile_count files matched the audit-log pattern, picked the lexicographically last (newest embedded timestamp): $(basename "$logfile")"
   fi
+  local no_audit_log_flag=0
   if [ -z "$logfile" ]; then
     echo "  NO_AUDIT_LOG $fixture_rel: no file under .claude/audits/ matched the audit-log naming pattern (YYYY-MM-DD_HHMMSS-branch.md) — falling back to session stdout only; a low/zero recall here is UNCONFIRMED, not a proven miss"
     # Name what WAS there. Without this the warning states a negative and nothing
@@ -1201,7 +1316,7 @@ score_fixture() {
     else
       echo "    .claude/audits/ holds no .md file at all (the session wrote no log)"
     fi
-    TOTAL_NO_AUDIT_LOG=$((TOTAL_NO_AUDIT_LOG + 1))
+    no_audit_log_flag=1
   fi
 
   # Persist artifacts so misses can be diagnosed/rescored without a paid rerun.
@@ -1224,7 +1339,7 @@ score_fixture() {
     # leaving no audit log AND no stdout, and scored as zero recall — visually
     # identical to a real recall collapse. UNMEASURED, not a scored miss.
     echo "  UNMEASURED $fixture_rel: no audit log and no session output"
-    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    write_fixture_meta "$base" "CANDIDATE" 1 "$timeout_flag" "$no_audit_log_flag" "$elapsed"
     return
   fi
 
@@ -1240,12 +1355,78 @@ score_fixture() {
   if [ -z "$logfile" ] && printf '%s' "$joined_log" | grep -qiE 'Failed to authenticate|OAuth access token has been revoked|API Error: 401|Invalid API key|credit balance is too low'; then
     echo "  UNMEASURED $fixture_rel: the session never started (authentication or account error), nothing was audited"
     printf '%s' "$joined_log" | grep -iE 'Failed to authenticate|OAuth|API Error|Invalid API key|credit balance' | head -1 | sed 's/^/    /'
-    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    write_fixture_meta "$base" "CANDIDATE" 1 "$timeout_flag" "$no_audit_log_flag" "$elapsed"
     return
   fi
 
+  # Actual scoring (score_against_log, which mutates TOTAL_*/CAT_* counters)
+  # happens in phase B (score_fixture_score), reading these same artifacts
+  # back from $RESULTS_DIR — see build_joined_log there. Nothing left to do
+  # here but record that this fixture finished as a scoreable candidate.
+  write_fixture_meta "$base" "CANDIDATE" 0 "$timeout_flag" "$no_audit_log_flag" "$elapsed"
+}
+
+# Phase B: serial and fast — read one fixture's artifacts (already written by
+# score_fixture_run) and its *.meta file, redo the exact TOTAL_*/CAT_DEGRADED
+# bookkeeping score_fixture() used to do inline, and score it via the same
+# score_against_log() the --recheck path already uses. This is what makes
+# --jobs > 1 safe: whichever process ran phase A, all counter mutations
+# happen here, once, in the parent.
+score_fixture_score() {
+  local fixture_rel="$1"
+  local category
+  category=$(printf '%s' "$fixture_rel" | cut -d/ -f1)
+  local fixture_path="$FIXTURES_DIR/$fixture_rel"
+  local base
+  if [ -d "$fixture_path" ]; then
+    base=$(basename "$fixture_rel")
+  else
+    base=$(basename "$fixture_rel" | sed 's/\..*$//')
+  fi
+  local expected_file="$EXPECTED_DIR/$base.json"
+  local meta_file="$RESULTS_DIR/$base.meta"
+  # No meta file means score_fixture_run() never got to write one for this
+  # fixture (should not happen — every one of its return points does — but a
+  # missing file must not abort the whole scoring pass under set -e).
+  [ -f "$meta_file" ] || return 0
+
+  local decision unmeasured timeout_flag no_audit_log elapsed
+  decision=$(grep '^DECISION=' "$meta_file" | cut -d= -f2)
+  if [ "$decision" != "CANDIDATE" ]; then
+    [ "$decision" = "INVALID_EXPECTED" ] && TOTAL_INVALID_EXPECTED=$((TOTAL_INVALID_EXPECTED + 1))
+    # decision == SKIP: nothing to count, matches score_fixture()'s old SKIP path.
+    return 0
+  fi
+  unmeasured=$(grep '^UNMEASURED=' "$meta_file" | cut -d= -f2)
+  timeout_flag=$(grep '^TIMEOUT=' "$meta_file" | cut -d= -f2)
+  no_audit_log=$(grep '^NO_AUDIT_LOG=' "$meta_file" | cut -d= -f2)
+  elapsed=$(grep '^ELAPSED=' "$meta_file" | cut -d= -f2)
+
+  TOTAL_CANDIDATES=$((TOTAL_CANDIDATES + 1))
+  if [ "$timeout_flag" = "1" ]; then
+    TOTAL_TIMEOUT=$((TOTAL_TIMEOUT + 1))
+    CAT_DEGRADED["$category"]="timeout"
+  fi
+  [ "$no_audit_log" = "1" ] && TOTAL_NO_AUDIT_LOG=$((TOTAL_NO_AUDIT_LOG + 1))
+
+  if [ "$unmeasured" = "1" ]; then
+    TOTAL_UNMEASURED=$((TOTAL_UNMEASURED + 1))
+    return 0
+  fi
+
+  local joined_log log
+  joined_log=$(build_joined_log "$RESULTS_DIR/$base-auditlog.md" "$RESULTS_DIR/$base-stdout.txt")
+  log=$(printf '%s' "$joined_log" | tr '-' ' ')
   score_against_log "$base" "$expected_file" "$log" "$joined_log" "${elapsed}s"
 }
+
+# A --internal-run-one child IS one parallel phase-A worker: run that single
+# fixture's session and stop, none of the summary/baseline machinery below
+# applies to it (the parent, not this child, prints the run's Summary).
+if [ "$INTERNAL_RUN_ONE" -eq 1 ]; then
+  score_fixture_run "$INTERNAL_FIXTURE_REL"
+  exit 0
+fi
 
 echo "Audit Eval Suite"
 echo "================"
@@ -1253,14 +1434,45 @@ echo
 
 # Iterate fixture units: immediate children of each category directory
 # (fixtures/<category>/<entry>). An entry that is itself a directory is one
-# multi-file fixture, scored once by score_fixture — this intentionally does
-# NOT recurse past that level, so its inner files are never also visited as
-# independent single-file fixtures.
+# multi-file fixture, scored once — this intentionally does NOT recurse past
+# that level, so its inner files are never also visited as independent
+# single-file fixtures. Collected into an array (not streamed straight into
+# score_fixture_run as before) because --jobs > 1 needs the full list twice:
+# once to fan out phase A under xargs -P, once to walk phase B in order.
+FIXTURE_LIST=()
 while IFS= read -r -d '' fixture; do
   rel="${fixture#$FIXTURES_DIR/}"
   if [ -n "$ONLY" ] && [ "${rel#*$ONLY}" = "$rel" ]; then continue; fi
-  score_fixture "$rel"
+  FIXTURE_LIST+=("$rel")
 done < <(find "$FIXTURES_DIR" -mindepth 2 -maxdepth 2 ! -name ".*" -print0)
+
+if [ "$JOBS" -eq 1 ]; then
+  # Default path: phase A and phase B run back to back, in this same process,
+  # per fixture — byte-identical to the pre---jobs score_fixture(), just split
+  # into two function calls instead of one.
+  for rel in "${FIXTURE_LIST[@]}"; do
+    score_fixture_run "$rel"
+    score_fixture_score "$rel"
+  done
+else
+  echo "Running phase A (session setup + claude -p) for ${#FIXTURE_LIST[@]} fixture(s) under --jobs $JOBS ..."
+  # Phase A, parallel: one child process per fixture, via this same script
+  # invoked with --internal-run-one. -0/-print0 throughout for NUL safety
+  # (fixture paths are kebab-case in practice, but nothing here assumes it).
+  # Re-pass --timeout with the (possibly auto-scaled) PER_FIXTURE_TIMEOUT so
+  # each child uses the parent's effective value rather than recomputing its
+  # own scaling (which would double-scale since a child's own JOBS is 1).
+  scoped_flag=(); [ "$SCOPED" -eq 1 ] && scoped_flag=(--scoped)
+  printf '%s\0' "${FIXTURE_LIST[@]}" | EVAL_RESULTS_DIR="$RESULTS_DIR" \
+    xargs -0 -P "$JOBS" -I{} bash "$SELF_PATH" --internal-run-one {} \
+      --timeout "$PER_FIXTURE_TIMEOUT" "${scoped_flag[@]}"
+  echo
+  echo "Phase A complete. Scoring (phase B, serial) ..."
+  for rel in "${FIXTURE_LIST[@]}"; do
+    echo "  $rel"
+    score_fixture_score "$rel"
+  done
+fi
 
 echo
 echo "Summary"
@@ -1305,7 +1517,13 @@ if [ -f "$BASELINE_FILE" ]; then
   baseline_mode=$(jq -r '.mode // "unknown"' "$BASELINE_FILE" 2>/dev/null || echo unknown)
   run_mode="unscoped"; [ "$SCOPED" -eq 1 ] && run_mode="scoped"
   echo
-  if [ "$baseline_mode" != "$run_mode" ]; then
+  # Same abstention as the mode mismatch below, same wording/structure: a run
+  # under concurrency measures a different thing than baseline.json (timeouts
+  # are scaled, sessions contend with each other), so it is compared to
+  # nothing rather than risking a false BELOW BASELINE or a false "holds".
+  if [ "$JOBS" -gt 1 ]; then
+    echo "Baseline: not compared (this run used --jobs $JOBS, baseline.json is only compared at --jobs 1)"
+  elif [ "$baseline_mode" != "$run_mode" ]; then
     echo "Baseline: not compared (this run is $run_mode, baseline.json was recorded $baseline_mode)"
   else
     echo "Baseline (recorded $(jq -r '.recorded // "?"' "$BASELINE_FILE"), $baseline_mode):"

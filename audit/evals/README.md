@@ -243,15 +243,20 @@ Outputs precision (correct findings / all findings) and recall (correct findings
 **Know the cost before you start a full run.** A fixture is a single file, but
 an unscoped `/audit` still dispatches around ten workers that read dozens of
 guideline files. Measured on 2026-08-04, one security fixture at `--effort
-low`: 896 seconds, 6.93 USD. The full set is hours and triple-digit dollars.
+low`: 896 seconds, 6.93 USD. At `--jobs 1` (the default, fully serial) the
+full ~109-fixture set is hours and triple-digit dollars; `--jobs N` runs N
+fixture sessions concurrently and cuts the wall-clock time roughly by a factor
+of N (the dollar cost is unchanged — it is the same sessions, just not waited
+on one at a time).
 
-Three options exist for that reason:
+Options exist for that reason:
 
 | Option | Effect |
 |---|---|
 | `--only <substring>` | Run only fixtures whose path contains the substring |
 | `--scoped` | Run `/audit <dimension>` derived from the fixture's category instead of a full audit. Far cheaper, but it measures worker recall instead of routing plus worker recall, so scoped numbers are not comparable to unscoped baselines |
-| `--timeout <sec>` | Per-fixture cap. A timed-out fixture scores as a miss, which is indistinguishable from a recall collapse, so timeouts are printed per fixture and totalled in the summary. Never read a recall number without checking that line |
+| `--jobs <N>` | Run N fixture sessions concurrently (default 1). Splits into a parallel phase (session setup + run) and a serial phase (scoring, reusing the `--recheck` path), so the counters that make a run comparable to `baseline.json` are never touched from a backgrounded subshell. A run with `--jobs > 1` is **not** compared against `baseline.json` (concurrency changes what is measured, not only its speed — see `--timeout`), and it auto-scales the default per-fixture timeout upward unless `--timeout` is given explicitly |
+| `--timeout <sec>` | Per-fixture cap. A timed-out fixture's partial output is still scored (a FLOOR, not a miss), so timeouts are printed per fixture and totalled in the summary, and the category is excluded from the baseline comparison. Never read a recall number without checking that line |
 | `--validate-only` | Run only `validate_expected()` (see above) and exit. Seconds, no cost, no fixtures run — use this first |
 | `--recheck <dir>` | Re-run the scorer-gap tripwire (see below) over a stored `results/<timestamp>/` directory instead of running fixtures. Seconds, no cost — see "Scorer-gap tripwire" below |
 
