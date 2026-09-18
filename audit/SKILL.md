@@ -203,6 +203,24 @@ orch_progress_touch
 
 Then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
 
+**Feed the recurrence store NOW, before deciding anything.** Write one normalized pattern per
+`CONFIRMED` verdict to a file (Write tool, one per line: short, no file or line, so the same problem
+elsewhere in the codebase collapses onto the same key) and hand it to the store:
+
+```bash
+for c in "/Users/rafael/.claude/skills/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
+orch_patterns_from_file recur {path of the file you just wrote}   # a pattern is finding text and never goes on a command line
+```
+
+It belongs HERE, at the verdicts, and not in the fix wave: `AUDIT_FIX_SCOPE=none` is the common
+case, `Minor` is never fixed at any scope, and a fix wave that never runs cannot feed a counter.
+Until 2026-09-18 this duty was documented in `references/learning-phase.md` and
+`agents/learning-agent.md` as living in `workflows/fix.js` and `agents/fix-agent.md`, and it was in
+neither: 192 audit logs on disk had produced 36 store entries, so `patterns.json` had effectively
+never been fed by the loop, and every retro reasoned about recurrence from a counter that did not
+move. Phase 5 Step 0.5 still checks the count and back-fills, but that is the repair, not the path.
+
 **Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
 
 ## Phase 3: Fix
