@@ -571,8 +571,19 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   verifierGroups.forEach((group, i) => {
     const replies = verifierResults[i];
     const expected = new Set(group.map((f) => f.id));
-    if (Array.isArray(replies) && replies.some((v) => !v || !expected.has(v.id))) {
-      uncovered.push(`verifier:${i}:unknown-id`);
+    // A reply for an id nobody asked about is a sloppy verifier, NOT a coverage
+    // gap: the per-finding loop below demands exactly one valid verdict for every
+    // finding in the group and sends the rest to `unverified`, so a stray extra
+    // reply changes no finding's fate. Pushing it into `uncovered` (until
+    // 2026-09-18) blocked the dimension unconditionally, which made a verifier's
+    // typo weigh MORE than a genuinely unverified finding: the 2026-09-16 rule
+    // deliberately blocks only on an unverified Critical/Important. A real run
+    // that day lost its marker to this with all 24 findings correctly verified,
+    // and the audit had to be re-marked by hand. Log it, do not gate on it.
+    const strays = Array.isArray(replies) ? replies.filter((v) => !v || !expected.has(v.id)) : [];
+    if (strays.length) {
+      logFn(`${dimension}: verifier group ${i} returned ${strays.length} verdict(s) for unknown ids ` +
+        `(${strays.map((v) => (v && v.id) || 'null').join(', ')}); ignored, every finding in the group is still verified on its own`);
     }
     for (const finding of group) {
       const matches = Array.isArray(replies) ? replies.filter((v) => v && v.id === finding.id) : [];
