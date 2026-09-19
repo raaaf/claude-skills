@@ -37,11 +37,33 @@ set -u
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 HASH=$(printf '%s' "$REPO_ROOT" | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
+
+# Lock granularity is repo PLUS destination. A PHP suite contends on one test
+# database, so the repo alone is the right key there. An xcodebuild run
+# contends on one booted simulator, and two runs against the SAME simulator
+# kill each other: the loser dies with "Early unexpected exit, operation never
+# finished bootstrapping ... Test crashed with signal kill", which reads like a
+# product crash and cost a session two wasted re-runs on 2026-09-19. Two runs
+# against DIFFERENT simulators are genuinely independent and should not
+# serialize, so the destination id joins the key when there is one.
+DEST_KEY=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-destination" ]; then
+    case "$arg" in
+      *id=*) DEST_KEY=$(printf '%s' "$arg" | sed -n 's/.*id=\([^,]*\).*/\1/p') ;;
+      *) DEST_KEY=$(printf '%s' "$arg" | tr -c 'A-Za-z0-9' '-') ;;
+    esac
+  fi
+  prev="$arg"
+done
+[ -n "$DEST_KEY" ] && DEST_KEY="-$(printf '%s' "$DEST_KEY" | tr -c 'A-Za-z0-9' '-')"
+
 GIT_COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
 if [ -n "$GIT_COMMON" ] && [ -d "$GIT_COMMON" ] && [ -w "$GIT_COMMON" ]; then
-  LOCK_DIR="$GIT_COMMON/claude-audit-test-lock"
+  LOCK_DIR="$GIT_COMMON/claude-audit-test-lock${DEST_KEY}"
 else
-  LOCK_DIR="${TMPDIR:-/tmp}/claude-audit-test-lock-${HASH}"
+  LOCK_DIR="${TMPDIR:-/tmp}/claude-audit-test-lock-${HASH}${DEST_KEY}"
 fi
 OWNER_FILE="$LOCK_DIR/owner"
 TTL_SECONDS=900
@@ -152,7 +174,9 @@ ENV_CHECK=$(mktemp "${TMPDIR:-/tmp}/audit-test-lock-output.XXXXXX" 2>/dev/null) 
 if [ -n "$ENV_CHECK" ]; then
   "$@" 2>&1 | tee "$ENV_CHECK"
   STATUS=${PIPESTATUS[0]}
-  if [ "$STATUS" -ne 0 ] && grep -qiE 'simdiskimaged|CoreSimulatorService|unable to boot device|no devices are booted|could not find.*(simulator|runtime)|no runtimes discoverable|xcresult.*(operation not permitted|permission denied)' "$ENV_CHECK" 2>/dev/null; then
+  if [ "$STATUS" -ne 0 ] && grep -qiE 'never finished bootstrapping|crashed with signal kill|Early unexpected exit' "$ENV_CHECK" 2>/dev/null; then
+    echo "TEST_LOCK_COLLISION: the test runner was killed before it connected, which is what a second concurrent run against the same simulator looks like -- not a product crash and not a failing test. Re-run once the other run has finished; the lock at $LOCK_DIR only serializes callers that go through this wrapper." >&2
+  elif [ "$STATUS" -ne 0 ] && grep -qiE 'simdiskimaged|CoreSimulatorService|unable to boot device|no devices are booted|could not find.*(simulator|runtime)|no runtimes discoverable|xcresult.*(operation not permitted|permission denied)' "$ENV_CHECK" 2>/dev/null; then
     echo "TEST_LOCK_ENV_ERROR: CoreSimulator looks unreachable from this sandboxed shell (simdiskimaged/no runtimes/xcresult write denial) -- this is an environment failure, not a test failure or an incomplete fix." >&2
   fi
   rm -f "$ENV_CHECK" 2>/dev/null

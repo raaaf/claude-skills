@@ -241,6 +241,17 @@ orch_state_save TEST_COMMAND
 verifiers there is no suite rather than handing them `test-lock.sh undefined`), and the fix wave's
 verification rests on the fix-verifier's read alone. This repo is that case.
 
+**An empty `TEST_COMMAND` does not exempt the orchestrator from the lock.** Every test command YOU
+run yourself, at any phase, goes through `bash "$AUDIT_BIN/test-lock.sh" <command...>`, including an
+`xcodebuild test` you assembled by hand because the repo declares no `test-command:`. The lock keys
+on the repo plus the `-destination` id, so runs against one simulator serialize and runs against
+different simulators still go in parallel. Skipping it is how two concurrent `xcodebuild test` runs
+land on one booted simulator and kill each other: the loser exits with "Early unexpected exit,
+operation never finished bootstrapping ... Test crashed with signal kill", which reads like a
+product crash. That cost a session three wasted re-runs and one wrong diagnosis on 2026-09-19, with
+the lock sitting unused in this very directory. `test-lock.sh` now prints `TEST_LOCK_COLLISION` when
+it sees that signature, so a run that slipped past the lock at least names itself.
+
 Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" $TEST_COMMAND` → `BASELINE_FAILURES`.
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
