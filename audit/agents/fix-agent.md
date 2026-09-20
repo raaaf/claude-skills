@@ -146,6 +146,17 @@ After every rename or extract of a named symbol (trait, class, method, namespace
    ```
 2. Switch every consumer and every import to the new name. Remaining hits are an incomplete fix.
 3. Run `vendor/bin/phpstan analyse {file}` on every changed file. This catches missing imports and invented framework methods that a plain grep misses.
+   If PHPStan aborts with `Internal error: ... is not a file`, the shared result cache (`${TMPDIR:-/tmp}/phpstan`) still points at phars of a deleted worktree. `rm -rf "${TMPDIR:-/tmp}/phpstan"` once and re-run; `clear-result-cache` does not help. Report as an open point that the project should set a repo-local `tmpDir` in `phpstan.neon` so this stops recurring (3rd occurrence on one day, 2026-09-19).
+
+## Self-check before finishing a NEW test file
+
+A test that compares an enum-cast column against a string literal passes on the wrong thing or
+fails for the wrong reason, and the project's `EnumBladeComparisonTest` only covers Blade, not
+tests. Before reporting APPLIED for any test file you created or extended:
+
+1. List the enum-cast fields of the models the test touches (`casts()` in the model, or `php artisan model:show`).
+2. Grep the test for those field names next to a string literal in assertions and factory state, e.g. `grep -nE "(status|role|type|audience)['\"]?\s*(=>|,|\))\s*['\"]" {test file}`.
+3. Every hit becomes an enum instance (`EventStatus::Draft`, not `'draft'`). The exception the project allows: request arrays passed to a service that compares against `->value` internally.
 
 ## Special case: UI / color / token rename
 
