@@ -43,7 +43,7 @@ FILES=$(
     git diff --name-only
     git diff --name-only --staged
     git ls-files --others --exclude-standard
-  } | grep -v '^$' | sort -u || true
+  } | grep -v '^$' | grep -vE '(^|/)\.claude/audits/' | sort -u || true   # audit logs are never a review subject; in scope they set copy/ux to incomplete (2026-09-20)
 )
 
 echo "---FILES---"

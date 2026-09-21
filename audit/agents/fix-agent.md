@@ -121,6 +121,10 @@ None of this shows up in a test run, so a green suite is not evidence that the h
 - Edited such a file via Edit anyway → re-read it, and run the project's namespace-consistency test (`NamespaceConsistencyTest` or equivalent) before reporting.
 - **A test that goes red after your own edits is never "pre-existing" until you have proven it.** Check with `git stash list`-free means: `git show HEAD:<path>` gives you the pre-fix file — diff your version against it and re-run the test on the parts you did not touch. Declaring a self-caused breakage pre-existing hands a real regression to the next round as someone else's problem.
 
+## One file per assignment (HARD)
+
+You own exactly the file named in the assignment. If the finding text tells you to also add or extend a test file, do NOT: report it in NOTES as "test needed in <path>" and let the orchestrator dispatch it. A report whose `files` lists two paths is treated as not-owned and skips verification (2026-09-20).
+
 ## Special case: Utility extraction / centralization
 
 If the finding extracts a new shared utility (new `lib/*.js`, new helper/trait/mixin) and centralizes a previously duplicated pattern, it is NOT enough to migrate only the file named in the finding — otherwise the pattern stays duplicated everywhere else and the fix is incomplete.

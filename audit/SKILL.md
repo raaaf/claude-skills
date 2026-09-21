@@ -173,6 +173,20 @@ orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT f
 FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
 FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
 printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
+
+# Optional Jev routing. The global default is `assist`; set `AUDIT_JEV_MODE=off`
+# to disable Jev. `shadow` only records a comparison;
+# `assist` may provide bounded priority hints to file scouts. `prune` is
+# explicit and requires bounded code context; find.js independently limits it
+# to complete-context, non-floor, low-risk file-scout pairs.
+AUDIT_JEV_MODE="${AUDIT_JEV_MODE:-assist}"
+AUDIT_JEV_CONTEXT_MODE="${AUDIT_JEV_CONTEXT_MODE:-paths}"   # code upload is opt-in; paths remains the default
+JEV_DIMENSION_FILES='{}'
+if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
+  JEV_DIMENSION_FILES=$(printf '%s\n' "$STRIPE_FILES" | node -e 'const fs=require("fs"); console.log(JSON.stringify({payments:fs.readFileSync(0,"utf8").split("\n").filter(Boolean)}))')
+fi
+JEV_ROUTER=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-jev-routes.mjs" "$PROJECT_ROOT" "$AUDIT_JEV_MODE" "$AUDIT_DIMENSIONS" "$JEV_DIMENSION_FILES" diff "$AUDIT_JEV_CONTEXT_MODE")
+printf 'JEV_ROUTER=%s\n' "$JEV_ROUTER"   # pass this JSON unchanged as jevRouter below
 ```
 
 This matters because two real sessions hit the old inline-content approach's cost directly: one
@@ -188,9 +202,31 @@ throughout (`files.slice`, `files.filter`). Split `ALLE_DATEIEN` on newlines and
 on commas when building the call. A real run on 2026-09-15 failed here in 14ms because this line
 read as if the shell values could be passed through unchanged.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {} } })`,
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, jevRouter: JSON.parse(JEV_ROUTER) } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
 `payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
+
+`JEV_ROUTER` is an optional path-and-metadata-only Jev router. Its default mode is `assist`; set
+`AUDIT_JEV_MODE=off` to disable it. A
+missing key, response failure, invalid result, or scope over 64 complete file-dimension pairs returns
+observable fallback metadata and leaves the existing pipeline identical. `shadow` leaves scout
+briefings unchanged. `assist` adds only a normalized `JEV_ASSIST_PRIORITY_HINT` to file-scout
+briefings; all `SCOPE_FILES` and `FLOOR_FILES` remain eligible and no route is pruned. `prune` is
+only effective with `AUDIT_JEV_CONTEXT_MODE=code` and may remove a file only for `seo`, `a11y`,
+`typography`, `ui_design`, `ux`, `animation`, or `copy`, when Jev returns `not_relevant`, context is
+complete, and no deterministic floor covers that file. `docs_sync` remains cluster-only and is not
+pruned. Architecture, security, performance, code quality, privacy, and payments never prune. A
+fallback, invalid response, uncertain response, unsafe context, or incomplete context preserves full scope. Read
+`references/jev-shadow-router.md` before changing this pilot. Routing agreement is not bug recall.
+`AUDIT_JEV_CONTEXT_MODE=code` is an explicit opt-in that sends bounded, safe source context for the
+supported routing dimensions. It falls back before the API call for unsafe context. The assist hint is
+advisory and is omitted for fallback, incomplete, or invalid Jev results. When `AUDIT_JEV_MODE=prune`,
+record `jevRouter.prune.prunedCount`, `preservedCount`, and per-dimension counts alongside the usual
+scope and coverage results. When `AUDIT_JEV_MODE` is `shadow`, `assist`, or `prune`, record `jevRouter.status`, fallback `reason`, candidate count, latency,
+cache status, usage, and comparison totals from the Workflow result in the audit log. Set the
+optional `JEV_ROUTER_CACHE_DIR` only to a private directory when repeated code-context runs should
+reuse normalized routes. The cache stores no source content and is disabled by default. Never log
+the key or API body.
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
@@ -213,7 +249,7 @@ orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; 
 orch_patterns_from_file recur {path of the file you just wrote}   # a pattern is finding text and never goes on a command line
 ```
 
-It belongs HERE, at the verdicts, and not in the fix wave: `AUDIT_FIX_SCOPE=none` is the common
+This step runs after EVERY `find.js` call of the run, including a re-run of single dimensions (a copy/ux re-run on 2026-09-20 produced 5 confirmed findings that reached the store only via the Phase 5 back-fill). It belongs HERE, at the verdicts, and not in the fix wave: `AUDIT_FIX_SCOPE=none` is the common
 case, `Minor` is never fixed at any scope, and a fix wave that never runs cannot feed a counter.
 Until 2026-09-18 this duty was documented in `references/learning-phase.md` and
 `agents/learning-agent.md` as living in `workflows/fix.js` and `agents/fix-agent.md`, and it was in
@@ -255,6 +291,8 @@ it sees that signature, so a run that slipped past the lock at least names itsel
 Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" $TEST_COMMAND` → `BASELINE_FAILURES`.
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
+
+Every `fixes[]` entry names exactly ONE file. When a fix needs its own test file too, send the test as a second entry (or a second `fix.js` call), never as a hint inside the first: `fix.js`'s ownership check (`hasOwnedChange`) treats a fixer that touched two files as not-owned, skips the fix-verifier and returns `incomplete` for a fix that was fine (2026-09-20, the orchestrator had to verify by hand).
 
 Hold back any finding that rewrites an intent doc (`DESIGN.md`, `PRODUCT.md`, or any doc whose job is to state current product/architecture status) out of this round: send it through its own later `fix.js` call after the rest of the fix wave above has landed and been verified, not in the same batch. Rewriting the doc in parallel with the code it describes leaves it stale before the round even finishes (2nd confirmed occurrence, 2026-09-17).
 
