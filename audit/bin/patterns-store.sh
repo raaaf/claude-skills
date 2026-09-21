@@ -334,7 +334,7 @@ esac
 
 # .gitignore courtesy (only on add, not every call): see gitignore_ensure in
 # lib-git-base.sh.
-if [ "$CMD" = "add" ] && command -v gitignore_ensure >/dev/null 2>&1; then
+if { [ "$CMD" = "add" ] || [ "$CMD" = "recur" ]; } && command -v gitignore_ensure >/dev/null 2>&1; then   # recur also creates the baseline file; an untracked file blocked a deploy on 2026-09-21
   gitignore_ensure "$PROJECT_ROOT" '.claude/audits/patterns.json'
   gitignore_ensure "$PROJECT_ROOT" '.claude/audits/.patterns-recurrence-baseline'
 fi
