@@ -79,6 +79,8 @@ function import(file: UploadedFile): ImportResult
 
 Each extracted method is independently testable and its name documents its purpose.
 
+**SwiftUI `body` counts as a function.** A `body` (or any view builder property) over ~150 lines that mixes 3+ distinct concerns in one modifier chain (layout geometry, `onChange`/lifecycle handlers, `.sheet`/`.fullScreenCover` presentations, overlays and toasts, `safeAreaInset` chrome) is Important: name the groups and the line span. The fix is a split into named `private func` helpers that keep the modifier order verbatim (order across a `.sheet`/`.overlay` boundary is behaviour), not a reordering. Seen 2026-09-20 at ~210 lines with 5 onChange + 6 presentations + 3 overlays in one chain.
+
 ## III. Type Safety
 
 Type hints are executable documentation. They catch bugs at write-time, not runtime.

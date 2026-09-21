@@ -43,6 +43,8 @@ The wrong abstraction is far more expensive than duplication. If you extract a s
 
 **Same-diff duplication gets no grace period.** The acceptance cases above apply to duplication that grew organically over time. When the SAME new logic (a lookup, a calculation, a guard) is introduced at 2+ places within the current diff, extraction costs almost nothing — same edit, same review — and skipping it ships day-one drift. Flag it as Important, regardless of the two-copies leniency rule.
 
+**A cross-referencing comment is not a shared helper.** An identical recovery, retry or reset sequence (reset a flag, refresh a token, re-run the original call) copied at 2+ call sites, with comments pointing at each other ("same shape as X"), is Important even when the copies grew over time: the comment proves the author knew they must stay in sync and chose prose over code. Name the helper location in the finding (the service that owns the first step of the sequence). Flag it as a fix candidate regardless of fix scope; seen twice by 2026-09-20 (attest retry at three sites in one iOS app) before it was extracted.
+
 ## II. Single Responsibility Principle
 
 Every class and function should have exactly one reason to change. If you struggle to name what a class does without using "and," it does too much.
