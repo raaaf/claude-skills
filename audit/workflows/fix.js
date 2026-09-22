@@ -231,10 +231,15 @@ if (changedFiles.length) {
       ROOT_HEADER +
       `Read the diffs of these files (git diff for each) and check for regressions across all ` +
       `every selected dimension (the 13 unconditional ones plus payments when it was selected for this run; ` +
-      `ALL_DIMENSIONS in find.js has 14 entries), using the specialist schema. Diffs only, no unrelated reading.\n` +
+      `ALL_DIMENSIONS in find.js has 14 entries), using the specialist schema. Diffs only, no unrelated reading. ` +
+      `Bash is for \`git diff\` only, do NOT edit or write any file, read and assess only.\n` +
       `Return coverage={status:"complete"|"incomplete",files:[reviewed paths]}. Only mark complete after reviewing every assigned file.\n` +
       `FILES=${JSON.stringify(group)}`,
-      { agentType: 'code-reviewer', model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Regress' }
+      // general-purpose, not code-reviewer: code-reviewer has no Bash and cannot run git diff,
+      // which produced 4 "no git diff possible" noise findings on 2026-09-21
+      // (learning-log.md:2098). general-purpose also grants Edit/Write, so the no-edit rule
+      // above is enforced by prose, same pattern as agents/fix-verifier.md's "Enforcement note".
+      { agentType: 'general-purpose', model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Regress' }
     );
     if (warnIfNull(log, result, `fix.js: a regression pass returned null for ${group.join(', ')}`)) return null;
     return result;

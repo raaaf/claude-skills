@@ -202,6 +202,14 @@ throughout (`files.slice`, `files.filter`). Split `ALLE_DATEIEN` on newlines and
 on commas when building the call. A real run on 2026-09-15 failed here in 14ms because this line
 read as if the shell values could be passed through unchanged.
 
+Before making the call, estimate its total size: `printf '%s' "$ALLE_DATEIEN" | wc -c` plus the
+byte length of `FLOOR_FILES` and `JEV_ROUTER`. At roughly 40 KB and above, do not pass these args
+to `Workflow` inline; a real run hit 57 KB there and the call failed. Instead copy `find.js` into
+the scratchpad, embed the resolved args object as a constant near the top of the copy (`const
+ARGS2 = {...}`), replace every place the script reads `args` with `ARGS2`, and pass that copy's
+path as `scriptPath`. See `.claude/audits/2026-09-21_040559-main.md` (Incidents) for the origin of
+this workaround.
+
 Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, jevRouter: JSON.parse(JEV_ROUTER) } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
 `payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.

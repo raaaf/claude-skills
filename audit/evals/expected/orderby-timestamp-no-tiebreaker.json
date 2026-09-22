@@ -1,0 +1,17 @@
+{
+  "fixture": "performance/orderby-timestamp-no-tiebreaker.php",
+  "must_find": [
+    {
+      "dimension": "performance",
+      "line": 17,
+      "matches": ["tiebreaker", "non-deterministic order", "secondary order", "orderby id", "second precision"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "security",
+      "reason": "no user input, no SQL, no auth"
+    }
+  ]
+}

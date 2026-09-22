@@ -315,7 +315,7 @@ Guard clauses read like a checklist of preconditions. The reader immediately see
 
 Create and Edit views often share 80-95% of their markup. This is a DRY violation that causes bugs when one view is updated but the other is not.
 
-**PHP logic duplication:** When two Livewire components (e.g., InvoiceCreate and InvoiceEdit) share identical methods — item management, computed totals, validation, customer selection — extract these into a shared trait (e.g., `HasInvoiceForm`). Each component then only contains `mount()`, the save action, and `render()`.
+**PHP logic duplication:** When two Livewire components (e.g., InvoiceCreate and InvoiceEdit) share identical methods — item management, computed totals, validation, customer selection — extract these into a shared trait (e.g., `HasInvoiceForm`). Each component then only contains `mount()`, the save action, and `render()`. Real case (18x across audits, the most frequent recurring pattern seen): three invitation-accept page components (`app/Livewire/Pages/AcceptCoAdminInvitation.php:16`, `AcceptMemberInvitation.php:77`, `AcceptCohostInvitation.php`) share near-identical accept/decline logic; only a Blade partial was extracted, the PHP classes stayed copies.
 
 **Blade template duplication:** When two Blade views share >50% identical markup, extract the shared sections into partials (`@include('invoices.partials._items-section')`) or slot-based components. Only the unique parts (page title, action buttons) remain in the parent views.
 
