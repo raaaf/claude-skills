@@ -278,3 +278,7 @@ a {
 ## XV. Token Classes Over Raw Utilities (2026)
 
 When the project defines typographic token classes (`.heading-1`, `.text-body`, `@apply`-composed or CSS-variable-based scales), a heading or body element styled with raw size/weight/leading utilities (`text-2xl font-semibold leading-tight`) is an anti-pattern: it forks the scale, drifts on the next token change, and is invisible to a design-token audit. Report the raw utility stack on any element the token system covers as Minor (Important when the values differ from the token they imitate). A project without a token system is out of scope for this rule (2026-08-29).
+
+## XVI. One Finding for a Repeated Plural or Apostrophe Pattern (2026-09-23)
+
+When the same hardcoded plural ternary (`n == 1 ? "Technik" : "Techniken"`) or the same straight-vs-curly apostrophe slip appears in two or more files within one run, report it once as a shared String-Catalog-plural (or shared constant) candidate that lists every site, not as separate unlinked Minor findings per file.

@@ -344,3 +344,5 @@ For applications subject to GoBD compliance (or any domain where records become 
 **$fillable Hygiene for immutable fields.** Fields that control immutability state (`finalized_at`, `cancelled_at`, `number`, `sender_snapshot`, `pdf_path`) must NOT be in `$fillable`. Set them via direct assignment in dedicated Service methods. This prevents accidental mass-assignment via `fill()`, `update()`, or `create()`.
 
 **JS Interpolation safety.** When interpolating PHP values into JavaScript (Heredoc strings, inline `<script>` blocks), always use `json_encode()` with `JSON_HEX_TAG | JSON_UNESCAPED_UNICODE`, never `addslashes()`. The latter does not protect against template literal injection or `</script>` breakout.
+
+**OSLog privacy on identifiers (2026-09-23).** `privacy: .public` on an `OSLog`/`Logger` interpolation that carries an identifier or content hash (recipe/user/household ID, image hash) is Minor without a stated retention or redaction reason next to it; `.private` (the default) or `.private(mask: .hash)` keeps log correlation without exposing the value in sysdiagnose. First confirmed instance: topf-secret `HouseholdSyncService.swift:479`.
