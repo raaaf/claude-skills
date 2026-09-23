@@ -143,13 +143,16 @@ orch_state_clear() {
 
 # orch_state_save NAME [NAME...]   an unset name is saved as empty and reported on stderr
 orch_state_save() {
-  local d n; d="$(orch_state_dir)"
+  # eval, not bash's ${!n} indirection: the Bash tool may run zsh, where ${!n} is a
+  # "bad substitution" (retro 2026-09-23). Safe because orch__state_name_ok admits only [A-Z0-9_].
+  local d n was_set val; d="$(orch_state_dir)"
   if [ ! -e "$d" ]; then (umask 077; mkdir "$d") || return 1; fi
   orch__state_dir_ok "$d" || { echo "orch_state_save: refusing $d (not a directory owned by $USER)" >&2; return 1; }
   for n in "$@"; do
     orch__state_name_ok "$n" || { echo "orch_state_save: refusing name $n" >&2; continue; }
-    [ -n "${!n+x}" ] || echo "orch_state_save: $n is unset in this block (saved as empty)" >&2
-    printf '%s' "${!n-}" > "$d/$n"
+    eval "was_set=\${$n+x} val=\${$n-}"
+    [ -n "$was_set" ] || echo "orch_state_save: $n is unset in this block (saved as empty)" >&2
+    printf '%s' "$val" > "$d/$n"
   done
 }
 
