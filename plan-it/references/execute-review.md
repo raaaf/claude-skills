@@ -14,6 +14,8 @@ Follow-through for written plans. Core rule stays: the orchestrator never edits 
 
 ### Dispatch
 
+Before dispatching an executor that will run `xcodebuild test` (or any simulator/build-heavy suite), check free disk space (`df -h .`); a worktree plus derived data can exhaust a nearly full disk mid-run.
+
 Start ONE executor subagent: `subagent_type: spec-executor`, `isolation: worktree`. Its own frontmatter defaults to model `sonnet`; pass an explicit `model:` in the Agent() call to override when the user names one (`/plan-it execute {plan} haiku`) — a per-call `model:` overrides the agent's own frontmatter.
 
 The prompt MUST include:

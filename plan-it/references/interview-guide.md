@@ -24,6 +24,7 @@ What to scan, depending on the topic:
 | Infra named in CLAUDE.md (URLs, services, hosts) | Verify it is actually live and in use before planning against it. Documented infra has been stale. |
 | "Reuses existing component X" | Open the init/method signature and check API compatibility, not just that the file exists. |
 | Migration target / refactor target | Physically open at least one call site per target, do not infer behaviour from naming or comments. Evidence: repeated in plans 6 and 7. |
+| Design-system token or shared constant | Grep for known mirror or duplicate definitions (e.g. `Brand.swift` next to `DesignTokens.swift`) as a mandatory step. A token changed in one file and not its mirror ships two values. |
 | Feature syncs data through a backend or shared store | Read the payload caps and body limits of the target store (e.g. `JSON_PAYLOAD_CAP_BYTES`, bodyLimit) BEFORE asking sync questions. Evidence: one wasted question loop. |
 
 Every fact in the map is verified against the code or schema before it is shown, never quoted from memory.

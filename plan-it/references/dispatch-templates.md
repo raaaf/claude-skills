@@ -145,6 +145,7 @@ Agent(
     - Were user decisions that overruled a challenge recommendation carried through consistently, or does a conflict remain in the plan?
     - For AI/ML features: capability matrix checked (language x region x model availability x device class)?
     - PR consolidation: can the planned PRs be merged into fewer, or should one be split?
+    - Preview/mockup resolutions: when a round was decided by picking a preview or mockup, diff the details it implies against every earlier separate answer. A chosen mockup silently overrides answers it contradicts.
     - Non-functional requirements checked: logging strategy, telemetry, accessibility, simulator vs production differences?
 
     At the end: an overall verdict in ONE sentence.
