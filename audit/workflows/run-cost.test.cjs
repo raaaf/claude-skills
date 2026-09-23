@@ -24,6 +24,13 @@ test('counts nested actual-model turns, deduplicates snapshots, excludes journal
   assert.equal(value.models['claude-opus-5'].output, 50); assert.equal(value.models['claude-sonnet-5'].output, 30);
   assert.deepEqual(value.unknown_models, []); assert.ok(Math.abs(value.usd - 0.00245) < 1e-10);
 });
+test('claude-opus-5-5 prices separately from claude-opus-5', t => {
+  const f = fixture(t);
+  f.write('session.jsonl', [turn('main', 'claude-opus-5-5', 100)]);
+  const { code, value } = f.run();
+  assert.equal(code, 0); assert.ok(value.models['claude-opus-5-5']); assert.equal(value.models['claude-opus-5'], undefined);
+  assert.equal(value.models['claude-opus-5-5'].output, 100); assert.ok(Math.abs(value.usd - 0.0024) < 1e-10);
+});
 test('unknown paid model preserves tokens and marks total unavailable', t => {
   const f = fixture(t); f.write('session.jsonl', [turn('x', 'gpt-native')]);
   const { value } = f.run(); assert.equal(value.usd, null); assert.equal(value.status, 'unavailable'); assert.deepEqual(value.unknown_models, ['gpt-native']);

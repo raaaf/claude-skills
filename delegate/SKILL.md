@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: "Default working mode for implementation tasks: the expensive session model (Fable/Opus) analyzes the task, asks clarifying questions on genuine ambiguities, writes an executor-ready mini-spec, and hands off implementation to a Sonnet executor. Afterward the expensive model reviews the result like a tech lead (reads the diff, re-runs criteria itself) and renders a verdict. Use when the user asks to implement, build, fix, change, or refactor code (even without typing /delegate). NOT for: questions/explanations (answer directly), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
+description: "Default working mode for implementation tasks: the expensive session model (currently Opus 5.5) analyzes the task, asks clarifying questions on genuine ambiguities, writes an executor-ready mini-spec, and hands off implementation to a Sonnet executor. Afterward the expensive model reviews the result like a tech lead (reads the diff, re-runs criteria itself) and renders a verdict. Use when the user asks to implement, build, fix, change, or refactor code (even without typing /delegate). NOT for: questions/explanations (answer directly), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
 when_to_use: "/delegate, implementiere, baue, aendere, fixe, setz das um, refactor this, build this feature"
 argument-hint: "[Task in your own words; optional --worktree]"
 effort: medium
@@ -20,7 +20,7 @@ allowed-tools:
 
 **Start directly with Phase 0.**
 
-> Frontmatter deliberately has NO `model:` field and NO `disable-model-invocation` (both documented exceptions to the repo convention): the skill inherits the session model (Fable/Opus) so analysis and review run on the strongest available model — `model: opus` would downgrade a Fable session. Auto-trigger on implementation tasks is intentional, this is the default working mode.
+> Frontmatter deliberately has NO `model:` field and NO `disable-model-invocation` (both documented exceptions to the repo convention): the skill inherits the session model (currently Opus 5.5) so analysis and review run on the strongest available model — an explicit `model:` pin (e.g. `opus`) would fix the skill to that model instead of tracking whatever the session runs on; `model: inherit` keeps analysis on it. Auto-trigger on implementation tasks is intentional, this is the default working mode.
 
 Economics of this skill: the expensive model does the work where intelligence matters (understand, decide, specify, review). Sonnet generates the code volume. **HARD RULE: the orchestrator NEVER edits code itself** — Edit/Write are deliberately not in allowed-tools. Every code fix, even during review, goes through the executor.
 
