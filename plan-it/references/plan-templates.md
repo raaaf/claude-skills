@@ -50,18 +50,6 @@ File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
 Every step gets a verify criterion. A step without a checkable outcome is not a step, it's an intention.
 
-### Effort
-{Rough estimate: S (<0.5 day) / M (0.5-2 days) / L (3-5 days) / XL (>1 week) — plus the single biggest item in 1 sentence.}
-Floor check: roughly 30min per UI file, 1h per service file, 2h per schema migration — check the estimate above against this floor.
-
-**New custom views get their own line item.** When the plan introduces a view that has no
-precedent in the repo (a chat thread, a story engine, a masonry grid, a custom drawer), estimate
-that view separately instead of folding it into the total. The floor above prices an EDIT to an
-existing UI file, not the first build of an interaction pattern: layout, states (empty, loading,
-error), gesture and focus handling, Dynamic Type and both appearances each cost more than the
-edit case, and a single blended number hides that. Evidence: the largest estimate miss in the
-logs was a new custom view buried in the overall block.
-
 ### Affected Files
 - `path/to/file` — {what changes}
 
@@ -129,7 +117,6 @@ File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
 ## Meta
 - Date: {DATE}
 - Rounds Phase 1 (understanding): {N}
-- Effort per version: {v1: S/M/L/XL, v2: ..., final: ...} (one entry per plan version, so growth across rounds is visible in the log instead of only at the end)
 - Plan file: docs/plans/{date}-{slug}.md
 
 ## Questions & Answers

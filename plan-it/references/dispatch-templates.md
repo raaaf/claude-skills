@@ -134,9 +134,8 @@ Agent(
 
     1. Completeness — Are steps missing? Gaps between 'what the plan says' and 'what actually needs to be done'?
     2. Ordering — Is the sequence right? Dependencies wrong or not considered at all?
-    3. Effort — Re-estimate the effort yourself from the step list, independently; do NOT just sanity-check the author's number. Name the biggest item and say where your estimate differs from the plan's. If the plan introduces a view or interaction pattern with no precedent in the repo (chat thread, story engine, masonry grid, custom drawer), require its own line item and reject an estimate that folds it into the overall block: the first build of a pattern costs more than an edit to an existing view, because states, gestures, focus, Dynamic Type and both appearances all start from zero.
-    4. Risks — What is the biggest risk the plan doesn't address?
-    5. Actionability — Can a developer take the plan and start right away? Does every step have a checkable verify criterion?
+    3. Risks — What is the biggest risk the plan doesn't address?
+    4. Actionability — Can a developer take the plan and start right away? Does every step have a checkable verify criterion?
 
     MANDATORY checklist (check briefly):
     - Monitoring/alerting blind spots: failure modes the plan doesn't make observable?

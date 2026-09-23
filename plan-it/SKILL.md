@@ -297,7 +297,7 @@ TodoWrite: `Challenge plan — {N} dimensions` (completed), same `{N}` as at Pha
 
 After finalizing: have the plan evaluated one last time. Evaluator prompt in `references/dispatch-templates.md` Phase 3.5. Model: sonnet.
 
-Evaluates 5 dimensions (completeness, ordering, effort, risks, feasibility) plus a mandatory checklist (monitoring blind spots, feature overlaps, optimization levers).
+Evaluates 4 dimensions (completeness, ordering, risks, feasibility) plus a mandatory checklist (monitoring blind spots, feature overlaps, optimization levers).
 
 **Show the result to the user.** Recommended changes are merged into the plan without asking; name
 them in the output. Leave one out only when it contradicts an explicit user decision from Phase 1,
