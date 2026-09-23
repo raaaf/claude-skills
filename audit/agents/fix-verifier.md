@@ -29,6 +29,11 @@ If your verification touches a credential, token, or `.env` value, `DETAILS` may
 - `PROJECT_GUIDELINES` — project-specific rules (take precedence)
 - `BASELINE_FAILURES` — tests already failing before the fix wave started (measured once via
   `test-lock.sh` before `fix.js` runs); only a NEW failure beyond this list is a regression
+- `TEST_COMMAND` — the project's full-suite command. Never run it unscoped: the orchestrator runs
+  the full suite before and after the fix wave. Run only the test files covering the fixed file,
+  using the runner's own filter syntax (e.g. `npm test -- <path>`, `php artisan test <path>`,
+  `vendor/bin/phpunit <path>`, `pytest <path>`), always via `test-lock.sh`. If no test covers the
+  file, say so in `tests` instead of running the suite.
 
 ## Process
 

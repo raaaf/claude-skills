@@ -37,7 +37,7 @@ If the fix touches a credential, token, or `.env` value, the `{short description
   ```
 - `PROJECT_CONTEXT` — Audit context from CLAUDE.md (if present)
 - `SUPPRESSIONS` — List of accepted patterns
-- `TEST_COMMAND` — run via `bash {AUDIT_BIN}/test-lock.sh {TEST_COMMAND}`, never unlocked
+- `TEST_COMMAND` — the project's full-suite command, run via `bash {AUDIT_BIN}/test-lock.sh {TEST_COMMAND}`, never unlocked. Never run the full suite yourself: filter it to only the test files covering your changed file (the runner's own filter syntax); if none cover it, say so in NOTES instead.
 - `BASELINE_FAILURES` — tests already failing before this fix wave (measured once via
   `test-lock.sh` before `fix.js` starts); only NEW failures beyond this list count against your fix
 

@@ -149,7 +149,12 @@ const testCommand = args.testCommand;
 // the repo has none; fixers and verifiers then get told so explicitly instead of
 // being handed a command that fails for a reason unrelated to their fix.
 const testLine = testCommand
-  ? `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}`
+  ? `TEST_COMMAND=bash ${auditBin}/test-lock.sh ${testCommand}\n` +
+    `This is the project's full-suite command. Never run it unscoped: the orchestrator runs the ` +
+    `full suite before and after the fix wave. Run only the test files covering your changed ` +
+    `file, using the runner's own filter syntax (e.g. \`npm test -- <path>\`, \`php artisan test ` +
+    `<path>\`, \`vendor/bin/phpunit <path>\`, \`pytest <path>\`), always via test-lock.sh. If no ` +
+    `test covers the file, say so in NOTES instead of running the suite.`
   : 'TEST_COMMAND= (none: this repo declares no test command; do not run tests, verify by reading, and say so in NOTES)';
 const baselineFailures = args.baselineFailures || [];
 
