@@ -1,0 +1,28 @@
+{
+  "fixture": "security/mass-update-bypasses-lock-guard.php",
+  "note": "Regression eval: audit 2026-09-05 (raaaf/navi) found a locked-period guard bypass in bulkMark*() in round 2 and confirmAll() in round 3, as if they were unrelated findings across two rounds instead of the same defect on every mass-update path in one pass. Both bulk paths must be found together.",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 26,
+      "matches": ["lock", "guard", "observer", "bypass", "quarter", "bulk", "query builder", "mass update"],
+      "severity": "important"
+    },
+    {
+      "dimension": "security",
+      "line": 37,
+      "matches": ["lock", "guard", "observer", "bypass", "quarter", "confirmAll", "query builder", "mass update"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "Livewire backend component, no markup"
+    },
+    {
+      "dimension": "performance",
+      "reason": "no N+1 or perf concern, both bulk paths are single queries"
+    }
+  ]
+}

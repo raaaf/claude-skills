@@ -57,13 +57,25 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck disable=SC1091
 [ -f "$SCRIPT_DIR/lib-git-base.sh" ] && source "$SCRIPT_DIR/lib-git-base.sh"
 NORMALIZE_SCRIPT="$SCRIPT_DIR/normalize-suppression.sh"
+
+# Manual alias table: find_near_duplicate (below) only folds patterns that
+# share vocabulary. Two patterns can describe the identical underlying
+# defect in unrelated words -- e.g. one naming the buggy mechanism, the
+# other naming the missing fix -- and then share zero tokens, so no overlap
+# threshold will ever catch them. "plural-string-resolved-with-__" (found
+# 2026-09-05) and "copy/plural-count-without-trans_choice" (found
+# 2026-09-02) are exactly that pair: same missing-trans_choice defect,
+# disjoint wording. Confirmed pairs like this get folded here by hand
+# instead of waiting on an auto-detector that structurally cannot see them.
+declare -A KNOWN_PATTERN_ALIASES=(
+  ["copy/plural-count-without-trans_choice"]="plural-string-resolved-with-__"
+)
 normalize_pattern() {
   local p="$1"
   if [ -f "$NORMALIZE_SCRIPT" ]; then
-    printf '%s' "$p" | bash "$NORMALIZE_SCRIPT"
-  else
-    printf '%s' "$p"
+    p=$(printf '%s' "$p" | bash "$NORMALIZE_SCRIPT")
   fi
+  printf '%s' "${KNOWN_PATTERN_ALIASES[$p]:-$p}"
 }
 
 # --- Near-duplicate detection (recur only) ---
