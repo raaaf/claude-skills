@@ -46,6 +46,8 @@ Agent(
 
 **`run_in_background: false` is mandatory, not decoration.** Subagents run in the background by default, and a background subagent's result only arrives as a completion notification in a *later* turn. Phase 5 has to parse that output and write the log in *this* turn, before Phase 6 writes the push marker, a backgrounded learning agent silently loses the whole learning pass. Foreground costs 5-10s and is not push-blocking.
 
+**The agent's `output_file` is the transcript, not the result.** A dispatch result includes an `output_file` path; that file holds the fork's tool noise and intermediate reasoning, not the `LEARNING_RESULT_START`/`LEARNING_RESULT_END` payload Step 2 needs. Reading it in place of the completion notification produced a false "learning agent wrote template text" incident on 2026-09-16 (caught and repaired from git in the same session, see `learning-log.md`). Always parse the structured result from the completion notification, never from `output_file`.
+
 **Step 2: parse the output**
 
 The agent returns three blocks between `LEARNING_RESULT_START` and `LEARNING_RESULT_END`: `SUPPRESSIONS_TO_ADD` (JSON array), `LEARNING_LOG_ENTRY` (markdown up to `LEARNING_LOG_ENTRY_END`), and `TRENDS_BLOCK` (markdown between `TRENDS_BLOCK_START` and `TRENDS_BLOCK_END`). The suggestions for guideline/agent changes are included as `- [ ]` checkboxes in the `Suggested improvements` section of the `LEARNING_LOG_ENTRY`.

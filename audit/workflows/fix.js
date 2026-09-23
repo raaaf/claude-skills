@@ -237,6 +237,22 @@ if (rejected.length) {
   log(`fix.js: ${rejected.length} fix(es) rejected by fix-verifier, staying open (no second round)`);
 }
 
+// verificationGap: verify completed for fewer files than were fixed (e.g. a
+// verifier group returned null, or fewer groups ran than were dispatched).
+// This is a distinct condition from a normal per-file `incomplete` (a fix
+// that WAS reviewed and found wanting): it means most of the fix wave was
+// never reviewed at all. Retro 2026-09-16 (raaaf/neues-feedback): verify
+// covered 1/20 fixed files and the run still reported plain `incomplete`,
+// so the orchestrator's manual diff verification of the other 19 was an
+// unplanned recovery, not a documented step. Surface it so that recovery
+// becomes the contract instead of a surprise.
+const attemptedVerification = appliedOrPartial.length;
+const verifiedCount = verified.filter((v) => v.verdict).length;
+const verificationGap = attemptedVerification > 0 && verifiedCount < attemptedVerification;
+if (verificationGap) {
+  log(`fix.js: verification_gap — fix-verifier covered ${verifiedCount}/${attemptedVerification} fixed files; the rest need manual diff verification before the marker`);
+}
+
 // Stage 3: regression pass over every file a fixer actually changed.
 const changedFiles = [...new Set(
   fixResults.filter((r) => r.fix && r.fix.files && r.fix.files.length).flatMap((r) => r.fix.files)
@@ -287,12 +303,15 @@ if (blockingRegressions.length) {
 }
 
 return {
-  status: uncovered.length || blockingRegressions.length ? 'incomplete' : 'complete',
+  status: verificationGap ? 'verification_gap' : uncovered.length || blockingRegressions.length ? 'incomplete' : 'complete',
   fixes: fixResults,
   uncovered,
   excluded,
   verdicts: verified.map((v) => v.verdict).filter(Boolean),
   regressions,
   rejected: rejected.map((r) => r.file),
-  blockingRegressions
+  blockingRegressions,
+  verificationGap,
+  attemptedVerification,
+  verifiedCount
 };

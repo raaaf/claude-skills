@@ -1,0 +1,22 @@
+{
+  "fixture": "architecture/filament-select-strips-view-columns.php",
+  "note": "Regression eval: audit 2026-09-15 (digitale-zeichnungsstrecke) found a resource select() list that silently dropped personal_data/depot_data and the related product's bond_terms, blanking the sensitive-data infolist section and printing \"[...]\" in the acceptance letter. The column list looks complete for the table it was written for; the defect is only visible by tracing every other consumer of getEloquentQuery().",
+  "must_find": [
+    {
+      "dimension": "architecture",
+      "line": 25,
+      "matches": ["select", "column", "personal_data", "depot_data", "bond_terms", "infolist", "acceptance letter", "dropped", "stripped"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "PHP resource class, no markup"
+    },
+    {
+      "dimension": "performance",
+      "reason": "narrower select() is a normal optimization; the defect is which columns are missing for other consumers, not the technique itself"
+    }
+  ]
+}
