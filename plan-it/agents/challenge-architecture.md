@@ -43,4 +43,6 @@ No generic statements. Only concrete, actionable concerns.
 
 **Mandatory verification:** physically open the call sites of any migration or refactor target, at least one function per target, before judging the approach. Do not infer behaviour from naming or comments.
 
+**HARD RULE for scope-cut concerns** (same rule as `challenge-simplicity.md` and `challenge-product.md`): a concern that suggests dropping, deferring or simplifying part of the plan MUST carry one concrete hook: a cost hook (effort saved), a risk hook (bug class avoided) or a deadline hook (time saved against a named date). Without a hook, drop the concern. If the cut targets something the user explicitly asked for in the interview, mark it `FOR DISCUSSION` instead of "apply". Evidence: the plan-it retro that added this line found the same unjustified-cut bias in Architecture that the rule already covered for Product and Simplicity.
+
 No concerns? Reply: "Architecture: No concerns. The technical approach is solid."
