@@ -32,6 +32,7 @@ import {
   androidEmulatorPort,
   resolveAndroidSdkRoot,
   androidToolPaths,
+  resolveAvdmanagerPath,
   androidToolsPreflight,
   avdExists,
   findInstalledSystemImages,
@@ -1229,6 +1230,21 @@ test('androidToolPaths: composes adb/emulator/avdmanager under the resolved SDK 
   assert.equal(tools.avdmanager, join('/sdk', 'cmdline-tools', 'latest', 'bin', 'avdmanager'));
 });
 
+test('resolveAvdmanagerPath: sdkRoot cmdline-tools present -> uses the sdkRoot path', () => {
+  const path = resolveAvdmanagerPath('/sdk', () => true, () => false);
+  assert.equal(path, join('/sdk', 'cmdline-tools', 'latest', 'bin', 'avdmanager'));
+});
+
+test('resolveAvdmanagerPath: no sdkRoot cmdline-tools but on PATH -> falls back to the bare command (brew-only install)', () => {
+  const path = resolveAvdmanagerPath('/sdk', () => false, () => true);
+  assert.equal(path, 'avdmanager');
+});
+
+test('resolveAvdmanagerPath: neither present -> still returns the sdkRoot path (preflight already reported missing)', () => {
+  const path = resolveAvdmanagerPath('/sdk', () => false, () => false);
+  assert.equal(path, join('/sdk', 'cmdline-tools', 'latest', 'bin', 'avdmanager'));
+});
+
 // --- Preflight (each branch inverted goes red) ----------------------------
 
 test('androidToolsPreflight: reports the first missing tool, in order', () => {
@@ -1410,6 +1426,37 @@ test('androidDeviceSetup: missing avdmanager -> SKIP with install hint, no creat
     assert.equal(result.skip, true);
     assert.match(result.reason, /avdmanager not found/);
     assert.equal(createCalled, false);
+  } finally {
+    delete process.env.ANDROID_HOME;
+  }
+});
+
+test('androidDeviceSetup: avdmanager only on PATH (brew-only cmdline-tools, no sdkRoot/cmdline-tools) -> invoked as a bare command, not the nonexistent sdkRoot path', () => {
+  const root = fixture();
+  const sdkRoot = join(root, 'sdk');
+  mkdirSync(join(sdkRoot, 'platform-tools'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'platform-tools/adb'), '');
+  mkdirSync(join(sdkRoot, 'emulator'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'emulator/emulator'), '');
+  mkdirSync(join(sdkRoot, 'system-images/android-37/google_apis_playstore_ps16k/arm64-v8a'), { recursive: true });
+  // no cmdline-tools dir under sdkRoot on purpose -- brew installed
+  // avdmanager into its own keg, only reachable via PATH.
+  process.env.ANDROID_HOME = sdkRoot;
+  try {
+    const hash = repoHash(root);
+    const name = androidAvdName(hash, 'android-phone');
+    const invokedCommands = [];
+    const runner = (cmd, args) => {
+      if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+      invokedCommands.push(cmd);
+      if (Array.isArray(args) && args[0] === 'list') return { stdout: '', status: 0 };
+      return { stdout: '', status: 0 };
+    };
+    const result = androidDeviceSetup(root, { android: {} }, runner, () => ALL_ANDROID_TOOLS, () => 'avdmanager');
+    assert.equal(result.ok, true);
+    assert.equal(result.skip, false);
+    assert.ok(invokedCommands.includes('avdmanager'), `expected a bare "avdmanager" invocation, got: ${invokedCommands.join(', ')}`);
+    assert.ok(!invokedCommands.some((c) => c.includes(sdkRoot)), `expected no sdkRoot-based avdmanager path, got: ${invokedCommands.join(', ')}`);
   } finally {
     delete process.env.ANDROID_HOME;
   }

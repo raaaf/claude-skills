@@ -467,8 +467,25 @@ function probeAndroidTools(sdkRoot) {
     java: commandOnPath('java') || existsSync('/Library/Java/JavaVirtualMachines/jdk-17.jdk'),
     emulator: existsSync(tools.emulator),
     adb: existsSync(tools.adb),
-    avdmanager: existsSync(tools.avdmanager),
+    avdmanager: existsSync(tools.avdmanager) || commandOnPath('avdmanager'),
   };
+}
+
+// Resolves the actual avdmanager path to invoke: the SDK-root-relative
+// location first (matches `androidToolPaths`' contract when a full SDK
+// including cmdline-tools is installed there), falling back to a bare
+// PATH lookup when a package manager installed avdmanager outside the
+// SDK root -- verified live: `brew install android-commandlinetools`
+// puts avdmanager/sdkmanager under its own keg
+// (/opt/homebrew/share/android-commandlinetools/...), while adb/emulator/
+// system-images stay under ~/Library/Android/sdk. A bare command name
+// resolves via PATH the same way `commandOnPath` checks it (execvp
+// semantics), so `runner`/`spawnSync` need no extra plumbing here.
+function resolveAvdmanagerPath(sdkRoot, exists = existsSync, onPath = commandOnPath) {
+  const sdkPath = join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'avdmanager');
+  if (exists(sdkPath)) return sdkPath;
+  if (onPath('avdmanager')) return 'avdmanager';
+  return sdkPath;
 }
 
 // AVD reuse (plan step 1 "AVD name derivation, reuse"): `avdmanager list
@@ -586,7 +603,7 @@ function waitForAndroidBoot(adbPath, serial, timeoutSec, runner = defaultRunner)
 // depending on what happens to be installed on the machine running the
 // suite (same "runner injected" testability requirement as the rest of
 // this file's device-setup functions).
-function androidDeviceSetup(root, config, runner = defaultRunner, probe = probeAndroidTools) {
+function androidDeviceSetup(root, config, runner = defaultRunner, probe = probeAndroidTools, resolveAvdmanager = resolveAvdmanagerPath) {
   const diskSkip = diskGuardSkip(root, runner);
   if (diskSkip) return diskSkip;
 
@@ -595,6 +612,12 @@ function androidDeviceSetup(root, config, runner = defaultRunner, probe = probeA
   const tools = androidToolPaths(sdkRoot);
   const preflight = androidToolsPreflight(probe(sdkRoot));
   if (!preflight.ok) return { ok: true, skip: true, reason: preflight.reason };
+
+  // avdmanager may live outside sdkRoot (see `resolveAvdmanagerPath`); the
+  // invocation below always uses the resolved path, never `tools.avdmanager`
+  // directly, so a brew-only cmdline-tools install (adb/emulator under
+  // ~/Library/Android/sdk, avdmanager under a separate keg) still works.
+  tools.avdmanager = resolveAvdmanager(sdkRoot);
 
   const hash = repoHash(root);
   const deviceClass = androidConfig.device_class || 'android-phone';
@@ -1723,6 +1746,7 @@ export {
   androidEmulatorPort,
   resolveAndroidSdkRoot,
   androidToolPaths,
+  resolveAvdmanagerPath,
   androidToolsPreflight,
   probeAndroidTools,
   avdExists,
