@@ -11,9 +11,15 @@
 // `test-results/`/`playwright-report/` ever appear in the project root.
 // `reporter: 'list'` is explicit for the same reason: the default local
 // reporter also writes an HTML report unless told not to.
+//
+// `outputDir` resolves relative to THIS file's own directory
+// (`.screens/web/`), not the project root or the invocation's cwd (verified
+// against Playwright 1.63.0/events: a bare `.screens/.run/playwright` landed
+// at `.screens/web/.screens/.run/playwright`) -- `../.run/playwright` is
+// what actually lands at `<project root>/.screens/.run/playwright`.
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  outputDir: '.screens/.run/playwright',
+  outputDir: '../.run/playwright',
   reporter: 'list',
 });

@@ -32,10 +32,11 @@ overloading the machine (plan's "Capture efficiency"), and `nice -n 10` applies 
 same way `screens.mjs up` already nices the PHP server and seed/migrate commands it starts.
 
 `--config .screens/web/playwright.config.ts` (Phase 2 scaffold, next to `capture.spec.ts`) is always
-explicit, never left to auto-discovery: it sets `outputDir: '.screens/.run/playwright'` and
-`reporter: 'list'` so no `test-results/`/`playwright-report/` ever land in the project root (both
-would otherwise appear even on a passing run, since Playwright's default local reporter also writes
-an HTML report).
+explicit, never left to auto-discovery: it sets `outputDir: '../.run/playwright'` (Playwright
+resolves `outputDir` relative to the config file's own directory, `.screens/web/`, not the project
+root, so this lands at `<project root>/.screens/.run/playwright`) and `reporter: 'list'` so no
+`test-results/`/`playwright-report/` ever land in the project root (both would otherwise appear even
+on a passing run, since Playwright's default local reporter also writes an HTML report).
 
 `--grep <pattern>` narrows the run to the entry ids `screens.mjs plan`'s `PLAN_ENTRY <id>
 {new|stale|missing_png}` lines named (skip `unchanged` ids); omit the flag on a first run or
@@ -174,13 +175,32 @@ the framework's equivalent) when it is empty -- never a hardcoded fallback passw
 `secret_env_aliases` (`config-schema.md`) additionally sets any listed alias name to the same value,
 for a project whose own env var for the demo password is not called `DEMO_USER_PASSWORD`.
 
-## Session cookie over http: SESSION_SECURE_COOKIE=false default
+## Session cookie over http: SESSION_SECURE_COOKIE=false and SESSION_EXPIRE_ON_CLOSE=true defaults
 
-Live STOP (2026-09-24, events pilot): a Laravel project's default `config/session.php` sets
-`'secure' => env('SESSION_SECURE_COOKIE', true)`, so a browser drops the session cookie after login
-against the isolated backend, which serves over plain http. `screens.mjs up` sets
-`SESSION_SECURE_COOKIE=false` on every `laravel` project's isolation env (`laravelSessionEnv`), merged
-in *before* `config.web.env` so a project's own `SESSION_SECURE_COOKIE` in `config.json` still wins.
+`screens.mjs up` sets two session-cookie env vars on every `laravel` project's isolation env
+(`laravelSessionEnv`), merged in *before* `config.web.env` so a project's own values in `config.json`
+still win:
+
+- **`SESSION_SECURE_COOKIE=false`.** Live STOP (2026-09-24, events pilot): a Laravel project's
+  default `config/session.php` sets `'secure' => env('SESSION_SECURE_COOKIE', true)`, so a browser
+  drops the session cookie after login against the isolated backend, which serves over plain http.
+- **`SESSION_EXPIRE_ON_CLOSE=true`.** Live STOP (2026-09-24, events pilot, found the same day as the
+  fix above): the server-side fixed clock (`fixed-clock.php`'s `Carbon::setTestNow($fixedNow)`)
+  freezes every `now()` the running `php artisan serve` process computes, including the session
+  cookie's `Expires`/`Max-Age`, which Laravel derives as `now()->addMinutes($lifetime)`. Once real
+  wall-clock time passes `config.web.fixed_now`, that computed expiry is already in the past -- the
+  browser discards the `Set-Cookie` header on arrival, so every login silently fails to persist past
+  the very next request (reproduced against events: `fixed_now` 2026-05-12, real date 2026-09-24,
+  every `Set-Cookie: <session>=...; expires=Tue, 12 May 2026 ...` immediately expired; only the
+  guest-role entries, which never log in, captured correctly). `session.expire_on_close` makes
+  Laravel omit `Expires`/`Max-Age` entirely (a browser-session cookie instead), so the frozen clock
+  can no longer produce an already-expired header; server-side session-lifetime enforcement still
+  reads the same frozen `now()`, so it stays internally consistent with the rest of the isolated run.
+  Checked whether the zeit pilot's own `config/session.php` explains why it never hit this: it does
+  not -- zeit's `expire_on_close` also defaults to `env('SESSION_EXPIRE_ON_CLOSE', false)` and its
+  `.screens/config.json` carries the same `fixed_now` (2026-05-12). zeit not hitting this bug is more
+  likely explained by its own last authenticated `/screens` run having happened before real time
+  passed that date, not by a differing session config.
 
 ## Server perf: parallel PHP workers, no per-request debug overhead, seed-on-change
 

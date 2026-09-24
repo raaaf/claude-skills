@@ -944,9 +944,26 @@ function laravelPerfEnv(platformConfig) {
 // cookie never reaches the browser over plain http). Applied before
 // `platformConfig.env` in the merge below so a project's own
 // `SESSION_SECURE_COOKIE` in `config.web.env` still wins.
+//
+// `SESSION_EXPIRE_ON_CLOSE=true` (live STOP: the server-side fixed clock,
+// `fixed-clock.php`'s `Carbon::setTestNow($fixedNow)`, freezes every
+// `now()` the running `php artisan serve` process computes, including
+// `config/session.php`'s cookie `Expires`/`Max-Age`, which Laravel derives
+// as `now()->addMinutes($lifetime)`. Once real wall-clock time passes
+// `config.web.fixed_now`, that computed expiry is already in the past, so
+// the browser discards the Set-Cookie header on arrival and every login
+// silently fails to persist past the very next request -- reproduced
+// against the events pilot: `fixed_now` 2026-05-12, real date 2026-09-24,
+// every `Set-Cookie: <session>=...; expires=Tue, 12 May 2026 ...` request
+// immediately expired). `session.expire_on_close` makes Laravel omit
+// `Expires`/`Max-Age` entirely (a browser-session cookie instead), so the
+// frozen clock can no longer produce an already-expired header; the
+// server-side "has this session expired" check still reads the same
+// frozen `now()`, so session GC/lifetime enforcement stays internally
+// consistent with the rest of the isolated run.
 function laravelSessionEnv(platformConfig) {
   if (platformConfig.framework !== 'laravel') return {};
-  return { SESSION_SECURE_COOKIE: 'false' };
+  return { SESSION_SECURE_COOKIE: 'false', SESSION_EXPIRE_ON_CLOSE: 'true' };
 }
 
 // DEMO_USER_PASSWORD plus any `secret_env_aliases` (config field, names

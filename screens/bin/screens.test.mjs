@@ -869,24 +869,32 @@ test('laravelPerfEnv: non-laravel framework -> {} (inert)', () => {
   assert.deepEqual(laravelPerfEnv({ framework: 'astro' }), {});
 });
 
-// --- laravelSessionEnv: SESSION_SECURE_COOKIE=false on laravel, overridable -
+// --- laravelSessionEnv: SESSION_SECURE_COOKIE=false + SESSION_EXPIRE_ON_CLOSE=true on laravel, overridable -
 
-test('laravelSessionEnv: laravel framework -> SESSION_SECURE_COOKIE=false', () => {
-  assert.deepEqual(laravelSessionEnv({ framework: 'laravel' }), { SESSION_SECURE_COOKIE: 'false' });
+test('laravelSessionEnv: laravel framework -> SESSION_SECURE_COOKIE=false, SESSION_EXPIRE_ON_CLOSE=true', () => {
+  assert.deepEqual(laravelSessionEnv({ framework: 'laravel' }), {
+    SESSION_SECURE_COOKIE: 'false', SESSION_EXPIRE_ON_CLOSE: 'true',
+  });
 });
 
 test('laravelSessionEnv: non-laravel framework -> {} (inert)', () => {
   assert.deepEqual(laravelSessionEnv({ framework: 'astro' }), {});
 });
 
-test('up: default env composition order lets config.web.env override SESSION_SECURE_COOKIE', () => {
+test('up: default env composition order lets config.web.env override SESSION_SECURE_COOKIE and SESSION_EXPIRE_ON_CLOSE', () => {
   // Same merge order as cmdUp's `runEnv` composition (sessionEnv first,
   // platformConfig.env after): a project's own value wins over the default.
-  const platformConfig = { framework: 'laravel', env: { SESSION_SECURE_COOKIE: 'true' } };
+  const platformConfig = {
+    framework: 'laravel',
+    env: { SESSION_SECURE_COOKIE: 'true', SESSION_EXPIRE_ON_CLOSE: 'false' },
+  };
   const runEnv = { ...laravelSessionEnv(platformConfig), ...platformConfig.env };
   assert.equal(runEnv.SESSION_SECURE_COOKIE, 'true');
+  assert.equal(runEnv.SESSION_EXPIRE_ON_CLOSE, 'false');
   const noOverride = { framework: 'laravel', env: {} };
-  assert.equal({ ...laravelSessionEnv(noOverride), ...noOverride.env }.SESSION_SECURE_COOKIE, 'false');
+  const defaultEnv = { ...laravelSessionEnv(noOverride), ...noOverride.env };
+  assert.equal(defaultEnv.SESSION_SECURE_COOKIE, 'false');
+  assert.equal(defaultEnv.SESSION_EXPIRE_ON_CLOSE, 'true');
 });
 
 // --- up: lock present -> FAIL ----------------------------------------------
