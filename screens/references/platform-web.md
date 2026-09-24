@@ -57,8 +57,9 @@ driver must read the manifest at runtime instead of hard-coding entries").
 - `context.route('**/*', ...)` allows only `localhost`/`127.0.0.1` requests, aborts everything else
   (no live third-party calls from a demo run; plan's "Dynamic content" edge case).
 - Login: `role: "guest"` skips login; any other role posts `config.demo_logins[role]` /
-  `config.demo_password` through `/login` (`input[name=email]`, `input[name=password]`, `button[type=submit]`),
-  then `waitForLoadState('networkidle')`.
+  `.screens/secrets.local.json`'s `demo_password` (no demo password in any repo, see
+  `config-schema.md` "Demo password") through `/login` (`input[name=email]`, `input[name=password]`,
+  `button[type=submit]`), then `waitForLoadState('networkidle')`.
 - Navigation: `page.goto(BASE_URL + entry.reach)`, `waitForLoadState('networkidle')`, then
   `entry.ready` (a CSS selector) via `waitForSelector` if set; `entry.mask` selectors and the `error`
   state's form submission are applied once, right after this single navigation.
@@ -156,6 +157,11 @@ follows, and the demo seeder documents which ones actually applied:
    `Cache::remember(...)` badge count) never survives a reseed: `migrate:fresh` only resets database
    tables, not the project's configured cache store, so a `file`/`redis`-backed cache would keep
    serving a stale value from before the reseed.
+
+No demo password in any repo (`config-schema.md` "Demo password"): the demo seeder reads
+`DEMO_USER_PASSWORD` from the environment (`screens.mjs up` sets it, from
+`.screens/secrets.local.json`, on both the seed and serve command) and throws (`RuntimeException` or
+the framework's equivalent) when it is empty -- never a hardcoded fallback password.
 
 ## Server perf: parallel PHP workers, no per-request debug overhead, seed-on-change
 

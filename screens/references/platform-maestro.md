@@ -210,7 +210,13 @@ for THEME in light dark; do   # only the themes config.axes.themes lists
     # `maestro test` on a whole directory would run flows in its own order,
     # not the generator's role-tracked one.
     node "$SCREENS_BIN" android-navigate --entry "$ENTRY_ID" --serial "$ANDROID_SERIAL"
-    nice -n 10 maestro --device "$ANDROID_SERIAL" test "$FLOW_FILE"
+    # DEMO_PASSWORD (security fix: no demo password in any repo, including a
+    # generated flow YAML): the generated flow embeds the literal string
+    # `${DEMO_PASSWORD}`, a Maestro env-var placeholder substituted at run
+    # time from this `-e` flag, read from `.screens/secrets.local.json`
+    # (never printed, never written into the flow file on disk).
+    DEMO_PASSWORD=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.screens/secrets.local.json','utf8')).demo_password)")
+    nice -n 10 maestro --device "$ANDROID_SERIAL" test -e "DEMO_PASSWORD=$DEMO_PASSWORD" "$FLOW_FILE"
   done
   # `takeScreenshot: <name>` writes <name>.png to the project ROOT (verified
   # against the events pilot's own pre-existing .gitignore comment), not an

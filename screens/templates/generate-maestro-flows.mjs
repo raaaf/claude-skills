@@ -47,6 +47,13 @@ const config = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/co
 const manifest = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8')), ROOT);
 const template = readFileSync(join(ROOT, '.screens/android/maestro-flow.yaml'), 'utf8');
 
+// Per-machine demo password (security fix: no demo password in any repo,
+// including a generated flow YAML): only the emails come from config.json,
+// the password itself is never read here -- the generated flow embeds the
+// literal string `${DEMO_PASSWORD}`, a Maestro env-var placeholder Maestro
+// substitutes at `maestro test` time from `-e DEMO_PASSWORD=...`
+// (platform-maestro.md "Invocation"), so the password never lands on disk.
+
 const OUT_DIR = join(ROOT, '.screens/.maestro-generated');
 rmSync(OUT_DIR, { recursive: true, force: true });
 mkdirSync(OUT_DIR, { recursive: true });
@@ -96,8 +103,8 @@ function loginStepsFor(role) {
   if (role === 'guest') return '';
   const emptyLogins = config.demo_logins_empty || {};
   const email = (emptyLogins[role]) || (config.demo_logins && config.demo_logins[role]);
-  const password = config.demo_password;
-  if (!email || !password) return `# no demo login configured for role "${role}"`;
+  if (!email) return `# no demo login configured for role "${role}"`;
+  const password = '${DEMO_PASSWORD}';
   return [
     `- tapOn:\n    id: "${loginSelectors.email}"`,
     `- inputText: "${email}"`,

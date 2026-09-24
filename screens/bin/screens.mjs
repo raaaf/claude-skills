@@ -22,10 +22,10 @@
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync,
-  rmSync, renameSync,
+  rmSync, renameSync, chmodSync,
 } from 'node:fs';
 import { join, dirname, relative, resolve, sep } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync, spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
@@ -994,6 +994,83 @@ function computeSeedFingerprint(root, config) {
   return hash.digest('hex');
 }
 
+// ---------------------------------------------------------------------
+// Demo password (per-machine secret, security fix: no demo password lives
+// in any repo, config.json, or generated driver file). `.screens/
+// secrets.local.json` is created once per machine by the seed step below,
+// reused on every later run, mode 0600, gitignored. Rotating it means
+// deleting it together with the isolated DB.
+// ---------------------------------------------------------------------
+
+const DEMO_PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function generateDemoPassword() {
+  const bytes = randomBytes(24);
+  let out = '';
+  for (let i = 0; i < 24; i++) out += DEMO_PASSWORD_ALPHABET[bytes[i] % DEMO_PASSWORD_ALPHABET.length];
+  return out;
+}
+
+// Adds `entry` to the project's `.gitignore` unless `git check-ignore`
+// already covers it (same "check before appending" pattern as `audit/bin/
+// cache-write.sh`/`patterns-store.sh`, repo CLAUDE.md Gotchas): a broader
+// existing rule is left alone, and the append never happens twice.
+function ensureGitignoreEntry(root, entry, runner = defaultRunner) {
+  const checkRes = runner('git', ['-C', root, 'check-ignore', '-q', entry], {});
+  if (checkRes.status === 0) return;
+  const gitignorePath = join(root, '.gitignore');
+  let content = '';
+  try {
+    content = readFileSync(gitignorePath, 'utf8');
+  } catch {
+    // no .gitignore yet: starts empty
+  }
+  if (content.split('\n').some((line) => line.trim() === entry)) return;
+  const leadingNewline = content && !content.endsWith('\n') ? '\n' : '';
+  writeFileSync(gitignorePath, content + leadingNewline + entry + '\n');
+}
+
+// Per-machine demo password (a DB seeded with an unknown password is
+// useless, so a missing file forces a reseed this run). Missing file:
+// generate, write 0600, gitignore it, `forceReseed: true`. Existing file:
+// reused verbatim, never regenerated while it exists. Never prints the
+// password itself, only CREATED/REUSED.
+function ensureSecretsFile(root, runner = defaultRunner) {
+  const path = join(root, '.screens/secrets.local.json');
+  if (existsSync(path)) {
+    const secrets = readJson(path, {});
+    console.log('SECRET=REUSED');
+    return {
+      demoPassword: secrets.demo_password,
+      demoPasswordEmpty: secrets.demo_password_empty,
+      forceReseed: false,
+    };
+  }
+  const password = generateDemoPassword();
+  writeJson(path, { demo_password: password });
+  chmodSync(path, 0o600);
+  ensureGitignoreEntry(root, '/.screens/secrets.local.json', runner);
+  console.log('SECRET=CREATED');
+  return { demoPassword: password, demoPasswordEmpty: undefined, forceReseed: true };
+}
+
+// Refuses `up` (FAIL) when a secret still lives in the committed config
+// instead of `.screens/secrets.local.json`: a literal `demo_password` key,
+// or any `web.env` key that looks like a secret (PASSWORD/SECRET/TOKEN,
+// case-insensitive).
+function secretConfigGuard(config) {
+  if (config.demo_password) {
+    return { ok: false, reason: 'config.json has a demo_password key; move it to .screens/secrets.local.json' };
+  }
+  const env = (config.web && config.web.env) || {};
+  for (const key of Object.keys(env)) {
+    if (/PASSWORD|SECRET|TOKEN/i.test(key)) {
+      return { ok: false, reason: `config.web.env.${key} looks like a secret; move it to .screens/secrets.local.json` };
+    }
+  }
+  return { ok: true };
+}
+
 function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
@@ -1003,6 +1080,12 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     return lines;
   }
   lines.push(`PLATFORM=${platform}`);
+
+  const secretGuard = secretConfigGuard(config);
+  if (!secretGuard.ok) {
+    lines.push(`UP_RESULT=FAIL (${secretGuard.reason})`);
+    return lines;
+  }
 
   if (checkLock(root)) {
     lines.push('UP_RESULT=FAIL (locked)');
@@ -1042,6 +1125,14 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   // driver from here.
   const platformConfig = expandProjectRoot(config[platform] || {}, root);
 
+  // Seed step, before the seed command below: a DB seeded with an unknown
+  // password is useless, so a freshly created secrets file forces a
+  // reseed this run (`demoSecrets.forceReseed`, folded into `full` below).
+  let demoSecrets = { demoPassword: undefined, demoPasswordEmpty: undefined, forceReseed: false };
+  if (platformConfig.seed_command) {
+    demoSecrets = ensureSecretsFile(root, runner);
+  }
+
   if (platform === 'web') {
     const framework = platformConfig.framework;
     let guard = { ok: true };
@@ -1060,7 +1151,11 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   const clockEnv = platform === 'web' ? phpFixedClockEnv(root, config, runner) : {};
   const perfEnv = platform === 'web' ? laravelPerfEnv(platformConfig) : {};
   const appUrlEnv = platform === 'web' ? androidAppUrlEnv(config) : {};
-  const runEnv = { ...(platformConfig.env || {}), ...clockEnv, ...perfEnv, ...appUrlEnv };
+  // DEMO_USER_PASSWORD in addition to config.web.env (never printed, see
+  // `ensureSecretsFile`): reaches both the seed command and the serve
+  // process below, same as every other env source here.
+  const demoEnv = demoSecrets.demoPassword ? { DEMO_USER_PASSWORD: demoSecrets.demoPassword } : {};
+  const runEnv = { ...(platformConfig.env || {}), ...clockEnv, ...perfEnv, ...appUrlEnv, ...demoEnv };
 
   // `nice -n 10` on every process the skill drives here (server + view:cache
   // + seed), per the user's "machine overloaded" report (plan "Capture
@@ -1112,7 +1207,7 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   // (verified live against the events pilot's isolated pgsql DB, which had
   // no `events` table pre-seed).
   if (platformConfig.seed_command) {
-    const full = args.includes('--full') || args.includes('--reseed');
+    const full = args.includes('--full') || args.includes('--reseed') || demoSecrets.forceReseed;
     const seedFingerprint = platform === 'web' ? computeSeedFingerprint(root, config) : null;
     const seedState = readJson(join(root, '.screens/state.json'), {});
     const seedUnchanged = !full && seedFingerprint && seedState.seed_fingerprint === seedFingerprint;
@@ -2213,6 +2308,10 @@ export {
   androidAppUrlEnv,
   playwrightWorkers,
   computeSeedFingerprint,
+  generateDemoPassword,
+  ensureGitignoreEntry,
+  ensureSecretsFile,
+  secretConfigGuard,
   cmdUp,
   killPortListeners,
   cmdDown,

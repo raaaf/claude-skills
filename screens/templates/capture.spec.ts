@@ -40,6 +40,17 @@ function expandProjectRoot(value, root) {
 const config = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8')), ROOT);
 const manifest = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8')), ROOT);
 
+// Per-machine demo password (security fix: no demo password in any repo),
+// written by `screens.mjs up`'s seed step, never in config.json. Missing
+// file fails the whole spec at collection time, before any test runs --
+// the file is required, not optional, whenever a login is needed.
+let secrets;
+try {
+  secrets = JSON.parse(readFileSync(join(ROOT, '.screens/secrets.local.json'), 'utf8'));
+} catch {
+  throw new Error('Kein lokales Demo-Passwort, zuerst den Seed-Schritt laufen lassen.');
+}
+
 const BASE_URL = process.env.SCREENS_BASE_URL || `http://127.0.0.1:${config.web.port}`;
 const OUT_DIR = join(ROOT, '.screens/.incoming/web');
 mkdirSync(OUT_DIR, { recursive: true });
@@ -92,9 +103,9 @@ async function loginAs(page, role, state) {
   // The empty-state account is frequently a project's own pre-existing
   // secondary test user (not created by ScreensDemoSeeder), so its
   // password can differ from the primary demo_password.
-  const password = (usingEmptyLogin && config.demo_password_empty) || config.demo_password;
+  const password = (usingEmptyLogin && secrets.demo_password_empty) || secrets.demo_password;
   if (!email || !password) {
-    throw new Error(`no demo login configured for role "${role}" (config.demo_logins / config.demo_password)`);
+    throw new Error(`no demo login configured for role "${role}" (config.demo_logins / .screens/secrets.local.json)`);
   }
   await page.goto(`${BASE_URL}/login`);
   await page.fill('input[name=email]', email);

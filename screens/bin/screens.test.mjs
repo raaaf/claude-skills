@@ -86,6 +86,10 @@ import {
   affectedIds,
   writeJson,
   readJson,
+  generateDemoPassword,
+  ensureGitignoreEntry,
+  ensureSecretsFile,
+  secretConfigGuard,
 } from './screens.mjs';
 
 // Minimal valid PNG byte layout for readPngDimensions: 8-byte signature +
@@ -763,6 +767,7 @@ test('up: seed fingerprint unchanged from last run -> SEED=SKIP (unchanged), see
     },
   };
   writeJson(join(root, '.screens/config.json'), config);
+  writeJson(join(root, '.screens/secrets.local.json'), { demo_password: 'existing-password' });
   const fingerprint = computeSeedFingerprint(root, config);
   writeJson(join(root, '.screens/state.json'), { seed_fingerprint: fingerprint });
 
@@ -795,6 +800,7 @@ test('up: seed fingerprint changed -> reseeds and stores the new fingerprint', (
     },
   };
   writeJson(join(root, '.screens/config.json'), config);
+  writeJson(join(root, '.screens/secrets.local.json'), { demo_password: 'existing-password' });
   writeJson(join(root, '.screens/state.json'), { seed_fingerprint: 'stale-fingerprint' });
 
   let seedCalls = 0;
@@ -828,6 +834,7 @@ test('up: --full forces reseed even when the fingerprint is unchanged', () => {
     },
   };
   writeJson(join(root, '.screens/config.json'), config);
+  writeJson(join(root, '.screens/secrets.local.json'), { demo_password: 'existing-password' });
   const fingerprint = computeSeedFingerprint(root, config);
   writeJson(join(root, '.screens/state.json'), { seed_fingerprint: fingerprint });
 
@@ -1841,4 +1848,105 @@ test('androidAppUrlEnv: android.depends_on is not "web" -> {}', () => {
 test('androidAppUrlEnv: explicit config.web.env.APP_URL always wins, never overridden', () => {
   const config = { android: { depends_on: 'web' }, web: { port: 8737, env: { APP_URL: 'http://localhost:9001' } } };
   assert.deepEqual(androidAppUrlEnv(config), {});
+});
+
+// --- Demo password: no demo password in any repo ----------------------------
+
+test('ensureGitignoreEntry: appends the entry once, dedups on repeated calls', () => {
+  const root = fixture();
+  const stubRunner = () => ({ status: 1 }); // git check-ignore: not ignored yet
+  ensureGitignoreEntry(root, '/.screens/secrets.local.json', stubRunner);
+  const content1 = readFileSync(join(root, '.gitignore'), 'utf8');
+  assert.ok(content1.includes('/.screens/secrets.local.json'));
+  ensureGitignoreEntry(root, '/.screens/secrets.local.json', stubRunner);
+  const content2 = readFileSync(join(root, '.gitignore'), 'utf8');
+  const occurrences = content2.split('\n').filter((l) => l === '/.screens/secrets.local.json').length;
+  assert.equal(occurrences, 1);
+});
+
+test('ensureGitignoreEntry: already covered by git check-ignore -> no append', () => {
+  const root = fixture();
+  const stubRunner = () => ({ status: 0 }); // git check-ignore: already ignored
+  ensureGitignoreEntry(root, '/.screens/secrets.local.json', stubRunner);
+  assert.ok(!existsSync(join(root, '.gitignore')));
+});
+
+test('ensureSecretsFile: missing file -> created 0600, forceReseed true, password never logged', () => {
+  const root = fixture();
+  const originalLog = console.log;
+  const logged = [];
+  console.log = (msg) => logged.push(msg);
+  let result;
+  try {
+    result = ensureSecretsFile(root, () => ({ status: 1 }));
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(result.forceReseed, true);
+  assert.ok(result.demoPassword && result.demoPassword.length === 24);
+  const secretsPath = join(root, '.screens/secrets.local.json');
+  assert.ok(existsSync(secretsPath));
+  assert.equal(statSync(secretsPath).mode & 0o777, 0o600);
+  assert.deepEqual(logged, ['SECRET=CREATED']);
+  assert.ok(!logged.some((l) => l.includes(result.demoPassword)));
+});
+
+test('ensureSecretsFile: existing file -> reused verbatim, no reseed forced', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/secrets.local.json'), { demo_password: 'fixed-pw', demo_password_empty: 'other-pw' });
+  const originalLog = console.log;
+  const logged = [];
+  console.log = (msg) => logged.push(msg);
+  let result;
+  try {
+    result = ensureSecretsFile(root, () => ({ status: 1 }));
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(result, { demoPassword: 'fixed-pw', demoPasswordEmpty: 'other-pw', forceReseed: false });
+  assert.deepEqual(logged, ['SECRET=REUSED']);
+});
+
+test('secretConfigGuard: config.demo_password key -> FAIL', () => {
+  assert.equal(secretConfigGuard({ demo_password: 'x' }).ok, false);
+});
+
+test('secretConfigGuard: web.env PASSWORD-like key -> FAIL', () => {
+  assert.equal(secretConfigGuard({ web: { env: { SEED_ADMIN_PASSWORD: 'x' } } }).ok, false);
+});
+
+test('secretConfigGuard: clean config -> ok', () => {
+  assert.equal(secretConfigGuard({ web: { env: { DB_CONNECTION: 'sqlite' } } }).ok, true);
+});
+
+test('up: config.json has demo_password -> FAIL before the runner is ever called', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), {
+    platforms: ['web'], web: { framework: 'astro' }, demo_password: 'leaked',
+  });
+  const lines = cmdUp([], root, () => { throw new Error('runner must not be called'); });
+  assert.ok(lines.some((l) => l.startsWith('UP_RESULT=FAIL') && l.includes('demo_password')), lines.join('\n'));
+});
+
+test('up: config.web.env has a PASSWORD-like key -> FAIL before the runner is ever called', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), {
+    platforms: ['web'], web: { framework: 'astro', env: { SEED_ADMIN_PASSWORD: 'leaked' } },
+  });
+  const lines = cmdUp([], root, () => { throw new Error('runner must not be called'); });
+  assert.ok(lines.some((l) => l.startsWith('UP_RESULT=FAIL') && l.includes('SEED_ADMIN_PASSWORD')), lines.join('\n'));
+});
+
+test('up: seed step creates secrets.local.json and never leaks the password in its emitted lines', () => {
+  const root = fixture();
+  const config = {
+    platforms: ['web'],
+    web: { framework: 'astro', seed_command: 'echo seeding', health_url: null, start_command: null },
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  const stubRunner = () => ({ stdout: '', status: 0 });
+  const lines = cmdUp([], root, stubRunner);
+  const secrets = readJson(join(root, '.screens/secrets.local.json'), {});
+  assert.ok(secrets.demo_password);
+  assert.ok(!lines.some((l) => l.includes(secrets.demo_password)));
 });

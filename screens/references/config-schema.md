@@ -91,10 +91,9 @@ writes, subagents return").
                                             // "empty"; a role without an empty-state login here
                                             // falls back to demo_logins (the entry still gets a
                                             // distinct __empty__ filename, just with filled data)
-  "demo_password_empty": "password",       // optional: only needed when the empty-state account's
-                                            // password differs from demo_password (e.g. it is a
-                                            // project's own pre-existing secondary test user, not
-                                            // one ScreensDemoSeeder created with SEED_ADMIN_PASSWORD)
+                                            // NOTE: no password field lives here -- see
+                                            // "Demo password (secrets.local.json)" below. `up`
+                                            // FAILs if this file has a `demo_password` key.
 
   "axes": {
     "viewports": { "web": ["1440x900", "390x844"] },
@@ -156,6 +155,36 @@ writes, subagents return").
   }
 }
 ```
+
+## Demo password (`.screens/secrets.local.json`)
+
+No demo password lives in `config.json`, a manifest, or any generated driver file (security fix:
+no demo password in any repo). `screens.mjs up`'s seed step creates
+`<project>/.screens/secrets.local.json` the first time it runs on a machine:
+
+```
+{
+  "demo_password": "<24 random URL-safe chars>",
+  "demo_password_empty": "password"        // optional: only needed when the empty-state account's
+                                            // password differs from demo_password (e.g. it is a
+                                            // project's own pre-existing secondary test user, not
+                                            // one ScreensDemoSeeder created)
+}
+```
+
+- Gitignored (`up` adds `/.screens/secrets.local.json` to `.gitignore` the first time it writes the
+  file), mode 0600.
+- Created once per machine, then reused verbatim on every later run -- never regenerated while the
+  file exists.
+- Rotate it by deleting it together with the isolated DB (a DB seeded under the old password is
+  useless once the password changes).
+- Passed to the seed and serve commands as `DEMO_USER_PASSWORD`, in addition to `config.web.env`;
+  the project's own demo seeder reads `DEMO_USER_PASSWORD` from the environment and throws when it
+  is empty (no hardcoded fallback).
+- `capture.spec.ts`, `generate-maestro-flows.mjs` and `ScreensCatalogTests.swift` (native has no
+  password login) all read the same file at runtime instead of `config.demo_password`.
+- `up` FAILs before doing anything else if `config.json` has a `demo_password` key, or if any
+  `config.web.env` key looks like a secret (matches `/PASSWORD|SECRET|TOKEN/i`).
 
 ## `.screens/manifest.json`
 
