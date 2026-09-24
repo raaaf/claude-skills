@@ -20,9 +20,13 @@ same way `screens.mjs up` already nices the PHP server and seed/migrate commands
 
 `--grep <pattern>` narrows the run to the entry ids `screens.mjs plan`'s `PLAN_ENTRY <id>
 {new|stale|missing_png}` lines named (skip `unchanged` ids); omit the flag on a first run or
-`--full` (every entry is already planned). Build the pattern as an alternation of entry ids anchored
-at the test name's start (test names are `${entry.id} ${state} ${role} ${viewport} ${theme}`, see
-below), e.g. `--grep "^(dashboard|clients) "`.
+`--full` (every entry is already planned). Build the pattern as an alternation of entry ids with an
+explicit start-of-string/whitespace boundary (test names are `${entry.id} ${state} ${role}`, see
+below), e.g. `--grep "(?:^|\s)(dashboard|clients)\s"`. **Do not anchor with a bare `^`**: verified
+against Playwright 1.63.0/zeit that `--grep "^dashboard"` matches zero tests even though the same
+title without the anchor matches (the grep target is not simply the bare test title); `(?:^|\s)...`
+is the verified working form and also avoids a substring false match like `admin-dashboard` against
+a bare `dashboard`.
 
 The spec reads `.screens/config.json` and `.screens/manifest.json` from `process.cwd()` at
 test-collection time, not per-project templating, so the same `screens/templates/capture.spec.ts`
