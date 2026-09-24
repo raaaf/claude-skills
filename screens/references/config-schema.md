@@ -30,6 +30,16 @@ writes, subagents return").
 
   "roles": ["guest", "admin", "member"],
   "demo_logins": { "admin": "admin@screens.test", "member": "member@screens.test" },
+  "demo_logins_empty": { "member": "member-empty@screens.test" }, // optional: a per-role account
+                                            // seeded with no data (onboarding completed, zero
+                                            // records), used for an entry whose states include
+                                            // "empty"; a role without an empty-state login here
+                                            // falls back to demo_logins (the entry still gets a
+                                            // distinct __empty__ filename, just with filled data)
+  "demo_password_empty": "password",       // optional: only needed when the empty-state account's
+                                            // password differs from demo_password (e.g. it is a
+                                            // project's own pre-existing secondary test user, not
+                                            // one ScreensDemoSeeder created with SEED_ADMIN_PASSWORD)
 
   "axes": {
     "viewports": { "web": ["1440x900", "390x844"] },
@@ -74,7 +84,15 @@ writes, subagents return").
       "sources": ["resources/views/dashboard.blade.php", "app/Livewire/Dashboard.php"],
       "mask": [".timestamp"],              // CSS selectors hidden before capture
       "ready": "[data-testid=dashboard-loaded]",
-      "steps": []                          // only for views reachable via a multi-step flow
+      "steps": [],                         // only for views reachable via a multi-step flow
+      "error_fill": [                      // only for an entry whose states include "error":
+        { "selector": "input[name=email]", "value": "not-an-email" }, // {selector, value} pairs
+        { "selector": "input[name=password]", "value": "wrong-password" }
+      ],                                   // filled then the form is submitted so the page renders
+                                            // its own real server-side validation error
+      "known_nondeterministic": "row order has no ORDER BY tie-break" // optional: seeder
+                                            // determinism rule (4), platform-web.md; excludes this
+                                            // entry from the changed/unchanged byte-identical count
     }
   ]
 }

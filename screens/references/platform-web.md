@@ -118,6 +118,44 @@ follows, and the demo seeder documents which ones actually applied:
    tables, not the project's configured cache store, so a `file`/`redis`-backed cache would keep
    serving a stale value from before the reseed.
 
+## Theme axis: cookie-driven dark mode, not prefers-color-scheme
+
+Some projects switch themes with a server-read cookie/session value instead of the OS-level
+`prefers-color-scheme` media query (e.g. `apps/zeit/app`: every layout resolves
+`session('dark_mode', request()->cookie('dark_mode') === 'true')` server-side to decide the `dark`
+class on `<html>`). Playwright's `colorScheme` context option alone does not reach that. The
+scaffold checks for this (grep the project's layouts for a dark-mode cookie/session/localStorage
+read) and `capture.spec.ts` sets both: `colorScheme: 'dark'|'light'` (for any OS-level media-query
+fallback elsewhere) AND `context.addCookies([{ name: 'dark_mode', value: 'true'|'false', ... }])`
+before navigation, for a theme value of `dark`/`light`.
+
+## Error state: manifest-driven form submission
+
+An entry whose `states` includes `error` needs `error_fill` (`{selector, value}` pairs) in the
+manifest; `capture.spec.ts` fills those fields on the already-loaded `entry.reach` page and submits
+by pressing Enter in the LAST listed field, so the screenshot shows the project's own real
+server-side validation error, not a synthetic one. Only entries that are genuinely forms (auth
+pages, not every list/dashboard view) get this state.
+
+**Submit via Enter, not a button click** (verified against `apps/zeit/app`, both `loginAs` and
+`submitErrorState` use this): clicking the scoped `button[type=submit]` intermittently produced
+zero network requests at all (no Livewire update call, confirmed by listening to every `response`
+event) on this project's `<x-button>` component, while pressing Enter in the form's last field
+reliably fires the same `wire:submit.prevent` handler every time. `submitScopedForm(page,
+lastFieldSelector)` defaults to `input[name=password]` (the login form) and `submitErrorState`
+passes the last `error_fill` selector, so a multi-field form (e.g. a register form's
+`password_confirmation`) submits from the field a real user would be on when pressing Enter. A
+300ms settle wait after `networkidle` covers the client-side DOM morph that renders the validation
+error, which lands a tick after the response itself.
+
+**Not every form reliably validates on Enter either**: a register-style form with more than two
+fields (name, email, password, password_confirmation) did not trigger its Livewire validation via
+Enter in this project even from the last field, cause not fully isolated within this stage's
+budget. Rather than ship an unverified capture, that entry's `error` state was dropped (kept
+`filled` only) and the gap is recorded here: verify a candidate `error` entry's capture manually
+(inspect the PNG for real red/error text, not just "the run passed") before trusting it, and prefer
+two-field forms (login-style) for this state until the multi-field case is diagnosed.
+
 ## Preconditions
 
 - `screens.mjs up --platform web` must have started the service and passed the DB guard;

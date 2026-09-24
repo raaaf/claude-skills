@@ -13,6 +13,12 @@ import { test } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+// GPU-accelerated rasterization is a known source of run-to-run sub-pixel
+// anti-aliasing jitter in headless Chromium screenshots (a handful of text
+// edge pixels rounding differently between runs, nothing to do with app
+// state). Forcing software rendering makes glyph rasterization deterministic.
+test.use({ launchOptions: { args: ['--disable-gpu', '--force-color-profile=srgb'] } });
+
 const ROOT = process.cwd();
 const config = JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8'));
 const manifest = JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8'));
@@ -32,22 +38,63 @@ function parseViewport(spec) {
   return { width, height };
 }
 
-async function loginAs(page, role) {
+// State axes "empty": a role can have a second demo login in
+// config.demo_logins_empty (a per-role account seeded with no data, e.g.
+// onboarding completed but zero projects/entries); falls back to the
+// regular (filled) login when no empty-state login is configured for that
+// role, so an entry that lists "empty" without an empty login just
+// captures the same account twice under different state labels instead of
+// failing.
+async function loginAs(page, role, state) {
   if (role === 'guest') return;
-  const email = config.demo_logins && config.demo_logins[role];
-  const password = config.demo_password;
+  const emptyLogins = config.demo_logins_empty || {};
+  const usingEmptyLogin = state === 'empty' && emptyLogins[role];
+  const email = usingEmptyLogin || (config.demo_logins && config.demo_logins[role]);
+  // The empty-state account is frequently a project's own pre-existing
+  // secondary test user (not created by ScreensDemoSeeder), so its
+  // password can differ from the primary demo_password.
+  const password = (usingEmptyLogin && config.demo_password_empty) || config.demo_password;
   if (!email || !password) {
     throw new Error(`no demo login configured for role "${role}" (config.demo_logins / config.demo_password)`);
   }
   await page.goto(`${BASE_URL}/login`);
   await page.fill('input[name=email]', email);
   await page.fill('input[name=password]', password);
-  // Scoped to the login form's own submit button: a bare `button[type=submit]`
-  // can match an unrelated form earlier in the DOM (e.g. a language switcher),
-  // submitting the wrong form silently instead of logging in.
-  await page.locator('form').filter({ has: page.locator('input[name=email]') })
-    .locator('button[type=submit]').click();
+  await submitScopedForm(page);
+}
+
+// Submits by pressing Enter in the form's last field rather than clicking
+// the submit button: a bare `button[type=submit]` click can match/land on
+// an unrelated element (e.g. a language switcher earlier in the DOM) or,
+// verified against this project's own `<x-button>` component, silently
+// fail to fire the form's `wire:submit.prevent` handler at all (no
+// network request), while Enter in the last field reliably submits the
+// same form. `lastFieldSelector` defaults to the login form's password
+// field; submitErrorState passes the last entry.error_fill selector so a
+// multi-field form (e.g. register's password_confirmation) submits from
+// the field a real user would actually be on when they hit Enter.
+async function submitScopedForm(page, lastFieldSelector = 'input[name=password]') {
+  await page.locator(lastFieldSelector).press('Enter');
   await page.waitForLoadState('networkidle');
+  // A small settle wait after the Livewire response: networkidle resolves
+  // once the request finishes, but the client-side DOM morph that renders
+  // the validation error happens a tick after that.
+  await page.waitForTimeout(300);
+}
+
+// State axis "error": fills entry.error_fill ({selector, value} pairs,
+// manifest-driven so this stays generic per repo CLAUDE.md "every
+// generated driver must read the manifest at runtime instead of
+// hard-coding entries") and submits by pressing Enter in the LAST listed
+// field, so the page renders its own server-side validation error state
+// instead of a synthetic one.
+async function submitErrorState(page, entry) {
+  const fields = entry.error_fill || [];
+  for (const field of fields) {
+    await page.fill(field.selector, field.value);
+  }
+  const lastSelector = fields.length ? fields[fields.length - 1].selector : 'input[name=password]';
+  await submitScopedForm(page, lastSelector);
 }
 
 const viewports = (config.axes && config.axes.viewports && config.axes.viewports.web) || ['1440x900'];
@@ -65,6 +112,12 @@ for (const entry of manifest.entries || []) {
           test(`${entry.id} ${state} ${role} ${viewport} ${theme}`, async ({ browser }) => {
             const context = await browser.newContext({
               viewport: parseViewport(viewport),
+              // zeit's dark mode is not prefers-color-scheme-driven: every
+              // layout reads a `dark_mode` cookie server-side (`session('dark_mode',
+              // request()->cookie('dark_mode') === 'true')`) to decide the
+              // `dark` class on <html>, so colorScheme alone would not
+              // switch the theme; set below via addCookies. colorScheme is
+              // still set for any OS-level media-query fallback elsewhere.
               colorScheme: theme === 'dark' ? 'dark' : 'light',
               // Catalog captures use the primary locale only (plan's State
               // axes: locale). Without this, a guest-facing page whose
@@ -72,6 +125,11 @@ for (const entry of manifest.entries || []) {
               // renders in the browser's default language instead.
               locale: `${primaryLocale}-${primaryLocale.toUpperCase()}`,
             });
+            const urlHost = new URL(BASE_URL).hostname;
+            await context.addCookies([{
+              name: 'dark_mode', value: theme === 'dark' ? 'true' : 'false',
+              domain: urlHost, path: '/',
+            }]);
             // External hosts blocked (plan's "Dynamic content" edge case): allowlist
             // localhost/127.0.0.1 only, abort everything else.
             await context.route('**/*', (route) => {
@@ -85,24 +143,32 @@ for (const entry of manifest.entries || []) {
             // JS-driven mount animation (e.g. a number count-up) that
             // starts before the style tag lands gets frozen mid-frame by
             // the fixed clock below and screenshots as visibly garbled
-            // overlapping digits.
+            // overlapping digits. Appended synchronously (not on
+            // DOMContentLoaded) so the override is guaranteed to land before
+            // any of the page's own scripts run, including deferred bundles
+            // (Alpine) that mount and start their own x-transition before
+            // DOMContentLoaded fires: a DOMContentLoaded-gated style tag lost
+            // that race intermittently, leaving a handful of sub-pixel
+            // anti-aliasing diffs around fading nav-scroll-gradient overlays.
             await context.addInitScript((css) => {
-              document.addEventListener('DOMContentLoaded', () => {
-                const style = document.createElement('style');
-                style.textContent = css;
-                document.head.appendChild(style);
-              });
+              const style = document.createElement('style');
+              style.textContent = css;
+              (document.head || document.documentElement).appendChild(style);
             }, DISABLE_ANIMATIONS_CSS);
 
             const page = await context.newPage();
             await page.emulateMedia({ reducedMotion: 'reduce' });
             await page.clock.setFixedTime(FIXED_TIME);
-            await loginAs(page, role);
+            await loginAs(page, role, state);
 
             await page.goto(`${BASE_URL}${entry.reach}`);
             await page.waitForLoadState('networkidle');
             if (entry.ready) {
               await page.waitForSelector(entry.ready, { timeout: 15000 });
+            }
+
+            if (state === 'error') {
+              await submitErrorState(page, entry);
             }
 
             for (const selector of entry.mask || []) {
