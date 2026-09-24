@@ -251,6 +251,10 @@ Confidence: animation whose start state cannot be observed in a rendered frame -
 
 `@ObservedObject`/`@StateObject` of a parent view model inside a `List`/`LazyVStack` row re-renders every row on any published change of the parent. Rows take value props (`let`) and, when they need actions, closures; the observation stays in the parent. Confidence: parent-object observation in a row of a list with more than a handful of items -> Important (2026-06-11).
 
+### Recomputed Values in `body`
+
+A value derived from model data (a filtered or sorted collection, a snapshot, a formatter, a parsed payload) that is computed inside `body` or a computed property `body` reads runs on every body evaluation, which includes every keystroke in a bound text field and every published change. Cache it in `@State` and update it via `.onChange(of:)` or at the event that changes its inputs, or compute it once at the action that needs it. Confidence: the computation touches a SwiftData fetch, a collection of more than a handful of items, or allocates a formatter -> Important; cheap arithmetic -> do not report (2026-09-24).
+
 ## XVIII. File-System Watchers and Folder Monitors (macOS)
 
 FSEvents/`DispatchSource` watchers are concurrency code. Check explicitly, because two audits in a row missed it (2026-06-11, 9 watcher fixes):

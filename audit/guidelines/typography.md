@@ -282,3 +282,5 @@ When the project defines typographic token classes (`.heading-1`, `.text-body`, 
 ## XVI. One Finding for a Repeated Plural or Apostrophe Pattern (2026-09-23)
 
 When the same hardcoded plural ternary (`n == 1 ? "Technik" : "Techniken"`) or the same straight-vs-curly apostrophe slip appears in two or more files within one run, report it once as a shared String-Catalog-plural (or shared constant) candidate that lists every site, not as separate unlinked Minor findings per file.
+
+Enforcement: a user-facing count with a hand-written singular/plural ternary or `if n == 1` branch is a finding even at a single site when the project has a String Catalog (`*.xcstrings`) or an equivalent plural mechanism: the fix is a plural variant in the catalog, not a better ternary. Severity Minor at one site, Important once the same pattern appears in three or more files (2026-09-24).
