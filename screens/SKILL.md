@@ -28,9 +28,12 @@ allowed-tools:
 > `index.html`) are live as of stage c; the Apple driver (iOS + macOS, XCUITest,
 > `screens/references/platform-apple.md`, `screens/templates/ScreensCatalogTests.swift`) is live as
 > of stage d, including real dedicated-simulator setup in `screens.mjs up`/`down`
-> (`deviceSetupHook` -> `iosDeviceSetup`/`macosDeviceSetup`). The Android/Capacitor (Maestro) driver
-> is added in a later delivery stage, and Phase 5 reports `SKIP (driver added in a later stage)` for
-> that platform until then.
+> (`deviceSetupHook` -> `iosDeviceSetup`/`macosDeviceSetup`). The Maestro driver (Android + a
+> Capacitor app's Android build, `screens/references/platform-maestro.md`,
+> `screens/templates/maestro-flow.yaml`, `screens/templates/generate-maestro-flows.mjs`) is live as
+> of stage e, including dedicated-AVD setup in `screens.mjs up`/`down` (`deviceSetupHook` ->
+> `androidDeviceSetup`). Capacitor iOS is out of scope (platform-apple.md's XCUITest driver covers
+> native iOS only).
 
 ## Phase 0: Preflight
 
@@ -114,8 +117,12 @@ and set `config.web.fixed_now` to the same instant as `capture.spec.ts`'s `FIXED
 have the demo seeder require it and register it on `fake()` and `app(\Faker\Generator::class)`
 before calling the project's own seeders, and follow the "Seeder determinism rules" checklist
 (`screens/references/platform-web.md`) for `Str::create*Using` seeding and any `->random(`-family
-call inside the seeders it calls. The orchestrator never writes these files itself (subagent Write
-scope is the target project, not `.claude/`).
+call inside the seeders it calls. On an android/Capacitor project, also instantiate
+`screens/templates/maestro-flow.yaml` verbatim into `.screens/android/maestro-flow.yaml` and
+`screens/templates/generate-maestro-flows.mjs` verbatim into `.screens/android/generate-maestro-flows.mjs`
+(no templating, both read `config.json`/`manifest.json` at generation time,
+`screens/references/platform-maestro.md` "Flow generation"). The orchestrator never writes these
+files itself (subagent Write scope is the target project, not `.claude/`).
 
 After the executor returns, run a seeder dry run:
 
@@ -198,7 +205,16 @@ straight to `down`. On the web platform, run the driver command under `nice -n 1
 <up's DERIVED_DATA_PATH output line>`, `-destination "platform=iOS Simulator,id=<up's
 SIMULATOR_UDID output line>"` (iOS only), and `xcrun simctl ui <SIMULATOR_UDID> appearance
 light|dark` before each themed pass (platform-apple.md "Invocation"); the per-entry stale filter is
-the `TEST_RUNNER_SCREENS_ENTRIES` env var, not `-only-testing` (platform-apple.md "Filtering").
+the `TEST_RUNNER_SCREENS_ENTRIES` env var, not `-only-testing` (platform-apple.md "Filtering"). On
+android, `npx cap sync android` + the isolated `capacitor.config.json` server.url rewrite (Capacitor
+apps only, skip both for a plain Android project) + `nice -n 10 ./gradlew assembleDebug` + `adb -s
+<up's ANDROID_SERIAL output line> install -r`, then for each theme: `adb -s <serial> shell cmd uimode
+night yes|no`, `node .screens/android/generate-maestro-flows.mjs <comma-separated stale entry ids>
+<theme>`, `nice -n 10 maestro --device <serial> test .screens/.maestro-generated/`, then move that
+pass's `*__<theme>.png` files (Maestro writes them to the project root, not an arbitrary path) into
+`.screens/.incoming/android/` (platform-maestro.md "Invocation"). `UP_RESULT=SKIP (avdmanager not
+found; ...)` or any other preflight `SKIP` line means no build/install/capture is attempted for that
+platform, same as a missing web/Apple toolchain.
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \

@@ -276,6 +276,16 @@ function checkDiskGuard(root, runner = defaultRunner) {
   return { ok: freeGb >= 8, freeGb };
 }
 
+// Shared "SKIP below 8 GB free" early-return shape, extracted once it
+// tripled across `iosDeviceSetup`/`macosDeviceSetup`/`androidDeviceSetup`
+// (same duplicated 2-line guard, three device-setup functions). Returns
+// the skip object to return-early with, or `null` when disk is fine.
+function diskGuardSkip(root, runner) {
+  const disk = checkDiskGuard(root, runner);
+  if (disk.ok) return null;
+  return { ok: true, skip: true, reason: `SKIP (low disk: ${disk.freeGb} GB free, need 8)` };
+}
+
 // `xcrun simctl list runtimes -j` -> newest available iOS runtime
 // identifier, sorted by dotted version number. Pure over the parsed JSON.
 function findNewestIosRuntimeId(runtimesJson) {
@@ -339,8 +349,8 @@ function appearanceArgs(udid, theme) {
 // NOT set here: it is a per-theme, per-xcodebuild-invocation step the
 // driver runs before each themed test pass (`screens/references/platform-apple.md`).
 function iosDeviceSetup(root, config, runner = defaultRunner) {
-  const disk = checkDiskGuard(root, runner);
-  if (!disk.ok) return { ok: true, skip: true, reason: `SKIP (low disk: ${disk.freeGb} GB free, need 8)` };
+  const diskSkip = diskGuardSkip(root, runner);
+  if (diskSkip) return diskSkip;
 
   const iosConfig = config.ios || {};
   const deviceClass = iosConfig.device_class || 'iphone';
@@ -371,17 +381,226 @@ function iosDeviceSetup(root, config, runner = defaultRunner) {
 // macOS runs the app directly (no simulator, plan "Isolation and
 // lifecycle": "macOS: no device"); only the disk guard applies.
 function macosDeviceSetup(root, runner = defaultRunner) {
-  const disk = checkDiskGuard(root, runner);
-  if (!disk.ok) return { ok: true, skip: true, reason: `SKIP (low disk: ${disk.freeGb} GB free, need 8)` };
+  const diskSkip = diskGuardSkip(root, runner);
+  if (diskSkip) return diskSkip;
   return { ok: true, skip: false };
 }
 
-// Android/Maestro (stage e) is the one platform still honestly
-// unimplemented; iOS and macOS now do real device setup (stage d).
-function deviceSetupHook(platform, root = process.cwd(), config = {}, runner = defaultRunner) {
-  if (platform === 'android') {
-    return { ok: true, skip: true, reason: 'android device setup not implemented yet (added in a later stage)' };
+// ---------------------------------------------------------------------
+// Android device setup (Maestro, stage e). SDK resolution + dedicated AVD,
+// mirroring the Apple find-or-create/reuse shape above but for
+// avdmanager/adb instead of simctl.
+// ---------------------------------------------------------------------
+
+// `screens_<repoHash>_<deviceClass>` (plan step 1: pinned per-repo AVD
+// name), underscored per the plan's own naming, unlike the iOS
+// `screens-<hash>-<device>` hyphenated form.
+function androidAvdName(hash, deviceClass = 'android-phone') {
+  return `screens_${hash}_${deviceClass}`;
+}
+
+// Deterministic emulator console port per repo (even, 5554-5680, the
+// documented AVD console-port range) so two repos never collide and a
+// rerun always targets the same serial without an adb enumeration round
+// trip. A real collision (another emulator already bound to that port,
+// e.g. the user's own `events_repro`) surfaces as an emulator start
+// failure, same class as a `simctl create` failure above.
+function androidEmulatorPort(hash) {
+  const n = parseInt(hash.slice(0, 4), 16) % 64;
+  return 5554 + n * 2;
+}
+
+// SDK resolution (plan: "platform-tools/adb NOT on PATH: resolve via
+// ANDROID_HOME/ANDROID_SDK_ROOT or ~/Library/Android/sdk"). Pure over the
+// passed env + home dir so the fallback chain is directly testable.
+function resolveAndroidSdkRoot(env = process.env, homeDir = os.homedir()) {
+  return env.ANDROID_HOME || env.ANDROID_SDK_ROOT || join(homeDir, 'Library/Android/sdk');
+}
+
+function androidToolPaths(sdkRoot) {
+  return {
+    adb: join(sdkRoot, 'platform-tools', 'adb'),
+    emulator: join(sdkRoot, 'emulator', 'emulator'),
+    avdmanager: join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'avdmanager'),
+  };
+}
+
+// Preflight (plan step 9: "preflight checks maestro, java, emulator, adb
+// and reports SKIP with the install command when missing"). Pure over a
+// presence map so the check order is directly testable without touching
+// the filesystem; `probeAndroidTools` below does the real existsSync/
+// commandOnPath calls.
+function androidToolsPreflight(present) {
+  if (!present.maestro) return { ok: false, reason: 'maestro not found; install: curl -Ls "https://get.maestro.mobile.dev" | bash' };
+  if (!present.java) return { ok: false, reason: 'java not found; install JDK 17 (e.g. brew install openjdk@17)' };
+  if (!present.emulator) return { ok: false, reason: 'android emulator not found; install the Android SDK "emulator" package' };
+  if (!present.adb) return { ok: false, reason: 'adb not found; install Android SDK platform-tools' };
+  if (!present.avdmanager) return { ok: false, reason: 'avdmanager not found; install: sdkmanager "cmdline-tools;latest"' };
+  return { ok: true };
+}
+
+function probeAndroidTools(sdkRoot) {
+  const tools = androidToolPaths(sdkRoot);
+  return {
+    maestro: commandOnPath('maestro') || existsSync(join(os.homedir(), '.maestro/bin/maestro')),
+    java: commandOnPath('java') || existsSync('/Library/Java/JavaVirtualMachines/jdk-17.jdk'),
+    emulator: existsSync(tools.emulator),
+    adb: existsSync(tools.adb),
+    avdmanager: existsSync(tools.avdmanager),
+  };
+}
+
+// AVD reuse (plan step 1 "AVD name derivation, reuse"): `avdmanager list
+// avd -c` prints one AVD name per line, nothing else -- exact match
+// against the deterministic name, same shape as `findSimulatorUdidByName`'s
+// JSON parse above but for a plain-text list.
+function avdExists(listAvdOutput, name) {
+  return (listAvdOutput || '').split('\n').map((l) => l.trim()).includes(name);
+}
+
+// Installed system images (no `sdkmanager` on this machine to list them,
+// see stage e context): scans `<sdkRoot>/system-images/<api>/<tag>/<abi>`
+// and returns `system-images;<api>;<tag>;<abi>` package ids, newest API
+// level first. Real fs walk (like `listRepoFiles` above), never downloads
+// anything -- an empty result is a SKIP with the install command, per "no
+// downloads without reporting first".
+function findInstalledSystemImages(sdkRoot) {
+  const base = join(sdkRoot, 'system-images');
+  const out = [];
+  let apis;
+  try {
+    apis = readdirSync(base, { withFileTypes: true }).filter((e) => e.isDirectory());
+  } catch {
+    return out;
   }
+  for (const apiEntry of apis) {
+    let tags;
+    try {
+      tags = readdirSync(join(base, apiEntry.name), { withFileTypes: true }).filter((e) => e.isDirectory());
+    } catch {
+      continue;
+    }
+    for (const tagEntry of tags) {
+      let abis;
+      try {
+        abis = readdirSync(join(base, apiEntry.name, tagEntry.name), { withFileTypes: true }).filter((e) => e.isDirectory());
+      } catch {
+        continue;
+      }
+      for (const abiEntry of abis) {
+        out.push(`system-images;${apiEntry.name};${tagEntry.name};${abiEntry.name}`);
+      }
+    }
+  }
+  out.sort((a, b) => {
+    const an = parseInt((/android-(\d+)/.exec(a) || [])[1] || '0', 10);
+    const bn = parseInt((/android-(\d+)/.exec(b) || [])[1] || '0', 10);
+    return bn - an;
+  });
+  return out;
+}
+
+// AVD create: `echo no |` answers avdmanager's "create custom hardware
+// profile? [no]" prompt (same shell-wrapped-command reasoning as the
+// seed/view:cache calls in `cmdUp` below). Device profile defaults to
+// "pixel_6", the profile `events_repro.avd`'s own config.ini already
+// verifies installed and working on this machine; a project needing a
+// different profile sets `config.android.device_profile`.
+function androidAvdCreateShellCmd(avdmanagerPath, name, systemImagePackage, deviceProfile = 'pixel_6') {
+  return `echo no | "${avdmanagerPath}" create avd -n "${name}" -k "${systemImagePackage}" -d "${deviceProfile}"`;
+}
+
+// System UI demo mode (plan step 1): fixed clock 9:41, full battery, full
+// network, notifications hidden -- the Android equivalent of the iOS
+// status bar override, applied once per `up` (`sysui_demo_allowed` must be
+// set before the first demo broadcast or the system ignores it).
+function androidDemoModeArgs(serial) {
+  const base = ['-s', serial, 'shell'];
+  return [
+    [...base, 'settings', 'put', 'global', 'sysui_demo_allowed', '1'],
+    [...base, 'am', 'broadcast', '-a', 'com.android.systemui.demo', '--es', 'command', 'enter'],
+    [...base, 'am', 'broadcast', '-a', 'com.android.systemui.demo', '--es', 'command', 'clock', '--es', 'hhmm', '0941'],
+    [...base, 'am', 'broadcast', '-a', 'com.android.systemui.demo', '--es', 'command', 'battery', '--es', 'level', '100', '--es', 'plugged', 'false'],
+    [...base, 'am', 'broadcast', '-a', 'com.android.systemui.demo', '--es', 'command', 'network', '--es', 'wifi', 'show', '--es', 'level', '4', '--es', 'mobile', 'show', '--es', 'datatype', 'none', '--es', 'level', '4'],
+    [...base, 'am', 'broadcast', '-a', 'com.android.systemui.demo', '--es', 'command', 'notifications', '--es', 'visible', 'false'],
+  ];
+}
+
+// Theme (plan step 1: "theme via adb shell cmd uimode night yes|no"). Not
+// applied by `androidDeviceSetup`/`up` (same reasoning as `appearanceArgs`
+// above: it's a per-themed-pass switch the driver applies before each run,
+// see `platform-maestro.md`), exported for that use.
+function androidThemeArgs(serial, theme) {
+  return ['-s', serial, 'shell', 'cmd', 'uimode', 'night', theme === 'dark' ? 'yes' : 'no'];
+}
+
+// `adb shell getprop sys.boot_completed` polling, the Android equivalent of
+// `waitForHealth` above (same 90s budget as the web health check and the
+// STOP-condition-adjacent iOS boot, though iOS's `simctl boot` call itself
+// blocks until booted and needs no polling).
+function waitForAndroidBoot(adbPath, serial, timeoutSec, runner = defaultRunner) {
+  const start = Date.now();
+  while ((Date.now() - start) / 1000 < timeoutSec) {
+    const res = runner(adbPath, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], {});
+    if ((res.stdout || '').trim() === '1') return true;
+    try {
+      execSync('sleep 2');
+    } catch {
+      // ignore
+    }
+  }
+  return false;
+}
+
+// Finds-or-creates the dedicated AVD (never `events_repro`, the user's own
+// device: the name is always `screens_<repoHash>_<deviceClass>`), and
+// returns the `nice`-free emulator start command for `cmdUp`'s generic
+// start_command/pidfile spawn block to run (reused rather than duplicated,
+// see that block's own comment). Boot-wait + demo mode happen in `cmdUp`
+// once the process is actually running, not here (parallel to how iOS's
+// `simctl boot` call is synchronous but the appearance/theme switch is a
+// separate per-pass step the driver owns).
+// `probe` is injectable (default `probeAndroidTools`, real existsSync/
+// commandOnPath calls) so a test can fix the tool-presence map instead of
+// depending on what happens to be installed on the machine running the
+// suite (same "runner injected" testability requirement as the rest of
+// this file's device-setup functions).
+function androidDeviceSetup(root, config, runner = defaultRunner, probe = probeAndroidTools) {
+  const diskSkip = diskGuardSkip(root, runner);
+  if (diskSkip) return diskSkip;
+
+  const androidConfig = config.android || {};
+  const sdkRoot = resolveAndroidSdkRoot();
+  const tools = androidToolPaths(sdkRoot);
+  const preflight = androidToolsPreflight(probe(sdkRoot));
+  if (!preflight.ok) return { ok: true, skip: true, reason: preflight.reason };
+
+  const hash = repoHash(root);
+  const deviceClass = androidConfig.device_class || 'android-phone';
+  const name = androidAvdName(hash, deviceClass);
+  const port = androidEmulatorPort(hash);
+  const serial = `emulator-${port}`;
+
+  const listRes = runner(tools.avdmanager, ['list', 'avd', '-c'], {});
+  if (!avdExists(listRes.stdout, name)) {
+    const images = findInstalledSystemImages(sdkRoot);
+    if (!images.length) {
+      return {
+        ok: true, skip: true,
+        reason: `no Android system image installed under ${sdkRoot}/system-images (install: sdkmanager "system-images;android-<api>;google_apis;arm64-v8a")`,
+      };
+    }
+    const createCmd = androidAvdCreateShellCmd(tools.avdmanager, name, images[0], androidConfig.device_profile);
+    const createRes = runner('sh', ['-c', createCmd], {});
+    if (createRes.status !== 0) return { ok: true, skip: true, reason: `avdmanager create avd failed for "${name}" (${images[0]})` };
+  }
+
+  const startCommand = `"${tools.emulator}" -avd "${name}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -port ${port}`;
+  return { ok: true, skip: false, name, serial, port, startCommand, tools };
+}
+
+function deviceSetupHook(platform, root = process.cwd(), config = {}, runner = defaultRunner) {
+  if (platform === 'android') return androidDeviceSetup(root, config, runner);
   if (platform === 'ios') return iosDeviceSetup(root, config, runner);
   if (platform === 'macos') return macosDeviceSetup(root, runner);
   return { ok: true, skip: false };
@@ -603,7 +822,11 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     return lines;
   }
   if (device.udid) lines.push(`SIMULATOR_UDID=${device.udid}`);
-  if (device.name) lines.push(`SIMULATOR_NAME=${device.name}`);
+  if (platform !== 'android' && device.name) lines.push(`SIMULATOR_NAME=${device.name}`);
+  if (platform === 'android') {
+    if (device.name) lines.push(`ANDROID_AVD_NAME=${device.name}`);
+    if (device.serial) lines.push(`ANDROID_SERIAL=${device.serial}`);
+  }
   if (platform === 'ios' || platform === 'macos') {
     // Disk guard (plan "Disk guard"): a per-run derivedDataPath under
     // `.screens/.build/<platform>`, gitignored, deleted in `down`, never
@@ -640,8 +863,14 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     runner('sh', ['-c', 'nice -n 10 php artisan view:cache'], runEnv);
   }
 
-  if (platformConfig.start_command) {
-    const child = spawn(`nice -n 10 ${platformConfig.start_command}`, {
+  // Android's emulator start command is device-derived (repo-hash AVD name
+  // + port, `androidDeviceSetup`), not config-declared like a web
+  // `start_command`; reusing this one spawn/pidfile block for both (instead
+  // of a parallel Android-only spawn) is what makes `down`'s existing
+  // generic pidfile kill below already cover the emulator process too.
+  const startCommand = platformConfig.start_command || device.startCommand;
+  if (startCommand) {
+    const child = spawn(`nice -n 10 ${startCommand}`, {
       shell: true,
       cwd: root,
       detached: true,
@@ -661,6 +890,20 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
       return lines;
     }
     lines.push('HEALTH=OK');
+  }
+
+  // Android boot-wait + System UI demo mode (plan step 1), the Android
+  // equivalent of the iOS status-bar override in `iosDeviceSetup` above,
+  // applied once here rather than inside `androidDeviceSetup` because it
+  // needs the emulator process actually running, not just spawned.
+  if (platform === 'android' && device.serial) {
+    if (!waitForAndroidBoot(device.tools.adb, device.serial, 90, runner)) {
+      lines.push('UP_RESULT=FAIL (android emulator never reported sys.boot_completed within 90s)');
+      return lines;
+    }
+    lines.push('BOOT=OK');
+    for (const demoArgs of androidDemoModeArgs(device.serial)) runner(device.tools.adb, demoArgs, {});
+    lines.push('DEMO_MODE=OK');
   }
 
   if (platformConfig.seed_command) {
@@ -709,6 +952,27 @@ function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
   if (platform === 'ios' || platform === 'macos') {
     rmSync(join(root, '.screens', '.build', platform), { recursive: true, force: true });
   }
+
+  // Android lifecycle (stage e): graceful `adb emu kill` (re-derives the
+  // serial from the same deterministic port, no state needed to remember
+  // it, same reasoning as the iOS udid re-derivation above), then the
+  // generic pidfile kill below as a fallback/cleanup. The AVD itself is
+  // never deleted (plan "Dedicated devices": "AVD kept").
+  if (platform === 'android') {
+    const sdkRoot = resolveAndroidSdkRoot();
+    const tools = androidToolPaths(sdkRoot);
+    const port = androidEmulatorPort(repoHash(root));
+    runner(tools.adb, ['-s', `emulator-${port}`, 'emu', 'kill'], {});
+  }
+
+  // Build-output cleanup (Disk guard, "delete build outputs you create in
+  // down"): generic over any platform block that declares `build_dirs`
+  // (Gradle/Capacitor has no `-derivedDataPath`-style redirect flag without
+  // a source-file change, see platform-maestro.md "Known limits", so its
+  // ordinary `build/` output is deleted here instead of redirected+deleted
+  // like the Apple `.screens/.build/<platform>` path above).
+  const buildDirs = (config[platform] && config[platform].build_dirs) || [];
+  for (const dir of buildDirs) rmSync(join(root, dir), { recursive: true, force: true });
 
   if (platform) {
     const pidFile = join(root, '.screens', platform, 'pid');
@@ -1416,6 +1680,19 @@ export {
   appearanceArgs,
   iosDeviceSetup,
   macosDeviceSetup,
+  androidAvdName,
+  androidEmulatorPort,
+  resolveAndroidSdkRoot,
+  androidToolPaths,
+  androidToolsPreflight,
+  probeAndroidTools,
+  avdExists,
+  findInstalledSystemImages,
+  androidAvdCreateShellCmd,
+  androidDemoModeArgs,
+  androidThemeArgs,
+  waitForAndroidBoot,
+  androidDeviceSetup,
   deviceSetupHook,
   laravelDbGuard,
   bunDbGuard,

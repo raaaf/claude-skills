@@ -27,6 +27,18 @@ import {
   appearanceArgs,
   iosDeviceSetup,
   macosDeviceSetup,
+  androidAvdName,
+  androidEmulatorPort,
+  resolveAndroidSdkRoot,
+  androidToolPaths,
+  androidToolsPreflight,
+  avdExists,
+  findInstalledSystemImages,
+  androidAvdCreateShellCmd,
+  androidDemoModeArgs,
+  androidThemeArgs,
+  waitForAndroidBoot,
+  androidDeviceSetup,
   cmdUp,
   laravelDbGuard,
   composePhpIniScanDir,
@@ -1137,3 +1149,257 @@ test('affected: an unrelated path -> no ids', () => {
 function require_sha256(content) {
   return createHash('sha256').update(content).digest('hex');
 }
+
+// =============================================================================
+// Android device setup (Maestro, stage e)
+// =============================================================================
+
+// --- AVD name derivation ------------------------------------------------
+
+test('androidAvdName: deterministic per repo hash + device class, underscored', () => {
+  assert.equal(androidAvdName('abcd1234', 'android-phone'), 'screens_abcd1234_android-phone');
+  assert.equal(androidAvdName('abcd1234'), 'screens_abcd1234_android-phone');
+});
+
+// --- Emulator port derivation --------------------------------------------
+
+test('androidEmulatorPort: even port in the 5554-5680 range, deterministic per hash', () => {
+  const port = androidEmulatorPort('abcd1234');
+  assert.ok(port >= 5554 && port <= 5680);
+  assert.equal(port % 2, 0);
+  assert.equal(androidEmulatorPort('abcd1234'), port);
+});
+
+test('androidEmulatorPort: different hashes usually give different ports', () => {
+  assert.notEqual(androidEmulatorPort('11110000'), androidEmulatorPort('ffffaaaa'));
+});
+
+// --- SDK resolution -------------------------------------------------------
+
+test('resolveAndroidSdkRoot: ANDROID_HOME wins when set', () => {
+  assert.equal(resolveAndroidSdkRoot({ ANDROID_HOME: '/opt/android-home' }, '/Users/x'), '/opt/android-home');
+});
+
+test('resolveAndroidSdkRoot: falls back to ANDROID_SDK_ROOT, then ~/Library/Android/sdk', () => {
+  assert.equal(resolveAndroidSdkRoot({ ANDROID_SDK_ROOT: '/opt/android-sdk-root' }, '/Users/x'), '/opt/android-sdk-root');
+  assert.equal(resolveAndroidSdkRoot({}, '/Users/x'), '/Users/x/Library/Android/sdk');
+});
+
+test('androidToolPaths: composes adb/emulator/avdmanager under the resolved SDK root', () => {
+  const tools = androidToolPaths('/sdk');
+  assert.equal(tools.adb, join('/sdk', 'platform-tools', 'adb'));
+  assert.equal(tools.emulator, join('/sdk', 'emulator', 'emulator'));
+  assert.equal(tools.avdmanager, join('/sdk', 'cmdline-tools', 'latest', 'bin', 'avdmanager'));
+});
+
+// --- Preflight (each branch inverted goes red) ----------------------------
+
+test('androidToolsPreflight: reports the first missing tool, in order', () => {
+  const all = { maestro: true, java: true, emulator: true, adb: true, avdmanager: true };
+  assert.equal(androidToolsPreflight({ ...all, maestro: false }).ok, false);
+  assert.match(androidToolsPreflight({ ...all, maestro: false }).reason, /maestro not found/);
+  assert.match(androidToolsPreflight({ ...all, java: false }).reason, /java not found/);
+  assert.match(androidToolsPreflight({ ...all, emulator: false }).reason, /emulator not found/);
+  assert.match(androidToolsPreflight({ ...all, adb: false }).reason, /adb not found/);
+  assert.match(androidToolsPreflight({ ...all, avdmanager: false }).reason, /avdmanager not found/);
+  assert.equal(androidToolsPreflight(all).ok, true);
+});
+
+// --- AVD reuse -------------------------------------------------------------
+
+test('avdExists: exact match against a plain `avdmanager list avd -c` line list', () => {
+  const output = 'events_repro\nscreens_abcd1234_android-phone\n';
+  assert.equal(avdExists(output, 'screens_abcd1234_android-phone'), true);
+  assert.equal(avdExists(output, 'events_repro'), true);
+  assert.equal(avdExists(output, 'nonexistent'), false);
+  assert.equal(avdExists('', 'nonexistent'), false);
+});
+
+// --- Installed system images (real fs walk over a fixture tree) -----------
+
+test('findInstalledSystemImages: scans <sdk>/system-images/<api>/<tag>/<abi>, newest API first', () => {
+  const root = fixture();
+  mkdirSync(join(root, 'system-images/android-34/google_apis_playstore/arm64-v8a'), { recursive: true });
+  mkdirSync(join(root, 'system-images/android-37/google_apis_playstore_ps16k/arm64-v8a'), { recursive: true });
+  const images = findInstalledSystemImages(root);
+  assert.deepEqual(images, [
+    'system-images;android-37;google_apis_playstore_ps16k;arm64-v8a',
+    'system-images;android-34;google_apis_playstore;arm64-v8a',
+  ]);
+});
+
+test('findInstalledSystemImages: no system-images dir -> empty array, no throw', () => {
+  const root = fixture();
+  assert.deepEqual(findInstalledSystemImages(root), []);
+});
+
+// --- AVD create command composition ----------------------------------------
+
+test('androidAvdCreateShellCmd: pipes "no" past the custom-hardware-profile prompt', () => {
+  const cmd = androidAvdCreateShellCmd('/sdk/cmdline-tools/latest/bin/avdmanager', 'screens_abcd1234_android-phone', 'system-images;android-37;google_apis_playstore_ps16k;arm64-v8a');
+  assert.equal(cmd, 'echo no | "/sdk/cmdline-tools/latest/bin/avdmanager" create avd -n "screens_abcd1234_android-phone" -k "system-images;android-37;google_apis_playstore_ps16k;arm64-v8a" -d "pixel_6"');
+});
+
+test('androidAvdCreateShellCmd: device profile override', () => {
+  const cmd = androidAvdCreateShellCmd('/avdmanager', 'name', 'pkg', 'pixel_9');
+  assert.match(cmd, /-d "pixel_9"/);
+});
+
+// --- Demo mode + theme command composition ----------------------------------
+
+test('androidDemoModeArgs: sysui_demo_allowed first, then clock/battery/network/notifications broadcasts', () => {
+  const calls = androidDemoModeArgs('emulator-5554');
+  assert.deepEqual(calls[0], ['-s', 'emulator-5554', 'shell', 'settings', 'put', 'global', 'sysui_demo_allowed', '1']);
+  assert.ok(calls.some((c) => c.includes('clock') && c.includes('0941')));
+  assert.ok(calls.some((c) => c.includes('battery') && c.includes('100')));
+  assert.ok(calls.some((c) => c.includes('network')));
+  assert.ok(calls.some((c) => c.includes('notifications') && c.includes('false')));
+});
+
+test('androidThemeArgs: composes light/dark uimode night switch', () => {
+  assert.deepEqual(androidThemeArgs('emulator-5554', 'dark'), ['-s', 'emulator-5554', 'shell', 'cmd', 'uimode', 'night', 'yes']);
+  assert.deepEqual(androidThemeArgs('emulator-5554', 'light'), ['-s', 'emulator-5554', 'shell', 'cmd', 'uimode', 'night', 'no']);
+});
+
+// --- Boot wait ---------------------------------------------------------------
+
+test('waitForAndroidBoot: sys.boot_completed=1 -> true immediately', () => {
+  const runner = () => ({ stdout: '1\n', status: 0 });
+  assert.equal(waitForAndroidBoot('/sdk/platform-tools/adb', 'emulator-5554', 5, runner), true);
+});
+
+test('waitForAndroidBoot: never reports 1 within the timeout -> false', () => {
+  const runner = () => ({ stdout: '\n', status: 0 });
+  assert.equal(waitForAndroidBoot('/sdk/platform-tools/adb', 'emulator-5554', 0, runner), false);
+});
+
+// --- androidDeviceSetup: full composition -----------------------------------
+
+function androidFixtureSdk(root) {
+  const sdkRoot = join(root, 'sdk');
+  mkdirSync(join(sdkRoot, 'platform-tools'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'platform-tools/adb'), '');
+  mkdirSync(join(sdkRoot, 'emulator'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'emulator/emulator'), '');
+  mkdirSync(join(sdkRoot, 'cmdline-tools/latest/bin'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'cmdline-tools/latest/bin/avdmanager'), '');
+  mkdirSync(join(sdkRoot, 'system-images/android-37/google_apis_playstore_ps16k/arm64-v8a'), { recursive: true });
+  return sdkRoot;
+}
+
+const ALL_ANDROID_TOOLS = { maestro: true, java: true, emulator: true, adb: true, avdmanager: true };
+
+test('androidDeviceSetup: reuses an existing AVD, never calls avdmanager create', () => {
+  const root = fixture();
+  androidFixtureSdk(root);
+  process.env.ANDROID_HOME = join(root, 'sdk');
+  try {
+    const hash = repoHash(root);
+    const name = androidAvdName(hash, 'android-phone');
+    let createCalled = false;
+    const runner = (cmd, args) => {
+      if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+      if (Array.isArray(args) && args[0] === 'list') return { stdout: `${name}\n`, status: 0 };
+      if (cmd === 'sh') createCalled = true;
+      return { stdout: '', status: 0 };
+    };
+    const result = androidDeviceSetup(root, { android: {} }, runner, () => ALL_ANDROID_TOOLS);
+    assert.equal(result.ok, true);
+    assert.equal(result.skip, false);
+    assert.equal(result.name, name);
+    assert.equal(createCalled, false);
+    assert.match(result.startCommand, /-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect/);
+  } finally {
+    delete process.env.ANDROID_HOME;
+  }
+});
+
+test('androidDeviceSetup: no existing AVD -> creates one from the newest installed system image', () => {
+  const root = fixture();
+  androidFixtureSdk(root);
+  process.env.ANDROID_HOME = join(root, 'sdk');
+  try {
+    let createCmd = null;
+    const runner = (cmd, args) => {
+      if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+      if (Array.isArray(args) && args[0] === 'list') return { stdout: '', status: 0 };
+      if (cmd === 'sh') {
+        createCmd = args[1];
+        return { stdout: '', status: 0 };
+      }
+      return { stdout: '', status: 0 };
+    };
+    const result = androidDeviceSetup(root, { android: {} }, runner, () => ALL_ANDROID_TOOLS);
+    assert.equal(result.ok, true);
+    assert.equal(result.skip, false);
+    assert.match(createCmd, /system-images;android-37;google_apis_playstore_ps16k;arm64-v8a/);
+  } finally {
+    delete process.env.ANDROID_HOME;
+  }
+});
+
+test('androidDeviceSetup: below disk threshold -> SKIP, no avdmanager calls', () => {
+  const root = fixture();
+  androidFixtureSdk(root);
+  process.env.ANDROID_HOME = join(root, 'sdk');
+  try {
+    let avdmanagerCalled = false;
+    const runner = (cmd) => {
+      if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 95 5 95%\n', status: 0 };
+      avdmanagerCalled = true;
+      return { stdout: '', status: 0 };
+    };
+    const result = androidDeviceSetup(root, {}, runner, () => ALL_ANDROID_TOOLS);
+    assert.equal(result.skip, true);
+    assert.match(result.reason, /low disk: 5 GB free/);
+    assert.equal(avdmanagerCalled, false);
+  } finally {
+    delete process.env.ANDROID_HOME;
+  }
+});
+
+test('androidDeviceSetup: missing avdmanager -> SKIP with install hint, no create attempted', () => {
+  const root = fixture();
+  androidFixtureSdk(root);
+  process.env.ANDROID_HOME = join(root, 'sdk');
+  try {
+    let createCalled = false;
+    const runner = (cmd) => {
+      if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+      if (cmd === 'sh') createCalled = true;
+      return { stdout: '', status: 0 };
+    };
+    const result = androidDeviceSetup(root, {}, runner, () => ({ ...ALL_ANDROID_TOOLS, avdmanager: false }));
+    assert.equal(result.skip, true);
+    assert.match(result.reason, /avdmanager not found/);
+    assert.equal(createCalled, false);
+  } finally {
+    delete process.env.ANDROID_HOME;
+  }
+});
+
+test('androidDeviceSetup: no installed system image -> SKIP with the install command, never downloads', () => {
+  const root = fixture();
+  const sdkRoot = join(root, 'sdk');
+  mkdirSync(join(sdkRoot, 'platform-tools'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'platform-tools/adb'), '');
+  mkdirSync(join(sdkRoot, 'emulator'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'emulator/emulator'), '');
+  mkdirSync(join(sdkRoot, 'cmdline-tools/latest/bin'), { recursive: true });
+  writeFileSync(join(sdkRoot, 'cmdline-tools/latest/bin/avdmanager'), '');
+  // no system-images written on purpose
+  process.env.ANDROID_HOME = sdkRoot;
+  try {
+    const runner = (cmd, args) => {
+      if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+      if (Array.isArray(args) && args[0] === 'list') return { stdout: '', status: 0 };
+      return { stdout: '', status: 0 };
+    };
+    const result = androidDeviceSetup(root, {}, runner, () => ALL_ANDROID_TOOLS);
+    assert.equal(result.skip, true);
+    assert.match(result.reason, /no Android system image installed/);
+    assert.match(result.reason, /sdkmanager/);
+  } finally {
+    delete process.env.ANDROID_HOME;
+  }
+});

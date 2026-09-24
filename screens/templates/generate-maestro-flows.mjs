@@ -1,0 +1,152 @@
+#!/usr/bin/env node
+//
+// generate-maestro-flows.mjs: instantiated verbatim into
+// `<project>/.screens/android/generate-maestro-flows.mjs` by the Phase 2
+// scaffold, alongside `.screens/android/maestro-flow.yaml` (also copied
+// verbatim from `screens/templates/maestro-flow.yaml`). Reads
+// `.screens/config.json` and `.screens/manifest.json` from `process.cwd()`
+// at generation time (repo CLAUDE.md "Reviewer": manifest read at runtime,
+// never hard-coded), so the same file works unmodified for every
+// Android/Capacitor pilot.
+//
+// Contract: one CLI arg, a comma-separated list of stale entry ids (from
+// `screens.mjs plan`'s `PLAN_ENTRY <id> {new|stale|missing_png}` lines,
+// skip `unchanged`; empty/absent arg means every android/capacitor entry).
+// Writes one instantiated flow YAML per (entry, state, role) into
+// `.screens/.maestro-generated/` (ephemeral, cleared and recreated on every
+// call, never committed -- the generated-output relationship to
+// `maestro-flow.yaml` mirrors `.screens/.incoming/<platform>/` for PNGs).
+// Prints one `FLOW <path>` line per generated file and a final
+// `GENERATE_RESULT=OK count=<n>` line, exit 0.
+
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
+const ROOT = process.cwd();
+const config = JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8'));
+const manifest = JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8'));
+const template = readFileSync(join(ROOT, '.screens/android/maestro-flow.yaml'), 'utf8');
+
+const OUT_DIR = join(ROOT, '.screens/.maestro-generated');
+rmSync(OUT_DIR, { recursive: true, force: true });
+mkdirSync(OUT_DIR, { recursive: true });
+
+const staleArg = process.argv[2] || '';
+const staleIds = staleArg ? new Set(staleArg.split(',').filter(Boolean)) : null;
+// Theme (3rd arg, default "light"): the generator is called once per
+// themed pass (platform-maestro.md "Invocation"), so the embedded
+// takeScreenshot name below must carry the theme that pass is actually
+// capturing, not a fixed placeholder.
+const theme = process.argv[3] || 'light';
+
+const androidConfig = config.android || {};
+const appId = androidConfig.app_id || (config.web && config.web.app_id) || 'com.example.app';
+// The Android emulator's own alias for the host machine's localhost (not
+// 127.0.0.1: the emulator is a separate network namespace), platform-maestro.md
+// "Capacitor backend isolation". `config.android.base_url` overrides it for
+// a project not driven through the isolated web backend's own port.
+const baseUrl = androidConfig.base_url || `http://10.0.2.2:${(config.web && config.web.port) || ''}`;
+const loginSelectors = androidConfig.login_selectors
+  || { email: 'email', password: 'password', submit: 'password' };
+const deviceClass = androidConfig.device_class || 'android-phone';
+const outgoingDir = join(ROOT, '.screens/.incoming/android');
+mkdirSync(outgoingDir, { recursive: true });
+
+// Maps the shared native `steps[]` vocabulary (tap_tab/tap/wait/type/
+// swipe_up/swipe_down, config-schema.md, same shape the Apple driver reads)
+// to Maestro flow commands.
+function stepToMaestro(step) {
+  const target = step.id ? { id: step.id } : { text: step.label };
+  const optional = step.optional === 'true' || step.optional === true;
+  switch (step.action) {
+    case 'tap_tab':
+    case 'tap':
+      return optional
+        ? `- tapOn:\n    ${target.id ? `id: "${target.id}"` : `text: "${target.label}"`}\n    optional: true`
+        : `- tapOn:\n    ${target.id ? `id: "${target.id}"` : `text: "${target.label}"`}`;
+    case 'wait':
+      return `- extendedWaitUntil:\n    visible:\n      ${target.id ? `id: "${target.id}"` : `text: "${target.label}"`}\n    timeout: ${optional ? 2000 : 10000}`;
+    case 'type':
+      return `- inputText: "${step.text}"`;
+    case 'swipe_up':
+      return '- swipe:\n    direction: UP';
+    case 'swipe_down':
+      return '- swipe:\n    direction: DOWN';
+    default:
+      return `# unknown step action "${step.action}", skipped`;
+  }
+}
+
+function loginStepsFor(role) {
+  if (role === 'guest') return '';
+  const emptyLogins = config.demo_logins_empty || {};
+  const email = (emptyLogins[role]) || (config.demo_logins && config.demo_logins[role]);
+  const password = config.demo_password;
+  if (!email || !password) return `# no demo login configured for role "${role}"`;
+  return [
+    `- tapOn:\n    id: "${loginSelectors.email}"`,
+    `- inputText: "${email}"`,
+    `- tapOn:\n    id: "${loginSelectors.password}"`,
+    `- inputText: "${password}"`,
+    `- tapOn:\n    id: "${loginSelectors.submit}"`,
+  ].join('\n');
+}
+
+function errorFillSteps(entry) {
+  const fields = entry.error_fill || [];
+  if (!fields.length) return '';
+  return fields.map((f) => `- tapOn:\n    id: "${f.selector}"\n- inputText: "${f.value}"`).join('\n')
+    + `\n- tapOn:\n    id: "${loginSelectors.submit}"`;
+}
+
+let count = 0;
+const lines = [];
+
+for (const entry of manifest.entries || []) {
+  if (entry.platform !== 'android' && entry.platform !== 'capacitor') continue;
+  if (staleIds && !staleIds.has(entry.id)) continue;
+
+  const states = entry.states && entry.states.length ? entry.states : ['filled'];
+  const roles = entry.roles && entry.roles.length ? entry.roles : ['guest'];
+
+  for (const state of states) {
+    for (const role of roles) {
+      // Deep link (openLink) when the entry has a stable URL (the common
+      // case, Capacitor wraps the Laravel web routes); falls back to the
+      // shared steps[] tap vocabulary only when no `reach` URL exists
+      // (platform-maestro.md "Reach").
+      const reachSteps = entry.reach
+        ? `- openLink: "${baseUrl}${entry.reach}"`
+        : (entry.steps || []).map(stepToMaestro).join('\n') || '# no steps[] or reach configured';
+      const errorSteps = state === 'error' ? errorFillSteps(entry) : '';
+      const filename = `${entry.id}__${state}__${role}__${deviceClass}__${theme}.png`;
+      // Maestro's `takeScreenshot: <name>` writes `<name>.png` to the
+      // CURRENT WORKING DIRECTORY, not an arbitrary path (verified against
+      // the events pilot's own pre-existing `.gitignore` comment: "Maestro
+      // takeScreenshot writes PNGs to the repo root on each run" + a
+      // `/*.png` rule already there for exactly this) -- a bare name, never
+      // `outgoingDir` joined in. The driver invocation
+      // (platform-maestro.md "Invocation") moves the written PNGs from the
+      // project root into `.screens/.incoming/android/` after `maestro
+      // test` returns.
+      const screenshotPath = filename.replace(/\.png$/, '');
+
+      const flow = template
+        .replaceAll('{{APP_ID}}', appId)
+        .replaceAll('{{LOGIN_STEPS}}', loginStepsFor(role))
+        .replaceAll('{{REACH_STEPS}}', reachSteps)
+        .replaceAll('{{ERROR_FILL_STEPS}}', errorSteps)
+        .replaceAll('{{MASK_STEPS}}', '') // see platform-maestro.md "Known limits"
+        .replaceAll('{{READY_SELECTOR}}', entry.ready || '')
+        .replaceAll('{{SCREENSHOT_PATH}}', screenshotPath);
+
+      const outPath = join(OUT_DIR, `${entry.id}__${state}__${role}.yaml`);
+      writeFileSync(outPath, flow);
+      lines.push(`FLOW ${outPath}`);
+      count++;
+    }
+  }
+}
+
+for (const line of lines) process.stdout.write(line + '\n');
+process.stdout.write(`GENERATE_RESULT=OK count=${count}\n`);

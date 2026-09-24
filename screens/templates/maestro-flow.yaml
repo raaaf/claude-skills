@@ -1,0 +1,78 @@
+# maestro-flow.yaml: reference shape for ONE (entry, state, role) capture,
+# instantiated by `.screens/android/generate-maestro-flows.mjs`
+# (screens/references/platform-maestro.md) into an ephemeral flow file under
+# `.screens/.maestro-generated/` -- never used unmodified, never committed
+# (same "generated at runtime" relationship the web driver has to
+# capture.spec.ts: the manifest is read by the GENERATOR, not by this file,
+# so this template never hard-codes any project's views, repo CLAUDE.md
+# "Reviewer" note).
+#
+# {{PLACEHOLDER}} tokens are replaced with real values by the generator.
+# Comments describe what each block does; the generator drops a block
+# entirely when its manifest field is empty (e.g. no error_fill -> no
+# "state: error" input block).
+
+appId: {{APP_ID}}
+---
+# clearState guarantees a fresh app install per run (no leftover session
+# from a previous capture), the Maestro/Android equivalent of Playwright's
+# fresh BrowserContext per (entry, state, role) test in capture.spec.ts.
+- launchApp:
+    clearState: true
+
+# Login (state != "guest"): reuses the SAME web login form the Capacitor
+# webview renders (plan step 9 context: "it wraps the Laravel web UI: reuse
+# the web routes"), matched by the Laravel Breeze/Jetstream default input
+# ids -- the same selectors capture.spec.ts's loginAs() targets via CSS,
+# expressed here as Maestro webview element ids (verify against the real
+# rendered login form during scaffold; a project with different ids sets
+# `config.android.login_selectors`).
+{{LOGIN_STEPS}}
+
+# Reach: an entry with a `reach` URL (the common case -- Capacitor wraps
+# the Laravel web routes, plan step 9) deep-links straight there via the
+# app's own verified App Link (`- openLink:`, verified installed on the
+# events pilot: `android/app/src/main/AndroidManifest.xml`'s
+# `android:autoVerify="true"` intent-filter) instead of simulating taps
+# through the UI -- far more deterministic than a tap sequence and, unlike
+# `steps[]`, works unmodified for any manifest entry with a stable URL. An
+# entry with no `reach` (only reachable through a UI flow with no direct
+# route) falls back to the shared native `steps[]` vocabulary
+# (tap_tab/tap/wait/type/swipe_up/swipe_down, config-schema.md, same
+# mapping the generator applies for the Apple driver's `steps[]`).
+{{REACH_STEPS}}
+
+# State axis "error" (entry.error_fill, same {selector, value} shape the
+# web driver reads): fills the listed fields by id and submits.
+{{ERROR_FILL_STEPS}}
+
+# mask[] has no Maestro equivalent selector-hide mechanism for a webview
+# element the way Playwright's `el.style.visibility = 'hidden'` does; the
+# generator instead emits a `runScript` only when the webview exposes a
+# `window.screensApplyMask` hook (see platform-maestro.md "Known limits"),
+# otherwise this block is empty and the entry's masked regions stay live in
+# the capture -- the same "no mask[] equivalent" limitation the Apple
+# driver already documents for native views.
+{{MASK_STEPS}}
+
+# Settle before the shot: no global animation-disable exists for a webview
+# the way Playwright's injected CSS does, so a fixed wait after the last
+# navigation step is the guard against a mid-transition capture (same
+# 0.8s-class margin the Apple driver's `perform(steps:)` uses). Matched by
+# visible TEXT, not a CSS selector -- android/capacitor manifest entries set
+# `ready` to human-visible text (e.g. the view's own heading), not a CSS
+# selector the way web entries do (platform-maestro.md "Flow generation");
+# the project's own `.maestro/*.yaml` flows already match this way
+# exclusively, verified more robust than id-based webview matching here.
+- extendedWaitUntil:
+    visible:
+      text: "{{READY_SELECTOR}}"
+    timeout: 15000
+
+# A bare name, not a path: Maestro writes `<name>.png` to the CURRENT
+# WORKING DIRECTORY (verified against the events pilot's own pre-existing
+# `.gitignore` comment: "Maestro takeScreenshot writes PNGs to the repo
+# root on each run"), never an arbitrary target path. The driver invocation
+# moves it into `.screens/.incoming/android/` after `maestro test` returns
+# (platform-maestro.md "Invocation").
+- takeScreenshot: {{SCREENSHOT_PATH}}

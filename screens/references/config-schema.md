@@ -57,6 +57,26 @@ writes, subagents return").
     "fixed_date": null
   },
 
+  "android": {                              // stage e: Maestro, plain Android or a Capacitor app's
+                                            // Android build (screens/references/platform-maestro.md)
+    "device_class": "android-phone",       // AVD name is `screens_<repoHash>_<device_class>`
+    "device_profile": "pixel_6",           // optional, avdmanager `-d` device profile (default pixel_6,
+                                            // the profile already installed/verified on this machine)
+    "app_id": "de.rafaelalex.events",      // Capacitor appId / Android applicationId (maestro flow header)
+    "login_selectors": {                   // optional: overrides the Breeze/Jetstream default ids
+      "email": "email", "password": "password", "submit": "password"
+    },
+    "build_dirs": [                        // deleted in `down` (Disk guard; Gradle has no
+                                            // -derivedDataPath-equivalent redirect flag, platform-maestro.md
+                                            // "Known limits")
+      "native/android/app/build", "native/android/build"
+    ],
+    "depends_on": "web"                    // declarative only (not yet auto-started, same as ios/macos):
+                                            // a Capacitor app's backend isolation runs through the "web"
+                                            // block's own guard/seed/serve, platform-maestro.md
+                                            // "Capacitor backend isolation"
+  },
+
   "roles": ["guest", "admin", "member"],
   "demo_logins": { "admin": "admin@screens.test", "member": "member@screens.test" },
   "demo_logins_empty": { "member": "member-empty@screens.test" }, // optional: a per-role account
