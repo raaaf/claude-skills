@@ -64,6 +64,9 @@ default, and a background subagent returns its result as a completion notificati
 turn. The consolidation step right after this one has to see all challenger outputs at once in order
 to deduplicate convergent concerns, which is where the value of the panel sits. A backgrounded
 challenge round turns that into a partial read of whichever agents happened to have reported.
+Some harnesses background the agents anyway and ignore the flag (seen 2026-09-23: all five
+challengers returned as later notifications). Then wait until every dispatched challenger has
+notified before consolidating; never consolidate a partial set.
 
 `{PROJECT_GUIDELINES}` comes from Phase 0.7 (`.claude/plan-guidelines.md`); if empty, omit the block.
 
