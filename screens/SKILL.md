@@ -98,10 +98,14 @@ First run only (same guard as Phase 1). Dispatch a `general-purpose` subagent (`
 `run_in_background: false`) with the demo-data brief and config/manifest paths: write the demo
 seeder and the platform driver files the plan's "Per-project files" table names
 (`database/seeders/ScreensDemoSeeder.php` or the framework's equivalent, `.screens/web/capture.spec.ts`,
-etc.; driver templates for stages b/d/e are not present in this repo yet, and when a template is
-missing, the executor writes only the seeder and reports which drivers it deferred). The
-orchestrator never writes these files itself (subagent Write scope is the target project, not
-`.claude/`).
+etc.; driver templates for stages d/e are not present in this repo yet, and when a template is
+missing, the executor writes only the seeder and reports which drivers it deferred). On a PHP
+project, also instantiate `screens/templates/php/fixed-clock.php` verbatim into
+`.screens/web/fixed-clock.php` and `screens/templates/php/zz-screens.ini` into
+`.screens/web/php/zz-screens.ini` with `{{PROJECT_ROOT}}` replaced by the project's absolute path,
+and set `config.web.fixed_now` to the same instant as `capture.spec.ts`'s `FIXED_TIME`
+(`screens/references/platform-web.md` "Server-side fixed clock"). The orchestrator never writes
+these files itself (subagent Write scope is the target project, not `.claude/`).
 
 After the executor returns, run a seeder dry run:
 

@@ -336,6 +336,36 @@ function waitForHealth(url, timeoutSec) {
   return false;
 }
 
+// Server-side fixed clock (revised 2026-09-24 after stage (b) STOP 2:
+// dashboard aggregates read real `now()` server-side; the Playwright clock
+// only fakes the browser). `php --ini`'s "Scan for additional .ini files
+// in:" line is either a real directory or the literal string "(none)" when
+// no scan dir is configured; PHP_INI_SCAN_DIR is colon-joined (macOS/Linux)
+// so an existing scan dir keeps loading its own ini files alongside ours.
+function composePhpIniScanDir(phpIniOutput, additionalDir) {
+  const match = /Scan for additional \.ini files in:\s*(.*)/i.exec(phpIniOutput || '');
+  // Real `php --ini` output quotes an actual path ("/opt/.../conf.d") but
+  // not the "(none)" placeholder; strip surrounding quotes either way.
+  const existing = match ? match[1].trim().replace(/^"(.*)"$/, '$1') : '';
+  if (!existing || existing === '(none)') return additionalDir;
+  return `${existing}:${additionalDir}`;
+}
+
+// Returns {} (no-op) for a non-PHP framework or when config.web.fixed_now
+// is unset, so this stays inert everywhere except a PHP pilot that opted
+// in. Applied to BOTH the serve and the seed/migrate env (plan's
+// "Isolation and lifecycle"): child processes of `artisan serve` inherit
+// env, but the seed/migrate command in `cmdUp` is a separate `runner` call
+// and needs the same env explicitly.
+function phpFixedClockEnv(root, config, runner = defaultRunner) {
+  const platformConfig = config.web || {};
+  if (platformConfig.framework !== 'laravel' || !platformConfig.fixed_now) return {};
+  const phpIniDir = join(root, '.screens/web/php');
+  const result = runner('php', ['--ini'], {});
+  const scanDir = composePhpIniScanDir(result.stdout, phpIniDir);
+  return { PHP_INI_SCAN_DIR: scanDir, SCREENS_FIXED_NOW: platformConfig.fixed_now };
+}
+
 function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
@@ -374,13 +404,16 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   mkdirSync(dirname(lockPath), { recursive: true });
   writeFileSync(lockPath, String(process.pid));
 
+  const clockEnv = platform === 'web' ? phpFixedClockEnv(root, config, runner) : {};
+  const runEnv = { ...(platformConfig.env || {}), ...clockEnv };
+
   if (platformConfig.start_command) {
     const child = spawn(platformConfig.start_command, {
       shell: true,
       cwd: root,
       detached: true,
       stdio: 'ignore',
-      env: { ...process.env, ...(platformConfig.env || {}) },
+      env: { ...process.env, ...runEnv },
     });
     child.unref();
     const pidFile = join(root, '.screens', platform, 'pid');
@@ -398,7 +431,7 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   }
 
   if (platformConfig.seed_command) {
-    const seedResult = runner('sh', ['-c', platformConfig.seed_command], platformConfig.env || {});
+    const seedResult = runner('sh', ['-c', platformConfig.seed_command], runEnv);
     if (seedResult.status !== 0) {
       lines.push('UP_RESULT=FAIL (seed command failed)');
       return lines;
@@ -703,6 +736,8 @@ export {
   deviceSetupHook,
   laravelDbGuard,
   bunDbGuard,
+  composePhpIniScanDir,
+  phpFixedClockEnv,
   cmdUp,
   cmdDown,
   promoteFile,

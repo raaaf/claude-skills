@@ -19,6 +19,8 @@ import {
   checkLock,
   cmdUp,
   laravelDbGuard,
+  composePhpIniScanDir,
+  phpFixedClockEnv,
   promoteFile,
   moveRemovedEntries,
   cmdPromote,
@@ -333,7 +335,7 @@ test('laravelDbGuard: pgsql isolated_db valid and distinct from dev -> OK', () =
   const root = fixture();
   const config = { web: { isolated_db: 'zeit_screens' } };
   let call = 0;
-  const stubRunner = (_cmd, _args, env) => {
+  const stubRunner = () => {
     call++;
     // First call carries the override env (isolated db); second call (dev
     // check) is invoked with an empty env and resolves the real dev db.
@@ -351,6 +353,38 @@ test('laravelDbGuard: unsupported driver (mysql) -> FAIL', () => {
   const guard = laravelDbGuard(root, config, stubRunner);
   assert.equal(guard.ok, false);
   assert.match(guard.reason, /unsupported database driver: mysql/);
+});
+
+// --- server-side fixed clock: PHP_INI_SCAN_DIR composition ----------------
+
+test('composePhpIniScanDir: existing scan dir -> colon-joined with the additional dir', () => {
+  // Real `php --ini` output quotes the path (verified against apps/zeit/app,
+  // macOS Homebrew PHP 8.5): `Scan for additional .ini files in: "/opt/.../conf.d"`.
+  const out = composePhpIniScanDir('Scan for additional .ini files in: "/opt/homebrew/etc/php/8.4/conf.d"\n', '/repo/.screens/web/php');
+  assert.equal(out, '/opt/homebrew/etc/php/8.4/conf.d:/repo/.screens/web/php');
+});
+
+test('composePhpIniScanDir: "(none)" -> just the additional dir, no leading colon', () => {
+  const out = composePhpIniScanDir('Scan for additional .ini files in: (none)\n', '/repo/.screens/web/php');
+  assert.equal(out, '/repo/.screens/web/php');
+});
+
+test('phpFixedClockEnv: no fixed_now configured -> {} (inert), runner never called', () => {
+  const root = fixture();
+  const config = { web: { framework: 'laravel' } };
+  const env = phpFixedClockEnv(root, config, () => {
+    throw new Error('runner must not be called when fixed_now is unset');
+  });
+  assert.deepEqual(env, {});
+});
+
+test('phpFixedClockEnv: fixed_now configured on a laravel project -> PHP_INI_SCAN_DIR + SCREENS_FIXED_NOW', () => {
+  const root = fixture();
+  const config = { web: { framework: 'laravel', fixed_now: '2026-05-12T09:41:00+02:00' } };
+  const stubRunner = () => ({ stdout: 'Scan for additional .ini files in: (none)\n', status: 0 });
+  const env = phpFixedClockEnv(root, config, stubRunner);
+  assert.equal(env.SCREENS_FIXED_NOW, '2026-05-12T09:41:00+02:00');
+  assert.equal(env.PHP_INI_SCAN_DIR, join(root, '.screens/web/php'));
 });
 
 // --- trust: changed command hash -> NEEDS_CONFIRM --------------------------

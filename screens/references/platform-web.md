@@ -44,6 +44,30 @@ driver must read the manifest at runtime instead of hard-coding entries").
 - Output: `.screens/.incoming/web/<entryId>__<state>__<role>__<viewport>__<theme>.png`, `fullPage:
   true`, matching the filename shape `screens.mjs promote` parses (`<entryId>__<rest>.png`).
 
+## Server-side fixed clock (PHP projects, added after stage (b) STOP 2)
+
+`page.clock.setFixedTime` only fakes the browser's `Date`; a Laravel dashboard's own aggregation
+queries call PHP's `now()` server-side, which drifts between two capture runs and broke byte-hash
+determinism (a real dashboard KPI changed between run 2a and run 2b on `apps/zeit/app`). Fix:
+
+- `screens/templates/php/fixed-clock.php` is instantiated verbatim into `<project>/.screens/web/fixed-clock.php`
+  by the Phase 2 scaffold (no project source file changes); it calls `Carbon::setTestNow()` when
+  `SCREENS_FIXED_NOW` is set, otherwise it is a no-op.
+- `screens/templates/php/zz-screens.ini` is instantiated into `<project>/.screens/web/php/zz-screens.ini`
+  with `{{PROJECT_ROOT}}` replaced by the pilot's absolute path; it sets `auto_prepend_file` to the
+  fixed-clock file above.
+- `screens.mjs up`'s `phpFixedClockEnv` (framework `laravel`, `config.web.fixed_now` set) runs `php
+  --ini` to find the project's own ini scan dir, composes `PHP_INI_SCAN_DIR=<existing scan
+  dir>:<project>/.screens/web/php` (or just the second half when the existing dir is `(none)`,
+  `composePhpIniScanDir`), and sets `SCREENS_FIXED_NOW` to the same instant as
+  `capture.spec.ts`'s `FIXED_TIME`. Applied to both the `start_command` (serve) and the
+  `seed_command` (migrate/seed) env, since the seed process is a separate `runner` call, not a
+  child of `artisan serve`.
+- Inert on a non-PHP framework or when `fixed_now` is unset in `config.json`: `phpFixedClockEnv`
+  returns `{}` and no env var is set.
+- Raw SQL `NOW()`/`CURRENT_DATE` is not covered by this (it runs inside the database, not PHP): the
+  discoverer lists such views and the orchestrator adds a `mask[]` entry instead.
+
 ## Preconditions
 
 - `screens.mjs up --platform web` must have started the service and passed the DB guard;

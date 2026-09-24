@@ -20,6 +20,9 @@ writes, subagents return").
     "env": { "DB_CONNECTION": "sqlite", "DB_DATABASE": ".screens/web/screens.sqlite",
               "QUEUE_CONNECTION": "sync", "MAIL_MAILER": "log", "BROADCAST_DRIVER": "log" },
     "isolated_db": ".screens/web/screens.sqlite",
+    "fixed_now": "2026-05-12T09:41:00+02:00", // PHP projects only: server-side fixed clock,
+                                            // same instant as capture.spec.ts's FIXED_TIME (see
+                                            // platform-web.md "Server-side fixed clock")
     "depends_on": null                     // another platform key this one's backend needs, or null
   },
 
