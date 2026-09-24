@@ -18,6 +18,15 @@ writes, subagents return").
 {
   "platforms": ["web"],                    // subset of web|ios|android|macos
 
+  "output_dir": null,                      // optional override for the PNG catalog root (never the
+                                            // config/manifest/state/secrets, which always stay under
+                                            // this project's own `.screens/`). Supports `~` and
+                                            // `${PROJECT_ROOT}` expansion. Unset (the default): the
+                                            // catalog lives under `~/Developer/screens/<project>/`.
+  "project": null,                         // slug for `~/Developer/screens/<project>/` (see
+                                            // "Output root" below); written automatically on first
+                                            // run when unset -- normally never set by hand.
+
   "<platform>": {                          // one block per configured platform
     "framework": "laravel",                // laravel|bun|astro|ios|android|capacitor|...
     "start_command": "php artisan serve --port=<port>",
@@ -242,21 +251,42 @@ no demo password in any repo). `screens.mjs up`'s seed step creates
 }
 ```
 
-Marketing output layout (`screens.mjs`'s `marketingTargetDir`, added stage c):
-`screenshots/_marketing/[_draft/]<platform>/<locale>/<format>/<NN>-<id>.png` -- an unreviewed
+**Output root**: every catalog PNG (and `index.html`/`catalog.json`/`_marketing/`/`_removed/`) lives
+under a resolved output root, never inside the project itself -- `config.output_dir` (`~` and
+`${PROJECT_ROOT}` expand) when set, else `~/Developer/screens/<project>/`. `<project>` is
+`config.project` when set, else derived from the `~/Developer/apps/<name>/...` directory convention
+(`resolveScreensOutputRoot`/`deriveProjectSlug` in `screens.mjs`) -- NOT from git, since a project's
+own platform subprojects are routinely independent git repos (verified live: `zeit/app` and
+`zeit/macos` are two separate repos, and a git-based slug would split one product's catalog into
+two). A family with more than one `.screens` root (several platform subprojects) gets the subpath
+appended (`myapp-ios`), a single-platform family (`zeit/app`, `topf-secret/ios`) keeps the bare
+family name (`zeit`, `topf-secret`); a `.screens` root outside `~/Developer/apps/` falls back to its
+own directory name. The derived slug is written into `config.project` on first run so it stays
+stable across a repo move/rename. `.screens/config.json`, `manifest.json`, `state.json`,
+`secrets.local.json` and every driver file always stay in the project's own `.screens/`, never in
+the output root. `screens.mjs migrate-output` moves an existing project-local `screenshots/` tree
+into the resolved output root once (byte-for-byte, verified via a sha256 sample), then removes the
+now-empty `screenshots/` dir; a `screenshots/` entry left in `.gitignore` afterwards is harmless.
+`screens.mjs index` also regenerates `~/Developer/screens/index.html`, a static table of every
+project that has a `catalog.json` there (name, platforms, image count, last run, relative link to
+that project's own `index.html`).
+
+Marketing output layout (`screens.mjs`'s `marketingTargetDir`, added stage c), relative to the
+output root: `_marketing/[_draft/]<platform>/<locale>/<format>/<NN>-<id>.png` -- an unreviewed
 headline (`headlines.<locale>.reviewed: false`) routes under `_draft`; `<NN>` is the entry's 1-based
 position in `marketing.entries`, zero-padded to 2 digits. `screens.mjs marketing` re-renders an
 entry x locale only when its source catalog PNG hash, headline text, or review state changed since
 the last render (state keyed `<id>__<locale>__<format>` in `.screens/state.json`'s `marketing`
 object); a review-state flip also deletes the stale file at the old (draft/reviewed) path.
 
-Output layout (Output layout section of the plan; `screens.mjs`'s `buildScreenshotPath`):
-`screenshots/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>[__<locale>].png`.
+Output layout (Output layout section of the plan; `screens.mjs`'s `buildScreenshotPath`), relative
+to the output root:
+`<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>[__<locale>].png`.
 `<device-class>` comes from `axes.device_classes.<platform>[<viewport>]` (falls back to the viewport
 spec itself when unmapped); the viewport therefore does not appear in the filename, only in the
 folder. `screens.mjs migrate-layout` moves a pre-existing flat `<platform>/<area>/<view>/` tree into
-this layout once, rewriting `state.json`'s per-entry `pngs` keys (now full paths relative to
-`screenshots/`) without recapturing; run it once before the first `plan` after upgrading.
+this layout once, rewriting `state.json`'s per-entry `pngs` keys (now full paths relative to the
+output root) without recapturing; run it once before the first `plan` after upgrading.
 
 **`${PROJECT_ROOT}` placeholder**: a manifest/config string value (`launch_args`, `extra_args`,
 `steps[]` inputs, a fixture path, `env` values passed to a driver) may use `${PROJECT_ROOT}` instead

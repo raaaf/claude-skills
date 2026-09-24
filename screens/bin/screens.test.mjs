@@ -9,10 +9,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+
+// `resolveScreensOutputRoot`'s default (no `config.output_dir`) falls back
+// to `~/Developer/screens/<slug>`; every fixture below overrides
+// `output_dir` to stay under its own tmp root, but `HOME` is still
+// overridden here so the small number of tests that deliberately exercise
+// the DEFAULT (slug-derivation, top-level index aggregation) never touch
+// the real machine's `~/Developer/screens/`.
+const FAKE_HOME = mkdtempSync(join(tmpdir(), 'screens-home-'));
+process.env.HOME = FAKE_HOME;
 
 import {
   expandProjectRoot,
@@ -85,7 +94,11 @@ import {
   parsePromotedFilename,
   buildIndexItems,
   buildIndexMarketing,
+  buildCatalogSummary,
+  buildTopIndexHtml,
+  regenerateTopIndex,
   cmdIndex,
+  cmdMigrateOutput,
   affectedIds,
   writeJson,
   readJson,
@@ -93,6 +106,9 @@ import {
   ensureGitignoreEntry,
   ensureSecretsFile,
   secretConfigGuard,
+  expandHome,
+  deriveProjectSlug,
+  resolveScreensOutputRoot,
 } from './screens.mjs';
 
 // Minimal valid PNG byte layout for readPngDimensions: 8-byte signature +
@@ -105,8 +121,17 @@ function fakePng(width, height, filler = 'x') {
   return buf;
 }
 
+// Every fixture pins `config.output_dir` to its own `screenshots/` dir
+// (the `${PROJECT_ROOT}` placeholder `resolveScreensOutputRoot` expands),
+// reproducing the pre-central-folder default exactly so the bulk of the
+// existing `root/screenshots/...` assertions below stay valid unchanged.
+// A test that writes its OWN `.screens/config.json` (overwriting this
+// default) re-adds `output_dir` itself wherever it exercises a
+// screenshots-writing command.
 function fixture() {
-  return mkdtempSync(join(tmpdir(), 'screens-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'screens-test-'));
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots' });
+  return root;
 }
 
 function writeFile(root, relPath, content) {
@@ -180,7 +205,7 @@ test('plan: global_sources (lockfile) change -> all entries stale', () => {
   writeFile(root, 'view-a.blade.php', 'a');
   writeFile(root, 'view-b.blade.php', 'b');
   writeFile(root, 'composer.lock', 'lock-v1');
-  writeJson(join(root, '.screens/config.json'), { global_sources: ['composer.lock'] });
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', global_sources: ['composer.lock'] });
   const manifest = {
     entries: [
       { id: 'a', sources: ['view-a.blade.php'] },
@@ -338,7 +363,7 @@ test('readPngDimensions reads width/height from IHDR bytes 16-23', () => {
 test('promote: persists entry fingerprint so a later plan call with no source changes reports unchanged', () => {
   const root = fixture();
   writeFile(root, 'view.blade.php', 'a');
-  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
   writeJson(join(root, '.screens/manifest.json'), {
     entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
   });
@@ -358,7 +383,7 @@ test('promote: persists entry fingerprint so a later plan call with no source ch
 
 test('promote: PROMOTE_ENTRY carries the combo and distinguishes unchanged from tolerated', () => {
   const root = fixture();
-  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
   writeJson(join(root, '.screens/manifest.json'), {
     entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: [] }],
   });
@@ -379,7 +404,7 @@ test('promote: PROMOTE_ENTRY carries the combo and distinguishes unchanged from 
 
 test('promote: known_nondeterministic entry is reported separately, not counted as changed or unchanged', () => {
   const root = fixture();
-  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
   writeJson(join(root, '.screens/manifest.json'), {
     entries: [{
       id: 'reorderable', platform: 'web', area: 'area', view: 'reorderable', sources: [],
@@ -400,7 +425,7 @@ test('promote: known_nondeterministic entry is reported separately, not counted 
 test('promote --full: unchanged fingerprint + changed image -> drift, old fingerprint\'s prev PNG still written', () => {
   const root = fixture();
   writeFile(root, 'view.blade.php', 'same-content');
-  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
   writeJson(join(root, '.screens/manifest.json'), {
     entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
   });
@@ -430,7 +455,7 @@ test('promote --full: unchanged fingerprint + changed image -> drift, old finger
 test('promote --full: changed fingerprint + changed image -> changed, not drift', () => {
   const root = fixture();
   writeFile(root, 'view.blade.php', 'new-content');
-  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
   writeJson(join(root, '.screens/manifest.json'), {
     entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
   });
@@ -486,6 +511,7 @@ test('deviceClassFor: unconfigured viewport falls back to itself', () => {
 test('cmdMigrateLayout: moves a flat-layout PNG to the device-class path, state.json key + hash updated', () => {
   const root = fixture();
   writeJson(join(root, '.screens/config.json'), {
+    output_dir: '${PROJECT_ROOT}/screenshots',
     platforms: ['web'], axes: { device_classes: { web: { '1440x900': 'desktop' } } },
   });
   writeJson(join(root, '.screens/manifest.json'), {
@@ -1118,6 +1144,7 @@ test('marketing: reviewed headline does not route to _draft', () => {
 
 function marketingFixture(root, { reviewed = false } = {}) {
   writeJson(join(root, '.screens/config.json'), {
+    output_dir: '${PROJECT_ROOT}/screenshots',
     platforms: ['web'],
     global_sources: [],
     marketing: {
@@ -1390,7 +1417,7 @@ test('cmdIndex: writes screenshots/index.html whose embedded JSON lists every PN
 
   const lines = cmdIndex([], root);
 
-  assert.ok(lines.includes('INDEX_RESULT=OK path=screenshots/index.html'), lines.join('\n'));
+  assert.ok(lines.includes(`INDEX_RESULT=OK path=${join(root, 'screenshots/index.html')}`), lines.join('\n'));
   const html = readFileSync(join(root, 'screenshots/index.html'), 'utf8');
   const match = /<script id="screens-data" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
   assert.ok(match, 'index.html must embed the screens-data JSON block');
@@ -2052,4 +2079,152 @@ test('up: seed step creates secrets.local.json and never leaks the password in i
   const secrets = readJson(join(root, '.screens/secrets.local.json'), {});
   assert.ok(secrets.demo_password);
   assert.ok(!lines.some((l) => l.includes(secrets.demo_password)));
+});
+
+// --- Output root resolution: `~` expansion, output_dir override, slug ------
+
+test('expandHome: bare "~" -> home dir', () => {
+  assert.equal(expandHome('~'), FAKE_HOME);
+});
+
+test('expandHome: "~/sub" -> home dir joined with the rest', () => {
+  assert.equal(expandHome('~/custom-screens'), join(FAKE_HOME, 'custom-screens'));
+});
+
+test('expandHome: an absolute or relative path without "~" passes through unchanged', () => {
+  assert.equal(expandHome('/already/absolute'), '/already/absolute');
+  assert.equal(expandHome('relative/path'), 'relative/path');
+});
+
+// `deriveProjectSlug` keys off this user's own `~/Developer/apps/<name>/...`
+// convention (repo CLAUDE.md), not git: a platform subproject under one
+// `<name>` is routinely its OWN independent git repo (verified live:
+// `zeit/app` and `zeit/macos` are two separate repos), so every fixture
+// below is built under `FAKE_HOME/Developer/apps/...` to exercise it.
+const DEV_APPS = join(FAKE_HOME, 'Developer', 'apps');
+
+test('deriveProjectSlug: .screens root IS the family dir itself -> bare family name (layer, events)', () => {
+  const familyRoot = join(DEV_APPS, 'layer');
+  mkdirSync(join(familyRoot, '.screens'), { recursive: true });
+  assert.equal(deriveProjectSlug(familyRoot), 'layer');
+});
+
+test('deriveProjectSlug: nested .screens root, only one in the family -> bare family name (zeit/app, topf-secret/ios)', () => {
+  const appRoot = join(DEV_APPS, 'zeit', 'app');
+  mkdirSync(join(appRoot, '.screens'), { recursive: true });
+  assert.equal(deriveProjectSlug(appRoot), 'zeit');
+});
+
+test('deriveProjectSlug: nested .screens root, more than one in the family -> family name + subpath', () => {
+  const familyRoot = join(DEV_APPS, 'multi-platform');
+  const appRoot = join(familyRoot, 'app');
+  mkdirSync(join(appRoot, '.screens'), { recursive: true });
+  mkdirSync(join(familyRoot, 'ios', '.screens'), { recursive: true });
+  assert.equal(deriveProjectSlug(appRoot), 'multi-platform-app');
+});
+
+test('deriveProjectSlug: a sibling .screens under .claude/worktrees/ (an isolated checkout of the same repo) is ignored (topf-secret/ios)', () => {
+  const appRoot = join(DEV_APPS, 'topf-secret', 'ios');
+  mkdirSync(join(appRoot, '.screens'), { recursive: true });
+  mkdirSync(join(DEV_APPS, 'topf-secret', '.claude', 'worktrees', 'feature-x', 'ios', '.screens'), { recursive: true });
+  assert.equal(deriveProjectSlug(appRoot), 'topf-secret');
+});
+
+test('deriveProjectSlug: outside ~/Developer/apps/ -> falls back to the directory\'s own name', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-slug-'));
+  assert.equal(deriveProjectSlug(root), basename(root));
+});
+
+test('resolveScreensOutputRoot: config.output_dir with "~" expansion', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-slug-'));
+  const resolved = resolveScreensOutputRoot(root, { output_dir: '~/custom-screens' });
+  assert.equal(resolved.outputRoot, join(FAKE_HOME, 'custom-screens'));
+});
+
+test('resolveScreensOutputRoot: config.output_dir with ${PROJECT_ROOT}', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-slug-'));
+  const resolved = resolveScreensOutputRoot(root, { output_dir: '${PROJECT_ROOT}/out' });
+  assert.equal(resolved.outputRoot, join(root, 'out'));
+});
+
+test('resolveScreensOutputRoot: no output_dir -> ~/Developer/screens/<derived slug>', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-slug-'));
+  const resolved = resolveScreensOutputRoot(root, {});
+  assert.equal(resolved.slug, basename(root));
+  assert.equal(resolved.outputRoot, join(FAKE_HOME, 'Developer', 'screens', basename(root)));
+});
+
+test('resolveScreensOutputRoot: config.project already set -> used verbatim', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-slug-'));
+  const resolved = resolveScreensOutputRoot(root, { project: 'pinned-slug' });
+  assert.equal(resolved.outputRoot, join(FAKE_HOME, 'Developer', 'screens', 'pinned-slug'));
+});
+
+test('planEntries persists the derived slug into config.project on first run', () => {
+  const root = fixture();
+  writeFile(root, 'view.blade.php', 'a');
+  const manifest = { entries: [{ id: 'home', sources: ['view.blade.php'] }] };
+  planEntries(root, manifest, { entries: {} }, false);
+  const config = readJson(join(root, '.screens/config.json'), {});
+  assert.equal(config.project, basename(root));
+});
+
+// --- migrate-output: relocates an existing screenshots/ into the resolved
+// output root, verifying a byte-identical sample --------------------------
+
+test('cmdMigrateOutput: moves every file, sample hash verified before/after, source dir removed', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-test-'));
+  const centralDir = mkdtempSync(join(tmpdir(), 'screens-central-'));
+  writeJson(join(root, '.screens/config.json'), { output_dir: centralDir });
+  writeFile(root, 'screenshots/web/area/entry/filled.png', 'bytes-a');
+  writeFile(root, 'screenshots/web/area/entry/empty.png', 'bytes-b');
+
+  const lines = cmdMigrateOutput([], root);
+
+  assert.ok(lines.some((l) => l === 'MIGRATE_OUTPUT_RESULT=OK moved=2 sample_verified=true'), lines.join('\n'));
+  assert.ok(!existsSync(join(root, 'screenshots')));
+  assert.equal(readFileSync(join(centralDir, 'web/area/entry/filled.png'), 'utf8'), 'bytes-a');
+  assert.equal(readFileSync(join(centralDir, 'web/area/entry/empty.png'), 'utf8'), 'bytes-b');
+});
+
+test('cmdMigrateOutput: no screenshots/ present -> SKIP, nothing moved', () => {
+  const root = mkdtempSync(join(tmpdir(), 'screens-test-'));
+  writeJson(join(root, '.screens/config.json'), { output_dir: join(root, 'central') });
+  const lines = cmdMigrateOutput([], root);
+  assert.ok(lines.some((l) => l.startsWith('MIGRATE_OUTPUT_RESULT=SKIP')), lines.join('\n'));
+});
+
+// --- top-level index aggregation --------------------------------------------
+
+test('buildCatalogSummary: platforms deduped and sorted, count from items, project from config', () => {
+  const config = { project: 'zeit' };
+  const state = { last_run: { date: '2026-09-24' } };
+  const items = [{ platform: 'ios' }, { platform: 'web' }, { platform: 'ios' }];
+  assert.deepEqual(
+    buildCatalogSummary(config, state, items),
+    { project: 'zeit', platforms: ['ios', 'web'], count: 3, last_run: { date: '2026-09-24' } },
+  );
+});
+
+test('regenerateTopIndex: aggregates every project catalog.json into one top-level index.html', () => {
+  const centralRoot = mkdtempSync(join(tmpdir(), 'screens-central-'));
+  writeJson(join(centralRoot, 'zeit/catalog.json'), { project: 'zeit', platforms: ['ios', 'web'], count: 42, last_run: { date: '2026-09-20' } });
+  writeJson(join(centralRoot, 'layer/catalog.json'), { project: 'layer', platforms: ['macos'], count: 10, last_run: { date: '2026-09-21' } });
+
+  const count = regenerateTopIndex(centralRoot);
+
+  assert.equal(count, 2);
+  const html = readFileSync(join(centralRoot, 'index.html'), 'utf8');
+  assert.ok(html.includes('zeit'));
+  assert.ok(html.includes('layer'));
+  assert.ok(html.includes('./zeit/index.html'));
+  assert.ok(html.includes('42'));
+});
+
+test('regenerateTopIndex: no project catalogs -> zero projects, still writes an index.html', () => {
+  const centralRoot = mkdtempSync(join(tmpdir(), 'screens-central-'));
+  mkdirSync(centralRoot, { recursive: true });
+  const count = regenerateTopIndex(centralRoot);
+  assert.equal(count, 0);
+  assert.ok(existsSync(join(centralRoot, 'index.html')));
 });

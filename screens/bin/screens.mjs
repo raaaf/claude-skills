@@ -16,15 +16,19 @@
 // injectable command runner instead of always spawning `php`/real
 // commands, per the plan's testability requirement).
 //
-// Per-project files this CLI reads/writes all live under `.screens/` and
-// `screenshots/` in the TARGET project (never under `.claude/`, see repo
-// CLAUDE.md "Per-project files live in .screens/, not .claude/").
+// Per-project files this CLI reads/writes (config, manifest, state, secrets,
+// drivers) all live under `.screens/` in the TARGET project (never under
+// `.claude/`, see repo CLAUDE.md "Per-project files live in .screens/, not
+// .claude/"). The PNG catalog itself does NOT: it lives under a central
+// `~/Developer/screens/<project-slug>/` folder (or `config.output_dir` when
+// set), resolved once by `resolveScreensOutputRoot` below and used by every
+// reader/writer of catalog PNGs.
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync,
-  rmSync, renameSync, chmodSync,
+  rmSync, renameSync, chmodSync, copyFileSync,
 } from 'node:fs';
-import { join, dirname, relative, resolve, sep } from 'node:path';
+import { join, dirname, basename, relative, resolve, sep } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync, spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -71,6 +75,114 @@ function expandProjectRoot(value, root) {
     return out;
   }
   return value;
+}
+
+// ---------------------------------------------------------------------
+// Output root resolution (central screenshot folder, `~/Developer/screens/`)
+// ---------------------------------------------------------------------
+
+// `~` / `~/...` expansion for `config.output_dir`; a bare relative or
+// already-absolute path passes through untouched.
+function expandHome(p) {
+  if (!p) return p;
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/')) return join(os.homedir(), p.slice(2));
+  return p;
+}
+
+// Every directory literally named `.screens` under `dir` (excluding
+// `.git`/`node_modules`/`.claude`), used by `deriveProjectSlug` to decide
+// whether a nested `.screens` root (e.g. a multi-platform project's
+// `ios/.screens`) needs its subpath appended to the slug -- only when the
+// SAME project family has more than one `.screens` root, so a
+// single-platform project (`topf-secret/ios`) still gets the short
+// family-name slug. `.claude` is excluded because `.claude/worktrees/*`
+// holds full isolated checkouts of the SAME repo (verified live against
+// the topf-secret pilot: three worktree copies each carry their own
+// `ios/.screens`), which are not separate platform subprojects.
+function findScreensRoots(dir) {
+  const out = [];
+  (function walk(d) {
+    let entries;
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.claude') continue;
+      const full = join(d, entry.name);
+      if (entry.name === '.screens') {
+        out.push(full);
+        continue;
+      }
+      walk(full);
+    }
+  })(dir);
+  return out;
+}
+
+// The project "family" directory a `.screens` root belongs to: this
+// user's own convention (repo CLAUDE.md, every pilot) is
+// `~/Developer/apps/<name>/...`, and platform subprojects under one
+// `<name>` are routinely independent git repos (verified live: `zeit/app`
+// and `zeit/macos` are two separate repos, so a git-top-level-based slug
+// would split one product's catalog into two) -- the shared slug therefore
+// comes from the fixed directory convention, not from git. A `root`
+// outside `~/Developer/apps/` has no family to share a slug with.
+function projectFamilyDir(root) {
+  const devApps = join(os.homedir(), 'Developer', 'apps');
+  const rel = relative(devApps, resolve(root));
+  if (!rel || rel.startsWith('..') || resolve(rel) === rel) return null;
+  const name = rel.split(sep)[0];
+  return { dir: join(devApps, name), name };
+}
+
+// Project slug for the central `~/Developer/screens/<slug>/` folder (user
+// decision, "Output root resolution"): the family directory's own name,
+// with the `.screens` root's own subpath appended ONLY when the family has
+// more than one `.screens` root (several platform subprojects) --
+// `zeit/app`, `topf-secret/ios`, `layer` and `events` all resolve to their
+// bare family name since each family has exactly one `.screens` root today.
+// A `root` outside `~/Developer/apps/` (test fixtures, a project living
+// elsewhere) falls back to its own directory name.
+function deriveProjectSlug(root) {
+  const absRoot = resolve(root);
+  const family = projectFamilyDir(absRoot);
+  if (!family) return basename(absRoot);
+  if (resolve(family.dir) === absRoot) return family.name;
+  const otherRoots = findScreensRoots(family.dir).filter((r) => resolve(dirname(r)) !== absRoot);
+  if (!otherRoots.length) return family.name;
+  const rel = relative(family.dir, absRoot).split(sep).join('-');
+  return `${family.name}-${rel}`;
+}
+
+// The one helper every writer/reader of catalog PNGs goes through (plan
+// "Output root resolution"): `config.output_dir` (supporting `~` and
+// `${PROJECT_ROOT}`) when set, else `~/Developer/screens/<slug>`. Config,
+// manifest, drivers, secrets and `state.json` all stay under the project's
+// own `.screens/`; only the PNG catalog itself moves.
+function resolveScreensOutputRoot(root, config) {
+  const slug = config.project || deriveProjectSlug(root);
+  if (config.output_dir) {
+    const expanded = expandProjectRoot(expandHome(config.output_dir), root);
+    return { outputRoot: resolve(expanded), slug };
+  }
+  return { outputRoot: join(os.homedir(), 'Developer', 'screens', slug), slug };
+}
+
+// Persists the resolved slug into `config.project` on first run (plan:
+// "stable"), so a later repo move/rename can't silently change where an
+// existing catalog is found. Mutates the passed-in `config` object too, so
+// the caller's own subsequent reads in the same process see it immediately.
+function ensureProjectConfigured(root, config) {
+  const resolved = resolveScreensOutputRoot(root, config);
+  if (!config.project && resolved.slug) {
+    config.project = resolved.slug;
+    writeJson(join(root, '.screens/config.json'), config);
+  }
+  return resolved;
 }
 
 // Minimal glob support: `**` (any depth, incl. `/`), `*` (no `/`), `?`
@@ -149,15 +261,15 @@ function computeFingerprint(root, sources, globalSources) {
   return hash.digest('hex');
 }
 
-// `pngs` keys are full paths relative to `screenshots/` (device-class layout,
-// Output layout section) since the migrate-layout pass; a legacy entry that
-// still carries `dir` is resolved through it so `plan` stays correct before
-// `migrate-layout` has run.
-function entryPngsExist(root, entryState) {
+// `pngs` keys are full paths relative to the resolved output root
+// (device-class layout, Output layout section) since the migrate-layout
+// pass; a legacy entry that still carries `dir` is resolved through it so
+// `plan` stays correct before `migrate-layout` has run.
+function entryPngsExist(outputRoot, entryState) {
   if (!entryState || !entryState.pngs) return false;
   return Object.keys(entryState.pngs).some((f) => {
     const rel = entryState.dir ? join(entryState.dir, f) : f;
-    return existsSync(join(root, 'screenshots', rel));
+    return existsSync(join(outputRoot, rel));
   });
 }
 
@@ -185,6 +297,7 @@ function listDirFiles(root, relDir) {
 
 function planEntries(root, manifest, state, full) {
   const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
   const globalSources = config.global_sources || [];
   const results = [];
   for (const entry of manifest.entries || []) {
@@ -194,7 +307,7 @@ function planEntries(root, manifest, state, full) {
     if (!prev) status = 'new';
     else if (fingerprint !== prev.fingerprint) status = 'stale';
     else if (full) status = 'stale';
-    else if (!entryPngsExist(root, prev)) status = 'missing_png';
+    else if (!entryPngsExist(outputRoot, prev)) status = 'missing_png';
     else status = 'unchanged';
     results.push({ id: entry.id, status, fingerprint });
   }
@@ -1564,15 +1677,17 @@ function todayStr() {
 }
 
 function moveRemovedEntries(root, manifestIds, state, dateStr = todayStr()) {
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
   const moved = [];
   for (const id of Object.keys(state.entries || {})) {
     if (manifestIds.includes(id)) continue;
     const entryState = state.entries[id];
     for (const relPath of Object.keys(entryState.pngs || {})) {
       const rel = entryState.dir ? join(entryState.dir, relPath) : relPath;
-      const src = join(root, 'screenshots', rel);
+      const src = join(outputRoot, rel);
       if (!existsSync(src)) continue;
-      const dest = join(root, 'screenshots', '_removed', dateStr, rel);
+      const dest = join(outputRoot, '_removed', dateStr, rel);
       mkdirSync(dirname(dest), { recursive: true });
       renameSync(src, dest);
     }
@@ -1590,6 +1705,7 @@ function moveRemovedEntries(root, manifestIds, state, dateStr = todayStr()) {
 function cmdPromote(args, root = process.cwd()) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
   const platform = argValue(args, '--platform') || (config.platforms && config.platforms[0]);
   const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
   const state = readJson(join(root, '.screens/state.json'), { entries: {} });
@@ -1615,7 +1731,7 @@ function cmdPromote(args, root = process.cwd()) {
       if (!entry) continue;
       const parts = parseCaptureFilename(rest);
       const { relPath } = buildScreenshotPath(config, entry, entry.platform || platform, parts);
-      const targetPath = join(root, 'screenshots', relPath);
+      const targetPath = join(outputRoot, relPath);
       state.entries[id] = state.entries[id] || {};
       state.entries[id].pngs = state.entries[id].pngs || {};
       const prevHash = state.entries[id].pngs[relPath];
@@ -1716,6 +1832,7 @@ function cmdPromote(args, root = process.cwd()) {
 function cmdMigrateLayout(_args, root = process.cwd()) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
   const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
   const state = readJson(join(root, '.screens/state.json'), { entries: {} });
   const defaultPlatform = (config.platforms && config.platforms[0]) || 'web';
@@ -1727,15 +1844,15 @@ function cmdMigrateLayout(_args, root = process.cwd()) {
     const newPngs = {};
     for (const [filename, hash] of Object.entries(entryState.pngs)) {
       const parts = parseCaptureFilename(filename);
-      const oldPath = join(root, 'screenshots', oldDir, filename);
+      const oldPath = join(outputRoot, oldDir, filename);
       if (!parts.state) {
         // Not a recognized capture filename shape: keep it untouched.
         newPngs[filename] = hash;
         continue;
       }
       const { relPath } = buildScreenshotPath(config, entry, entry.platform || defaultPlatform, parts);
-      if (existsSync(oldPath) && resolve(oldPath) !== resolve(join(root, 'screenshots', relPath))) {
-        const newPath = join(root, 'screenshots', relPath);
+      if (existsSync(oldPath) && resolve(oldPath) !== resolve(join(outputRoot, relPath))) {
+        const newPath = join(outputRoot, relPath);
         mkdirSync(dirname(newPath), { recursive: true });
         renameSync(oldPath, newPath);
         moved++;
@@ -2017,12 +2134,15 @@ function resolveEntrySources(root, state, sourceId) {
   }
   const fallback = findMarketingSourcePng(state, sourceId);
   if (!fallback) return null;
-  return { desktopPath: join(root, 'screenshots', fallback.relPath), mobilePath: null, hash: fallback.hash };
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
+  return { desktopPath: join(outputRoot, fallback.relPath), mobilePath: null, hash: fallback.hash };
 }
 
 function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRenderer) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
   const state = readJson(join(root, '.screens/state.json'), { entries: {} });
   state.marketing = state.marketing || {};
   const entries = (config.marketing && config.marketing.entries) || [];
@@ -2060,7 +2180,7 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
       const dir = marketingTargetDir(platform, locale, format, reviewed);
       const filename = `${pad2(idx + 1)}-${entry.id}.png`;
       const relPath = join(dir, filename);
-      const targetPath = join(root, 'screenshots', relPath);
+      const targetPath = join(outputRoot, relPath);
       const key = `${entry.id}__${locale}__${format}`;
       const prevRecord = state.marketing[key];
 
@@ -2074,7 +2194,7 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
       // file at the old location would otherwise linger as a duplicate.
       if (prevRecord && prevRecord.reviewed !== reviewed && prevRecord.relPath) {
         try {
-          rmSync(join(root, 'screenshots', prevRecord.relPath), { force: true });
+          rmSync(join(outputRoot, prevRecord.relPath), { force: true });
         } catch {
           // best-effort cleanup only
         }
@@ -2195,8 +2315,91 @@ function buildIndexMarketing(state) {
   return out;
 }
 
+// Per-project summary a project's own `index` run leaves next to its
+// `index.html`, read by `regenerateTopIndex` below to build the top-level
+// `~/Developer/screens/index.html` without re-parsing every project's full
+// `state.json`.
+function buildCatalogSummary(config, state, items) {
+  const platforms = [...new Set(items.map((i) => i.platform))].sort();
+  return {
+    project: config.project || null,
+    platforms,
+    count: items.length,
+    last_run: state.last_run || null,
+  };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Static, dependency-free top-level index (user decision: "static, no
+// deps, relative links"): one row per project directory under
+// `centralRoot` that carries a `catalog.json`, linking to that project's
+// own `index.html` via a relative `./<project>/index.html` href.
+function buildTopIndexHtml(projects) {
+  const rows = projects.map((p) => {
+    const name = escapeHtml(p.project || p.dir);
+    const platforms = escapeHtml((p.platforms || []).join(', '));
+    const count = p.count || 0;
+    const lastRun = escapeHtml((p.last_run && p.last_run.date) || '');
+    const link = `./${p.dir}/index.html`;
+    return `    <tr><td>${name}</td><td>${platforms}</td><td>${count}</td><td>${lastRun}</td><td><a href="${link}">View</a></td></tr>`;
+  }).join('\n');
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Screens</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 2rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
+th { background: #f5f5f7; }
+</style>
+</head>
+<body>
+<h1>Screens</h1>
+<table>
+  <thead><tr><th>Project</th><th>Platforms</th><th>Images</th><th>Last run</th><th></th></tr></thead>
+  <tbody>
+${rows}
+  </tbody>
+</table>
+</body>
+</html>
+`;
+}
+
+// Regenerates `<centralRoot>/index.html` from every `<centralRoot>/*/catalog.json`
+// (plan step 3, top-level index). Called at the end of every `index` run;
+// a project using `config.output_dir` to live outside `centralRoot` simply
+// does not appear here, same as it not appearing under the central folder
+// at all.
+function regenerateTopIndex(centralRoot = join(os.homedir(), 'Developer', 'screens')) {
+  let entries;
+  try {
+    entries = readdirSync(centralRoot, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  const projects = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const catalog = readJson(join(centralRoot, entry.name, 'catalog.json'), null);
+    if (!catalog) continue;
+    projects.push({ ...catalog, dir: entry.name });
+  }
+  projects.sort((a, b) => (a.project || a.dir).localeCompare(b.project || b.dir));
+  mkdirSync(centralRoot, { recursive: true });
+  writeFileSync(join(centralRoot, 'index.html'), buildTopIndexHtml(projects));
+  return projects.length;
+}
+
 function cmdIndex(_args, root = process.cwd()) {
   const lines = [];
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
   const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
   const state = readJson(join(root, '.screens/state.json'), { entries: {} });
   const templatePath = join(dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'index.html');
@@ -2212,13 +2415,71 @@ function cmdIndex(_args, root = process.cwd()) {
   const template = readFileSync(templatePath, 'utf8');
   const html = template.replace('__SCREENS_DATA__', () => JSON.stringify(data));
 
-  const outPath = join(root, 'screenshots', 'index.html');
+  const outPath = join(outputRoot, 'index.html');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, html);
 
+  const catalog = buildCatalogSummary(config, state, items);
+  writeJson(join(outputRoot, 'catalog.json'), catalog);
+  const projectCount = regenerateTopIndex();
+
   lines.push(`INDEX_ITEMS=${items.length}`);
   lines.push(`INDEX_MARKETING=${marketing.length}`);
-  lines.push(`INDEX_RESULT=OK path=screenshots/index.html`);
+  lines.push(`INDEX_RESULT=OK path=${outPath}`);
+  lines.push(`TOP_INDEX_RESULT=OK projects=${projectCount}`);
+  return lines;
+}
+
+// ---------------------------------------------------------------------
+// migrate-output: one-time move of an existing project-local `screenshots/`
+// tree into the resolved central output root (Output root resolution),
+// preserving every inner path. Distinct from `migrate-layout` above: that
+// one restructures paths WITHIN whatever root already holds the catalog,
+// this one only relocates the root itself.
+// ---------------------------------------------------------------------
+
+// `renameSync` across filesystems throws EXDEV (e.g. a project on a
+// different volume from `~/Developer/screens`); falls back to copy+unlink
+// so the move still completes instead of failing the whole migration.
+function moveFile(src, dest) {
+  mkdirSync(dirname(dest), { recursive: true });
+  try {
+    renameSync(src, dest);
+  } catch (err) {
+    if (err && err.code === 'EXDEV') {
+      copyFileSync(src, dest);
+      rmSync(src, { force: true });
+    } else {
+      throw err;
+    }
+  }
+}
+
+function cmdMigrateOutput(_args, root = process.cwd()) {
+  const lines = [];
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const { outputRoot } = ensureProjectConfigured(root, config);
+  const srcDir = join(root, 'screenshots');
+  if (!existsSync(srcDir)) {
+    lines.push(`MIGRATE_OUTPUT_RESULT=SKIP (no screenshots/ at ${srcDir})`);
+    return lines;
+  }
+  if (resolve(srcDir) === resolve(outputRoot)) {
+    lines.push('MIGRATE_OUTPUT_RESULT=SKIP (output_dir already points at screenshots/)');
+    return lines;
+  }
+  const relFiles = listDirFiles(srcDir, '.');
+  const sampleRel = relFiles[0] || null;
+  const sampleHashBefore = sampleRel ? hashFile(join(srcDir, sampleRel)) : null;
+  let moved = 0;
+  for (const relPath of relFiles) {
+    moveFile(join(srcDir, relPath), join(outputRoot, relPath));
+    moved++;
+  }
+  const sampleHashAfter = sampleRel ? hashFile(join(outputRoot, sampleRel)) : null;
+  const sampleVerified = !sampleRel || sampleHashBefore === sampleHashAfter;
+  rmSync(srcDir, { recursive: true, force: true });
+  lines.push(`MIGRATE_OUTPUT_RESULT=OK moved=${moved} sample_verified=${sampleVerified}`);
   return lines;
 }
 
@@ -2302,6 +2563,7 @@ function main(argv) {
     'macos-export': cmdMacosExport,
     promote: cmdPromote,
     'migrate-layout': cmdMigrateLayout,
+    'migrate-output': cmdMigrateOutput,
     marketing: cmdMarketing,
     index: cmdIndex,
     trust: cmdTrust,
@@ -2330,6 +2592,12 @@ export {
   resolveGlobs,
   computeFingerprint,
   expandProjectRoot,
+  expandHome,
+  findScreensRoots,
+  projectFamilyDir,
+  deriveProjectSlug,
+  resolveScreensOutputRoot,
+  ensureProjectConfigured,
   entryPngsExist,
   listDirFiles,
   planEntries,
@@ -2413,7 +2681,12 @@ export {
   parsePromotedFilename,
   buildIndexItems,
   buildIndexMarketing,
+  buildCatalogSummary,
+  buildTopIndexHtml,
+  regenerateTopIndex,
   cmdIndex,
+  moveFile,
+  cmdMigrateOutput,
   computeCommandHash,
   cmdTrust,
   affectedIds,

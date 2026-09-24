@@ -106,9 +106,21 @@ One or more ids: run `node "$SCREENS_BIN" plan`, keep only the `PLAN_ENTRY <id> 
 whose id is in `SCREENS_AFFECTED_IDS` and whose status is not `unchanged`, then capture just those
 through the same `up -> driver -> promote -> down` sequence `screens/SKILL.md` Phase 5 documents
 (scoped to the platform(s) those ids belong to, and on the driver step to just these ids via that
-platform's own per-entry filter, e.g. `--grep` on web) so "before" reflects HEAD. Copy the resulting
-catalog PNGs (`screenshots/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>.png`)
-into `.claude/screenshots/before/` at the same relative path, then skip straight to Phase 4 (no
+platform's own per-entry filter, e.g. `--grep` on web) so "before" reflects HEAD. `promote` writes
+into the project's resolved central catalog (`config.output_dir`, else
+`~/Developer/screens/<project>/`, never `<project>/screenshots/` -- `screens/references/config-schema.md`
+"Output root"), so resolve that root first, then copy from it:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_state_load   # SCREENS_BIN from the block above
+SCREENS_OUTPUT_ROOT=$(node -e "import('$SCREENS_BIN').then((m) => { const c = m.readJson('.screens/config.json', {}); console.log(m.ensureProjectConfigured(process.cwd(), c).outputRoot); })")
+orch_state_save SCREENS_OUTPUT_ROOT
+```
+
+Copy the resulting catalog PNGs
+(`$SCREENS_OUTPUT_ROOT/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>.png`) into
+`.claude/screenshots/before/` at the same relative path, then skip straight to Phase 4 (no
 `capture-screens.sh` target to resolve).
 
 Otherwise, resolve a target, in this order, and skip the phase when none resolves. Never guess a
@@ -167,8 +179,9 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 
 6. **After-screenshot.** When Phase 3.5's before set came from `/screens` (`SCREENS_AFFECTED_IDS`
    saved): rerun the same ids through `plan -> up -> driver -> promote -> down` (same scoped
-   sequence as Phase 3.5), copy the catalog PNGs into `.claude/screenshots/after/` at the same
-   relative path, and for each before/after pair say what changed visually in one or two sentences.
+   sequence as Phase 3.5), copy the catalog PNGs from `$SCREENS_OUTPUT_ROOT` (same resolved root
+   Phase 3.5 saved) into `.claude/screenshots/after/` at the same relative path, and for each
+   before/after pair say what changed visually in one or two sentences.
    `promote`'s own `PROMOTE_ENTRY <id> <combo> new|changed|unchanged|tolerated|drift` lines are the
    verdict (`screens/SKILL.md` Phase 8), not a raw sha256 compare: a combo reported `unchanged` OR
    `tolerated` (the ImageMagick fuzz-tolerance match, same rendering-jitter tolerance `promote` itself
@@ -181,9 +194,9 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 
    ```bash
    for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-   orch_state_load   # SCREEN_NAME, CAPTURE_TARGET, SCREENS_BIN, SCREENS_AFFECTED_IDS from Phase 3.5
+   orch_state_load   # SCREEN_NAME, CAPTURE_TARGET, SCREENS_BIN, SCREENS_AFFECTED_IDS, SCREENS_OUTPUT_ROOT from Phase 3.5
    if [ -n "${SCREENS_AFFECTED_IDS:-}" ]; then
-     node "$SCREENS_BIN" plan   # PLAN_ENTRY lines for the same ids drive the same scoped up -> driver -> promote -> down as Phase 3.5, output into .claude/screenshots/after/
+     node "$SCREENS_BIN" plan   # PLAN_ENTRY lines for the same ids drive the same scoped up -> driver -> promote -> down as Phase 3.5, then copy from $SCREENS_OUTPUT_ROOT into .claude/screenshots/after/
    else
      CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
      [ -n "$CAPTURE" ] && [ -n "${SCREEN_NAME:-}" ] && bash "$CAPTURE" --label after $CAPTURE_TARGET --name "$SCREEN_NAME"

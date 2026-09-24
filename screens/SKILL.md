@@ -21,8 +21,11 @@ allowed-tools:
 
 > **Architecture note:** Discovery is agent work (`agents/screens-view-discoverer.md`, worker spec
 > `screens/agents/view-discoverer.md`), capture is scripted (`screens/bin/screens.mjs`). Per-project
-> files live under `.screens/` and `screenshots/` in the TARGET project, never under `.claude/`
-> (subagents cannot write there: orchestrator writes, subagents return). The web driver
+> files (config, manifest, state, drivers, secrets) live under `.screens/` in the TARGET project,
+> never under `.claude/` (subagents cannot write there: orchestrator writes, subagents return). The
+> PNG catalog itself lives OUTSIDE the project, under `~/Developer/screens/<project-slug>/` (or
+> `config.output_dir` when set) -- `resolveScreensOutputRoot` in `screens.mjs` resolves it, see
+> `references/config-schema.md` "Output root". The web driver
 > (`screens/references/platform-web.md`, `screens/templates/capture.spec.ts`) is live as of stage b;
 > marketing rendering and `index.html` (`screens/templates/marketing.html`, `render-marketing.mjs`,
 > `index.html`) are live as of stage c; the Apple driver (iOS + macOS, XCUITest,
@@ -272,10 +275,12 @@ orch_state_load
 node "$SCREENS_BIN" index
 ```
 
-Writes `screenshots/index.html` (embedded JSON + vanilla JS, `screens/templates/index.html`
-instantiated with the current catalog + marketing state, no dependency, opens straight from disk).
-`INDEX_RESULT=OK path=screenshots/index.html`: report that path. `INDEX_RESULT=FAIL (...)`: report
-the reason, the run still completes (the PNGs themselves are unaffected).
+Writes `<output root>/index.html` (embedded JSON + vanilla JS, `screens/templates/index.html`
+instantiated with the current catalog + marketing state, no dependency, opens straight from disk),
+plus `<output root>/catalog.json` and a regenerated `~/Developer/screens/index.html` listing every
+project that has a catalog there (`TOP_INDEX_RESULT=OK projects=<n>`). `INDEX_RESULT=OK path=...`:
+report that path. `INDEX_RESULT=FAIL (...)`: report the reason, the run still completes (the PNGs
+themselves are unaffected).
 
 ## Phase 8: Report
 
@@ -283,8 +288,8 @@ Table: platform x new/updated/unchanged/removed/drift/failed (from the `PLAN_ENT
 (`PROMOTE_ENTRY <id> <combo> new|changed|unchanged|tolerated|drift|known_nondeterministic`)/
 `PROMOTE_REMOVED` lines collected above; `drift` only appears on a `--full` run, see plan's
 "Incremental rule"). `NEEDS REVIEW` list: `MARKETING_RENDER` lines whose target still contains
-`_draft`. Path to `screenshots/index.html`. Suggest `--full` when the last full run is older than 30
-days (from `state.json`, once state carries that timestamp).
+`_draft`. Path to `<output root>/index.html`. Suggest `--full` when the last full run is older than
+30 days (from `state.json`, once state carries that timestamp).
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
