@@ -10,6 +10,7 @@ a `web` platform and `screens/templates/capture.spec.ts` has been scaffolded int
 - [What the spec does](#what-the-spec-does)
 - [Server-side fixed clock (PHP projects, added after stage (b) STOP 2)](#server-side-fixed-clock-php-projects-added-after-stage-b-stop-2)
 - [Seeder determinism rules (scaffold checklist, added after stage (b) STOP 3)](#seeder-determinism-rules-scaffold-checklist-added-after-stage-b-stop-3)
+- [Session cookie over http: SESSION_SECURE_COOKIE=false default](#session-cookie-over-http-session_secure_cookiefalse-default)
 - [Server perf: parallel PHP workers, no per-request debug overhead, seed-on-change](#server-perf-parallel-php-workers-no-per-request-debug-overhead-seed-on-change)
 - [Theme axis: cookie-driven dark mode, not prefers-color-scheme](#theme-axis-cookie-driven-dark-mode-not-prefers-color-scheme)
 - [Error state: manifest-driven form submission](#error-state-manifest-driven-form-submission)
@@ -162,6 +163,16 @@ No demo password in any repo (`config-schema.md` "Demo password"): the demo seed
 `DEMO_USER_PASSWORD` from the environment (`screens.mjs up` sets it, from
 `.screens/secrets.local.json`, on both the seed and serve command) and throws (`RuntimeException` or
 the framework's equivalent) when it is empty -- never a hardcoded fallback password.
+`secret_env_aliases` (`config-schema.md`) additionally sets any listed alias name to the same value,
+for a project whose own env var for the demo password is not called `DEMO_USER_PASSWORD`.
+
+## Session cookie over http: SESSION_SECURE_COOKIE=false default
+
+Live STOP (2026-09-24, events pilot): a Laravel project's default `config/session.php` sets
+`'secure' => env('SESSION_SECURE_COOKIE', true)`, so a browser drops the session cookie after login
+against the isolated backend, which serves over plain http. `screens.mjs up` sets
+`SESSION_SECURE_COOKIE=false` on every `laravel` project's isolation env (`laravelSessionEnv`), merged
+in *before* `config.web.env` so a project's own `SESSION_SECURE_COOKIE` in `config.json` still wins.
 
 ## Server perf: parallel PHP workers, no per-request debug overhead, seed-on-change
 

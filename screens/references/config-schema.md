@@ -27,6 +27,13 @@ writes, subagents return").
     "env": { "DB_CONNECTION": "sqlite", "DB_DATABASE": ".screens/web/screens.sqlite",
               "QUEUE_CONNECTION": "sync", "MAIL_MAILER": "log", "BROADCAST_DRIVER": "log" },
     "isolated_db": ".screens/web/screens.sqlite",
+    "secret_env_aliases": ["SEED_ADMIN_PASSWORD"], // optional, names only (values never
+                                            // appear here, see "Demo password" below):
+                                            // `up` also sets each listed name to the demo
+                                            // password, for a project whose own seeder env
+                                            // var isn't called DEMO_USER_PASSWORD; the
+                                            // secret guard checks key names in `web.env`
+                                            // only, so this field is exempt by construction
     "fixed_now": "2026-05-12T09:41:00+02:00", // PHP projects only: server-side fixed clock,
                                             // same instant as capture.spec.ts's FIXED_TIME (see
                                             // platform-web.md "Server-side fixed clock" and
@@ -181,6 +188,11 @@ no demo password in any repo). `screens.mjs up`'s seed step creates
 - Passed to the seed and serve commands as `DEMO_USER_PASSWORD`, in addition to `config.web.env`;
   the project's own demo seeder reads `DEMO_USER_PASSWORD` from the environment and throws when it
   is empty (no hardcoded fallback).
+- `<platform>.secret_env_aliases` (names only, see above) sets each listed name to the same value
+  too (`demoPasswordEnv`), so a project whose own seeder reads a differently named env var (e.g.
+  `SEED_ADMIN_PASSWORD`) does not need its source edited to also read `DEMO_USER_PASSWORD`. The
+  secret guard (below) only scans `web.env` key names, so listing a PASSWORD-like name inside
+  `secret_env_aliases` is exempt by construction: it holds names, never values.
 - `capture.spec.ts`, `generate-maestro-flows.mjs` and `ScreensCatalogTests.swift` (native has no
   password login) all read the same file at runtime instead of `config.demo_password`.
 - `up` FAILs before doing anything else if `config.json` has a `demo_password` key, or if any

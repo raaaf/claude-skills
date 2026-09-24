@@ -56,6 +56,9 @@ import {
   composePhpIniScanDir,
   phpFixedClockEnv,
   laravelPerfEnv,
+  laravelSessionEnv,
+  pidFilePath,
+  demoPasswordEnv,
   playwrightWorkers,
   computeSeedFingerprint,
   readPngDimensions,
@@ -864,6 +867,26 @@ test('laravelPerfEnv: laravel framework -> PHP_CLI_SERVER_WORKERS=4, APP_DEBUG=f
 
 test('laravelPerfEnv: non-laravel framework -> {} (inert)', () => {
   assert.deepEqual(laravelPerfEnv({ framework: 'astro' }), {});
+});
+
+// --- laravelSessionEnv: SESSION_SECURE_COOKIE=false on laravel, overridable -
+
+test('laravelSessionEnv: laravel framework -> SESSION_SECURE_COOKIE=false', () => {
+  assert.deepEqual(laravelSessionEnv({ framework: 'laravel' }), { SESSION_SECURE_COOKIE: 'false' });
+});
+
+test('laravelSessionEnv: non-laravel framework -> {} (inert)', () => {
+  assert.deepEqual(laravelSessionEnv({ framework: 'astro' }), {});
+});
+
+test('up: default env composition order lets config.web.env override SESSION_SECURE_COOKIE', () => {
+  // Same merge order as cmdUp's `runEnv` composition (sessionEnv first,
+  // platformConfig.env after): a project's own value wins over the default.
+  const platformConfig = { framework: 'laravel', env: { SESSION_SECURE_COOKIE: 'true' } };
+  const runEnv = { ...laravelSessionEnv(platformConfig), ...platformConfig.env };
+  assert.equal(runEnv.SESSION_SECURE_COOKIE, 'true');
+  const noOverride = { framework: 'laravel', env: {} };
+  assert.equal({ ...laravelSessionEnv(noOverride), ...noOverride.env }.SESSION_SECURE_COOKIE, 'false');
 });
 
 // --- up: lock present -> FAIL ----------------------------------------------
@@ -1825,6 +1848,29 @@ test('cmdDown --platform web: falls back to killing a lingering port listener un
   assert.ok(killed.some(([pid, sig]) => pid === 999 && sig === 'SIGTERM'));
 });
 
+// --- pidFilePath: .screens/.run/<platform>.pid ------------------------------
+
+test('pidFilePath: .screens/.run/<platform>.pid', () => {
+  assert.equal(pidFilePath('/root', 'web'), join('/root', '.screens/.run', 'web.pid'));
+});
+
+test('cmdDown --platform web: kills the process recorded at the new pidfile location, removes it', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { web: {} });
+  writeFile(root, '.screens/.run/web.pid', '555');
+  const killed = [];
+  const originalKill = process.kill;
+  process.kill = (pid, sig) => { killed.push([pid, sig]); };
+  try {
+    const lines = cmdDown(['--platform', 'web'], root, () => ({ stdout: '', status: 0 }));
+    assert.ok(lines.includes('DOWN_RESULT=OK'));
+  } finally {
+    process.kill = originalKill;
+  }
+  assert.ok(killed.some(([pid, sig]) => pid === -555 && sig === 'SIGTERM'));
+  assert.ok(!existsSync(join(root, '.screens/.run/web.pid')));
+});
+
 // --- APP_URL for a Capacitor-dependent web backend --------------------------
 
 test('androidAppUrlEnv: android depends_on web -> APP_URL set to the emulator-reachable host', () => {
@@ -1917,6 +1963,28 @@ test('secretConfigGuard: web.env PASSWORD-like key -> FAIL', () => {
 
 test('secretConfigGuard: clean config -> ok', () => {
   assert.equal(secretConfigGuard({ web: { env: { DB_CONNECTION: 'sqlite' } } }).ok, true);
+});
+
+test('secretConfigGuard: web.secret_env_aliases (names only, PASSWORD-like) -> ok, still rejects a real value in web.env', () => {
+  assert.equal(secretConfigGuard({ web: { env: { DB_CONNECTION: 'sqlite' }, secret_env_aliases: ['SEED_ADMIN_PASSWORD'] } }).ok, true);
+  assert.equal(secretConfigGuard({ web: { env: { SEED_ADMIN_PASSWORD: 'x' }, secret_env_aliases: ['SEED_ADMIN_PASSWORD'] } }).ok, false);
+});
+
+// --- demoPasswordEnv: DEMO_USER_PASSWORD + secret_env_aliases ---------------
+
+test('demoPasswordEnv: sets DEMO_USER_PASSWORD and every listed alias to the same value', () => {
+  const platformConfig = { secret_env_aliases: ['SEED_ADMIN_PASSWORD', 'DEMO_PASSWORD'] };
+  assert.deepEqual(demoPasswordEnv(platformConfig, { demoPassword: 'pw123' }), {
+    DEMO_USER_PASSWORD: 'pw123', SEED_ADMIN_PASSWORD: 'pw123', DEMO_PASSWORD: 'pw123',
+  });
+});
+
+test('demoPasswordEnv: no demo password -> {} (aliases never emitted without a value)', () => {
+  assert.deepEqual(demoPasswordEnv({ secret_env_aliases: ['SEED_ADMIN_PASSWORD'] }, {}), {});
+});
+
+test('demoPasswordEnv: no secret_env_aliases -> only DEMO_USER_PASSWORD', () => {
+  assert.deepEqual(demoPasswordEnv({}, { demoPassword: 'pw123' }), { DEMO_USER_PASSWORD: 'pw123' });
 });
 
 test('up: config.json has demo_password -> FAIL before the runner is ever called', () => {

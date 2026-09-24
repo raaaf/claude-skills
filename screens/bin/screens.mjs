@@ -938,6 +938,37 @@ function laravelPerfEnv(platformConfig) {
   return { PHP_CLI_SERVER_WORKERS: '4', APP_DEBUG: 'false' };
 }
 
+// Laravel isolation env default (live STOP: `config/session.php`'s
+// `'secure' => env('SESSION_SECURE_COOKIE', true)` drops the session
+// cookie after login on the isolated http backend, since a `secure`
+// cookie never reaches the browser over plain http). Applied before
+// `platformConfig.env` in the merge below so a project's own
+// `SESSION_SECURE_COOKIE` in `config.web.env` still wins.
+function laravelSessionEnv(platformConfig) {
+  if (platformConfig.framework !== 'laravel') return {};
+  return { SESSION_SECURE_COOKIE: 'false' };
+}
+
+// DEMO_USER_PASSWORD plus any `secret_env_aliases` (config field, names
+// only, see `secretConfigGuard`): sets each listed name to the same demo
+// password, for a project whose own env variable for the demo password is
+// not called `DEMO_USER_PASSWORD` -- an alternative to editing project
+// source to add that name. Never printed (see `ensureSecretsFile`).
+function demoPasswordEnv(platformConfig, demoSecrets) {
+  if (!demoSecrets.demoPassword) return {};
+  const env = { DEMO_USER_PASSWORD: demoSecrets.demoPassword };
+  for (const alias of platformConfig.secret_env_aliases || []) env[alias] = demoSecrets.demoPassword;
+  return env;
+}
+
+// PID file location (fix: moved from `.screens/<platform>/pid` to
+// `.screens/.run/<platform>.pid` so every platform's runtime pid lives
+// under one gitignored directory instead of one bespoke subdirectory
+// each; shared by `cmdUp`'s writer and `cmdDown`'s reader/cleanup).
+function pidFilePath(root, platform) {
+  return join(root, '.screens/.run', `${platform}.pid`);
+}
+
 // Capacitor-dependent web backend (live 2026-09-24 STOP, "Explicit-intent
 // navigation" in platform-maestro.md): a Laravel `route()`/`asset()` call
 // builds an ABSOLUTE url from `APP_URL`, and a client-side redirect using it
@@ -1149,13 +1180,16 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   writeFileSync(lockPath, String(process.pid));
 
   const clockEnv = platform === 'web' ? phpFixedClockEnv(root, config, runner) : {};
+  const sessionEnv = platform === 'web' ? laravelSessionEnv(platformConfig) : {};
   const perfEnv = platform === 'web' ? laravelPerfEnv(platformConfig) : {};
   const appUrlEnv = platform === 'web' ? androidAppUrlEnv(config) : {};
-  // DEMO_USER_PASSWORD in addition to config.web.env (never printed, see
-  // `ensureSecretsFile`): reaches both the seed command and the serve
-  // process below, same as every other env source here.
-  const demoEnv = demoSecrets.demoPassword ? { DEMO_USER_PASSWORD: demoSecrets.demoPassword } : {};
-  const runEnv = { ...(platformConfig.env || {}), ...clockEnv, ...perfEnv, ...appUrlEnv, ...demoEnv };
+  // DEMO_USER_PASSWORD (+ secret_env_aliases): reaches both the seed
+  // command and the serve process below, same as every other env source
+  // here.
+  const demoEnv = demoPasswordEnv(platformConfig, demoSecrets);
+  // `sessionEnv` sits before `platformConfig.env` so a project's own
+  // `SESSION_SECURE_COOKIE` still wins (see `laravelSessionEnv`).
+  const runEnv = { ...sessionEnv, ...(platformConfig.env || {}), ...clockEnv, ...perfEnv, ...appUrlEnv, ...demoEnv };
 
   // `nice -n 10` on every process the skill drives here (server + view:cache
   // + seed), per the user's "machine overloaded" report (plan "Capture
@@ -1180,9 +1214,14 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
       env: { ...process.env, ...runEnv },
     });
     child.unref();
-    const pidFile = join(root, '.screens', platform, 'pid');
+    // Migrate: an old-layout pidfile from a previous screens.mjs never
+    // gets read again once the new one is written, so it is removed here
+    // rather than left stale on disk.
+    rmSync(join(root, '.screens', platform, 'pid'), { force: true });
+    const pidFile = pidFilePath(root, platform);
     mkdirSync(dirname(pidFile), { recursive: true });
     writeFileSync(pidFile, String(child.pid));
+    ensureGitignoreEntry(root, '/.screens/.run/', runner);
     lines.push(`PID=${child.pid}`);
   }
 
@@ -1313,7 +1352,7 @@ function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
   for (const dir of buildDirs) rmSync(join(root, dir), { recursive: true, force: true });
 
   if (platform) {
-    const pidFile = join(root, '.screens', platform, 'pid');
+    const pidFile = pidFilePath(root, platform);
     if (existsSync(pidFile)) {
       const pid = parseInt(readFileSync(pidFile, 'utf8'), 10);
       if (pid) {
@@ -2305,6 +2344,8 @@ export {
   composePhpIniScanDir,
   phpFixedClockEnv,
   laravelPerfEnv,
+  laravelSessionEnv,
+  pidFilePath,
   androidAppUrlEnv,
   playwrightWorkers,
   computeSeedFingerprint,
@@ -2312,6 +2353,7 @@ export {
   ensureGitignoreEntry,
   ensureSecretsFile,
   secretConfigGuard,
+  demoPasswordEnv,
   cmdUp,
   killPortListeners,
   cmdDown,
