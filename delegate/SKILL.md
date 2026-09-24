@@ -86,8 +86,33 @@ page or component. Everything else skips this phase silently.
 The before-image can only be taken here, before the executor touches anything. That is the whole
 reason this is its own phase and not part of the review.
 
-Resolve a target, in this order, and skip the phase when none resolves. Never guess a URL: a
-screenshot of a connection error looks like a result.
+**Screens catalog first, when the repo has one.** Before resolving a target the old way, check for
+`.screens/config.json`:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+SCREENS_BIN="$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/screens/bin/screens.mjs"
+[ -f "$SCREENS_BIN" ] || SCREENS_BIN="$HOME/.claude/skills/screens/bin/screens.mjs"
+SCREENS_AFFECTED_IDS=""
+if [ -f ".screens/config.json" ] && [ -f "$SCREENS_BIN" ]; then
+  SCREENS_AFFECTED_IDS=$(node "$SCREENS_BIN" affected --files {mini-spec affected files, space-separated} \
+    | sed -n 's/^AFFECTED_ID //p')
+fi
+orch_state_save SCREENS_BIN SCREENS_AFFECTED_IDS
+```
+
+No `.screens/config.json`, or it returns no ids: fall through to the target order below, unchanged.
+One or more ids: run `node "$SCREENS_BIN" plan`, keep only the `PLAN_ENTRY <id> <status>` lines
+whose id is in `SCREENS_AFFECTED_IDS` and whose status is not `unchanged`, then capture just those
+through the same `up -> driver -> promote -> down` sequence `screens/SKILL.md` Phase 5 documents
+(scoped to the platform(s) those ids belong to, and on the driver step to just these ids via that
+platform's own per-entry filter, e.g. `--grep` on web) so "before" reflects HEAD. Copy the resulting
+catalog PNGs (`screenshots/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>.png`)
+into `.claude/screenshots/before/` at the same relative path, then skip straight to Phase 4 (no
+`capture-screens.sh` target to resolve).
+
+Otherwise, resolve a target, in this order, and skip the phase when none resolves. Never guess a
+URL: a screenshot of a connection error looks like a result.
 
 1. A URL the user named in the task.
 2. `.claude/launch.json` in the repo: a configuration's `url`, else `http://localhost:<port>`.
@@ -140,17 +165,26 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the fix line when in doubt (a happy-path test stays green while the new branch ships untested).
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
-6. **After-screenshot**, when Phase 3.5 captured a before-image: rerun the same command with
-   `--label after` and the same `--name`, against the same target. Open both files and say what
-   actually changed visually, in one or two sentences. A pair of images with no reading of them is
-   decoration. If the before-image was skipped, do not capture an after-image either: a single
-   picture invites a comparison the run cannot make.
+6. **After-screenshot.** When Phase 3.5's before set came from `/screens` (`SCREENS_AFFECTED_IDS`
+   saved): rerun the same ids through `plan -> up -> driver -> promote -> down` (same scoped
+   sequence as Phase 3.5), copy the catalog PNGs into `.claude/screenshots/after/` at the same
+   relative path, and for each before/after pair say what changed visually in one or two sentences;
+   a pair whose PNG hash did not change is listed as "unchanged" in the report (Phase 6) instead of
+   attached. Otherwise, when Phase 3.5 captured a before-image via `capture-screens.sh`: rerun the
+   same command with `--label after` and the same `--name`, against the same target, and describe
+   the visual difference the same way; a pair of images with no reading of them is decoration. If
+   the before-image was skipped, do not capture an after-image either: a single picture invites a
+   comparison the run cannot make.
 
    ```bash
    for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-   orch_state_load   # SCREEN_NAME, CAPTURE_TARGET from Phase 3.5
-   CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
-   [ -n "$CAPTURE" ] && [ -n "${SCREEN_NAME:-}" ] && bash "$CAPTURE" --label after $CAPTURE_TARGET --name "$SCREEN_NAME"
+   orch_state_load   # SCREEN_NAME, CAPTURE_TARGET, SCREENS_BIN, SCREENS_AFFECTED_IDS from Phase 3.5
+   if [ -n "${SCREENS_AFFECTED_IDS:-}" ]; then
+     node "$SCREENS_BIN" plan   # PLAN_ENTRY lines for the same ids drive the same scoped up -> driver -> promote -> down as Phase 3.5, output into .claude/screenshots/after/
+   else
+     CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
+     [ -n "$CAPTURE" ] && [ -n "${SCREEN_NAME:-}" ] && bash "$CAPTURE" --label after $CAPTURE_TARGET --name "$SCREEN_NAME"
+   fi
    ```
 
 **Verdict:**
