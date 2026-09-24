@@ -213,7 +213,13 @@ no demo password in any repo). `screens.mjs up`'s seed step creates
       "roles": ["admin", "member"],
       "sources": ["resources/views/dashboard.blade.php", "app/Livewire/Dashboard.php"],
       "mask": [".timestamp"],              // CSS selectors hidden before capture
-      "ready": "[data-testid=dashboard-loaded]",
+      "ready": "[data-testid=dashboard-loaded]", // CSS selector, waited via Playwright's
+                                            // waitForSelector (web) / entry.ready fallback (Maestro)
+      "ready_text": "Dashboard loaded",    // optional: visible-text readiness match instead of/in
+                                            // addition to `ready` (web: Playwright's getByText,
+                                            // exact: false; Maestro: its native text assertion,
+                                            // preferred over `ready` there when both are set) --
+                                            // for a view with no data-testid to select on
       "steps": [],                         // only for views reachable via a multi-step flow
       "error_fill": [                      // only for an entry whose states include "error":
         { "selector": "input[name=email]", "value": "not-an-email" }, // {selector, value} pairs

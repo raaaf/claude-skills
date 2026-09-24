@@ -106,8 +106,9 @@ First run only (same guard as Phase 1). Dispatch a `general-purpose` subagent (`
 `run_in_background: false`) with the demo-data brief and config/manifest paths: write the demo
 seeder and the platform driver files the plan's "Per-project files" table names
 (`database/seeders/ScreensDemoSeeder.php` or the framework's equivalent, `.screens/web/capture.spec.ts`,
-etc.; driver templates for stages d/e are not present in this repo yet, and when a template is
-missing, the executor writes only the seeder and reports which drivers it deferred). On a PHP
+`.screens/web/playwright.config.ts` (verbatim, no templating, `screens/references/platform-web.md`
+"Invocation"), etc.; driver templates for stages d/e are not present in this repo yet, and when a
+template is missing, the executor writes only the seeder and reports which drivers it deferred). On a PHP
 project, also instantiate `screens/templates/php/fixed-clock.php` verbatim into
 `.screens/web/fixed-clock.php` and `screens/templates/php/zz-screens.ini` into
 `.screens/web/php/zz-screens.ini` with `{{PROJECT_ROOT}}` replaced by the project's absolute path,
@@ -198,10 +199,12 @@ Driver step: read `screens/references/platform-web.md` (web, added stage b),
 `screens/references/platform-apple.md` (iOS/macOS, added stage d),
 `screens/references/platform-maestro.md` (Android/Capacitor, stage e); when the reference file does
 not exist yet, report `DRIVER=SKIP (driver added in a later stage)` for that platform and skip
-straight to `down`. On the web platform, run the driver command under `nice -n 10` and pass
-`--workers=<PLAYWRIGHT_WORKERS>` from `up`'s own output line (`min(4, floor(cores/2))`, plan's
-"Capture efficiency"; the user reported earlier runs overloading the machine), never a hardcoded
-`--workers=4`. On iOS/macOS, run `xcodebuild test` under `nice -n 10` with `-derivedDataPath
+straight to `down`. On the web platform, run the driver command under `nice -n 10` with `--config
+.screens/web/playwright.config.ts` (keeps `test-results/`/`playwright-report/` out of the project
+root, `screens/references/platform-web.md` "Invocation") and pass `--workers=<PLAYWRIGHT_WORKERS>`
+from `up`'s own output line (`min(4, floor(cores/2))`, plan's "Capture efficiency"; the user reported
+earlier runs overloading the machine), never a hardcoded `--workers=4`. On iOS/macOS, run `xcodebuild
+test` under `nice -n 10` with `-derivedDataPath
 <up's DERIVED_DATA_PATH output line>`, `-destination "platform=iOS Simulator,id=<up's
 SIMULATOR_UDID output line>"` (iOS only), and `xcrun simctl ui <SIMULATOR_UDID> appearance
 light|dark` before each themed pass (platform-apple.md "Invocation"); the per-entry stale filter is

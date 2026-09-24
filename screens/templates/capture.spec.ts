@@ -6,8 +6,9 @@
 // `.screens/config.json` and `.screens/manifest.json` from `process.cwd()` at test-collection time,
 // so the same file works unmodified for every Laravel/web pilot.
 //
-// Invocation: `npx playwright test .screens/web/capture.spec.ts --workers=4 [--grep <pattern>]`
-// from the project root, after `screens.mjs up --platform web` succeeded.
+// Invocation: `npx playwright test .screens/web/capture.spec.ts --config
+// .screens/web/playwright.config.ts --workers=4 [--grep <pattern>]` from the
+// project root, after `screens.mjs up --platform web` succeeded.
 
 import { test } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -147,6 +148,22 @@ async function submitErrorState(page, entry) {
   await submitScopedForm(page, lastSelector);
 }
 
+// Readiness gate (config-schema.md): `entry.ready` is a CSS selector,
+// `entry.ready_text` is a visible-text match (Playwright's built-in
+// `getByText`, `exact: false` so a longer sentence like a German empty-state
+// copy still matches on substring) -- a manifest entry authored for the
+// Maestro/Android driver (which matches by visible text) uses `ready_text`
+// instead of hand-writing a `[data-testid=...]` the app may not even carry.
+// Both may be set; both are waited for.
+async function waitForReady(page, entry) {
+  if (entry.ready) {
+    await page.waitForSelector(entry.ready, { timeout: 15000 });
+  }
+  if (entry.ready_text) {
+    await page.getByText(entry.ready_text, { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+  }
+}
+
 const viewports = (config.axes && config.axes.viewports && config.axes.viewports.web) || ['1440x900'];
 const themes = (config.axes && config.axes.themes) || ['light'];
 const primaryLocale = (config.axes && config.axes.locales && config.axes.locales.primary) || 'en';
@@ -199,9 +216,7 @@ async function captureMarketingSource2x(browser, entry, state, role, urlHost) {
   await loginAs(page, role, state);
   await page.goto(`${BASE_URL}${entry.reach}`);
   await page.waitForLoadState('networkidle');
-  if (entry.ready) {
-    await page.waitForSelector(entry.ready, { timeout: 15000 });
-  }
+  await waitForReady(page, entry);
   await applyMaskAndErrorState(page, entry, state);
   await context.addCookies([{ name: 'dark_mode', value: 'false', domain: urlHost, path: '/' }]);
 
@@ -265,9 +280,7 @@ for (const entry of manifest.entries || []) {
 
         await page.goto(`${BASE_URL}${entry.reach}`);
         await page.waitForLoadState('networkidle');
-        if (entry.ready) {
-          await page.waitForSelector(entry.ready, { timeout: 15000 });
-        }
+        await waitForReady(page, entry);
         await applyMaskAndErrorState(page, entry, state);
 
         for (const viewport of viewports) {
@@ -275,9 +288,7 @@ for (const entry of manifest.entries || []) {
             await page.setViewportSize(parseViewport(viewport));
             await page.goto(`${BASE_URL}${entry.reach}`);
             await page.waitForLoadState('networkidle');
-            if (entry.ready) {
-              await page.waitForSelector(entry.ready, { timeout: 15000 });
-            }
+            await waitForReady(page, entry);
             await applyMaskAndErrorState(page, entry, state);
           } else {
             await page.setViewportSize(parseViewport(viewport));

@@ -23,13 +23,19 @@ From the target project root, after `screens.mjs up --platform web` reported `UP
 
 ```
 cd <project root>
-nice -n 10 npx playwright test .screens/web/capture.spec.ts --workers=<PLAYWRIGHT_WORKERS> [--grep <pattern>]
+nice -n 10 npx playwright test .screens/web/capture.spec.ts --config .screens/web/playwright.config.ts --workers=<PLAYWRIGHT_WORKERS> [--grep <pattern>]
 ```
 
 `<PLAYWRIGHT_WORKERS>` is `up`'s own `PLAYWRIGHT_WORKERS=<n>` output line (`min(4, floor(cores/2))`,
 `screens.mjs`'s `playwrightWorkers`), never a hardcoded `--workers=4`: the user reported earlier runs
 overloading the machine (plan's "Capture efficiency"), and `nice -n 10` applies to this process the
 same way `screens.mjs up` already nices the PHP server and seed/migrate commands it starts.
+
+`--config .screens/web/playwright.config.ts` (Phase 2 scaffold, next to `capture.spec.ts`) is always
+explicit, never left to auto-discovery: it sets `outputDir: '.screens/.run/playwright'` and
+`reporter: 'list'` so no `test-results/`/`playwright-report/` ever land in the project root (both
+would otherwise appear even on a passing run, since Playwright's default local reporter also writes
+an HTML report).
 
 `--grep <pattern>` narrows the run to the entry ids `screens.mjs plan`'s `PLAN_ENTRY <id>
 {new|stale|missing_png}` lines named (skip `unchanged` ids); omit the flag on a first run or
@@ -62,8 +68,10 @@ driver must read the manifest at runtime instead of hard-coding entries").
   `config-schema.md` "Demo password") through `/login` (`input[name=email]`, `input[name=password]`,
   `button[type=submit]`), then `waitForLoadState('networkidle')`.
 - Navigation: `page.goto(BASE_URL + entry.reach)`, `waitForLoadState('networkidle')`, then
-  `entry.ready` (a CSS selector) via `waitForSelector` if set; `entry.mask` selectors and the `error`
-  state's form submission are applied once, right after this single navigation.
+  `entry.ready` (a CSS selector) via `waitForSelector` and/or `entry.ready_text` (a visible-text
+  match via `getByText(..., { exact: false })`) if set -- both wait when both are set; `entry.mask`
+  selectors and the `error` state's form submission are applied once, right after this single
+  navigation.
 - **Device-class x theme loop, in the same page (Capture efficiency):** for each `viewport` in
   `config.axes.viewports.web`, `page.setViewportSize` + two `requestAnimationFrame` ticks +
   `waitForLoadState('networkidle')` (an entry with `reload_per_viewport: true` gets a fresh

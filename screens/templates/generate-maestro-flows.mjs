@@ -174,7 +174,12 @@ for (const entry of manifest.entries || []) {
         .replaceAll('{{REACH_STEPS}}', reachSteps)
         .replaceAll('{{ERROR_FILL_STEPS}}', errorSteps)
         .replaceAll('{{MASK_STEPS}}', '') // see platform-maestro.md "Known limits"
-        .replaceAll('{{READY_SELECTOR}}', entry.ready || '')
+        // `ready_text` (config-schema.md) is the canonical field for this
+        // Maestro flow's `text:` assertion, added alongside the web driver's
+        // CSS-selector `ready`; `entry.ready` is kept as a fallback so a
+        // manifest written before `ready_text` existed (this text value was
+        // always what Maestro read from `ready`) still generates correctly.
+        .replaceAll('{{READY_SELECTOR}}', entry.ready_text || entry.ready || '')
         .replaceAll('{{SCREENSHOT_PATH}}', screenshotPath);
 
       const outPath = join(OUT_DIR, `${entry.id}__${state}__${role}.yaml`);

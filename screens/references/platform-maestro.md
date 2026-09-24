@@ -131,11 +131,13 @@ generator's `roleSeen` tracking) is `true` only for the first flow generated for
 role's login session survives across its own entries instead of relogging in on every one;
 `{{LOGIN_STEPS}}` is skipped the same way for every entry after the role's first. Entries with no
 `reach` (a view only reachable through a UI flow with no direct route) fall back to `steps[]`, run
-inside the flow as before. `entry.ready` holds visible TEXT for an android/capacitor entry (matched
-via Maestro's `extendedWaitUntil: visible: text:`), not a CSS selector the way a web entry's `ready`
-does -- the same convention the pilot's own hand-written `.maestro/*.yaml` flows already use
-exclusively (text/accessibility matching, never an id, per that file's own header comment on webview
-robustness).
+inside the flow as before. `entry.ready_text` (config-schema.md, added alongside the web driver's
+CSS-selector `ready`) holds the visible TEXT this flow's `extendedWaitUntil: visible: text:`
+assertion waits for -- the same convention the pilot's own hand-written `.maestro/*.yaml` flows
+already use exclusively (text/accessibility matching, never an id, per that file's own header
+comment on webview robustness). `entry.ready` is read as a fallback when `ready_text` is absent (a
+manifest written before `ready_text` existed already held this text value in `ready`), so an older
+manifest still generates correctly.
 
 ## Explicit-intent navigation
 
