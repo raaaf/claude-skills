@@ -17,6 +17,16 @@ import { spawnSync } from 'node:child_process';
 import {
   planEntries,
   checkLock,
+  repoHash,
+  simulatorNameForDevice,
+  parseDfAvailableGb,
+  checkDiskGuard,
+  findNewestIosRuntimeId,
+  findSimulatorUdidByName,
+  statusBarOverrideArgs,
+  appearanceArgs,
+  iosDeviceSetup,
+  macosDeviceSetup,
   cmdUp,
   laravelDbGuard,
   composePhpIniScanDir,
@@ -432,6 +442,154 @@ test('playwrightWorkers: min(4, floor(cores/2))', () => {
   assert.equal(playwrightWorkers(8), 4);
   assert.equal(playwrightWorkers(16), 4);
   assert.equal(playwrightWorkers(1), 1);
+});
+
+// --- Apple device setup (stage d): simulator name derivation ----------------
+
+test('simulatorNameForDevice: deterministic per repo hash + device class', () => {
+  assert.equal(simulatorNameForDevice('abcd1234', 'iphone'), 'screens-abcd1234-iphone');
+});
+
+test('repoHash: same root -> same hash; different roots -> different hashes', () => {
+  const a = repoHash('/Users/rafael/Developer/apps/topf-secret/ios');
+  const b = repoHash('/Users/rafael/Developer/apps/topf-secret/ios');
+  const c = repoHash('/Users/rafael/Developer/apps/mail-guard');
+  assert.equal(a, b);
+  assert.notEqual(a, c);
+});
+
+// --- Apple device setup: disk guard branch -----------------------------------
+
+test('parseDfAvailableGb: reads the Available column from `df -g` output', () => {
+  const stdout = 'Filesystem     1G-blocks Used Available Capacity iused ifree %iused  Mounted on\n'
+    + '/dev/disk3s1s1       460   12        26    33%  484014 275459240    0%   /\n';
+  assert.equal(parseDfAvailableGb(stdout), 26);
+});
+
+test('checkDiskGuard: below 8 GB free -> not ok', () => {
+  const runner = () => ({ stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 95 5 95%\n', status: 0 });
+  const result = checkDiskGuard('/tmp', runner);
+  assert.equal(result.ok, false);
+  assert.equal(result.freeGb, 5);
+});
+
+test('checkDiskGuard: at or above 8 GB free -> ok', () => {
+  const runner = () => ({ stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 80 20 80%\n', status: 0 });
+  const result = checkDiskGuard('/tmp', runner);
+  assert.equal(result.ok, true);
+  assert.equal(result.freeGb, 20);
+});
+
+// --- Apple device setup: reuse of an existing simulator ----------------------
+
+test('findSimulatorUdidByName: finds an existing device across runtime buckets', () => {
+  const devicesJson = JSON.stringify({
+    devices: {
+      'com.apple.CoreSimulator.SimRuntime.iOS-18-0': [
+        { name: 'screens-abcd1234-iphone', udid: 'UDID-1', state: 'Shutdown' },
+      ],
+    },
+  });
+  assert.equal(findSimulatorUdidByName(devicesJson, 'screens-abcd1234-iphone'), 'UDID-1');
+  assert.equal(findSimulatorUdidByName(devicesJson, 'nonexistent'), null);
+});
+
+test('iosDeviceSetup: reuses an existing device, never calls simctl create', () => {
+  const root = fixture();
+  const config = { ios: { device_class: 'iphone' } };
+  const name = simulatorNameForDevice(repoHash(root), 'iphone');
+  let createCalled = false;
+  const runner = (cmd, args) => {
+    if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+    if (args[1] === 'list' && args[2] === 'devices') {
+      return { stdout: JSON.stringify({ devices: { 'iOS-18': [{ name, udid: 'UDID-EXISTING' }] } }), status: 0 };
+    }
+    if (args[1] === 'create') createCalled = true;
+    return { stdout: '', status: 0 };
+  };
+  const result = iosDeviceSetup(root, config, runner);
+  assert.equal(result.ok, true);
+  assert.equal(result.skip, false);
+  assert.equal(result.udid, 'UDID-EXISTING');
+  assert.equal(createCalled, false);
+});
+
+test('iosDeviceSetup: no existing device -> creates one from the newest available iOS runtime', () => {
+  const root = fixture();
+  const config = { ios: { device_class: 'iphone' } };
+  const runtimesJson = JSON.stringify({
+    runtimes: [
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-17-0', version: '17.0', isAvailable: true },
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-18-2', version: '18.2', isAvailable: true },
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.watchOS-11-0', version: '11.0', isAvailable: true },
+    ],
+  });
+  const calls = [];
+  const runner = (cmd, args) => {
+    calls.push([cmd, ...args]);
+    if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+    if (args[1] === 'list' && args[2] === 'devices') return { stdout: JSON.stringify({ devices: {} }), status: 0 };
+    if (args[1] === 'list' && args[2] === 'runtimes') return { stdout: runtimesJson, status: 0 };
+    if (args[1] === 'create') return { stdout: 'UDID-NEW\n', status: 0 };
+    return { stdout: '', status: 0 };
+  };
+  const result = iosDeviceSetup(root, config, runner);
+  assert.equal(result.ok, true);
+  assert.equal(result.udid, 'UDID-NEW');
+  const createCall = calls.find((c) => c[2] === 'create');
+  assert.ok(createCall, calls.map((c) => c.join(' ')).join('\n'));
+  assert.equal(createCall[createCall.length - 1], 'com.apple.CoreSimulator.SimRuntime.iOS-18-2');
+});
+
+test('iosDeviceSetup: below disk threshold -> SKIP, no simctl calls', () => {
+  const root = fixture();
+  let simctlCalled = false;
+  const runner = (cmd) => {
+    if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 95 5 95%\n', status: 0 };
+    simctlCalled = true;
+    return { stdout: '', status: 0 };
+  };
+  const result = iosDeviceSetup(root, {}, runner);
+  assert.equal(result.skip, true);
+  assert.match(result.reason, /low disk: 5 GB free/);
+  assert.equal(simctlCalled, false);
+});
+
+test('macosDeviceSetup: below disk threshold -> SKIP; above -> ok, no simulator', () => {
+  const root = fixture();
+  const lowRunner = () => ({ stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 95 5 95%\n', status: 0 });
+  const okRunner = () => ({ stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 });
+  assert.equal(macosDeviceSetup(root, lowRunner).skip, true);
+  const ok = macosDeviceSetup(root, okRunner);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.skip, false);
+  assert.equal(ok.udid, undefined);
+});
+
+// --- Apple device setup: status-bar / appearance command composition --------
+
+test('statusBarOverrideArgs: composes the fixed 9:41 override', () => {
+  assert.deepEqual(statusBarOverrideArgs('UDID-1'), [
+    'simctl', 'status_bar', 'UDID-1', 'override',
+    '--time', '9:41', '--batteryState', 'charged', '--batteryLevel', '100',
+    '--cellularBars', '4', '--wifiBars', '3',
+  ]);
+});
+
+test('appearanceArgs: composes light/dark appearance switch', () => {
+  assert.deepEqual(appearanceArgs('UDID-1', 'dark'), ['simctl', 'ui', 'UDID-1', 'appearance', 'dark']);
+  assert.deepEqual(appearanceArgs('UDID-1', 'light'), ['simctl', 'ui', 'UDID-1', 'appearance', 'light']);
+});
+
+test('findNewestIosRuntimeId: picks the highest dotted version among available iOS runtimes', () => {
+  const json = JSON.stringify({
+    runtimes: [
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-16-4', version: '16.4', isAvailable: true },
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-0', version: '26.0', isAvailable: true },
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-18-0', version: '18.0', isAvailable: false },
+    ],
+  });
+  assert.equal(findNewestIosRuntimeId(json), 'com.apple.CoreSimulator.SimRuntime.iOS-26-0');
 });
 
 // --- up: seed-on-change (fingerprint unchanged + isolated DB exists -> SKIP) ---

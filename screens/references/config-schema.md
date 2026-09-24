@@ -35,6 +35,28 @@ writes, subagents return").
     "depends_on": null                     // another platform key this one's backend needs, or null
   },
 
+  "ios": {                                 // stage d: XCUITest, no "framework"/"start_command"/
+                                            // "seed_command" (native launch args replace them)
+    "device_class": "iphone",              // simulator device-class key (plan's machine-limits
+                                            // decision: iPhone only, no iPad, in the pilot config);
+                                            // simulator name is `screens-<repoHash>-<device_class>`
+    "launch_args_prefix": ["-UITests"],    // reused launch-arg vocabulary (Launch-arg vocabulary
+                                            // reuse, screens/references/platform-apple.md), mirrors
+                                            // the project's own UITestLauncher-style master switch
+    "seed_flag": "-UITestSeed",            // flag name for a manifest entry's per-state seed
+                                            // scenario (entry `seeds` map, see manifest below)
+    "fixed_date": null                     // optional, e.g. "2026-05-12T09:41:00Z": appended as
+                                            // "-ScreensFixedDate <value>" only when the app supports
+                                            // it; unset entries with date-dependent content get a
+                                            // discoverer note instead (native has no mask[])
+  },
+  "macos": {                               // stage d: no simulator (plan "macOS: no device"),
+                                            // otherwise the same block shape as ios minus device_class
+    "launch_args_prefix": ["-UITests"],
+    "seed_flag": "-UITestSeed",
+    "fixed_date": null
+  },
+
   "roles": ["guest", "admin", "member"],
   "demo_logins": { "admin": "admin@screens.test", "member": "member@screens.test" },
   "demo_logins_empty": { "member": "member-empty@screens.test" }, // optional: a per-role account
@@ -116,10 +138,14 @@ writes, subagents return").
       "known_nondeterministic": "row order has no ORDER BY tie-break", // optional: seeder
                                             // determinism rule (4), platform-web.md; excludes this
                                             // entry from the changed/unchanged byte-identical count
-      "reload_per_viewport": false         // optional (default false): capture.spec.ts reloads this
+      "reload_per_viewport": false,        // optional (default false): capture.spec.ts reloads this
                                             // entry per viewport instead of resizing the same page
                                             // in place (Capture efficiency); set only when verified
                                             // to differ (ImageMagick compare, platform-web.md)
+      "seeds": {                           // ios/macos only: per-state seed scenario name, passed as
+        "filled": "library5"               // `<seed_flag> <value>` (config's ios/macos block); a
+                                            // state with no key here launches with no seed flag
+      }
     }
   ]
 }
@@ -159,6 +185,17 @@ parameters resolves via a stable demo record by slug set in the seeder, never by
 
 ```json
 { "id": "recipe-detail", "platform": "ios", "area": "recipes", "view": "RecipeDetailView",
-  "reach": "Tab: Recipes -> Recipe row 1", "states": ["filled", "empty"], "roles": ["guest"],
-  "sources": ["RezepteApp/Views/RecipeDetailView.swift"], "mask": [], "ready": null }
+  "reach": "Tab: Recipes -> Recipe row 1", "states": ["filled"], "roles": ["guest"],
+  "sources": ["RezepteApp/Views/RecipeDetailView.swift"],
+  "seeds": { "filled": "library5" },
+  "steps": [
+    { "action": "tap_tab", "label": "Rezepte" },
+    { "action": "wait", "label": "Rote Linsensuppe" },
+    { "action": "tap", "label": "Rote Linsensuppe" }
+  ] }
 ```
+
+Native `steps[]` (ios/macos, `screens/templates/ScreensCatalogTests.swift`) use a small generic
+vocabulary instead of the web driver's CSS selectors: `tap_tab`/`tap`/`wait`/`type` (all match by
+accessibility-label prefix) plus `swipe_up`/`swipe_down`; `type` also takes a `text` field. Detail
+and known limits: `screens/references/platform-apple.md` "Known limits".

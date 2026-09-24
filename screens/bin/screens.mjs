@@ -236,13 +236,154 @@ function defaultRunner(cmd, args, env) {
   return { stdout: res.stdout || '', status: res.status };
 }
 
-// Simulator/AVD creation belongs to later delivery stages (Apple + Maestro
-// drivers). This hook is the single place that reports that honestly
-// instead of pretending a device got created.
-function deviceSetupHook(platform) {
-  if (platform === 'ios' || platform === 'android' || platform === 'macos') {
-    return { ok: true, skip: true, reason: `${platform} device setup not implemented yet (added in a later stage)` };
+// ---------------------------------------------------------------------
+// Apple device setup (iOS + macOS, stage d). Android/Maestro (stage e)
+// keeps reporting the honest "not implemented yet" SKIP below.
+// ---------------------------------------------------------------------
+
+// Deterministic per-repo simulator name (plan "Dedicated devices"):
+// `screens-<repo-hash>-<device>`, stable across runs of the same repo so
+// `up` can find-or-create instead of creating a new device every time.
+function repoHash(root) {
+  return createHash('sha256').update(resolve(root)).digest('hex').slice(0, 8);
+}
+
+function simulatorNameForDevice(hash, deviceClass) {
+  return `screens-${hash}-${deviceClass}`;
+}
+
+// `df -g <path>` header + one data row; the 4th column is "Available"
+// (1G-blocks Used Available Capacity ...). Pure parse, no spawn, so the
+// disk-guard branch is directly testable.
+function parseDfAvailableGb(stdout) {
+  const lines = (stdout || '').trim().split('\n');
+  if (lines.length < 2) return null;
+  const cols = lines[1].trim().split(/\s+/);
+  const gb = parseInt(cols[3], 10);
+  return Number.isNaN(gb) ? null : gb;
+}
+
+// Disk guard (plan "Disk guard", user decision "Sparmodus"): SKIP below
+// 8 GB free on the volume that holds the pilot, checked before any
+// derived-data build or simulator work starts. An unparsable `df` output
+// fails open (never blocks a run on a parsing quirk); a crossed threshold
+// mid-run is the caller's responsibility to re-check (Phase 5 loop, one
+// platform at a time).
+function checkDiskGuard(root, runner = defaultRunner) {
+  const res = runner('df', ['-g', root], {});
+  const freeGb = parseDfAvailableGb(res.stdout);
+  if (freeGb === null) return { ok: true, freeGb: null };
+  return { ok: freeGb >= 8, freeGb };
+}
+
+// `xcrun simctl list runtimes -j` -> newest available iOS runtime
+// identifier, sorted by dotted version number. Pure over the parsed JSON.
+function findNewestIosRuntimeId(runtimesJson) {
+  let parsed;
+  try {
+    parsed = JSON.parse(runtimesJson);
+  } catch {
+    return null;
   }
+  const candidates = (parsed.runtimes || []).filter(
+    (r) => r.isAvailable && /\.iOS-/.test(r.identifier || ''),
+  );
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => {
+    const av = (a.version || '0').split('.').map(Number);
+    const bv = (b.version || '0').split('.').map(Number);
+    for (let i = 0; i < Math.max(av.length, bv.length); i++) {
+      const diff = (av[i] || 0) - (bv[i] || 0);
+      if (diff) return diff;
+    }
+    return 0;
+  });
+  return candidates[candidates.length - 1].identifier;
+}
+
+// `xcrun simctl list devices -j` -> udid of a device with the given name
+// (any runtime bucket), or null when no such device exists yet (reuse
+// check, plan "Dedicated devices": "reused across runs, never the user's
+// currently booted device").
+function findSimulatorUdidByName(devicesJson, name) {
+  let parsed;
+  try {
+    parsed = JSON.parse(devicesJson);
+  } catch {
+    return null;
+  }
+  for (const bucket of Object.values(parsed.devices || {})) {
+    for (const d of bucket) if (d.name === name) return d.udid;
+  }
+  return null;
+}
+
+// `simctl status_bar ... override` argument composition (topf-secret's own
+// fixed 9:41 convention, plan step 8): pure so the composed command is
+// testable without spawning `xcrun`.
+function statusBarOverrideArgs(udid) {
+  return [
+    'simctl', 'status_bar', udid, 'override',
+    '--time', '9:41', '--batteryState', 'charged', '--batteryLevel', '100',
+    '--cellularBars', '4', '--wifiBars', '3',
+  ];
+}
+
+function appearanceArgs(udid, theme) {
+  return ['simctl', 'ui', udid, 'appearance', theme];
+}
+
+// Finds-or-creates the dedicated simulator, boots it headless (never `open
+// -a Simulator`, STOP condition: "xcrun simctl boot opens a visible
+// window"), and applies the fixed status bar. Appearance (light/dark) is
+// NOT set here: it is a per-theme, per-xcodebuild-invocation step the
+// driver runs before each themed test pass (`screens/references/platform-apple.md`).
+function iosDeviceSetup(root, config, runner = defaultRunner) {
+  const disk = checkDiskGuard(root, runner);
+  if (!disk.ok) return { ok: true, skip: true, reason: `SKIP (low disk: ${disk.freeGb} GB free, need 8)` };
+
+  const iosConfig = config.ios || {};
+  const deviceClass = iosConfig.device_class || 'iphone';
+  const name = simulatorNameForDevice(repoHash(root), deviceClass);
+
+  const listRes = runner('xcrun', ['simctl', 'list', 'devices', '-j'], {});
+  let udid = findSimulatorUdidByName(listRes.stdout, name);
+
+  if (!udid) {
+    const runtimesRes = runner('xcrun', ['simctl', 'list', 'runtimes', '-j'], {});
+    const runtimeId = findNewestIosRuntimeId(runtimesRes.stdout);
+    // Missing xcrun/no iOS runtime is an environment gap, not a safety-guard
+    // failure (bin output contract): SKIP, not FAIL.
+    if (!runtimeId) return { ok: true, skip: true, reason: 'no available iOS runtime found (xcrun simctl list runtimes)' };
+    const deviceType = (config.axes && config.axes.devices && config.axes.devices.ios && config.axes.devices.ios[0])
+      || 'iPhone 17 Pro';
+    const createRes = runner('xcrun', ['simctl', 'create', name, deviceType, runtimeId], {});
+    udid = (createRes.stdout || '').trim();
+    if (!udid) return { ok: true, skip: true, reason: `simctl create failed for "${name}" (${deviceType}, ${runtimeId})` };
+  }
+
+  runner('xcrun', ['simctl', 'boot', udid], {});
+  runner('xcrun', statusBarOverrideArgs(udid), {});
+
+  return { ok: true, skip: false, udid, name };
+}
+
+// macOS runs the app directly (no simulator, plan "Isolation and
+// lifecycle": "macOS: no device"); only the disk guard applies.
+function macosDeviceSetup(root, runner = defaultRunner) {
+  const disk = checkDiskGuard(root, runner);
+  if (!disk.ok) return { ok: true, skip: true, reason: `SKIP (low disk: ${disk.freeGb} GB free, need 8)` };
+  return { ok: true, skip: false };
+}
+
+// Android/Maestro (stage e) is the one platform still honestly
+// unimplemented; iOS and macOS now do real device setup (stage d).
+function deviceSetupHook(platform, root = process.cwd(), config = {}, runner = defaultRunner) {
+  if (platform === 'android') {
+    return { ok: true, skip: true, reason: 'android device setup not implemented yet (added in a later stage)' };
+  }
+  if (platform === 'ios') return iosDeviceSetup(root, config, runner);
+  if (platform === 'macos') return macosDeviceSetup(root, runner);
   return { ok: true, skip: false };
 }
 
@@ -452,10 +593,22 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     return lines;
   }
 
-  const device = deviceSetupHook(platform);
+  const device = deviceSetupHook(platform, root, config, runner);
+  if (!device.ok) {
+    lines.push(`UP_RESULT=FAIL (${device.reason})`);
+    return lines;
+  }
   if (device.skip) {
     lines.push(`UP_RESULT=SKIP (${device.reason})`);
     return lines;
+  }
+  if (device.udid) lines.push(`SIMULATOR_UDID=${device.udid}`);
+  if (device.name) lines.push(`SIMULATOR_NAME=${device.name}`);
+  if (platform === 'ios' || platform === 'macos') {
+    // Disk guard (plan "Disk guard"): a per-run derivedDataPath under
+    // `.screens/.build/<platform>`, gitignored, deleted in `down`, never
+    // the shared `~/Library/Developer/Xcode/DerivedData` (Sparmodus).
+    lines.push(`DERIVED_DATA_PATH=.screens/.build/${platform}`);
   }
 
   const platformConfig = config[platform] || {};
@@ -536,10 +689,26 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   return lines;
 }
 
-function cmdDown(args, root = process.cwd()) {
+function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
   const platform = argValue(args, '--platform') || (config.platforms && config.platforms[0]);
+
+  // Apple lifecycle (stage d): shut the dedicated simulator down (never
+  // delete it, plan "Dedicated devices": "shut down in down"), and delete
+  // the per-run derivedDataPath (disk guard). macOS has no simulator, only
+  // the derivedDataPath.
+  if (platform === 'ios') {
+    const hash = repoHash(root);
+    const deviceClass = (config.ios && config.ios.device_class) || 'iphone';
+    const name = simulatorNameForDevice(hash, deviceClass);
+    const listRes = runner('xcrun', ['simctl', 'list', 'devices', '-j'], {});
+    const udid = findSimulatorUdidByName(listRes.stdout, name);
+    if (udid) runner('xcrun', ['simctl', 'shutdown', udid], {});
+  }
+  if (platform === 'ios' || platform === 'macos') {
+    rmSync(join(root, '.screens', '.build', platform), { recursive: true, force: true });
+  }
 
   if (platform) {
     const pidFile = join(root, '.screens', platform, 'pid');
@@ -1237,6 +1406,16 @@ export {
   planEntries,
   cmdPlan,
   checkLock,
+  repoHash,
+  simulatorNameForDevice,
+  parseDfAvailableGb,
+  checkDiskGuard,
+  findNewestIosRuntimeId,
+  findSimulatorUdidByName,
+  statusBarOverrideArgs,
+  appearanceArgs,
+  iosDeviceSetup,
+  macosDeviceSetup,
   deviceSetupHook,
   laravelDbGuard,
   bunDbGuard,
