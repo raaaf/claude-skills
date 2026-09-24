@@ -159,7 +159,19 @@ const testLine = testCommand
 const baselineFailures = args.baselineFailures || [];
 
 const excluded = (args.fixes || []).flatMap((f) => f.findings.filter((finding) => finding.severity === 'Minor').map((finding) => finding.id));
-const requested = (args.fixes || []).map((f) => ({ ...f, findings: f.findings.filter((finding) => finding.severity !== 'Minor') }));
+// Fixers and reviewers may return absolute paths (/Users/.../repo/app/Foo.php)
+// while FIXES[].file is repo-relative (app/Foo.php). Every path comparison in
+// this script runs on the repo-relative form; without it hasOwnedChange never
+// matched and no fix-verifier ran (retro 2026-09-23: 26/26 fixes incomplete).
+// Local to fix.js on purpose: hasCompleteCoverage stays byte-identical to find.js.
+function toRepoRelative(path) {
+  if (typeof path !== 'string') return path;
+  const root = String(args.repoRoot || '').replace(/\/+$/, '');
+  const rel = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+  return rel.replace(/^\.\//, '');
+}
+
+const requested = (args.fixes || []).map((f) => ({ ...f, file: toRepoRelative(f.file), findings: f.findings.filter((finding) => finding.severity !== 'Minor') }));
 const uncovered = [];
 
 // Stage 1: one fixer per file, all actionable findings in one dispatch.
@@ -176,7 +188,8 @@ const fixerSlots = await parallel(requested.map((f) => async () => {
   if (warnIfNull(log, result, `fix.js: fixer for ${f.file} returned null`)) {
     return { file: f.file, findings: f.findings, fix: null };
   }
-  return { file: f.file, findings: f.findings, fix: result };
+  const files = Array.isArray(result.files) ? result.files.map(toRepoRelative) : result.files;
+  return { file: f.file, findings: f.findings, fix: { ...result, files } };
 }));
 const fixResults = requested.map((f, i) => fixerSlots[i] || { ...f, fix: null });
 log(`fix.js: ${fixResults.filter((r) => r.fix).length}/${requested.length} fixers reported`);
@@ -224,6 +237,22 @@ if (rejected.length) {
   log(`fix.js: ${rejected.length} fix(es) rejected by fix-verifier, staying open (no second round)`);
 }
 
+// verificationGap: verify completed for fewer files than were fixed (e.g. a
+// verifier group returned null, or fewer groups ran than were dispatched).
+// This is a distinct condition from a normal per-file `incomplete` (a fix
+// that WAS reviewed and found wanting): it means most of the fix wave was
+// never reviewed at all. Retro 2026-09-16 (raaaf/neues-feedback): verify
+// covered 1/20 fixed files and the run still reported plain `incomplete`,
+// so the orchestrator's manual diff verification of the other 19 was an
+// unplanned recovery, not a documented step. Surface it so that recovery
+// becomes the contract instead of a surprise.
+const attemptedVerification = appliedOrPartial.length;
+const verifiedCount = verified.filter((v) => v.verdict).length;
+const verificationGap = attemptedVerification > 0 && verifiedCount < attemptedVerification;
+if (verificationGap) {
+  log(`fix.js: verification_gap — fix-verifier covered ${verifiedCount}/${attemptedVerification} fixed files; the rest need manual diff verification before the marker`);
+}
+
 // Stage 3: regression pass over every file a fixer actually changed.
 const changedFiles = [...new Set(
   fixResults.filter((r) => r.fix && r.fix.files && r.fix.files.length).flatMap((r) => r.fix.files)
@@ -247,6 +276,9 @@ if (changedFiles.length) {
       { agentType: 'general-purpose', model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Regress' }
     );
     if (warnIfNull(log, result, `fix.js: a regression pass returned null for ${group.join(', ')}`)) return null;
+    if (result.coverage && Array.isArray(result.coverage.files)) {
+      return { ...result, coverage: { ...result.coverage, files: result.coverage.files.map(toRepoRelative) } };
+    }
     return result;
   }));
   regressionGroups.forEach((group, i) => {
@@ -271,12 +303,15 @@ if (blockingRegressions.length) {
 }
 
 return {
-  status: uncovered.length || blockingRegressions.length ? 'incomplete' : 'complete',
+  status: verificationGap ? 'verification_gap' : uncovered.length || blockingRegressions.length ? 'incomplete' : 'complete',
   fixes: fixResults,
   uncovered,
   excluded,
   verdicts: verified.map((v) => v.verdict).filter(Boolean),
   regressions,
   rejected: rejected.map((r) => r.file),
-  blockingRegressions
+  blockingRegressions,
+  verificationGap,
+  attemptedVerification,
+  verifiedCount
 };

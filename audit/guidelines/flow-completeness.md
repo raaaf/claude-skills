@@ -89,6 +89,9 @@ A user flow is a chain: every step must exist, give feedback, and hand the user 
 - Explicit save: unsaved-changes state is visible and navigating away warns. Auto-save: the "saved" moment is communicated.
 - Save failure surfaces an error and preserves the edits; silent failure is a data-loss finding (Important).
 
+**Triggering an action (bulk move, assign, delete, toggle)**
+- A user-triggered mutator gives feedback on every exit: success, and each no-op or failure branch (nothing selected, target missing, guard not met, exception). A bare `return` in a guard clause looks to the user like a dead button, and they retry or assume it worked. Check sibling actions: when most of them notify, the silent one is the finding.
+
 **Filtering items**
 - Active filters are visible as removable state; a clear-all exists with several active.
 - Zero-result state says the filters caused it and offers reset — distinct from the general empty state.

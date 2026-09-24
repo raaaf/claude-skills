@@ -1,0 +1,24 @@
+{
+  "fixture": "security/setup-confirm-cookie-binding.ts",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 34,
+      "matches": ["cookie", "token", "compare", "expir", "binding", "any browser", "secret"],
+      "severity": "critical"
+    },
+    {
+      "dimension": "security",
+      "line": 30,
+      "matches": ["redirect loop", "loop", "redirect"],
+      "severity": "important"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "performance",
+      "reason": "three in-memory map lookups, no perf concern"
+    }
+  ],
+  "notes": "henry-companion, 2026-09: an auth-binding fix on a setup/confirm flow regressed the endpoint it protected twice (redirect loop, then a presence-only cookie check that leaves a hijack window). Correct fix: confirm compares the cookie against setup_token with a constant-time compare and rejects after setup_expires; a missing or wrong cookie renders an error page instead of redirecting back into the flow."
+}

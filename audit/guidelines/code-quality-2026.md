@@ -214,3 +214,11 @@ self-check:
 
 Severity anchor: an incomplete enforcement pattern is Important (the rule is silently
 unenforced), not Minor — the whole point of the test is the enforcement.
+
+## Duplicated Retry and Attest Sequences (2026-09-24)
+
+When the same multi-step request sequence (token fetch or App Attest assertion, send, retry on 401 or
+transient failure, re-attest) is written out at three or more call sites, report it once as a shared
+helper candidate that lists every site. Each copy drifts on its own (one site gains a backoff or a
+status check the others lack), and the drift is the defect. Severity: Important when the copies
+already differ in retry or error handling, Minor when they are still identical.

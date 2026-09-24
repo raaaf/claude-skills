@@ -124,6 +124,8 @@ catch (error):
 
 **Rule:** every error path in an auth/lock gate must branch on this classification before deciding what to show the user. Audit every `catch` block in login, biometric unlock, and re-authentication flows for a single generic message covering both cases.
 
+**A fix inside an auth state machine re-checks the whole machine in the same round.** When a finding or fix touches a multi-step auth flow (setup/confirm, cookie or token binding, invite accept, password reset), walk every state and transition of that endpoint before closing it: the missing-credential path, the wrong-credential path, the expired path, and where each one redirects to. Do not leave this for the next audit round. In henry-companion (2026-09) a cookie-binding fix on a TOTP setup/confirm flow took three rounds, because each round's fix introduced a narrower bug in the same endpoint: first a redirect loop for a browser without the cookie, then a check for the cookie's presence without comparing its value, which left a hijack window. Fixture: `evals/fixtures/security/setup-confirm-cookie-binding.ts`.
+
 ## III. CSRF, Rate Limiting & Abuse Prevention
 
 **CSRF protection** is typically automatic in modern frameworks for web routes. Do not disable it. If you have a webhook or API endpoint that needs to skip CSRF, place it in an API-specific route group — never add broad CSRF exceptions for convenience.
@@ -344,3 +346,5 @@ For applications subject to GoBD compliance (or any domain where records become 
 **$fillable Hygiene for immutable fields.** Fields that control immutability state (`finalized_at`, `cancelled_at`, `number`, `sender_snapshot`, `pdf_path`) must NOT be in `$fillable`. Set them via direct assignment in dedicated Service methods. This prevents accidental mass-assignment via `fill()`, `update()`, or `create()`.
 
 **JS Interpolation safety.** When interpolating PHP values into JavaScript (Heredoc strings, inline `<script>` blocks), always use `json_encode()` with `JSON_HEX_TAG | JSON_UNESCAPED_UNICODE`, never `addslashes()`. The latter does not protect against template literal injection or `</script>` breakout.
+
+**OSLog privacy on identifiers (2026-09-23).** `privacy: .public` on an `OSLog`/`Logger` interpolation that carries an identifier or content hash (recipe/user/household ID, image hash) is Minor without a stated retention or redaction reason next to it; `.private` (the default) or `.private(mask: .hash)` keeps log correlation without exposing the value in sysdiagnose. First confirmed instance: topf-secret `HouseholdSyncService.swift:479`.

@@ -238,6 +238,12 @@ the key or API body.
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
+**A resumed run is not idempotent; merge its verdicts, do not trust them as a drop-in replacement.** On 2026-09-16 (raaaf/neues-feedback) a usage-limit interruption at 76/88 agents and a resume on the same diff produced a materially different verdict set (0 Critical/23 Important before, 1 Critical/30 Important after), and one finding id (`a11y-0-1`) was reused by both passes for two different findings and had to be re-added by hand. `resumeFromRunId` replays completed agents from cache but re-runs whatever had not finished, including verifiers, so the pre-interruption and post-resume passes can legitimately disagree on the same code. When a run returns after a resume:
+
+- Union the two verdict sets **by finding content** (dimension + file + line + a normalized description), never by `id` — ids are assigned per pass and are not stable across a resume.
+- Before merging, check for id collisions between the two passes (same id, different finding content). A collision means the log stub or an earlier manual edit already used that id for the pre-interruption finding; give the post-resume finding a new id rather than overwriting the entry silently.
+- Where the two passes disagree on the same underlying finding (e.g. severity, or CONFIRMED vs REFUTED), keep the post-resume verdict — it saw more context (whatever became available after the interruption) — but note the disagreement under `## Notes` so the learning phase can see it, not just the winning verdict.
+
 Once the Notification arrives, touch the in-progress marker (staleness 45 min):
 
 ```bash
@@ -265,7 +271,7 @@ neither: 192 audit logs on disk had produced 36 store entries, so `patterns.json
 never been fed by the loop, and every retro reasoned about recurrence from a counter that did not
 move. Phase 5 Step 0.5 still checks the count and back-fills, but that is the repair, not the path.
 
-**Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion.
+**Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion. When a dimension returns `incomplete` twice in a row, re-run it once more with `files` narrowed to the files its scout reported plus its floor files (2026-09-24: privacy stayed incomplete over the full diff twice and completed on a 5-file re-run); if it is still incomplete after that, it stays under `## Not completed` and blocks the marker.
 
 ## Phase 3: Fix
 
@@ -311,13 +317,17 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 orch_progress_touch
 ```
 
-Read `{fixes, verdicts, regressions, rejected, blockingRegressions}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
+Read `{fixes, verdicts, regressions, rejected, blockingRegressions, verificationGap, attemptedVerification, verifiedCount}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
+
+**`status: 'verification_gap'`** (distinct from `'incomplete'`) means the fix-verifier covered fewer files than were fixed (`verifiedCount < attemptedVerification`) — a coverage failure of the verify stage itself, not a normal per-file `incomplete` where a fix WAS reviewed and found wanting. Retro 2026-09-16 (raaaf/neues-feedback): verify covered 1/20 fixed files and the run still reported plain `incomplete`, so the orchestrator's manual diff verification of the other 19 was an unplanned recovery. On `verification_gap`, manually diff every fixed file that has no verdict (`fixes[]` entries where `verdict` is null) before treating the round as done, and note the gap size (`verifiedCount`/`attemptedVerification`) under `## Notes` in the log.
 
 Run the full suite exactly once via `test-lock.sh` after the fix wave (fix-verifiers only ran filtered tests). A `blockingRegressions` entry (Critical/Important from the regression pass) becomes an open point and blocks the marker below.
 
 Re-run `pre-checks.sh`, `check-silencing.sh` and `check-test-count-drift.sh` now (each as `bash "$AUDIT_BIN/<script>"` in a sourced block after `orch_resolve_audit_root`), against the diff the fix wave just produced. A green suite is exactly what a silenced check looks like: a fix agent that added `@ts-ignore`, skipped a failing test or lowered a threshold makes the tests pass without the finding being fixed, and no other stage in the pipeline looks for that. A `SILENCING_HIT` on a line a fix agent wrote is an open point and blocks the marker; a hit that was already in the diff before the fix wave is an ordinary Phase 1 finding. A `SECRET` line from this second `pre-checks.sh` run blocks the marker exactly like a Phase 1 one: a fix agent can paste a credential as easily as a human, and the marker binds to the post-fix tree, so the scan must cover it (run 13, 2026-09-16).
 
 ## Phase 4: Log, marker, run-ledger
+
+**Re-check the audited range before the marker.** Run `git log --oneline {BASE_REF}..HEAD` and compare it with the commit list the scope was computed from. A commit that landed after scoping (another session committing into the same tree) is unaudited: either re-run `find.js` over its files or name it under `## Notes` and do not write the marker. 2026-09-24: a foreign commit landed 50 minutes after scoping and was deployed unaudited.
 
 Finalize `LOGFILE` from `references/audit-log-template.md`: Result, Findings per dimension, Fixes, Discarded (with reason), Unverified, Not completed, Open Points. Include the mechanical checks from Phase 1 and a chat display of the finished log (markdown block).
 

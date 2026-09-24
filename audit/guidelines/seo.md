@@ -101,6 +101,10 @@ Metadata bugs are usually disagreements, not omissions. Check as a set:
 | JSON-LD reflects rendered content | Never invent ratings, review counts, prices, or org details that the page does not actually display |
 | Dynamic strings escaped | User-generated content interpolated into meta tags must be escaped/sanitized |
 
+### Static files shadow routes
+
+A fix to a route that serves a path which also exists as a file under `public/` (e.g. `robots.txt`, `sitemap.xml`, `favicon.ico`) never reaches production: the web server returns the static file before the framework sees the request. Before reporting or verifying such a fix, check `public/` for the same path; the fix belongs in the static file (or the static file must be removed). 2026-09-24: `Disallow: /quotes/` was added to `SitemapController::robots()` and verified by a route test, while nginx kept serving `public/robots.txt` without it.
+
 ## III. Heading Hierarchy
 
 Headings communicate document structure to both search engines and assistive technologies. A broken hierarchy tells crawlers that your content is disorganized.

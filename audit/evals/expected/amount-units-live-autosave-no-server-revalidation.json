@@ -1,0 +1,22 @@
+{
+  "fixture": "security/amount-units-live-autosave-no-server-revalidation.php",
+  "note": "Regression eval: audit 2026-09-16 (digitale-zeichnungsstrecke, security-4-1/4-2/4-3) found a live-bound financial field (amount/units) whose background autosave writes straight to the DB without calling validate(), and no other step in the submit path re-validates or re-writes those columns. Only cosmetic client-side #[Validate] attributes guarded a financial write.",
+  "must_find": [
+    {
+      "dimension": "security",
+      "line": 37,
+      "matches": ["autosave", "validate", "live", "revalidat", "bypass", "amount", "units", "unvalidated"],
+      "severity": "critical"
+    }
+  ],
+  "must_not_find": [
+    {
+      "dimension": "a11y",
+      "reason": "Livewire backend component, no markup"
+    },
+    {
+      "dimension": "performance",
+      "reason": "autosave-on-every-keystroke is a UX/security concern here, not a perf finding; no N+1 or heavy query"
+    }
+  ]
+}

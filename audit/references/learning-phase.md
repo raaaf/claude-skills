@@ -28,6 +28,8 @@ echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
 
 `FED_N >= CONFIRMED_N` (or `CONFIRMED_N=0`): go to Step 1. `FED_N < CONFIRMED_N`: back-fill NOW, before the agent runs: write the patterns of every confirmed finding that has no entry yet to a file with the Write tool (one per line, the same normalized pattern string the verdict table would have used) and run `orch_patterns_from_file recur <file>` in a sourced block; a pattern is finding text and never goes on a command line, re-run the check, and write one line under `## Notes` in the current audit log (`Recurrence feed: {CONFIRMED_N - FED_N}/{CONFIRMED_N} confirmed findings back-filled at Phase 5, per-verdict recur was skipped`). A back-fill is a process failure worth recording, not a silent repair: the learning agent must see the note so the retro can name it.
 
+**Step 0.7: record the retro lag.** Before dispatching, compute the gap between the audit log's date (from its filename) and today, and write one line under `## Notes` in the current audit log: `Retro lag: {N} days` (0 when the retro runs in the same session). A retro written days after its audit reasons from memory instead of the run, and only a recorded number makes late retros visible as a pattern.
+
 **Step 1: dispatch the learning agent**
 
 ```
@@ -45,6 +47,8 @@ Agent(
 **Why `PATTERNS_RECURRENCES` is passed in, not fetched by the agent:** `audit-learning-agent` has no `Bash` grant (Read/Grep/Glob only), so it cannot call `patterns-store.sh recurrences` itself. The orchestrator runs it here, before dispatch, and pastes the raw output into the prompt — see `agents/learning-agent.md`, section 2, "Use the counter, do not eyeball the logs."
 
 **`run_in_background: false` is mandatory, not decoration.** Subagents run in the background by default, and a background subagent's result only arrives as a completion notification in a *later* turn. Phase 5 has to parse that output and write the log in *this* turn, before Phase 6 writes the push marker, a backgrounded learning agent silently loses the whole learning pass. Foreground costs 5-10s and is not push-blocking.
+
+**The agent's `output_file` is the transcript, not the result.** A dispatch result includes an `output_file` path; that file holds the fork's tool noise and intermediate reasoning, not the `LEARNING_RESULT_START`/`LEARNING_RESULT_END` payload Step 2 needs. Reading it in place of the completion notification produced a false "learning agent wrote template text" incident on 2026-09-16 (caught and repaired from git in the same session, see `learning-log.md`). Always parse the structured result from the completion notification, never from `output_file`.
 
 **Step 2: parse the output**
 
