@@ -26,6 +26,7 @@ What to scan, depending on the topic:
 | Migration target / refactor target | Physically open at least one call site per target, do not infer behaviour from naming or comments. Evidence: repeated in plans 6 and 7. |
 | Design-system token or shared constant | Grep for known mirror or duplicate definitions (e.g. `Brand.swift` next to `DesignTokens.swift`) as a mandatory step. A token changed in one file and not its mirror ships two values. |
 | Feature syncs data through a backend or shared store | Read the payload caps and body limits of the target store (e.g. `JSON_PAYLOAD_CAP_BYTES`, bodyLimit) BEFORE asking sync questions. Evidence: one wasted question loop. |
+| Guard, hook or middleware the change runs through (input sanitizer, trigger scoping, pre-edit hook, rate limit) | Read what the guard actually does to this change's inputs and put its effect into a **step** with a verify criterion, not only into Edge Cases. Evidence: same root-cause class three times (SanitizesInput 2026-09-12, trigger scoping 2026-07-09, hook 2026-09-23). |
 
 Every fact in the map is verified against the code or schema before it is shown, never quoted from memory.
 
@@ -123,3 +124,10 @@ Bad: "Alternative approach detected. Please evaluate tradeoffs."
 
 Good: "Who's actually the user here? Admin or end user? That changes the whole approach."
 Bad: "Target user persona not specified. Please select: A) Admin B) End user C) Both."
+
+## Default assumption: single pass
+
+Plan the feature as ONE pass unless the user says otherwise. Do not propose a scope split or a
+"phase 2 later" as the recommended answer; the user overruled every such recommendation in five
+consecutive plans (two in one session). If a split seems necessary, state it as a cost in the plan's
+Known Costs, not as a question. Evidence: learning-log trend "scope-split/defer overruled", 2026-09.
