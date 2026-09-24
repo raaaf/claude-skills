@@ -64,6 +64,14 @@ import {
   computeCommandHash,
   marketingTargetDir,
   resolveMarketingBackground,
+  resolveMarketingGradient,
+  darkenHex,
+  backgroundIsDark,
+  resolveMarketingLayout,
+  resolveMarketingFont,
+  resolveMarketingLogo,
+  findMarketingSourceSet,
+  resolveEntrySources,
   cmdMarketing,
   parsePromotedFilename,
   buildIndexItems,
@@ -1162,6 +1170,119 @@ test('resolveMarketingBackground: DESIGN.md names a token file with a background
   writeFile(root, 'DESIGN.md', 'Token source: resources/css/tokens.css');
   writeFile(root, 'resources/css/tokens.css', ':root { --color-background: #1a2b3c; }');
   assert.equal(resolveMarketingBackground(root), '#1a2b3c');
+});
+
+// --- darkenHex ---------------------------------------------------------
+
+test('darkenHex: multiplies each channel by (1 - amount)', () => {
+  assert.equal(darkenHex('#ffffff', 0.2), '#cccccc');
+});
+
+test('darkenHex: unparsable value passes through unchanged', () => {
+  assert.equal(darkenHex('oklch(0.9 0 0)', 0.2), 'oklch(0.9 0 0)');
+});
+
+// --- resolveMarketingGradient: oklch token pair, hex fallback -----------
+
+test('resolveMarketingGradient: oklch gray scale -> gradient of its two darkest matching tokens', () => {
+  const root = fixture();
+  writeFile(root, 'DESIGN.md', 'Token source: resources/css/tokens.css');
+  writeFile(root, 'resources/css/tokens.css', `
+    --color-gray-100: oklch(0.95 0 0);
+    --color-gray-900: oklch(0.15 0 0);
+    --color-gray-950: oklch(0.1 0 0);
+  `);
+  assert.equal(resolveMarketingGradient(root), 'linear-gradient(160deg, oklch(0.1 0 0) 0%, oklch(0.15 0 0) 100%)');
+});
+
+test('resolveMarketingGradient: no DESIGN.md -> gradient built from the neutral fallback', () => {
+  const root = fixture();
+  assert.equal(resolveMarketingGradient(root), 'linear-gradient(160deg, #f5f5f7 0%, #c9c9cb 100%)');
+});
+
+// --- backgroundIsDark: contrast flip for headline text + logo invert ----
+
+test('backgroundIsDark: near-black oklch first stop -> dark', () => {
+  assert.equal(backgroundIsDark('linear-gradient(160deg, oklch(0.1 0 0) 0%, oklch(0.15 0 0) 100%)'), true);
+});
+
+test('backgroundIsDark: light hex first stop -> not dark', () => {
+  assert.equal(backgroundIsDark('linear-gradient(160deg, #f5f5f7 0%, #c9c9cb 100%)'), false);
+});
+
+// --- resolveMarketingLayout: global default + per-entry override -------
+
+test('resolveMarketingLayout: entry override wins over the global default', () => {
+  const config = { marketing: { layout: 'browser' } };
+  assert.equal(resolveMarketingLayout(config, { layout: 'browser-phone' }), 'browser-phone');
+});
+
+test('resolveMarketingLayout: falls back to "browser" when nothing is configured', () => {
+  assert.equal(resolveMarketingLayout({}, {}), 'browser');
+});
+
+// --- resolveMarketingFont: token family + local woff2 files -------------
+
+test('resolveMarketingFont: reads --font-sans and finds local regular/semibold woff2 files', () => {
+  const root = fixture();
+  writeFile(root, 'DESIGN.md', 'Token source: resources/css/tokens.css');
+  writeFile(root, 'resources/css/tokens.css', "--font-sans: 'Inter', system-ui;");
+  writeFile(root, 'resources/fonts/inter/inter-regular.woff2', 'regular-bytes');
+  writeFile(root, 'resources/fonts/inter/inter-semibold.woff2', 'semibold-bytes');
+  const font = resolveMarketingFont(root);
+  assert.equal(font.family, 'Inter');
+  assert.ok(font.regularPath.endsWith('inter-regular.woff2'));
+  assert.ok(font.boldPath.endsWith('inter-semibold.woff2'));
+});
+
+test('resolveMarketingFont: no DESIGN.md, no font files -> system-ui with null paths', () => {
+  const root = fixture();
+  const font = resolveMarketingFont(root);
+  assert.equal(font.family, 'system-ui');
+  assert.equal(font.regularPath, null);
+  assert.equal(font.boldPath, null);
+});
+
+// --- resolveMarketingLogo: first *.svg under public/ whose name has "logo" -
+
+test('resolveMarketingLogo: finds an svg logo asset under public/', () => {
+  const root = fixture();
+  writeFile(root, 'public/images/auth/app-logo.svg', '<svg></svg>');
+  assert.ok(resolveMarketingLogo(root).endsWith('app-logo.svg'));
+});
+
+test('resolveMarketingLogo: no public/ dir -> null', () => {
+  const root = fixture();
+  assert.equal(resolveMarketingLogo(root), null);
+});
+
+// --- findMarketingSourceSet / resolveEntrySources: 2x source, 1x fallback -
+
+test('findMarketingSourceSet: both files present', () => {
+  const root = fixture();
+  writeFile(root, '.screens/.marketing-src/dashboard__desktop.png', 'd');
+  writeFile(root, '.screens/.marketing-src/dashboard__mobile.png', 'm');
+  const set = findMarketingSourceSet(root, 'dashboard');
+  assert.ok(set.desktop.endsWith('dashboard__desktop.png'));
+  assert.ok(set.mobile.endsWith('dashboard__mobile.png'));
+});
+
+test('findMarketingSourceSet: neither file present -> both null', () => {
+  const root = fixture();
+  const set = findMarketingSourceSet(root, 'dashboard');
+  assert.equal(set.desktop, null);
+  assert.equal(set.mobile, null);
+});
+
+test('resolveEntrySources: falls back to the 1x catalog PNG when no 2x source set exists', () => {
+  const root = fixture();
+  const sourceRel = 'web/desktop/app/dashboard/filled__admin__light.png';
+  writeFile(root, join('screenshots', sourceRel), 'catalog-bytes');
+  const state = { entries: { dashboard: { pngs: { [sourceRel]: require_sha256('catalog-bytes') } } } };
+  const resolved = resolveEntrySources(root, state, 'dashboard');
+  assert.ok(resolved.desktopPath.endsWith(sourceRel));
+  assert.equal(resolved.mobilePath, null);
+  assert.equal(resolved.hash, require_sha256('catalog-bytes'));
 });
 
 // --- parsePromotedFilename / buildIndexItems / buildIndexMarketing ---------

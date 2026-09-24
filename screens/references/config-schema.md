@@ -128,13 +128,31 @@ writes, subagents return").
 
   "marketing": {
     "entries": [
-      { "id": "dashboard-hero", "format": "1920x1080",
+      { "id": "dashboard-hero", "format": "1920x1080", "layout": "browser-phone",
         "headlines": { "de": { "text": "Alles im Blick", "reviewed": false },
                         "en": { "text": "Everything at a glance", "reviewed": false } } }
     ],
     "locales": ["de", "en"],
     "formats": { "web": "1920x1080", "ios": "1320x2868", "ipad": "2064x2752",
-                 "android": "1080x1920", "macos": "2880x1800" }
+                 "android": "1080x1920", "macos": "2880x1800" },
+    "layout": "browser",                   // global default: "browser" (a cropped macOS-style
+                                            // browser window) or "browser-phone" (browser + an
+                                            // overlapping iPhone frame); an entry's own "layout"
+                                            // overrides this default
+    "domain": "app.example.com",           // shown in the browser mockup's URL pill; a project
+                                            // without a real production domain on file (never read
+                                            // from .env) falls back to a placeholder
+    "source_scale": 2                      // default 2: capture.spec.ts additionally captures every
+                                            // marketing entry's desktop + mobile combo (filled state,
+                                            // light theme) at deviceScaleFactor 2 into
+                                            // .screens/.marketing-src/<id>__desktop.png /
+                                            // <id>__mobile.png, bypassing promote so the catalog PNGs
+                                            // never change; the marketing render's browser/phone
+                                            // mockups downsample from these instead of the 1x catalog
+                                            // PNG (findMarketingSourceSet, resolveEntrySources).
+                                            // Either file missing falls back to the 1x catalog source
+                                            // and, for the mobile file specifically, downgrades a
+                                            // "browser-phone" entry to plain "browser"
   }
 }
 ```

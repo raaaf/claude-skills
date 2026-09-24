@@ -1033,14 +1033,6 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     lines.push(`PID=${child.pid}`);
   }
 
-  if (platformConfig.health_url) {
-    if (!waitForHealth(platformConfig.health_url, 90)) {
-      lines.push('UP_RESULT=FAIL (service never healthy within 90s)');
-      return lines;
-    }
-    lines.push('HEALTH=OK');
-  }
-
   // Android boot-wait + System UI demo mode (plan step 1), the Android
   // equivalent of the iOS status-bar override in `iosDeviceSetup` above,
   // applied once here rather than inside `androidDeviceSetup` because it
@@ -1055,6 +1047,12 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     lines.push('DEMO_MODE=OK');
   }
 
+  // Seed before the health check: a freshly created isolated DB has no
+  // migrations yet, so a health_url that renders a DB-backed page (e.g. a
+  // Laravel landing route) 500s until migrate/seed has run. Checking health
+  // first made `up` time out on every first run against such a route
+  // (verified live against the events pilot's isolated pgsql DB, which had
+  // no `events` table pre-seed).
   if (platformConfig.seed_command) {
     const full = args.includes('--full') || args.includes('--reseed');
     const seedFingerprint = platform === 'web' ? computeSeedFingerprint(root, config) : null;
@@ -1074,6 +1072,14 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
         writeJson(join(root, '.screens/state.json'), seedState);
       }
     }
+  }
+
+  if (platformConfig.health_url) {
+    if (!waitForHealth(platformConfig.health_url, 90)) {
+      lines.push('UP_RESULT=FAIL (service never healthy within 90s)');
+      return lines;
+    }
+    lines.push('HEALTH=OK');
   }
 
   lines.push(`PLAYWRIGHT_WORKERS=${playwrightWorkers(os.cpus().length)}`);
@@ -1489,6 +1495,168 @@ function resolveMarketingBackground(root) {
   return colorMatch ? colorMatch[1] : NEUTRAL;
 }
 
+// Shared by `resolveMarketingGradient`/`resolveMarketingFont` below: the
+// DESIGN.md-named token file's raw text, or null when DESIGN.md or the
+// file it names is missing (same resolution `resolveMarketingBackground`
+// does, extracted once instead of duplicated a second time).
+function readMarketingTokenText(root) {
+  const designPath = join(root, 'DESIGN.md');
+  if (!existsSync(designPath)) return null;
+  const designText = readFileSync(designPath, 'utf8');
+  const fileMatch = /\b([\w./-]+\.(?:css|scss|json|ts|js))\b/.exec(designText);
+  if (!fileMatch) return null;
+  const tokenPath = join(root, fileMatch[1]);
+  if (!existsSync(tokenPath)) return null;
+  return readFileSync(tokenPath, 'utf8');
+}
+
+// Darkens a `#rrggbb` hex color by `amount` (0-1) for the hex-only gradient
+// fallback below; an unparsable value passes through unchanged.
+function darkenHex(hex, amount) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) return hex;
+  const num = parseInt(m[1], 16);
+  const channel = (shift) => Math.max(0, Math.round(((num >> shift) & 255) * (1 - amount)));
+  return '#' + [channel(16), channel(8), channel(0)].map((c) => c.toString(16).padStart(2, '0')).join('');
+}
+
+// Brand gradient (App-Store-grade marketing render, "Background" spec):
+// a token file expressing its scale in `oklch()` (Tailwind 4 style, e.g. a
+// `--color-gray-900`/`--color-gray-950` pair) has its two darkest matching
+// tokens passed straight through as CSS -- `oklch()` is valid inside
+// `linear-gradient()` in any Chromium recent enough to run Playwright, so
+// no color-space math is needed here. A project without such a scale (or
+// without DESIGN.md at all) falls back to `resolveMarketingBackground`'s
+// single hex swatch plus a darkened variant, so it still gets a 2-stop
+// gradient instead of a flat fill.
+function resolveMarketingGradient(root) {
+  const tokenText = readMarketingTokenText(root);
+  if (tokenText) {
+    const matches = [...tokenText.matchAll(/--([\w-]*(?:gray|primary|accent|brand)[\w-]*)\s*:\s*(oklch\([^)]+\))/gi)];
+    const withWeight = matches
+      .map((m) => ({ value: m[2], weight: parseInt((/-(\d{2,3})\b/.exec(m[1]) || [])[1] || '-1', 10) }))
+      .filter((t) => t.weight >= 0)
+      .sort((a, b) => b.weight - a.weight);
+    if (withWeight.length >= 2) {
+      return `linear-gradient(160deg, ${withWeight[0].value} 0%, ${withWeight[1].value} 100%)`;
+    }
+  }
+  const solid = resolveMarketingBackground(root);
+  return `linear-gradient(160deg, ${solid} 0%, ${darkenHex(solid, 0.18)} 100%)`;
+}
+
+// Layout resolution (config's "marketing.layout" + per-entry override):
+// "browser" or "browser-phone", global default falling back to "browser".
+function resolveMarketingLayout(config, entry) {
+  const marketingConfig = config.marketing || {};
+  return entry.layout || marketingConfig.layout || 'browser';
+}
+
+// Headline font (Typography spec: "headline in the brand font"). Reads
+// `--font-sans` (or an equivalent JSON `"font-sans"` key) out of the same
+// token file `resolveMarketingGradient` reads, and walks `public/fonts` +
+// `resources/fonts` for local `.woff2` files (no CDN, per the spec) whose
+// filename says "regular" / "semibold"|"bold". Generic over any project:
+// zeit's own `resources/fonts/inter/inter-regular.woff2` +
+// `inter-semibold.woff2` resolve this way, nothing zeit-specific here.
+function resolveMarketingFont(root) {
+  const tokenText = readMarketingTokenText(root);
+  const familyMatch = tokenText && (
+    /--font-sans\s*:\s*['"]?([\w -]+)['"]?/i.exec(tokenText)
+    || /"font-sans"\s*:\s*"([\w -]+)"/i.exec(tokenText)
+  );
+  const family = familyMatch ? familyMatch[1].trim() : 'system-ui';
+
+  const files = [];
+  for (const dir of ['public/fonts', 'resources/fonts']) {
+    const abs = join(root, dir);
+    if (!existsSync(abs)) continue;
+    (function walk(d) {
+      let entries;
+      try {
+        entries = readdirSync(d, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const full = join(d, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.woff2?$/i.test(entry.name)) files.push(full);
+      }
+    })(abs);
+  }
+  return {
+    family,
+    regularPath: files.find((f) => /regular/i.test(f)) || null,
+    boldPath: files.find((f) => /semibold|bold/i.test(f)) || null,
+  };
+}
+
+// Optional small wordmark above the headline (Typography spec): the first
+// `.svg` file under `public/` whose name contains "logo", or null. Shallow
+// heuristic on purpose (same class as the font/gradient resolvers above):
+// this only ever picks a candidate asset, never generates one.
+function resolveMarketingLogo(root) {
+  const publicDir = join(root, 'public');
+  if (!existsSync(publicDir)) return null;
+  const matches = [];
+  (function walk(d) {
+    let entries;
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/logo/i.test(entry.name) && /\.svg$/i.test(entry.name)) matches.push(full);
+    }
+  })(publicDir);
+  return matches[0] || null;
+}
+
+// 2x marketing source set (config's "marketing.source_scale", default 2):
+// `capture.spec.ts` writes `<entryId>__desktop.png` / `<entryId>__mobile.png`
+// straight into `.screens/.marketing-src/` for every entry listed in
+// `marketing.entries` (desktop + mobile, light theme, filled state only --
+// the combo the marketing renders actually use), bypassing `promote`
+// entirely so the catalog PNGs never change. Either file may be absent
+// (an older capture run, or `source_scale` disabled): the caller falls
+// back to the 1x catalog source via `findMarketingSourcePng`.
+function findMarketingSourceSet(root, entryId) {
+  const dir = join(root, '.screens/.marketing-src');
+  const desktopPath = join(dir, `${entryId}__desktop.png`);
+  const mobilePath = join(dir, `${entryId}__mobile.png`);
+  return {
+    desktop: existsSync(desktopPath) ? desktopPath : null,
+    mobile: existsSync(mobilePath) ? mobilePath : null,
+  };
+}
+
+function hashFile(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+// Contrast: the headline and the optional logo need to flip between white
+// (dark background) and near-black (light background) depending on what
+// `resolveMarketingGradient` actually resolved -- a dark-on-dark logo (e.g.
+// zeit's own near-black `#0b0b0b` wordmark against the near-black gradient
+// its own oklch gray-950/900 tokens produce) is otherwise unreadable.
+// Reads the first color stop's lightness only, since that is where the
+// logo/headline sit.
+function backgroundIsDark(css) {
+  const oklchMatch = /oklch\(\s*([\d.]+)/.exec(css);
+  if (oklchMatch) return parseFloat(oklchMatch[1]) < 0.5;
+  const hexMatch = /#([0-9a-fA-F]{6})/.exec(css);
+  if (hexMatch) {
+    const num = parseInt(hexMatch[1], 16);
+    const luminance = (0.299 * ((num >> 16) & 255) + 0.587 * ((num >> 8) & 255) + 0.114 * (num & 255)) / 255;
+    return luminance < 0.5;
+  }
+  return false;
+}
+
 // Picks the catalog PNG a marketing entry frames: prefers the `filled`
 // state, `light` theme, inside `deviceClassPref` (default `desktop`); falls
 // back to any `filled` capture, then to whatever PNG exists, so a project
@@ -1531,6 +1699,25 @@ function defaultMarketingRenderer(root, jobs) {
   return { ok: true, rendered };
 }
 
+// Resolves the source(s) a marketing entry frames: the 2x source set
+// (`marketing.source_scale`, see `findMarketingSourceSet`) when present,
+// falling back to the 1x catalog PNG `findMarketingSourcePng` already
+// selected (older capture run, or `source_scale` disabled). Null when
+// neither exists.
+function resolveEntrySources(root, state, sourceId) {
+  const scaleSet = findMarketingSourceSet(root, sourceId);
+  if (scaleSet.desktop) {
+    return {
+      desktopPath: scaleSet.desktop,
+      mobilePath: scaleSet.mobile,
+      hash: hashFile(scaleSet.desktop) + (scaleSet.mobile ? hashFile(scaleSet.mobile) : ''),
+    };
+  }
+  const fallback = findMarketingSourcePng(state, sourceId);
+  if (!fallback) return null;
+  return { desktopPath: join(root, 'screenshots', fallback.relPath), mobilePath: null, hash: fallback.hash };
+}
+
 function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRenderer) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
@@ -1540,7 +1727,10 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
   const locales = (config.marketing && config.marketing.locales) || ['de'];
   const formats = (config.marketing && config.marketing.formats) || {};
   const defaultPlatform = (config.platforms && config.platforms[0]) || 'web';
-  const background = resolveMarketingBackground(root);
+  const background = resolveMarketingGradient(root);
+  const domain = (config.marketing && config.marketing.domain) || 'app.example.com';
+  const font = resolveMarketingFont(root);
+  const logoPath = resolveMarketingLogo(root);
 
   const jobs = [];
   const jobMeta = []; // parallel to jobs: {key, dir, targetPath, reviewed}
@@ -1549,7 +1739,8 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
 
   entries.forEach((entry, idx) => {
     const platform = entry.platform || defaultPlatform;
-    const source = findMarketingSourcePng(state, entry.source || entry.id);
+    const sourceId = entry.source || entry.id;
+    const source = resolveEntrySources(root, state, sourceId);
     for (const locale of locales) {
       const headline = entry.headlines && entry.headlines[locale];
       if (!headline || !headline.text) {
@@ -1558,7 +1749,7 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
         continue;
       }
       if (!source) {
-        lines.push(`MARKETING_NOTE ${entry.id} ${locale} no catalog PNG found for source "${entry.source || entry.id}"`);
+        lines.push(`MARKETING_NOTE ${entry.id} ${locale} no catalog PNG found for source "${sourceId}"`);
         notesCount++;
         continue;
       }
@@ -1587,10 +1778,18 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
         }
       }
 
+      // "browser-phone" needs a mobile source; a 1x-fallback or a missing
+      // mobile capture degrades to "browser" rather than rendering a phone
+      // frame around a null image.
+      const layout = source.mobilePath ? resolveMarketingLayout(config, entry) : 'browser';
+
+      const dark = backgroundIsDark(background);
+
       jobs.push({
-        id: entry.id, locale, format, headline: headline.text, background,
-        deviceClass: entry.deviceClass || (platform === 'web' ? 'desktop' : platform),
-        sourcePng: join(root, 'screenshots', source.relPath),
+        id: entry.id, locale, format, headline: headline.text, background, layout, domain,
+        desktopSrc: source.desktopPath, mobileSrc: layout === 'browser-phone' ? source.mobilePath : null,
+        fontFamily: font.family, regularFontPath: font.regularPath, boldFontPath: font.boldPath,
+        logoPath, textColor: dark ? '#ffffff' : '#1d1d1f', logoInvert: dark,
         targetPath,
       });
       jobMeta.push({
@@ -1881,6 +2080,14 @@ export {
   marketingTargetDir,
   marketingNeedsRender,
   resolveMarketingBackground,
+  resolveMarketingGradient,
+  darkenHex,
+  backgroundIsDark,
+  resolveMarketingLayout,
+  resolveMarketingFont,
+  resolveMarketingLogo,
+  findMarketingSourceSet,
+  resolveEntrySources,
   findMarketingSourcePng,
   defaultMarketingRenderer,
   cmdMarketing,

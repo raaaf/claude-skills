@@ -44,6 +44,18 @@ const BASE_URL = process.env.SCREENS_BASE_URL || `http://127.0.0.1:${config.web.
 const OUT_DIR = join(ROOT, '.screens/.incoming/web');
 mkdirSync(OUT_DIR, { recursive: true });
 
+// `marketing.source_scale` (config-schema.md, default 2): entries listed in
+// `marketing.entries` additionally get a deviceScaleFactor-2 desktop +
+// mobile capture written straight to `.screens/.marketing-src/`, bypassing
+// `promote` entirely so the catalog PNGs this file already writes into
+// OUT_DIR never change. `screens.mjs`'s `findMarketingSourceSet` reads
+// these back by the same `<entryId>__desktop.png` / `<entryId>__mobile.png`
+// names.
+const marketingEntryIds = new Set((config.marketing && config.marketing.entries || []).map((e) => e.source || e.id));
+const sourceScale = (config.marketing && config.marketing.source_scale) ?? 2;
+const MARKETING_SRC_DIR = join(ROOT, '.screens/.marketing-src');
+if (marketingEntryIds.size && sourceScale > 1) mkdirSync(MARKETING_SRC_DIR, { recursive: true });
+
 // Fixed clock (topf-secret's `-ScreensFixedDate` convention, web equivalent) plus disabled
 // animations/transitions and a localhost-only route allowlist make an identical render produce
 // identical PNG bytes (plan's Approach: no pixel decoder needed).
@@ -146,6 +158,54 @@ async function applyMaskAndErrorState(page, entry, state) {
   }
 }
 
+// Marketing 2x source capture (`marketing.source_scale`, config-schema.md):
+// a fresh context/page at `deviceScaleFactor: 2` (Playwright fixes the
+// scale factor at context creation, so the shared per-viewport `page` above
+// cannot be reused for this), replaying the same login/navigate/mask
+// sequence the catalog capture above already ran, then one screenshot per
+// device class ("desktop"/"mobile" only, light theme, filled state -- the
+// combo the marketing renders actually use) into `.screens/.marketing-src/`,
+// bypassing `promote`/OUT_DIR entirely.
+async function captureMarketingSource2x(browser, entry, state, role, urlHost) {
+  const context = await browser.newContext({
+    deviceScaleFactor: 2,
+    locale: `${primaryLocale}-${primaryLocale.toUpperCase()}`,
+  });
+  await context.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return route.continue();
+    return route.abort();
+  });
+  await context.addInitScript((css) => {
+    const style = document.createElement('style');
+    style.textContent = css;
+    (document.head || document.documentElement).appendChild(style);
+  }, DISABLE_ANIMATIONS_CSS);
+
+  const page = await context.newPage();
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+  await page.clock.setFixedTime(FIXED_TIME);
+  await loginAs(page, role, state);
+  await page.goto(`${BASE_URL}${entry.reach}`);
+  await page.waitForLoadState('networkidle');
+  if (entry.ready) {
+    await page.waitForSelector(entry.ready, { timeout: 15000 });
+  }
+  await applyMaskAndErrorState(page, entry, state);
+  await context.addCookies([{ name: 'dark_mode', value: 'false', domain: urlHost, path: '/' }]);
+
+  const deviceClasses = (config.axes && config.axes.device_classes && config.axes.device_classes.web) || {};
+  for (const viewport of viewports) {
+    const deviceClass = deviceClasses[viewport] || viewport;
+    if (deviceClass !== 'desktop' && deviceClass !== 'mobile') continue;
+    await page.setViewportSize(parseViewport(viewport));
+    await waitTwoRaf(page);
+    await page.waitForLoadState('networkidle');
+    await page.screenshot({ path: join(MARKETING_SRC_DIR, `${entry.id}__${deviceClass}.png`), fullPage: true });
+  }
+  await context.close();
+}
+
 for (const entry of manifest.entries || []) {
   const states = entry.states && entry.states.length ? entry.states : ['filled'];
   const roles = entry.roles && entry.roles.length ? entry.roles : ['guest'];
@@ -237,6 +297,10 @@ for (const entry of manifest.entries || []) {
             const filename = `${entry.id}__${state}__${role}__${viewport}__${theme}.png`;
             await page.screenshot({ path: join(OUT_DIR, filename), fullPage: true });
           }
+        }
+
+        if (marketingEntryIds.has(entry.id) && sourceScale > 1 && state === 'filled' && role === roles[0]) {
+          await captureMarketingSource2x(browser, entry, state, role, urlHost);
         }
 
         await context.close();
