@@ -1,9 +1,25 @@
 # Plan Learning Log
 
-## Trends (as of 2026-09-05)
+## Trends (as of 2026-09-24)
 
 | Metric | Value |
 |---|---|
+| Plans total | 3 |
+| Phase 1 rounds (last 3) | 1 -> 2 -> 4 (increasing) |
+| Total concerns (last 3) | 8 -> 12 -> 12 |
+| Top dimension (last 3) | Architecture (3x) |
+| Avg concerns/plan | 10.7 |
+| Incorporation acceptance rate | ~94% (100%, 100%, 83%) |
+
+**Recurrers (>=3 plans):**
+- Architecture concerns converging with another challenge track: provisionally confirmed, keep observing (3/3, but plan 3's instance was unverifiable due to missing Bash)
+- User overriding recommended scope (direction alternates fuller/leaner): candidate for softer scope recommendations, not a fixed default
+
+**Override counts:**
+- Scope cut overruled: 2x (of which 0x self-override)
+- Defer recommendation overruled: 0x
+
+---|---|
 | Plans total | 2 |
 | Phase 1 rounds (last 2) | 1 -> 2 (increasing) |
 | Total concerns (last 2) | 8 -> 12 |
@@ -79,3 +95,36 @@ Dieses Log wird automatisch nach jedem Plan aktualisiert.
 ### Suggested improvements
 - [x] Phase 1 questions: add an explicit "any product-level constraints (no CLI args, no config flags, etc.)?" question, since plan 2's mid-turn correction suggests this isn't asked directly.
 - [x] Evaluation agent template: keep the CLAUDE.md-invariant checklist step (Opus-for-security, guideline-scoping) as explicit — plan 2's notable section flags this as otherwise silently missed.
+
+---
+
+## Retro: 2026-09-24: /screens skill
+
+### Statistics
+- Plans in project: 3
+- Phase 1 rounds (last 3): 1 -> 2 -> 4
+- Total concerns after dedupe (last 3): 8 -> 12 -> 12
+- Top dimension with concerns: Architecture (3x across all 3 plans)
+
+### What went well
+- Mid-plan user additions (GitHub/web prior-art check, before/after screenshot integration) were absorbed without derailing the round structure.
+- The pilot-project read (existing ScreenshotTourTests) reversed a wrong driver decision before it reached the plan.
+
+### What went poorly
+- Codebase scan missed the `apps/` directory level and all native iOS apps; two challengers reported "does not exist" for wrong paths. Caught only by the orchestrator's own `ls`.
+- Repo CLAUDE.md constraints (no npm deps, subagent write-block, worker-spec vs registered-agent split) were checked only after v1 was drafted, causing three corrections before the challenge round.
+- Two challengers (architecture, risk) ran without Bash and could not run the mandated drift check.
+- Phase 1 rounds are trending up (1 -> 2 -> 4).
+
+### Detected patterns
+- Scan-reported paths are not reliably ground-truthed before entering a plan (provisionally confirmed with plan 2's analogous miss).
+- User diverges from the recommended scope in 3/3 plans; direction alternates.
+- Architecture concerns co-occur with another track in 3/3 plans.
+
+### User preferences
+- Stable preference is "user overrides the recommended scope", not a fixed size.
+
+### Suggested improvements
+- [ ] Step B scan template: require one spot-check `ls` on any directory-level path the scan reports, before it enters v1.
+- [ ] Step B scan template: add "read the target repo's CLAUDE.md for hard constraints" as an explicit sub-step, not a post-hoc correction.
+- [ ] Challenger dispatch config: verify all 5 challenger types get Bash access when the plan mandates a drift check.
