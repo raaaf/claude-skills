@@ -67,6 +67,22 @@ determinism (a real dashboard KPI changed between run 2a and run 2b on `apps/zei
   returns `{}` and no env var is set.
 - Raw SQL `NOW()`/`CURRENT_DATE` is not covered by this (it runs inside the database, not PHP): the
   discoverer lists such views and the orchestrator adds a `mask[]` entry instead.
+- **Faker's `dateTimeBetween`/`dateTimeInInterval`/`getMaxTimestamp` also read real wall-clock time**,
+  independent of `Carbon::setTestNow()` (PHP's native `strtotime()`, not Carbon), so a demo
+  seeder's `fake()->dateTimeBetween('-1 month', 'now')` reseeds with different dates on every run
+  even with `fake()->seed()` pinned, breaking byte-hash determinism for anything the seed data
+  feeds into. `screens/templates/php/FixedClockDateTime.php` is instantiated into
+  `.screens/web/php/FixedClockDateTime.php`; `ScreensDemoSeeder` requires it and calls
+  `fake()->addProvider(new FixedClockDateTime(fake()))` (and the same on any other bound
+  `Faker\Generator` the project's factories use, e.g. a locale-specific one) before calling the
+  project's own seeders. It extends `\Faker\Provider\DateTime` and overrides only
+  `getMaxTimestamp`/`dateTimeBetween`/`dateTimeInInterval` (every other DateTime provider method
+  delegates to these three through late static binding, verified against the installed
+  `vendor/fakerphp/faker/src/Faker/Provider/DateTime.php`), resolving a relative/"now" string
+  against `Carbon::now()->getTimestamp()` (so it agrees with `fixed-clock.php`) instead of real
+  time; inert when `SCREENS_FIXED_NOW` is unset. Faker checks providers in reverse-registration
+  order, so the last-registered provider's method shadows the built-in one without touching
+  fakerphp/faker's vendor code.
 
 ## Preconditions
 

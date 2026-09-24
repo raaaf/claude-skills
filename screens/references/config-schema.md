@@ -22,7 +22,9 @@ writes, subagents return").
     "isolated_db": ".screens/web/screens.sqlite",
     "fixed_now": "2026-05-12T09:41:00+02:00", // PHP projects only: server-side fixed clock,
                                             // same instant as capture.spec.ts's FIXED_TIME (see
-                                            // platform-web.md "Server-side fixed clock")
+                                            // platform-web.md "Server-side fixed clock" and
+                                            // "Faker's dateTimeBetween/dateTimeInInterval/
+                                            // getMaxTimestamp also read real wall-clock time")
     "depends_on": null                     // another platform key this one's backend needs, or null
   },
 
