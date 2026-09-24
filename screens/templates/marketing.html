@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  marketing.html: App-Store-ready marketing render template for /screens
+  (plan's "Marketing" section, "index.html (design challenge)" for the
+  device-bezel look). Placeholders ({{WIDTH}}, {{HEIGHT}}, {{BACKGROUND}},
+  {{HEADLINE}}, {{DEVICE_CLASS}}, {{SCREENSHOT_SRC}}) are string-replaced by
+  `render-marketing.mjs` (instantiated into `.screens/web/render-marketing.mjs`)
+  before Playwright screenshots this file at the store's exact pixel size.
+
+  No external assets, no CDN, no JS framework: the device bezel is drawn
+  entirely in CSS (a rounded border around the catalog screenshot), per the
+  plan's "Rendering" note.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: {{WIDTH}}px;
+    height: {{HEIGHT}}px;
+    overflow: hidden;
+    background: {{BACKGROUND}};
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6% 8%;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 72px);
+    line-height: 1.15;
+    color: #1d1d1f;
+    text-align: center;
+    max-width: 90%;
+    margin-bottom: 5%;
+  }
+  .device {
+    position: relative;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.35);
+  }
+  /* Desktop/tablet class: a browser-chrome-style bezel (thicker top bar). */
+  .device.desktop, .device.tablet {
+    width: 82%;
+    border: 14px solid #1d1d1f;
+    border-top-width: 34px;
+    border-radius: 14px;
+  }
+  /* Mobile/phone class: a rounded phone bezel. */
+  .device.mobile, .device.iphone, .device.android-phone {
+    width: 30%;
+    border: 12px solid #1d1d1f;
+    border-radius: 48px;
+  }
+  .device img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+</style>
+</head>
+<body>
+  <h1>{{HEADLINE}}</h1>
+  <div class="device {{DEVICE_CLASS}}"><img src="{{SCREENSHOT_SRC}}"></div>
+</body>
+</html>

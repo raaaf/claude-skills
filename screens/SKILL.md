@@ -24,8 +24,10 @@ allowed-tools:
 > files live under `.screens/` and `screenshots/` in the TARGET project, never under `.claude/`
 > (subagents cannot write there: orchestrator writes, subagents return). The web driver
 > (`screens/references/platform-web.md`, `screens/templates/capture.spec.ts`) is live as of stage b;
-> the iOS/Android drivers this phase 5 loop invokes are added in later delivery stages, and Phase 5
-> reports `SKIP (driver added in a later stage)` for those platforms until then.
+> marketing rendering and `index.html` (`screens/templates/marketing.html`, `render-marketing.mjs`,
+> `index.html`) are live as of stage c. The iOS/Android drivers this phase 5 loop invokes are added in
+> later delivery stages, and Phase 5 reports `SKIP (driver added in a later stage)` for those
+> platforms until then.
 
 ## Phase 0: Preflight
 
@@ -202,6 +204,12 @@ node "$SCREENS_BIN" down --platform "$PLATFORM"
 
 ## Phase 6: Marketing
 
+Before the first `marketing` call ever (same first-run guard as Phase 1/2), also instantiate
+`screens/templates/marketing.html` into `.screens/web/marketing.html` and
+`screens/templates/render-marketing.mjs` into `.screens/web/render-marketing.mjs` verbatim (no
+templating; both read `config.json`/job data at render time), same "no project source file changes"
+convention as the PHP fixed-clock files.
+
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \
          "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do
@@ -211,8 +219,14 @@ orch_state_load
 node "$SCREENS_BIN" marketing
 ```
 
-`MARKETING_RESULT=SKIP (renderer added in stage c; ...)` in this stage: report the planned
-draft/ready split from `MARKETING_PLAN` lines, no PNGs produced yet.
+`node "$SCREENS_BIN" marketing` spawns `.screens/web/render-marketing.mjs` as a child process (the
+project's own Playwright devDependency, not this repo's (repo `CLAUDE.md` "Stack": no npm
+dependencies here) for every entry x locale whose source PNG hash, headline text, or review state
+changed since the last render (`marketingNeedsRender`); everything else is reported
+`MARKETING_SKIP ... (unchanged)`. `MARKETING_RESULT=FAIL (...)` (e.g.
+`.screens/web/render-marketing.mjs` missing, or the render script errored): report the reason,
+continue to Phase 7 (marketing is best-effort, never blocks the catalog). Collect `MARKETING_RENDER`
+lines whose target path still contains `_draft` for the Phase 8 `NEEDS REVIEW` list.
 
 ## Phase 7: Index
 
@@ -225,15 +239,18 @@ orch_state_load
 node "$SCREENS_BIN" index
 ```
 
-`INDEX_RESULT=SKIP (renderer added in stage c)` in this stage.
+Writes `screenshots/index.html` (embedded JSON + vanilla JS, `screens/templates/index.html`
+instantiated with the current catalog + marketing state, no dependency, opens straight from disk).
+`INDEX_RESULT=OK path=screenshots/index.html`: report that path. `INDEX_RESULT=FAIL (...)`: report
+the reason, the run still completes (the PNGs themselves are unaffected).
 
 ## Phase 8: Report
 
-Table: platform x new/updated/unchanged/removed/failed (from the `PLAN_ENTRY`/`PROMOTE_ENTRY`/
-`PROMOTE_REMOVED` lines collected above). `NEEDS REVIEW` list: marketing entries still under
-`_draft` (once stage c renders). Path to `screenshots/index.html` (once stage c writes it). Suggest
-`--full` when the last full run is older than 30 days (from `state.json`, once state carries that
-timestamp).
+Table: platform x new/updated/unchanged/removed/drift/failed (from the `PLAN_ENTRY`/`PROMOTE_ENTRY`/
+`PROMOTE_REMOVED`/`DRIFT` lines collected above; `drift` only appears on a `--full` run, see plan's
+"Incremental rule"). `NEEDS REVIEW` list: `MARKETING_RENDER` lines whose target still contains
+`_draft`. Path to `screenshots/index.html`. Suggest `--full` when the last full run is older than 30
+days (from `state.json`, once state carries that timestamp).
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \

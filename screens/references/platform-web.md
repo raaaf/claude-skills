@@ -4,6 +4,18 @@ Invoked by `/screens` `SKILL.md` Phase 5's driver step (plan step 5) when `.scre
 a `web` platform and `screens/templates/capture.spec.ts` has been scaffolded into
 `<project>/.screens/web/capture.spec.ts` (Phase 2 scaffold, "Per-project files" table).
 
+## Contents
+
+- [Invocation](#invocation)
+- [What the spec does](#what-the-spec-does)
+- [Server-side fixed clock (PHP projects, added after stage (b) STOP 2)](#server-side-fixed-clock-php-projects-added-after-stage-b-stop-2)
+- [Seeder determinism rules (scaffold checklist, added after stage (b) STOP 3)](#seeder-determinism-rules-scaffold-checklist-added-after-stage-b-stop-3)
+- [Server perf: parallel PHP workers, no per-request debug overhead, seed-on-change](#server-perf-parallel-php-workers-no-per-request-debug-overhead-seed-on-change)
+- [Theme axis: cookie-driven dark mode, not prefers-color-scheme](#theme-axis-cookie-driven-dark-mode-not-prefers-color-scheme)
+- [Error state: manifest-driven form submission](#error-state-manifest-driven-form-submission)
+- [Preconditions](#preconditions)
+- [Multi-step entries](#multi-step-entries)
+
 ## Invocation
 
 From the target project root, after `screens.mjs up --platform web` reported `UP_RESULT=OK`:
@@ -118,12 +130,12 @@ follows, and the demo seeder documents which ones actually applied:
 
 1. **Faker seed on both generators.** `fake()->seed(<fixed>)` AND the same seed/provider setup on
    `app(\Faker\Generator::class)` (the locale-less singleton Eloquent's `Factory::withFaker()`
-   resolves, distinct from `fake()`'s locale-keyed one — see above).
+   resolves, distinct from `fake()`'s locale-keyed one, see above).
 2. **Seeded string/UUID/ULID factories.** `Str::createRandomStringsUsing(...)` and
    `Str::createUuidsUsing(...)`/`Str::createUlidsUsing(...)` (or their `...UsingSequence()` helpers)
-   with a fixed, deterministic sequence, set at the very start of the demo seeder — cheap and
+   with a fixed, deterministic sequence, set at the very start of the demo seeder (cheap and
    defensive even when no seeder in the chain currently calls `Str::random()`/`uuid()`/`ulid()`
-   directly, since a later seeder addition would otherwise silently go non-deterministic.
+   directly, since a later seeder addition would otherwise silently go non-deterministic).
 3. **Laravel 13's secure Randomizer ignores every seed.** `Collection::random`/`Arr::random`,
    `->shuffle()`, `->inRandomOrder()` and `random_int()` all resolve through PHP's
    `Random\Randomizer` with the secure engine (`vendor/laravel/framework/src/Illuminate/Collections/Arr.php`
@@ -132,11 +144,11 @@ follows, and the demo seeder documents which ones actually applied:
    `->random(`, `Arr::random`, `->shuffle(`, `inRandomOrder`, `random_int(` and, for each hit,
    either avoids calling that seeder or (when the seeder is otherwise needed, the common case)
    deletes the non-deterministic rows it created and recreates them deterministically inside the
-   demo seeder itself (same factory, same count logic, a fixed selection — e.g. "first N rows
-   ordered by id" — instead of the random pick).
+   demo seeder itself (same factory, same count logic, a fixed selection: "first N rows
+   ordered by id" instead of the random pick).
 4. **Row order without an `ORDER BY` tie-break can reorder between reseeds** even when every value
    in every row is identical. If a captured view differs only by row order, a `mask[]` is not the
-   right tool (the content itself is correct, just reordered) — the manifest entry gets a
+   right tool (the content itself is correct, just reordered): the manifest entry gets a
    `"known_nondeterministic": "<reason>"` field instead, and the Phase 8 report lists such entries
    separately; `screens.mjs`'s byte-identical verify count excludes them.
 5. **`CACHE_STORE=array`** in the isolation env (`config.json`'s `web.env`, alongside

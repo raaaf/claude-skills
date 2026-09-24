@@ -36,6 +36,12 @@ import {
   cmdTrust,
   computeCommandHash,
   marketingTargetDir,
+  resolveMarketingBackground,
+  cmdMarketing,
+  parsePromotedFilename,
+  buildIndexItems,
+  buildIndexMarketing,
+  cmdIndex,
   affectedIds,
   writeJson,
   readJson,
@@ -302,6 +308,66 @@ test('promote: known_nondeterministic entry is reported separately, not counted 
 
   assert.ok(lines.some((l) => l === 'PROMOTE_ENTRY reorderable known_nondeterministic (row order has no ORDER BY tie-break)'), lines.join('\n'));
   assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 tolerated=0 removed=0 known_nondeterministic=1')), lines.join('\n'));
+});
+
+// --- drift reporting (step 1, --full only) ----------------------------------
+
+test('promote --full: unchanged fingerprint + changed image -> drift, old fingerprint\'s prev PNG still written', () => {
+  const root = fixture();
+  writeFile(root, 'view.blade.php', 'same-content');
+  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
+  });
+  const fingerprint = require_sha256('view.blade.php' + 'same-content');
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const targetPath = join(root, 'screenshots', relPath);
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, join('screenshots', relPath), oldBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: {
+      entry: {
+        fingerprint,
+        pngs: { [relPath]: require_sha256(oldBuf) },
+      },
+    },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', newBuf);
+
+  const lines = cmdPromote(['--platform', 'web', '--full'], root);
+
+  assert.ok(lines.includes('DRIFT entry filled__guest__1440x900__light'), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 tolerated=0 removed=0 known_nondeterministic=0 drift=1')), lines.join('\n'));
+  assert.equal(readFileSync(targetPath).compare(newBuf), 0, 'truth wins: the new PNG is written despite being reported as drift');
+});
+
+test('promote --full: changed fingerprint + changed image -> changed, not drift', () => {
+  const root = fixture();
+  writeFile(root, 'view.blade.php', 'new-content');
+  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
+  });
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, join('screenshots', relPath), oldBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: {
+      entry: {
+        fingerprint: 'stale-fingerprint-from-before-the-source-edit',
+        pngs: { [relPath]: require_sha256(oldBuf) },
+      },
+    },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', newBuf);
+
+  const lines = cmdPromote(['--platform', 'web', '--full'], root);
+
+  assert.ok(lines.includes('PROMOTE_ENTRY entry changed'), lines.join('\n'));
+  assert.ok(!lines.some((l) => l.startsWith('DRIFT')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=1 unchanged=0 tolerated=0 removed=0 known_nondeterministic=0 drift=0')), lines.join('\n'));
 });
 
 // --- device-class path builder (Output layout) ------------------------------
@@ -685,13 +751,186 @@ test('trust: matching confirmed hash -> OK', () => {
 // --- marketing: unreviewed headline -> output under _draft -----------------
 
 test('marketing: unreviewed headline routes to _draft', () => {
-  const dir = marketingTargetDir('de', '1920x1080', false);
+  const dir = marketingTargetDir('web', 'de', '1920x1080', false);
   assert.ok(dir.includes('_draft'));
 });
 
 test('marketing: reviewed headline does not route to _draft', () => {
-  const dir = marketingTargetDir('de', '1920x1080', true);
+  const dir = marketingTargetDir('web', 'de', '1920x1080', true);
   assert.ok(!dir.includes('_draft'));
+});
+
+// --- marketing: rendering routing + change detection (renderer injected) ---
+
+function marketingFixture(root, { reviewed = false } = {}) {
+  writeJson(join(root, '.screens/config.json'), {
+    platforms: ['web'],
+    global_sources: [],
+    marketing: {
+      entries: [{ id: 'dashboard', headlines: { de: { text: 'Alles im Blick', reviewed } } }],
+      locales: ['de'],
+      formats: { web: '1920x1080' },
+    },
+  });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'dashboard', platform: 'web', area: 'app', view: 'dashboard', sources: [] }],
+  });
+  const sourceRel = 'web/desktop/app/dashboard/filled__admin__light.png';
+  writeFile(root, join('screenshots', sourceRel), 'catalog-bytes');
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { dashboard: { pngs: { [sourceRel]: require_sha256('catalog-bytes') } } },
+  });
+  // A render-marketing.mjs must exist for the renderer's own "not
+  // scaffolded" guard, even though the injected stub renderer never reads it.
+  writeFile(root, '.screens/web/render-marketing.mjs', '// stub');
+  return sourceRel;
+}
+
+test('marketing: new entry -> renderer invoked with the resolved job, state records the render', () => {
+  const root = fixture();
+  marketingFixture(root);
+  const calls = [];
+  const stubRenderer = (r, jobs) => {
+    calls.push(jobs);
+    return { ok: true, rendered: jobs.map((j) => ({ id: j.id, locale: j.locale, format: j.format, ok: true })) };
+  };
+
+  const lines = cmdMarketing([], root, stubRenderer);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0].id, 'dashboard');
+  assert.equal(calls[0][0].headline, 'Alles im Blick');
+  assert.ok(lines.some((l) => l.startsWith('MARKETING_RENDER dashboard de 1920x1080 ->') && l.includes('_draft')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('MARKETING_RESULT=OK rendered=1')), lines.join('\n'));
+
+  const state = readJson(join(root, '.screens/state.json'), {});
+  assert.ok(state.marketing['dashboard__de__1920x1080'], 'state.marketing must record the render');
+});
+
+test('marketing: unchanged source + headline -> renderer not called, reported as skip', () => {
+  const root = fixture();
+  const sourceRel = marketingFixture(root);
+  const state = readJson(join(root, '.screens/state.json'), {});
+  state.marketing = {
+    'dashboard__de__1920x1080': {
+      sourceHash: state.entries.dashboard.pngs[sourceRel],
+      headlineText: 'Alles im Blick', reviewed: false,
+      relPath: join('_marketing', '_draft', 'web', 'de', '1920x1080', '01-dashboard.png'),
+    },
+  };
+  writeJson(join(root, '.screens/state.json'), state);
+  const stubRenderer = () => { throw new Error('renderer must not be called for an unchanged entry'); };
+
+  const lines = cmdMarketing([], root, stubRenderer);
+
+  assert.ok(lines.some((l) => l === 'MARKETING_SKIP dashboard de 1920x1080 (unchanged)'), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('MARKETING_RESULT=OK rendered=0 skipped=1')), lines.join('\n'));
+});
+
+test('marketing: headline set to reviewed -> re-renders and moves out of _draft, old draft file removed', () => {
+  const root = fixture();
+  const sourceRel = marketingFixture(root, { reviewed: true });
+  const state = readJson(join(root, '.screens/state.json'), {});
+  const oldDraftRel = join('_marketing', '_draft', 'web', 'de', '1920x1080', '01-dashboard.png');
+  writeFile(root, join('screenshots', oldDraftRel), 'old-draft-bytes');
+  state.marketing = {
+    'dashboard__de__1920x1080': {
+      sourceHash: state.entries.dashboard.pngs[sourceRel],
+      headlineText: 'Alles im Blick', reviewed: false, relPath: oldDraftRel,
+    },
+  };
+  writeJson(join(root, '.screens/state.json'), state);
+  const stubRenderer = (r, jobs) => ({ ok: true, rendered: jobs.map((j) => ({ id: j.id, locale: j.locale, format: j.format, ok: true })) });
+
+  const lines = cmdMarketing([], root, stubRenderer);
+
+  assert.ok(lines.some((l) => l.startsWith('MARKETING_RENDER dashboard de 1920x1080 ->') && !l.includes('_draft')), lines.join('\n'));
+  assert.ok(!existsSync(join(root, 'screenshots', oldDraftRel)), 'the stale _draft file must be removed on review-state flip');
+});
+
+// --- resolveMarketingBackground: DESIGN.md token source, neutral fallback --
+
+test('resolveMarketingBackground: no DESIGN.md -> neutral fallback', () => {
+  const root = fixture();
+  assert.equal(resolveMarketingBackground(root), '#f5f5f7');
+});
+
+test('resolveMarketingBackground: DESIGN.md names a token file with a background color', () => {
+  const root = fixture();
+  writeFile(root, 'DESIGN.md', 'Token source: resources/css/tokens.css');
+  writeFile(root, 'resources/css/tokens.css', ':root { --color-background: #1a2b3c; }');
+  assert.equal(resolveMarketingBackground(root), '#1a2b3c');
+});
+
+// --- parsePromotedFilename / buildIndexItems / buildIndexMarketing ---------
+
+test('parsePromotedFilename: state__role__theme[__locale].png', () => {
+  assert.deepEqual(parsePromotedFilename('filled__admin__light.png'), { state: 'filled', role: 'admin', theme: 'light', locale: undefined });
+  assert.deepEqual(parsePromotedFilename('filled__admin__light__de.png'), { state: 'filled', role: 'admin', theme: 'light', locale: 'de' });
+});
+
+test('buildIndexItems: every PNG in state.entries becomes one item with a screenshots/-relative path', () => {
+  const manifest = { entries: [{ id: 'dashboard', platform: 'web', area: 'app', view: 'dashboard' }] };
+  const state = {
+    entries: {
+      dashboard: {
+        pngs: {
+          'web/desktop/app/dashboard/filled__admin__light.png': 'hash1',
+          'web/mobile/app/dashboard/empty__guest__dark.png': 'hash2',
+        },
+      },
+    },
+  };
+  const items = buildIndexItems(manifest, state);
+  assert.equal(items.length, 2);
+  assert.ok(items.every((i) => !i.path.startsWith('/') && !i.path.startsWith('screenshots')));
+  assert.ok(items.some((i) => i.state === 'filled' && i.role === 'admin' && i.theme === 'light' && i.deviceClass === 'desktop'));
+  assert.ok(items.some((i) => i.state === 'empty' && i.role === 'guest' && i.theme === 'dark' && i.deviceClass === 'mobile'));
+});
+
+test('buildIndexMarketing: one item per state.marketing record, relative path only', () => {
+  const state = {
+    marketing: {
+      'dashboard__de__1920x1080': { headlineText: 'Alles im Blick', reviewed: true, relPath: '_marketing/web/de/1920x1080/01-dashboard.png' },
+    },
+  };
+  const items = buildIndexMarketing(state);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, 'dashboard');
+  assert.equal(items[0].locale, 'de');
+  assert.equal(items[0].headline, 'Alles im Blick');
+  assert.equal(items[0].path, '_marketing/web/de/1920x1080/01-dashboard.png');
+});
+
+// --- cmdIndex: screenshots/index.html embeds every PNG, relative paths only -
+
+test('cmdIndex: writes screenshots/index.html whose embedded JSON lists every PNG in state, relative paths only', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'dashboard', platform: 'web', area: 'app', view: 'dashboard' }],
+  });
+  writeJson(join(root, '.screens/state.json'), {
+    entries: {
+      dashboard: {
+        pngs: {
+          'web/desktop/app/dashboard/filled__admin__light.png': 'hash1',
+          'web/mobile/app/dashboard/empty__guest__dark.png': 'hash2',
+        },
+      },
+    },
+    last_run: { new: 1, updated: 0, unchanged: 1, removed: 0, drift: 0, failed: 0, date: '2026-09-24', commit: 'abc123' },
+  });
+
+  const lines = cmdIndex([], root);
+
+  assert.ok(lines.includes('INDEX_RESULT=OK path=screenshots/index.html'), lines.join('\n'));
+  const html = readFileSync(join(root, 'screenshots/index.html'), 'utf8');
+  const match = /<script id="screens-data" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
+  assert.ok(match, 'index.html must embed the screens-data JSON block');
+  const data = JSON.parse(match[1]);
+  assert.equal(data.items.length, 2);
+  assert.ok(data.items.every((i) => !i.path.startsWith('/')));
+  assert.equal(data.last_run.commit, 'abc123');
 });
 
 // --- affected: path in one entry's sources -> only that id -----------------

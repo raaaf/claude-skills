@@ -1,0 +1,288 @@
+<!doctype html>
+<!--
+  index.html: filterable screenshot catalog for /screens (plan's "index.html
+  (design challenge)"). Single static file, embedded JSON + vanilla JS, no
+  server, no dependencies (repo CLAUDE.md "Stack": zero npm dependencies).
+
+  Instantiated by `screens.mjs index` (`cmdIndex`), which replaces the data
+  placeholder in the script tag below with a JSON object and writes the
+  result to `screenshots/index.html`. Opens directly from disk (file://),
+  grouped platform -> device-class -> area -> view, with filter toggles for
+  state/role/device-class/theme/locale, a run-summary header, and a
+  marketing review section.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Screens catalog</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #14181f;
+    --muted: #4b5563;
+    --border: #d0d5dd;
+    --accent: #0b5fff;
+    --accent-fg: #ffffff;
+    --card-bg: #f6f7f9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121417;
+      --fg: #f2f4f7;
+      --muted: #c2c8d2;
+      --border: #3a3f47;
+      --accent: #6ea8ff;
+      --accent-fg: #0b1220;
+      --card-bg: #1c1f24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0 0 8px; font-size: 20px; }
+  .summary { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+  .summary strong { color: var(--fg); }
+  main { padding: 16px 24px 64px; }
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin-bottom: 20px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .filter-group .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-right: 4px; }
+  button.filter-toggle {
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button.filter-toggle[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+  }
+  button.filter-toggle:focus-visible,
+  a:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  h2 { font-size: 16px; margin: 28px 0 4px; }
+  h3 { font-size: 14px; margin: 16px 0 4px; color: var(--muted); }
+  h4 { font-size: 13px; margin: 12px 0 4px; }
+  .view-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .shot { display: block; text-decoration: none; color: var(--fg); width: 160px; }
+  .shot img { width: 100%; display: block; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+  .shot span { display: block; font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-word; }
+  .hidden { display: none !important; }
+  #marketing .card {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: var(--card-bg);
+  }
+  #marketing img { width: 220px; border-radius: 6px; border: 1px solid var(--border); }
+  #marketing .meta { font-size: 13px; }
+  #marketing .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+  }
+  #marketing .badge.needs-review { border-color: #b45309; color: #b45309; }
+  code { font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Screens catalog</h1>
+  <div class="summary" id="summary"></div>
+</header>
+<main>
+  <div class="filters" id="filters"></div>
+  <section id="catalog"></section>
+  <section id="marketing"></section>
+</main>
+
+<script id="screens-data" type="application/json">__SCREENS_DATA__</script>
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById('screens-data').textContent);
+  var summaryEl = document.getElementById('summary');
+  var filtersEl = document.getElementById('filters');
+  var catalogEl = document.getElementById('catalog');
+  var marketingEl = document.getElementById('marketing');
+
+  var run = DATA.last_run || {};
+  summaryEl.innerHTML =
+    '<span><strong>' + (run.new || 0) + '</strong> new</span>' +
+    '<span><strong>' + (run.updated || 0) + '</strong> updated</span>' +
+    '<span><strong>' + (run.unchanged || 0) + '</strong> unchanged</span>' +
+    '<span><strong>' + (run.removed || 0) + '</strong> removed</span>' +
+    '<span><strong>' + (run.drift || 0) + '</strong> drift</span>' +
+    '<span><strong>' + (run.failed || 0) + '</strong> failed</span>' +
+    '<span>' + (run.date || '') + '</span>' +
+    '<span><code>' + (run.commit || '') + '</code></span>';
+
+  var AXES = [
+    { key: 'state', label: 'State' },
+    { key: 'role', label: 'Role' },
+    { key: 'deviceClass', label: 'Device' },
+    { key: 'theme', label: 'Theme' },
+    { key: 'locale', label: 'Locale' },
+  ];
+
+  var active = {}; // axis -> Set of active values ("" means "all")
+  AXES.forEach(function (axis) { active[axis.key] = new Set(); });
+
+  function valuesFor(key) {
+    var set = new Set();
+    (DATA.items || []).forEach(function (item) { if (item[key]) set.add(item[key]); });
+    return Array.from(set).sort();
+  }
+
+  AXES.forEach(function (axis) {
+    var values = valuesFor(axis.key);
+    if (!values.length) return;
+    var group = document.createElement('div');
+    group.className = 'filter-group';
+    var label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = axis.label;
+    group.appendChild(label);
+    values.forEach(function (value) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'filter-toggle';
+      btn.setAttribute('aria-pressed', 'false');
+      btn.textContent = value;
+      btn.addEventListener('click', function () {
+        var pressed = btn.getAttribute('aria-pressed') === 'true';
+        btn.setAttribute('aria-pressed', String(!pressed));
+        if (pressed) active[axis.key].delete(value); else active[axis.key].add(value);
+        render();
+      });
+      group.appendChild(btn);
+    });
+    filtersEl.appendChild(group);
+  });
+
+  function matches(item) {
+    return AXES.every(function (axis) {
+      var set = active[axis.key];
+      return set.size === 0 || set.has(item[axis.key]);
+    });
+  }
+
+  function groupBy(items, keys) {
+    if (!keys.length) return items;
+    var map = new Map();
+    items.forEach(function (item) {
+      var k = item[keys[0]] || '(none)';
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(item);
+    });
+    var out = {};
+    map.forEach(function (list, k) { out[k] = groupBy(list, keys.slice(1)); });
+    return out;
+  }
+
+  function render() {
+    catalogEl.innerHTML = '';
+    var visible = (DATA.items || []).filter(matches);
+    var grouped = groupBy(visible, ['platform', 'deviceClass', 'area', 'view']);
+    Object.keys(grouped).sort().forEach(function (platform) {
+      var h2 = document.createElement('h2');
+      h2.textContent = platform;
+      catalogEl.appendChild(h2);
+      var byDevice = grouped[platform];
+      Object.keys(byDevice).sort().forEach(function (deviceClass) {
+        var h3 = document.createElement('h3');
+        h3.textContent = deviceClass;
+        catalogEl.appendChild(h3);
+        var byArea = byDevice[deviceClass];
+        Object.keys(byArea).sort().forEach(function (area) {
+          var byView = byArea[area];
+          Object.keys(byView).sort().forEach(function (view) {
+            var h4 = document.createElement('h4');
+            h4.textContent = area + ' / ' + view;
+            catalogEl.appendChild(h4);
+            var strip = document.createElement('div');
+            strip.className = 'view-strip';
+            byView[view].forEach(function (item) {
+              var a = document.createElement('a');
+              a.className = 'shot';
+              a.href = item.path;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              var img = document.createElement('img');
+              img.src = item.path;
+              img.loading = 'lazy';
+              img.alt = view + ' ' + item.state + ' ' + item.role + ' ' + item.theme;
+              var span = document.createElement('span');
+              span.textContent = [item.state, item.role, item.theme, item.locale].filter(Boolean).join(' / ');
+              a.appendChild(img);
+              a.appendChild(span);
+              strip.appendChild(a);
+            });
+            catalogEl.appendChild(strip);
+          });
+        });
+      });
+    });
+  }
+
+  render();
+
+  if (DATA.marketing && DATA.marketing.length) {
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Marketing';
+    marketingEl.appendChild(h2);
+    DATA.marketing.forEach(function (m) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var img = document.createElement('img');
+      img.src = m.path;
+      img.alt = m.id + ' ' + m.locale;
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      var badge = document.createElement('span');
+      badge.className = 'badge' + (m.reviewed ? '' : ' needs-review');
+      badge.textContent = m.reviewed ? 'reviewed' : 'NEEDS REVIEW';
+      meta.appendChild(badge);
+      var p = document.createElement('p');
+      p.textContent = m.headline + ' (' + m.locale + ', ' + m.format + ')';
+      meta.appendChild(p);
+      var code = document.createElement('code');
+      code.textContent = m.configPath;
+      meta.appendChild(code);
+      card.appendChild(img);
+      card.appendChild(meta);
+      marketingEl.appendChild(card);
+    });
+  }
+})();
+</script>
+</body>
+</html>

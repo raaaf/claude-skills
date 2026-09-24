@@ -708,11 +708,14 @@ function cmdPromote(args, root = process.cwd()) {
   const diffTolerance = typeof config.diff_tolerance === 'number' ? config.diff_tolerance : 0.0001;
   const hasCompare = commandOnPath('compare');
 
+  const full = args.includes('--full');
   const incomingDir = join(root, '.screens/.incoming', platform || '');
   let changed = 0;
+  let newCount = 0;
   let unchanged = 0;
   let tolerated = 0;
   let knownNondeterministic = 0;
+  let drift = 0;
   if (existsSync(incomingDir)) {
     for (const file of readdirSync(incomingDir)) {
       if (!file.endsWith('.png') || !file.includes('__')) continue;
@@ -726,6 +729,7 @@ function cmdPromote(args, root = process.cwd()) {
       state.entries[id] = state.entries[id] || {};
       state.entries[id].pngs = state.entries[id].pngs || {};
       const prevHash = state.entries[id].pngs[relPath];
+      const prevFingerprint = state.entries[id].fingerprint;
       const { changed: didChange, hash, tolerated: didTolerate } = promoteFile(
         join(incomingDir, file), targetPath, prevHash, { diffTolerance, hasCompare },
       );
@@ -734,7 +738,16 @@ function cmdPromote(args, root = process.cwd()) {
       // this, `plan`'s `prev.fingerprint` is always undefined on the next
       // run, and every entry reports `stale` forever even with zero source
       // changes (Step 6's `run 2 -> new=0 updated=0` requirement).
-      state.entries[id].fingerprint = computeFingerprint(root, entry.sources || [], config.global_sources || []);
+      const newFingerprint = computeFingerprint(root, entry.sources || [], config.global_sources || []);
+      state.entries[id].fingerprint = newFingerprint;
+      // Drift reporting (step 1, `--full` only): a fingerprint that did not
+      // change means the source is provably unchanged, so a PNG that still
+      // differs beyond tolerance is not a stale-source recapture, it is
+      // genuine drift (encoder/render nondeterminism the tolerance did not
+      // catch). Truth wins: the new PNG is written like any other `changed`
+      // entry (already done by `promoteFile` above), only the label and
+      // count differ, so `_removed`/index/marketing all see the real file.
+      const isDrift = full && prevFingerprint && prevFingerprint === newFingerprint && didChange && !didTolerate;
       // Seeder determinism rule (4), plan's "Isolation and lifecycle": a
       // view whose content is correct but whose row order isn't pinned by
       // an ORDER BY tie-break can hash differently on a byte-identical
@@ -746,12 +759,23 @@ function cmdPromote(args, root = process.cwd()) {
       if (entry.known_nondeterministic) {
         knownNondeterministic++;
         lines.push(`PROMOTE_ENTRY ${id} known_nondeterministic (${entry.known_nondeterministic})`);
+      } else if (isDrift) {
+        drift++;
+        lines.push(`DRIFT ${id} ${rest.replace(/\.png$/, '')}`);
       } else if (didTolerate) {
         tolerated++;
         lines.push(`PROMOTE_ENTRY ${id} tolerated`);
       } else if (didChange) {
-        changed++;
-        lines.push(`PROMOTE_ENTRY ${id} changed`);
+        // `prevHash` absent (rather than merely different) means this PNG
+        // was never promoted before: the index's run summary (plan step 3)
+        // distinguishes a brand-new capture from a recapture of a known one.
+        if (prevHash) {
+          changed++;
+          lines.push(`PROMOTE_ENTRY ${id} changed`);
+        } else {
+          newCount++;
+          lines.push(`PROMOTE_ENTRY ${id} new`);
+        }
       } else {
         unchanged++;
         lines.push(`PROMOTE_ENTRY ${id} unchanged`);
@@ -763,9 +787,22 @@ function cmdPromote(args, root = process.cwd()) {
   const removed = moveRemovedEntries(root, manifestIds, state);
   for (const id of removed) lines.push(`PROMOTE_REMOVED ${id}`);
 
+  // Persisted for `index` (plan step 3, "Top: last run summary"): index.html
+  // is a separate `screens.mjs index` invocation with no other way to see
+  // this run's tallies. `failed` stays 0 here -- a driver failure never
+  // reaches `promote` at all (Phase 5 skips straight to `down`), so the
+  // orchestrator's own report is the only place that count is known; index
+  // reads whatever the orchestrator wrote last, defaulting to 0.
+  state.last_run = {
+    new: newCount, updated: changed, unchanged, removed: removed.length,
+    drift, failed: (state.last_run && state.last_run.failed) || 0,
+    date: todayStr(),
+    commit: (spawnSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout || '').trim() || null,
+  };
+
   writeJson(join(root, '.screens/state.json'), state);
   if (!hasCompare) lines.push('NOTE=imagemagick missing, byte-exact compare');
-  lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} tolerated=${tolerated} removed=${removed.length} known_nondeterministic=${knownNondeterministic}`);
+  lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} tolerated=${tolerated} removed=${removed.length} known_nondeterministic=${knownNondeterministic} drift=${drift} new=${newCount}`);
   return lines;
 }
 
@@ -817,52 +854,277 @@ function cmdMigrateLayout(args, root = process.cwd()) {
 }
 
 // ---------------------------------------------------------------------
-// marketing / index: decision logic only in this stage; the Playwright
-// renderer is added in stage (c) (plan step 7).
+// marketing: framed store renders (plan's "Marketing" section, stage c)
 // ---------------------------------------------------------------------
 
 // Review gate: an unreviewed headline routes its render to `_draft`
 // instead of the real marketing output (plan's "Marketing" section).
-function marketingTargetDir(locale, format, reviewed) {
-  return reviewed ? join('_marketing', locale, format) : join('_marketing', '_draft', locale, format);
+// Output layout: `_marketing/[_draft/]<platform>/<locale>/<format>/`.
+function marketingTargetDir(platform, locale, format, reviewed) {
+  const parts = reviewed ? ['_marketing'] : ['_marketing', '_draft'];
+  parts.push(platform, locale, format);
+  return join(...parts);
 }
 
-// Change detection: only re-render when the source PNG hash or the
-// headline text changed since the last render.
-function marketingNeedsRender(prevRecord, sourceHash, headlineText) {
+// Change detection: only re-render when the source PNG hash, the headline
+// text, or the review state changed since the last render (a reviewed flip
+// moves the file between `_draft` and the real path, so it needs a new
+// render even though the pixels are identical).
+function marketingNeedsRender(prevRecord, sourceHash, headlineText, reviewed) {
   if (!prevRecord) return true;
-  return prevRecord.sourceHash !== sourceHash || prevRecord.headlineText !== headlineText;
+  return prevRecord.sourceHash !== sourceHash
+    || prevRecord.headlineText !== headlineText
+    || prevRecord.reviewed !== reviewed;
 }
 
-// `_args` is unused today (no marketing flags yet, e.g. a future --platform
-// filter) but kept, underscore-prefixed, so this stays call-compatible with
-// main()'s uniform `handler(rest)` dispatch and with cmdIndex below.
-function cmdMarketing(_args, root = process.cwd()) {
+// Background from the project's token source (plan's "Rendering" note):
+// DESIGN.md names the token file, read the first plausible background/
+// surface hex value out of it; a project without DESIGN.md, or without a
+// resolvable color inside the named file, gets a neutral fallback. Simple
+// regex heuristic, deliberately not a CSS/JSON parser: this only ever
+// picks a background swatch, never a value the app itself renders.
+function resolveMarketingBackground(root) {
+  const NEUTRAL = '#f5f5f7';
+  const designPath = join(root, 'DESIGN.md');
+  if (!existsSync(designPath)) return NEUTRAL;
+  const designText = readFileSync(designPath, 'utf8');
+  const fileMatch = /\b([\w./-]+\.(?:css|scss|json|ts|js))\b/.exec(designText);
+  if (!fileMatch) return NEUTRAL;
+  const tokenPath = join(root, fileMatch[1]);
+  if (!existsSync(tokenPath)) return NEUTRAL;
+  const tokenText = readFileSync(tokenPath, 'utf8');
+  const colorMatch = /--(?:[\w-]*)background[\w-]*\s*:\s*(#[0-9a-fA-F]{3,8})/i.exec(tokenText)
+    || /"[\w-]*background[\w-]*"\s*:\s*"(#[0-9a-fA-F]{3,8})"/i.exec(tokenText)
+    || /(#[0-9a-fA-F]{6}\b)/.exec(tokenText);
+  return colorMatch ? colorMatch[1] : NEUTRAL;
+}
+
+// Picks the catalog PNG a marketing entry frames: prefers the `filled`
+// state, `light` theme, inside `deviceClassPref` (default `desktop`); falls
+// back to any `filled` capture, then to whatever PNG exists, so a project
+// missing the preferred combination still gets *a* render instead of
+// silently skipping the hero.
+function findMarketingSourcePng(state, entryId, deviceClassPref = 'desktop') {
+  const entryState = state.entries && state.entries[entryId];
+  if (!entryState || !entryState.pngs) return null;
+  const keys = Object.keys(entryState.pngs);
+  const preferred = keys.find((k) => k.includes(`/${deviceClassPref}/`) && k.includes('filled__') && k.includes('light'));
+  const anyFilled = keys.find((k) => k.includes('filled__'));
+  const relPath = preferred || anyFilled || keys[0];
+  return relPath ? { relPath, hash: entryState.pngs[relPath] } : null;
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+// Spawns the project-scaffolded `.screens/web/render-marketing.mjs` (the
+// project's own Playwright devDependency, see that file's header) with the
+// job list on stdin; expects a JSON array of `{id, locale, format, ok,
+// reason?}` on stdout. Tests inject a stub renderer instead (plan step 2:
+// "Tests for the routing and change detection (renderer injected)").
+function defaultMarketingRenderer(root, jobs) {
+  const scriptPath = join(root, '.screens/web/render-marketing.mjs');
+  if (!existsSync(scriptPath)) {
+    return { ok: false, reason: '.screens/web/render-marketing.mjs not scaffolded (run /screens Phase 2 first)' };
+  }
+  const res = spawnSync('node', [scriptPath], { input: JSON.stringify(jobs), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  if (res.status !== 0) {
+    return { ok: false, reason: (res.stderr || 'render-marketing.mjs exited non-zero').trim() };
+  }
+  let rendered;
+  try {
+    rendered = JSON.parse(res.stdout);
+  } catch {
+    return { ok: false, reason: 'render-marketing.mjs did not print a JSON result array' };
+  }
+  return { ok: true, rendered };
+}
+
+function cmdMarketing(args, root = process.cwd(), renderer = defaultMarketingRenderer) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
+  const state = readJson(join(root, '.screens/state.json'), { entries: {} });
+  state.marketing = state.marketing || {};
   const entries = (config.marketing && config.marketing.entries) || [];
   const locales = (config.marketing && config.marketing.locales) || ['de'];
-  let draftCount = 0;
-  let readyCount = 0;
-  for (const entry of entries) {
+  const formats = (config.marketing && config.marketing.formats) || {};
+  const defaultPlatform = (config.platforms && config.platforms[0]) || 'web';
+  const background = resolveMarketingBackground(root);
+
+  const jobs = [];
+  const jobMeta = []; // parallel to jobs: {key, dir, targetPath, reviewed}
+  let skipped = 0;
+  let notesCount = 0;
+
+  entries.forEach((entry, idx) => {
+    const platform = entry.platform || defaultPlatform;
+    const source = findMarketingSourcePng(state, entry.source || entry.id);
     for (const locale of locales) {
       const headline = entry.headlines && entry.headlines[locale];
-      const reviewed = !!(headline && headline.reviewed);
-      const dir = marketingTargetDir(locale, entry.format || 'default', reviewed);
-      lines.push(`MARKETING_PLAN ${entry.id} ${locale} -> ${dir}`);
-      if (reviewed) readyCount++;
-      else draftCount++;
+      if (!headline || !headline.text) {
+        lines.push(`MARKETING_NOTE ${entry.id} ${locale} no headline configured`);
+        notesCount++;
+        continue;
+      }
+      if (!source) {
+        lines.push(`MARKETING_NOTE ${entry.id} ${locale} no catalog PNG found for source "${entry.source || entry.id}"`);
+        notesCount++;
+        continue;
+      }
+      const format = entry.format || formats[platform] || '1920x1080';
+      const reviewed = !!headline.reviewed;
+      const dir = marketingTargetDir(platform, locale, format, reviewed);
+      const filename = `${pad2(idx + 1)}-${entry.id}.png`;
+      const relPath = join(dir, filename);
+      const targetPath = join(root, 'screenshots', relPath);
+      const key = `${entry.id}__${locale}__${format}`;
+      const prevRecord = state.marketing[key];
+
+      if (!marketingNeedsRender(prevRecord, source.hash, headline.text, reviewed)) {
+        skipped++;
+        lines.push(`MARKETING_SKIP ${entry.id} ${locale} ${format} (unchanged)`);
+        continue;
+      }
+
+      // A review-state flip changes the target directory; the stale draft
+      // file at the old location would otherwise linger as a duplicate.
+      if (prevRecord && prevRecord.reviewed !== reviewed && prevRecord.relPath) {
+        try {
+          rmSync(join(root, 'screenshots', prevRecord.relPath), { force: true });
+        } catch {
+          // best-effort cleanup only
+        }
+      }
+
+      jobs.push({
+        id: entry.id, locale, format, headline: headline.text, background,
+        deviceClass: entry.deviceClass || (platform === 'web' ? 'desktop' : platform),
+        sourcePng: join(root, 'screenshots', source.relPath),
+        targetPath,
+      });
+      jobMeta.push({
+        key, dir, relPath, targetPath, reviewed,
+        sourceHash: source.hash, headlineText: headline.text,
+      });
+    }
+  });
+
+  let rendered = 0;
+  let failed = 0;
+  if (jobs.length) {
+    const result = renderer(root, jobs);
+    if (!result.ok) {
+      lines.push(`MARKETING_RESULT=FAIL (${result.reason})`);
+      return lines;
+    }
+    for (const r of result.rendered || []) {
+      const meta = jobMeta.find((m) => m.key === `${r.id}__${r.locale}__${r.format}`);
+      if (!meta) continue;
+      if (r.ok) {
+        rendered++;
+        lines.push(`MARKETING_RENDER ${r.id} ${r.locale} ${r.format} -> ${meta.dir}`);
+        state.marketing[meta.key] = {
+          sourceHash: meta.sourceHash, headlineText: meta.headlineText,
+          reviewed: meta.reviewed, relPath: meta.relPath,
+        };
+      } else {
+        failed++;
+        lines.push(`MARKETING_FAIL ${r.id} ${r.locale} ${r.format} (${r.reason || 'render failed'})`);
+      }
     }
   }
-  lines.push(`MARKETING_RESULT=SKIP (renderer added in stage c; draft=${draftCount} ready=${readyCount})`);
+
+  writeJson(join(root, '.screens/state.json'), state);
+
+  const draftCount = Object.values(state.marketing).filter((m) => !m.reviewed).length;
+  const readyCount = Object.values(state.marketing).filter((m) => m.reviewed).length;
+  lines.push(`MARKETING_RESULT=OK rendered=${rendered} skipped=${skipped} failed=${failed} notes=${notesCount} draft=${draftCount} ready=${readyCount}`);
   return lines;
 }
 
-// Both parameters are unused in this stage: the renderer (stage c) is what
-// will actually read the manifest/state under `root` and accept args. Kept,
-// underscore-prefixed, for the same call-compatibility reason as cmdMarketing.
-function cmdIndex(_args, _root = process.cwd()) {
-  return ['INDEX_RESULT=SKIP (renderer added in stage c)'];
+// ---------------------------------------------------------------------
+// index: filterable screenshots/index.html (plan's "index.html", stage c)
+// ---------------------------------------------------------------------
+
+// Reverse of `buildScreenshotPath`'s filename half: promoted catalog
+// filenames are `<state>__<role>__<theme>[__<locale>].png` (the viewport
+// already moved into the device-class folder, see Output layout).
+function parsePromotedFilename(filename) {
+  const base = filename.replace(/\.png$/, '');
+  const [state, role, theme, locale] = base.split('__');
+  return { state, role, theme, locale };
+}
+
+// Flattens `state.entries[*].pngs` (full paths relative to `screenshots/`,
+// see `entryPngsExist`'s doc comment) into one item per PNG, joined back to
+// its manifest entry for `platform`/`area`/`view`. A PNG whose relPath no
+// longer parses to 4 path segments (pre-migration legacy layout) is skipped
+// rather than guessed at; `migrate-layout` is what fixes that, not `index`.
+function buildIndexItems(manifest, state) {
+  const items = [];
+  for (const entry of manifest.entries || []) {
+    const entryState = state.entries && state.entries[entry.id];
+    if (!entryState || !entryState.pngs) continue;
+    for (const relPath of Object.keys(entryState.pngs)) {
+      const segments = relPath.split(sep);
+      if (segments.length < 5) continue;
+      const [platform, deviceClass, area, view, filename] = segments.slice(-5);
+      const parts = parsePromotedFilename(filename);
+      if (!parts.state) continue;
+      items.push({
+        id: entry.id, platform, deviceClass, area, view,
+        state: parts.state, role: parts.role, theme: parts.theme, locale: parts.locale || '',
+        path: relPath.split(sep).join('/'), // relative to screenshots/, forward slashes for the browser
+      });
+    }
+  }
+  return items;
+}
+
+// `state.marketing` keys are `${id}__${locale}__${format}`; each stored
+// record already carries everything index needs (relPath, headline,
+// reviewed) without re-reading config.json.
+function buildIndexMarketing(state) {
+  const out = [];
+  for (const key of Object.keys(state.marketing || {})) {
+    const record = state.marketing[key];
+    if (!record.relPath) continue;
+    const [id, locale, format] = key.split('__');
+    out.push({
+      id, locale, format, headline: record.headlineText, reviewed: !!record.reviewed,
+      path: record.relPath.split(sep).join('/'),
+      configPath: '.screens/config.json',
+    });
+  }
+  return out;
+}
+
+function cmdIndex(_args, root = process.cwd()) {
+  const lines = [];
+  const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
+  const state = readJson(join(root, '.screens/state.json'), { entries: {} });
+  const templatePath = join(dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'index.html');
+  if (!existsSync(templatePath)) {
+    lines.push('INDEX_RESULT=FAIL (templates/index.html not found)');
+    return lines;
+  }
+
+  const items = buildIndexItems(manifest, state);
+  const marketing = buildIndexMarketing(state);
+  const data = { items, marketing, last_run: state.last_run || {} };
+
+  const template = readFileSync(templatePath, 'utf8');
+  const html = template.replace('__SCREENS_DATA__', () => JSON.stringify(data));
+
+  const outPath = join(root, 'screenshots', 'index.html');
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, html);
+
+  lines.push(`INDEX_ITEMS=${items.length}`);
+  lines.push(`INDEX_MARKETING=${marketing.length}`);
+  lines.push(`INDEX_RESULT=OK path=screenshots/index.html`);
+  return lines;
 }
 
 // ---------------------------------------------------------------------
@@ -998,7 +1260,13 @@ export {
   cmdMigrateLayout,
   marketingTargetDir,
   marketingNeedsRender,
+  resolveMarketingBackground,
+  findMarketingSourcePng,
+  defaultMarketingRenderer,
   cmdMarketing,
+  parsePromotedFilename,
+  buildIndexItems,
+  buildIndexMarketing,
   cmdIndex,
   computeCommandHash,
   cmdTrust,

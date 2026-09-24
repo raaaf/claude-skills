@@ -5,6 +5,13 @@ JSON schema (informal, not JSON Schema) for the two committed per-project files
 discoverer's structured output (Phase 1), never by a subagent directly (repo `CLAUDE.md` "Orchestrator
 writes, subagents return").
 
+## Contents
+
+- [`.screens/config.json`](#screensconfigjson)
+- [`.screens/manifest.json`](#screensmanifestjson)
+- [Example: Laravel entry (web)](#example-laravel-entry-web)
+- [Example: iOS entry (native)](#example-ios-entry-native)
+
 ## `.screens/config.json`
 
 ```
@@ -56,7 +63,13 @@ writes, subagents return").
                                             // the image area differing (default 0.01%, revised
                                             // 2026-09-24: headless Chromium font AA jitters 1-100 px
                                             // across runs even with --disable-gpu); byte-exact when
-                                            // ImageMagick is not on PATH
+                                            // ImageMagick is not on PATH. Under `--full`, an entry
+                                            // whose fingerprint did NOT change but whose PNG still
+                                            // differs beyond this tolerance is written (truth wins)
+                                            // and counted as `drift`, not `changed` -- the source is
+                                            // provably unchanged, so this is render/encoder
+                                            // nondeterminism the tolerance did not catch, reported
+                                            // separately instead of hidden inside "updated"
 
   "global_sources": [
     "resources/css/**", "tailwind.config.*", "composer.lock", "package-lock.json", "bun.lock",
@@ -111,6 +124,14 @@ writes, subagents return").
   ]
 }
 ```
+
+Marketing output layout (`screens.mjs`'s `marketingTargetDir`, added stage c):
+`screenshots/_marketing/[_draft/]<platform>/<locale>/<format>/<NN>-<id>.png` -- an unreviewed
+headline (`headlines.<locale>.reviewed: false`) routes under `_draft`; `<NN>` is the entry's 1-based
+position in `marketing.entries`, zero-padded to 2 digits. `screens.mjs marketing` re-renders an
+entry x locale only when its source catalog PNG hash, headline text, or review state changed since
+the last render (state keyed `<id>__<locale>__<format>` in `.screens/state.json`'s `marketing`
+object); a review-state flip also deletes the stale file at the old (draft/reviewed) path.
 
 Output layout (Output layout section of the plan; `screens.mjs`'s `buildScreenshotPath`):
 `screenshots/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>[__<locale>].png`.
