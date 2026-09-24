@@ -20,8 +20,25 @@ import { join } from 'node:path';
 test.use({ launchOptions: { args: ['--disable-gpu', '--force-color-profile=srgb'] } });
 
 const ROOT = process.cwd();
-const config = JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8'));
-const manifest = JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8'));
+
+// `${PROJECT_ROOT}` placeholder (config-schema.md): a manifest/config string
+// value may reference the project root symbolically (e.g. a fixture path)
+// instead of an absolute path baked in at discovery time. Own equivalent of
+// screens.mjs's `expandProjectRoot` since this file runs outside that
+// module; an unknown `${X}` placeholder is left untouched.
+function expandProjectRoot(value, root) {
+  if (typeof value === 'string') return value.replaceAll('${PROJECT_ROOT}', root);
+  if (Array.isArray(value)) return value.map((v) => expandProjectRoot(v, root));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = expandProjectRoot(v, root);
+    return out;
+  }
+  return value;
+}
+
+const config = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8')), ROOT);
+const manifest = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8')), ROOT);
 
 const BASE_URL = process.env.SCREENS_BASE_URL || `http://127.0.0.1:${config.web.port}`;
 const OUT_DIR = join(ROOT, '.screens/.incoming/web');

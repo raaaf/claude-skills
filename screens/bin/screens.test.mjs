@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 import {
+  expandProjectRoot,
   planEntries,
   checkLock,
   repoHash,
@@ -46,7 +47,6 @@ import {
   laravelPerfEnv,
   playwrightWorkers,
   computeSeedFingerprint,
-  commandOnPath,
   readPngDimensions,
   promoteFile,
   deviceClassFor,
@@ -88,6 +88,22 @@ function writeFile(root, relPath, content) {
   mkdirSync(join(full, '..'), { recursive: true });
   writeFileSync(full, content);
 }
+
+// --- expandProjectRoot: `${PROJECT_ROOT}` placeholder --------------------
+
+test('expandProjectRoot: nested launch_args expansion', () => {
+  const root = fixture();
+  const entry = { launch_args: ['--import', '${PROJECT_ROOT}/.screens/mac/fixtures/cube.stl'] };
+  const expanded = expandProjectRoot(entry, root);
+  assert.equal(expanded.launch_args[1], `${root}/.screens/mac/fixtures/cube.stl`);
+});
+
+test('expandProjectRoot: unknown placeholder left untouched', () => {
+  const root = fixture();
+  const value = { extra_args: ['-Flag', '${OTHER_PLACEHOLDER}'] };
+  const expanded = expandProjectRoot(value, root);
+  assert.equal(expanded.extra_args[1], '${OTHER_PLACEHOLDER}');
+});
 
 // --- plan: new entry -> planned -----------------------------------------
 
@@ -312,6 +328,27 @@ test('promote: persists entry fingerprint so a later plan call with no source ch
   assert.ok(planLines.includes('PLAN_ENTRY entry unchanged'), planLines.join('\n'));
 });
 
+// --- promote: per-combination PROMOTE_ENTRY line (stage (f) follow-up 2) ---
+
+test('promote: PROMOTE_ENTRY carries the combo and distinguishes unchanged from tolerated', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: [] }],
+  });
+  const unchangedBuf = Buffer.from('same-bytes');
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  writeFile(root, join('screenshots', relPath), unchangedBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { entry: { fingerprint: 'x', pngs: { [relPath]: require_sha256(unchangedBuf) } } },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', unchangedBuf);
+
+  const lines = cmdPromote(['--platform', 'web'], root);
+
+  assert.ok(lines.includes('PROMOTE_ENTRY entry filled__guest__1440x900__light unchanged'), lines.join('\n'));
+});
+
 // --- promote: known_nondeterministic entries excluded from changed/unchanged ---
 
 test('promote: known_nondeterministic entry is reported separately, not counted as changed or unchanged', () => {
@@ -328,7 +365,7 @@ test('promote: known_nondeterministic entry is reported separately, not counted 
 
   const lines = cmdPromote(['--platform', 'web'], root);
 
-  assert.ok(lines.some((l) => l === 'PROMOTE_ENTRY reorderable known_nondeterministic (row order has no ORDER BY tie-break)'), lines.join('\n'));
+  assert.ok(lines.some((l) => l === 'PROMOTE_ENTRY reorderable filled__guest__1440x900__light known_nondeterministic (row order has no ORDER BY tie-break)'), lines.join('\n'));
   assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 tolerated=0 removed=0 known_nondeterministic=1')), lines.join('\n'));
 });
 
@@ -359,7 +396,7 @@ test('promote --full: unchanged fingerprint + changed image -> drift, old finger
 
   const lines = cmdPromote(['--platform', 'web', '--full'], root);
 
-  assert.ok(lines.includes('DRIFT entry filled__guest__1440x900__light'), lines.join('\n'));
+  assert.ok(lines.includes('PROMOTE_ENTRY entry filled__guest__1440x900__light drift'), lines.join('\n'));
   assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 tolerated=0 removed=0 known_nondeterministic=0 drift=1')), lines.join('\n'));
   assert.equal(readFileSync(targetPath).compare(newBuf), 0, 'truth wins: the new PNG is written despite being reported as drift');
 });
@@ -387,8 +424,8 @@ test('promote --full: changed fingerprint + changed image -> changed, not drift'
 
   const lines = cmdPromote(['--platform', 'web', '--full'], root);
 
-  assert.ok(lines.includes('PROMOTE_ENTRY entry changed'), lines.join('\n'));
-  assert.ok(!lines.some((l) => l.startsWith('DRIFT')), lines.join('\n'));
+  assert.ok(lines.includes('PROMOTE_ENTRY entry filled__guest__1440x900__light changed'), lines.join('\n'));
+  assert.ok(!lines.some((l) => l.endsWith(' drift')), lines.join('\n'));
   assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=1 unchanged=0 tolerated=0 removed=0 known_nondeterministic=0 drift=0')), lines.join('\n'));
 });
 
@@ -960,7 +997,7 @@ test('marketing: new entry -> renderer invoked with the resolved job, state reco
   const root = fixture();
   marketingFixture(root);
   const calls = [];
-  const stubRenderer = (r, jobs) => {
+  const stubRenderer = (_root, jobs) => {
     calls.push(jobs);
     return { ok: true, rendered: jobs.map((j) => ({ id: j.id, locale: j.locale, format: j.format, ok: true })) };
   };
@@ -1010,7 +1047,7 @@ test('marketing: headline set to reviewed -> re-renders and moves out of _draft,
     },
   };
   writeJson(join(root, '.screens/state.json'), state);
-  const stubRenderer = (r, jobs) => ({ ok: true, rendered: jobs.map((j) => ({ id: j.id, locale: j.locale, format: j.format, ok: true })) });
+  const stubRenderer = (_root, jobs) => ({ ok: true, rendered: jobs.map((j) => ({ id: j.id, locale: j.locale, format: j.format, ok: true })) });
 
   const lines = cmdMarketing([], root, stubRenderer);
 

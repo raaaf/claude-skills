@@ -187,6 +187,16 @@ folder. `screens.mjs migrate-layout` moves a pre-existing flat `<platform>/<area
 this layout once, rewriting `state.json`'s per-entry `pngs` keys (now full paths relative to
 `screenshots/`) without recapturing; run it once before the first `plan` after upgrading.
 
+**`${PROJECT_ROOT}` placeholder**: a manifest/config string value (`launch_args`, `extra_args`,
+`steps[]` inputs, a fixture path, `env` values passed to a driver) may use `${PROJECT_ROOT}` instead
+of an absolute path baked in at discovery time; it expands to the absolute directory containing
+`.screens/`. `screens.mjs` expands it once (`expandProjectRoot`, applied to the whole platform
+config block in `up`); the driver templates that read the manifest themselves at runtime
+(`capture.spec.ts`, `generate-maestro-flows.mjs`, own JS equivalents; `ScreensCatalogTests.swift` via
+the `SCREENS_PROJECT_ROOT` env var forwarded through `TEST_RUNNER_SCREENS_PROJECT_ROOT`,
+`platform-apple.md` "Invocation") expand it the same way. An unknown `${X}` placeholder is left
+untouched.
+
 `sources[]` and `global_sources` are globs matched against repo-relative paths
 (`screens/bin/screens.mjs`'s `matchesGlob`: `**` any depth, `*` no `/`, `?` one char). A route with
 parameters resolves via a stable demo record by slug set in the seeder, never by auto-increment id

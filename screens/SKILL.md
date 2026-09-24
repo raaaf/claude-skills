@@ -270,8 +270,9 @@ the reason, the run still completes (the PNGs themselves are unaffected).
 
 ## Phase 8: Report
 
-Table: platform x new/updated/unchanged/removed/drift/failed (from the `PLAN_ENTRY`/`PROMOTE_ENTRY`/
-`PROMOTE_REMOVED`/`DRIFT` lines collected above; `drift` only appears on a `--full` run, see plan's
+Table: platform x new/updated/unchanged/removed/drift/failed (from the `PLAN_ENTRY`/`PROMOTE_ENTRY`
+(`PROMOTE_ENTRY <id> <combo> new|changed|unchanged|tolerated|drift|known_nondeterministic`)/
+`PROMOTE_REMOVED` lines collected above; `drift` only appears on a `--full` run, see plan's
 "Incremental rule"). `NEEDS REVIEW` list: `MARKETING_RENDER` lines whose target still contains
 `_draft`. Path to `screenshots/index.html`. Suggest `--full` when the last full run is older than 30
 days (from `state.json`, once state carries that timestamp).

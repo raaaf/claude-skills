@@ -168,9 +168,12 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 6. **After-screenshot.** When Phase 3.5's before set came from `/screens` (`SCREENS_AFFECTED_IDS`
    saved): rerun the same ids through `plan -> up -> driver -> promote -> down` (same scoped
    sequence as Phase 3.5), copy the catalog PNGs into `.claude/screenshots/after/` at the same
-   relative path, and for each before/after pair say what changed visually in one or two sentences;
-   a pair whose PNG hash did not change is listed as "unchanged" in the report (Phase 6) instead of
-   attached. Otherwise, when Phase 3.5 captured a before-image via `capture-screens.sh`: rerun the
+   relative path, and for each before/after pair say what changed visually in one or two sentences.
+   `promote`'s own `PROMOTE_ENTRY <id> <combo> new|changed|unchanged|tolerated|drift` lines are the
+   verdict (`screens/SKILL.md` Phase 8), not a raw sha256 compare: a combo reported `unchanged` OR
+   `tolerated` (the ImageMagick fuzz-tolerance match, same rendering-jitter tolerance `promote` itself
+   applies) is listed as "unchanged" in the report (Phase 6) instead of attached; `new`/`changed`/
+   `drift` attach. Otherwise, when Phase 3.5 captured a before-image via `capture-screens.sh`: rerun the
    same command with `--label after` and the same `--name`, against the same target, and describe
    the visual difference the same way; a pair of images with no reading of them is decoration. If
    the before-image was skipped, do not capture an after-image either: a single picture invites a

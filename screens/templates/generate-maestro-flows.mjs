@@ -23,8 +23,23 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
-const config = JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8'));
-const manifest = JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8'));
+
+// `${PROJECT_ROOT}` placeholder (config-schema.md), own equivalent of
+// screens.mjs's `expandProjectRoot` since this file runs outside that
+// module; an unknown `${X}` placeholder is left untouched.
+function expandProjectRoot(value, root) {
+  if (typeof value === 'string') return value.replaceAll('${PROJECT_ROOT}', root);
+  if (Array.isArray(value)) return value.map((v) => expandProjectRoot(v, root));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = expandProjectRoot(v, root);
+    return out;
+  }
+  return value;
+}
+
+const config = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/config.json'), 'utf8')), ROOT);
+const manifest = expandProjectRoot(JSON.parse(readFileSync(join(ROOT, '.screens/manifest.json'), 'utf8')), ROOT);
 const template = readFileSync(join(ROOT, '.screens/android/maestro-flow.yaml'), 'utf8');
 
 const OUT_DIR = join(ROOT, '.screens/.maestro-generated');

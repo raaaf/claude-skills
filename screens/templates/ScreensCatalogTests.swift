@@ -29,6 +29,13 @@ import XCTest
 ///                          file (platform-apple.md)
 ///   SCREENS_VIEWPORT_ID    device-class key for the filename (e.g.
 ///                          "iphone", "mac"); defaults per platform below
+///   SCREENS_PROJECT_ROOT   absolute project root, used to expand a
+///                          `${PROJECT_ROOT}` placeholder in manifest/config
+///                          string values (e.g. a fixture path in
+///                          `launch_args`, config-schema.md); unset expands
+///                          to the empty string, so an unconfigured pilot
+///                          simply leaves the placeholder unresolved rather
+///                          than crashing
 ///
 /// Per-entry manifest overrides (optional, in addition to `seeds`/`steps`):
 ///   `launch_args`  full launch-argument override (replaces
@@ -54,14 +61,36 @@ final class ScreensCatalogTests: XCTestCase {
     private let defaultViewportId = "iphone"
     #endif
 
+    /// `${PROJECT_ROOT}` placeholder (config-schema.md): expands to
+    /// `SCREENS_PROJECT_ROOT`, recursing through the whole parsed JSON tree
+    /// once so every field (launch_args, extra_args, steps text/id/label,
+    /// fixture paths) expands without a per-field call. An unknown `${X}`
+    /// placeholder is left untouched.
+    private func expandProjectRoot(_ value: Any, root: String) -> Any {
+        if let s = value as? String {
+            return s.replacingOccurrences(of: "${PROJECT_ROOT}", with: root)
+        }
+        if let arr = value as? [Any] {
+            return arr.map { expandProjectRoot($0, root: root) }
+        }
+        if let dict = value as? [String: Any] {
+            var out: [String: Any] = [:]
+            for (k, v) in dict { out[k] = expandProjectRoot(v, root: root) }
+            return out
+        }
+        return value
+    }
+
     func test_screensCatalog() throws {
+        let projectRoot = env["SCREENS_PROJECT_ROOT"] ?? ""
         guard let manifestPath = env["SCREENS_MANIFEST_PATH"],
               let manifestData = FileManager.default.contents(atPath: manifestPath),
-              let manifest = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+              let rawManifest = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
         else {
             XCTFail("SCREENS_MANIFEST_PATH missing or unreadable (set as TEST_RUNNER_SCREENS_MANIFEST_PATH on the xcodebuild invocation)")
             return
         }
+        let manifest = (expandProjectRoot(rawManifest, root: projectRoot) as? [String: Any]) ?? rawManifest
         guard let shotDir = env["SCREENSHOT_DIR"] else {
             XCTFail("SCREENSHOT_DIR missing (set as TEST_RUNNER_SCREENSHOT_DIR on the xcodebuild invocation)")
             return
@@ -69,7 +98,8 @@ final class ScreensCatalogTests: XCTestCase {
 
         let configPath = env["SCREENS_CONFIG_PATH"]
         let configData = configPath.flatMap { FileManager.default.contents(atPath: $0) }
-        let config = configData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        let rawConfig = configData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        let config = (expandProjectRoot(rawConfig, root: projectRoot) as? [String: Any]) ?? rawConfig
         let platformConfig = config[platformName] as? [String: Any] ?? [:]
         let launchPrefix = (platformConfig["launch_args_prefix"] as? [String]) ?? ["-UITests"]
         let seedFlag = (platformConfig["seed_flag"] as? String) ?? "-UITestSeed"

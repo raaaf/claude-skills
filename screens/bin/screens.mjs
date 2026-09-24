@@ -52,6 +52,27 @@ function argValue(args, flag) {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
+// `${PROJECT_ROOT}` placeholder (stage (f) follow-up 1): a manifest/config
+// string value may reference the project root symbolically instead of an
+// absolute path baked in at discovery time (e.g. a native fixture path in
+// `launch_args`, config-schema.md). Recurses through arrays/objects so a
+// whole config/manifest subtree (env maps, nested launch_args/steps) expands
+// in one call; only string leaves are touched, and an unknown `${X}`
+// placeholder is left untouched. Single Node implementation; the non-Node
+// driver templates (capture.spec.ts, ScreensCatalogTests.swift,
+// generate-maestro-flows.mjs) carry their own small equivalent since they
+// run outside this file.
+function expandProjectRoot(value, root) {
+  if (typeof value === 'string') return value.replaceAll('${PROJECT_ROOT}', resolve(root));
+  if (Array.isArray(value)) return value.map((v) => expandProjectRoot(v, root));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = expandProjectRoot(v, root);
+    return out;
+  }
+  return value;
+}
+
 // Minimal glob support: `**` (any depth, incl. `/`), `*` (no `/`), `?`
 // (one char, no `/`), everything else literal. No npm glob dependency.
 function globToRegExp(glob) {
@@ -832,9 +853,18 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     // `.screens/.build/<platform>`, gitignored, deleted in `down`, never
     // the shared `~/Library/Developer/Xcode/DerivedData` (Sparmodus).
     lines.push(`DERIVED_DATA_PATH=.screens/.build/${platform}`);
+    // Consumed by the xcodebuild invocation as TEST_RUNNER_SCREENS_PROJECT_ROOT
+    // (platform-apple.md "Invocation"), so ScreensCatalogTests.swift can
+    // expand `${PROJECT_ROOT}` in launch_args/extra_args/steps itself.
+    lines.push(`PROJECT_ROOT=${resolve(root)}`);
   }
 
-  const platformConfig = config[platform] || {};
+  // `${PROJECT_ROOT}` expansion applies to the whole platform block up
+  // front: `start_command`, `seed_command`, `env`, `isolated_db` and any
+  // native-only field (`launch_args`/`extra_args`/`steps` live in the
+  // manifest, expanded by the driver templates themselves) all reach a
+  // driver from here.
+  const platformConfig = expandProjectRoot(config[platform] || {}, root);
 
   if (platform === 'web') {
     const framework = platformConfig.framework;
@@ -1189,29 +1219,37 @@ function cmdPromote(args, root = process.cwd()) {
       // `known_nondeterministic` is reported separately and never counted
       // as `changed`/`unchanged` -- a byte-identical verify (Step 6 run 2b)
       // excludes it instead of failing on it.
+      // Per-combination line (stage (f) follow-up 2): `<combo>` is the
+      // capture filename minus the leading `<id>__` and the `.png`
+      // extension (`state__role__viewport__theme[__locale]`), so a caller
+      // that needs the tolerance-aware verdict for one exact combo -- not
+      // just "this entry, some combo" -- can parse it, e.g. /delegate's
+      // Phase 5 after-screenshot step deciding "unchanged" from this result
+      // instead of a raw sha256 compare.
+      const combo = rest.replace(/\.png$/, '');
       if (entry.known_nondeterministic) {
         knownNondeterministic++;
-        lines.push(`PROMOTE_ENTRY ${id} known_nondeterministic (${entry.known_nondeterministic})`);
+        lines.push(`PROMOTE_ENTRY ${id} ${combo} known_nondeterministic (${entry.known_nondeterministic})`);
       } else if (isDrift) {
         drift++;
-        lines.push(`DRIFT ${id} ${rest.replace(/\.png$/, '')}`);
+        lines.push(`PROMOTE_ENTRY ${id} ${combo} drift`);
       } else if (didTolerate) {
         tolerated++;
-        lines.push(`PROMOTE_ENTRY ${id} tolerated`);
+        lines.push(`PROMOTE_ENTRY ${id} ${combo} tolerated`);
       } else if (didChange) {
         // `prevHash` absent (rather than merely different) means this PNG
         // was never promoted before: the index's run summary (plan step 3)
         // distinguishes a brand-new capture from a recapture of a known one.
         if (prevHash) {
           changed++;
-          lines.push(`PROMOTE_ENTRY ${id} changed`);
+          lines.push(`PROMOTE_ENTRY ${id} ${combo} changed`);
         } else {
           newCount++;
-          lines.push(`PROMOTE_ENTRY ${id} new`);
+          lines.push(`PROMOTE_ENTRY ${id} ${combo} new`);
         }
       } else {
         unchanged++;
-        lines.push(`PROMOTE_ENTRY ${id} unchanged`);
+        lines.push(`PROMOTE_ENTRY ${id} ${combo} unchanged`);
       }
     }
   }
@@ -1248,7 +1286,7 @@ function cmdPromote(args, root = process.cwd()) {
 // existing tree, while `promote` only ever touches the files a driver just
 // produced; folding it into `promote` would silently half-migrate a tree
 // across many incremental runs instead of doing it once, deliberately.
-function cmdMigrateLayout(args, root = process.cwd()) {
+function cmdMigrateLayout(_args, root = process.cwd()) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
   const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
@@ -1374,7 +1412,7 @@ function defaultMarketingRenderer(root, jobs) {
   return { ok: true, rendered };
 }
 
-function cmdMarketing(args, root = process.cwd(), renderer = defaultMarketingRenderer) {
+function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRenderer) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
   const state = readJson(join(root, '.screens/state.json'), { entries: {} });
@@ -1665,6 +1703,7 @@ export {
   listRepoFiles,
   resolveGlobs,
   computeFingerprint,
+  expandProjectRoot,
   entryPngsExist,
   listDirFiles,
   planEntries,

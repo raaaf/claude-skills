@@ -40,10 +40,12 @@ does, in order:
    --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3`
    (`statusBarOverrideArgs`), topf-secret's own fixed-clock convention for the status bar. Applied
    once per `up`, persists across the platform's whole run.
-5. **`up` reports `SIMULATOR_UDID=<udid>`, `SIMULATOR_NAME=<name>` (iOS only) and
-   `DERIVED_DATA_PATH=.screens/.build/<platform>`.** The derivedDataPath is per-run, gitignored,
-   deleted in `down` (disk guard): never the shared
-   `~/Library/Developer/Xcode/DerivedData`.
+5. **`up` reports `SIMULATOR_UDID=<udid>`, `SIMULATOR_NAME=<name>` (iOS only),
+   `DERIVED_DATA_PATH=.screens/.build/<platform>` and `PROJECT_ROOT=<absolute path>`.** The
+   derivedDataPath is per-run, gitignored, deleted in `down` (disk guard): never the shared
+   `~/Library/Developer/Xcode/DerivedData`. `PROJECT_ROOT` is forwarded as
+   `TEST_RUNNER_SCREENS_PROJECT_ROOT` so `ScreensCatalogTests.swift` can expand a `${PROJECT_ROOT}`
+   placeholder in manifest/config values itself.
 
 **Appearance (light/dark) is NOT set by `up`.** It is set once per `xcodebuild` invocation, before
 running that theme's tests (see Invocation below): `xcrun simctl ui <udid> appearance light|dark`
@@ -97,6 +99,7 @@ for THEME in light dark; do   # only the themes config.axes.themes lists
   TEST_RUNNER_SCREENSHOT_DIR="$(pwd)/.screens/.incoming/<platform>" \
   TEST_RUNNER_SCREENS_THEME="$THEME" \
   TEST_RUNNER_SCREENS_VIEWPORT_ID="<device class, e.g. iphone|mac>" \
+  TEST_RUNNER_SCREENS_PROJECT_ROOT="<up's PROJECT_ROOT output line>" \
   nice -n 10 xcodebuild test \
     -project <App>.xcodeproj -scheme <Scheme> \
     -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
