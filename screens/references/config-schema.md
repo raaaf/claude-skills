@@ -196,6 +196,13 @@ parameters resolves via a stable demo record by slug set in the seeder, never by
 ```
 
 Native `steps[]` (ios/macos, `screens/templates/ScreensCatalogTests.swift`) use a small generic
-vocabulary instead of the web driver's CSS selectors: `tap_tab`/`tap`/`wait`/`type` (all match by
-accessibility-label prefix) plus `swipe_up`/`swipe_down`; `type` also takes a `text` field. Detail
-and known limits: `screens/references/platform-apple.md` "Known limits".
+vocabulary instead of the web driver's CSS selectors: `tap_tab`/`tap`/`wait`/`type` (match by
+accessibility-label prefix, or by exact `id` -- accessibility identifier -- when the step carries an
+`id` field instead of `label`, e.g. `{"action": "tap", "id": "cookButton"}`) plus
+`swipe_up`/`swipe_down`; `type` also takes a `text` field; `tap`/`wait` also take `"optional":
+"true"` to shorten the wait to 2s and continue instead of stalling 10s on an affordance that may not
+be present (e.g. an advance-loop step past the flow's last screen). An entry may also set
+`launch_args` (full launch-argument override, replaces `launch_args_prefix` + seed entirely, for a
+flow with its own master switch such as `-UITestWelcome`) or `extra_args` (appended after the normal
+prefix + seed args, e.g. `-UITestReviewState`). Detail and known limits:
+`screens/references/platform-apple.md` "Known limits".

@@ -29,6 +29,14 @@ import XCTest
 ///                          file (platform-apple.md)
 ///   SCREENS_VIEWPORT_ID    device-class key for the filename (e.g.
 ///                          "iphone", "mac"); defaults per platform below
+///
+/// Per-entry manifest overrides (optional, in addition to `seeds`/`steps`):
+///   `launch_args`  full launch-argument override (replaces
+///                  `launch_args_prefix` + seed entirely), for a flow that
+///                  needs its own master switch (e.g. topf-secret's
+///                  `-UITestWelcome`)
+///   `extra_args`   appended after the normal prefix + seed args (e.g.
+///                  topf-secret's `-UITestReviewState`)
 final class ScreensCatalogTests: XCTestCase {
 
     override func setUp() {
@@ -86,11 +94,14 @@ final class ScreensCatalogTests: XCTestCase {
             let roles = (entry["roles"] as? [String]) ?? ["guest"]
             let steps = (entry["steps"] as? [[String: String]]) ?? []
             let seeds = (entry["seeds"] as? [String: String]) ?? [:]
+            let launchArgsOverride = entry["launch_args"] as? [String]
+            let extraArgs = (entry["extra_args"] as? [String]) ?? []
 
             for state in states {
                 for role in roles {
-                    var args = launchPrefix
-                    if let seed = seeds[state] { args += [seedFlag, seed] }
+                    var args = launchArgsOverride ?? launchPrefix
+                    if launchArgsOverride == nil, let seed = seeds[state] { args += [seedFlag, seed] }
+                    args += extraArgs
                     if let fixedDate { args += ["-ScreensFixedDate", fixedDate] }
 
                     let app = XCUIApplication()
@@ -110,33 +121,45 @@ final class ScreensCatalogTests: XCTestCase {
 
     /// Minimal, generic navigation vocabulary a discoverer can target
     /// without knowing this file: `tap_tab`/`tap`/`wait`/`type`/`swipe_up`/
-    /// `swipe_down`. `label` matches by accessibility label prefix (mirrors
-    /// `UITestLauncher.openTab`'s BEGINSWITH pattern, needed because
-    /// SwiftUI's `Tab` modifier does not propagate `.accessibilityIdentifier`
-    /// down to the UITabBar button on iOS 26).
+    /// `swipe_down`. Every step targeting an element takes either `label`
+    /// (accessibility-label prefix match, mirrors `UITestLauncher.openTab`'s
+    /// BEGINSWITH pattern, needed because SwiftUI's `Tab` modifier does not
+    /// propagate `.accessibilityIdentifier` down to the UITabBar button on
+    /// iOS 26) or `id` (exact `.accessibilityIdentifier` match, for an
+    /// element whose stable identifier is not its visible text, e.g.
+    /// topf-secret's `cookButton`).
+    private func matchElement(_ app: XCUIApplication, _ step: [String: String]) -> XCUIElement {
+        if let id = step["id"] {
+            return app.descendants(matching: .any).matching(identifier: id).firstMatch
+        }
+        return app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", step["label"] ?? "")
+        ).firstMatch
+    }
+
     private func perform(steps: [[String: String]], in app: XCUIApplication) {
         for step in steps {
             guard let action = step["action"] else { continue }
-            let label = step["label"] ?? ""
             switch action {
             case "tap_tab":
                 let button = app.tabBars.firstMatch.buttons.matching(
-                    NSPredicate(format: "label BEGINSWITH %@", label)
+                    NSPredicate(format: "label BEGINSWITH %@", step["label"] ?? "")
                 ).firstMatch
                 if button.waitForExistence(timeout: 10) { button.tap() }
             case "tap":
-                let element = app.descendants(matching: .any).matching(
-                    NSPredicate(format: "label BEGINSWITH %@", label)
-                ).firstMatch
-                if element.waitForExistence(timeout: 10), element.isHittable { element.tap() }
+                let element = matchElement(app, step)
+                // A step targeting a possibly-absent optional affordance
+                // (`optional: "true"`) is skipped silently instead of
+                // stalling the whole entry for 10s when it never appears
+                // (e.g. a "Weiter" step advance loop run past the last step).
+                let optional = step["optional"] == "true"
+                if element.waitForExistence(timeout: optional ? 2 : 10), element.isHittable {
+                    element.tap()
+                }
             case "wait":
-                _ = app.descendants(matching: .any).matching(
-                    NSPredicate(format: "label BEGINSWITH %@", label)
-                ).firstMatch.waitForExistence(timeout: 10)
+                _ = matchElement(app, step).waitForExistence(timeout: 10)
             case "type":
-                let field = app.descendants(matching: .any).matching(
-                    NSPredicate(format: "label BEGINSWITH %@", label)
-                ).firstMatch
+                let field = matchElement(app, step)
                 if field.waitForExistence(timeout: 10) {
                     field.tap()
                     field.typeText(step["text"] ?? "")
