@@ -10,7 +10,8 @@
 //
 // Contract: reads a JSON array of jobs from stdin, each
 // `{ id, locale, format, headline, background, layout, domain, desktopSrc, mobileSrc,
-//    fontFamily, regularFontPath, boldFontPath, logoPath, targetPath }`
+//    fontFamily, regularFontPath, boldFontPath, logoPath, textColor, logoInvert,
+//    highlightColor, targetPath }`
 // (`desktopSrc`/`mobileSrc`/`regularFontPath`/`boldFontPath`/`logoPath`/`targetPath` are absolute
 // filesystem paths, any of them may be null). Renders `.screens/web/marketing.html` with those
 // values substituted, screenshots it with Playwright at exactly `format`'s pixel size (device
@@ -63,12 +64,28 @@ function buildLogoBlock(job) {
   return `<div class="logo"><img src="${pathToFileURL(job.logoPath).href}"${style}></div>`;
 }
 
+// Status-bar glyphs (signal/wifi/battery), inline SVG per the Phone spec
+// ("no external assets"). Fixed 9:41 matches the catalog capture's own
+// fixed-clock convention (capture.spec.ts FIXED_TIME).
+const STATUSBAR_GLYPHS = `<svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="3" width="3" height="9" rx="0.5"/><rect x="15" y="1" width="3" height="11" rx="0.5"/></svg>` +
+  `<svg viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1 4.5a10 10 0 0114 0M3.5 7a6.5 6.5 0 019 0M6 9.5a3 3 0 014 0" stroke-linecap="round"/></svg>` +
+  `<svg viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="2.5" stroke="currentColor" stroke-width="1"/><rect x="2" y="2" width="18" height="8" rx="1.5" fill="currentColor"/><rect x="22.5" y="4" width="2" height="4" rx="1" fill="currentColor"/></svg>`;
+
 // iPhone frame block ("browser-phone" layout only, `resolveMarketingLayout`
 // in screens.mjs already decided which entries get one); empty string
-// collapses the template to the plain "browser" layout.
+// collapses the template to the plain "browser" layout. The status-bar zone
+// (round 2 fix) sits above the app screenshot in normal flow, not overlaid
+// on it, so the dynamic island lands on its own black-on-white status bar
+// instead of on top of the app's real header.
 function buildPhoneBlock(job) {
   if (job.layout !== 'browser-phone' || !job.mobileSrc) return '';
-  return `<div class="iphone-frame"><div class="iphone-side-button"></div><div class="iphone-screen"><div class="dynamic-island"></div><img src="${pathToFileURL(job.mobileSrc).href}"></div></div>`;
+  return `<div class="iphone-frame">`
+    + `<div class="iphone-side-button"></div><div class="iphone-side-button-left"></div>`
+    + `<div class="iphone-screen">`
+    + `<div class="phone-statusbar"><span>9:41</span><div class="phone-statusbar-glyphs">${STATUSBAR_GLYPHS}</div></div>`
+    + `<div class="dynamic-island"></div>`
+    + `<img src="${pathToFileURL(job.mobileSrc).href}">`
+    + `</div></div>`;
 }
 
 async function main() {
@@ -88,6 +105,7 @@ async function main() {
         .replaceAll('{{HEADLINE}}', escapeHtml(job.headline))
         .replaceAll('{{DOMAIN}}', escapeHtml(job.domain))
         .replaceAll('{{TEXT_COLOR}}', job.textColor)
+        .replaceAll('{{HIGHLIGHT_COLOR}}', job.highlightColor)
         .replaceAll('{{FONT_FAMILY}}', job.fontFamily)
         .replaceAll('{{FONT_FACE_CSS}}', buildFontFaceCss(job))
         .replaceAll('{{LOGO_BLOCK}}', buildLogoBlock(job))

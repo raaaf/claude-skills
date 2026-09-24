@@ -1790,6 +1790,10 @@ function cmdMarketing(_args, root = process.cwd(), renderer = defaultMarketingRe
         desktopSrc: source.desktopPath, mobileSrc: layout === 'browser-phone' ? source.mobilePath : null,
         fontFamily: font.family, regularFontPath: font.regularPath, boldFontPath: font.boldPath,
         logoPath, textColor: dark ? '#ffffff' : '#1d1d1f', logoInvert: dark,
+        // Depth (Background spec, round 2): a soft radial glow behind the
+        // window so the stage isn't a flat fill; polarity follows the same
+        // dark/light contrast flip as textColor/logoInvert above.
+        highlightColor: dark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
         targetPath,
       });
       jobMeta.push({
