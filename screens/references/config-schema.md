@@ -1,0 +1,98 @@
+# Config + Manifest Schema
+
+JSON schema (informal, not JSON Schema) for the two committed per-project files
+`.screens/config.json` and `.screens/manifest.json`. Written by the orchestrator from the
+discoverer's structured output (Phase 1), never by a subagent directly (repo `CLAUDE.md` "Orchestrator
+writes, subagents return").
+
+## `.screens/config.json`
+
+```
+{
+  "platforms": ["web"],                    // subset of web|ios|android|macos
+
+  "<platform>": {                          // one block per configured platform
+    "framework": "laravel",                // laravel|bun|astro|ios|android|capacitor|...
+    "start_command": "php artisan serve --port=<port>",
+    "seed_command": "php artisan migrate:fresh --seed --seeder=ScreensDemoSeeder --force",
+    "health_url": "http://127.0.0.1:<port>/",
+    "port": 8734,
+    "env": { "DB_CONNECTION": "sqlite", "DB_DATABASE": ".screens/web/screens.sqlite",
+              "QUEUE_CONNECTION": "sync", "MAIL_MAILER": "log", "BROADCAST_DRIVER": "log" },
+    "isolated_db": ".screens/web/screens.sqlite",
+    "depends_on": null                     // another platform key this one's backend needs, or null
+  },
+
+  "roles": ["guest", "admin", "member"],
+  "demo_logins": { "admin": "admin@screens.test", "member": "member@screens.test" },
+
+  "axes": {
+    "viewports": { "web": ["1440x900", "390x844"] },
+    "devices": { "ios": ["iPhone 17 Pro", "iPad Pro 13\""], "android": ["Pixel 9"] },
+    "themes": ["light"],                   // ["light", "dark"] only when the discoverer found dark-mode support
+    "locales": { "primary": "de", "marketing": ["de", "en"] }
+  },
+
+  "global_sources": [
+    "resources/css/**", "tailwind.config.*", "composer.lock", "package-lock.json", "bun.lock",
+    "Package.resolved", "gradle/libs.versions.toml",
+    "database/seeders/ScreensDemoSeeder.php"
+  ],
+  "route_sources": ["routes/*.php", "src/pages/**", "**/*View.swift"],
+
+  "marketing": {
+    "entries": [
+      { "id": "dashboard-hero", "format": "1920x1080",
+        "headlines": { "de": { "text": "Alles im Blick", "reviewed": false },
+                        "en": { "text": "Everything at a glance", "reviewed": false } } }
+    ],
+    "locales": ["de", "en"],
+    "formats": { "web": "1920x1080", "ios": "1320x2868", "ipad": "2064x2752",
+                 "android": "1080x1920", "macos": "2880x1800" }
+  }
+}
+```
+
+## `.screens/manifest.json`
+
+```
+{
+  "entries": [
+    {
+      "id": "dashboard",
+      "platform": "web",
+      "area": "app",
+      "view": "dashboard",
+      "reach": "/dashboard",               // URL (web) or XCUITest nav path / Maestro steps (native)
+      "states": ["empty", "filled", "error"],
+      "roles": ["admin", "member"],
+      "sources": ["resources/views/dashboard.blade.php", "app/Livewire/Dashboard.php"],
+      "mask": [".timestamp"],              // CSS selectors hidden before capture
+      "ready": "[data-testid=dashboard-loaded]",
+      "steps": []                          // only for views reachable via a multi-step flow
+    }
+  ]
+}
+```
+
+`sources[]` and `global_sources` are globs matched against repo-relative paths
+(`screens/bin/screens.mjs`'s `matchesGlob`: `**` any depth, `*` no `/`, `?` one char). A route with
+parameters resolves via a stable demo record by slug set in the seeder, never by auto-increment id
+(Edge Cases).
+
+## Example: Laravel entry (web)
+
+```json
+{ "id": "invoice-detail", "platform": "web", "area": "billing", "view": "invoice-detail",
+  "reach": "/invoices/demo-invoice-1", "states": ["filled", "error"], "roles": ["member"],
+  "sources": ["resources/views/billing/invoice-detail.blade.php", "app/Http/Controllers/InvoiceController.php"],
+  "mask": [".issued-at"], "ready": "[data-testid=invoice-total]" }
+```
+
+## Example: iOS entry (native)
+
+```json
+{ "id": "recipe-detail", "platform": "ios", "area": "recipes", "view": "RecipeDetailView",
+  "reach": "Tab: Recipes -> Recipe row 1", "states": ["filled", "empty"], "roles": ["guest"],
+  "sources": ["RezepteApp/Views/RecipeDetailView.swift"], "mask": [], "ready": null }
+```
