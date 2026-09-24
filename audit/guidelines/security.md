@@ -124,6 +124,8 @@ catch (error):
 
 **Rule:** every error path in an auth/lock gate must branch on this classification before deciding what to show the user. Audit every `catch` block in login, biometric unlock, and re-authentication flows for a single generic message covering both cases.
 
+**A fix inside an auth state machine re-checks the whole machine in the same round.** When a finding or fix touches a multi-step auth flow (setup/confirm, cookie or token binding, invite accept, password reset), walk every state and transition of that endpoint before closing it: the missing-credential path, the wrong-credential path, the expired path, and where each one redirects to. Do not leave this for the next audit round. In henry-companion (2026-09) a cookie-binding fix on a TOTP setup/confirm flow took three rounds, because each round's fix introduced a narrower bug in the same endpoint: first a redirect loop for a browser without the cookie, then a check for the cookie's presence without comparing its value, which left a hijack window. Fixture: `evals/fixtures/security/setup-confirm-cookie-binding.ts`.
+
 ## III. CSRF, Rate Limiting & Abuse Prevention
 
 **CSRF protection** is typically automatic in modern frameworks for web routes. Do not disable it. If you have a webhook or API endpoint that needs to skip CSRF, place it in an API-specific route group — never add broad CSRF exceptions for convenience.
