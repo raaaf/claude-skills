@@ -221,42 +221,93 @@ function deviceSetupHook(platform) {
 }
 
 // Laravel DB guard (repo CLAUDE.md "Three sites run a repo-supplied
-// command string" + plan's "Isolation and lifecycle" section). Two
-// failure modes, checked in order, both hard FAIL before any migrate:
+// command string" + plan's "Isolation and lifecycle" section). Checked in
+// order, all hard FAIL before any migrate:
 //   1. bootstrap/cache/config.php present -> env overrides are ignored.
-//   2. `php artisan db:show --json` (via the injected runner, so tests
-//      never spawn php) resolves to anything other than sqlite at the
-//      configured isolated_db path.
+//   2. config.web.isolated_db not set.
+//   3. `php artisan db:show --json` (via the injected runner, so tests
+//      never spawn php) resolves the isolation branch by the project's
+//      own driver (revised 2026-09-24 after the zeit pilot STOP: zeit and
+//      events are Postgres-only by design, sqlite is not an option there):
+//      - sqlite: resolved path must equal isolated_db.
+//      - pgsql: resolved database must equal isolated_db, isolated_db must
+//        end in `_screens`, and it must differ from the database a second
+//        `db:show --json` (no override env) resolves for the same project,
+//        so a config that points dev itself at a `_screens` name still
+//        fails. A missing database (db:show fails to connect) is created
+//        once via `createdb <isolated_db>` through the injected runner,
+//        then db:show is retried; a failing createdb is a FAIL that names
+//        the command to run.
+//      - anything else (mysql, ...): FAIL, unsupported in v1.
 // Real `db:show --json` output nests the values under `platform.config`
-// (verified against apps/zeit/app, DB_CONNECTION=sqlite DB_DATABASE=...):
-// {"platform":{"config":{"driver":"sqlite","url":null,"database":"...","prefix":""},...},"tables":[]}
-// Read exactly that path, no guessed fallback shapes.
+// (verified against apps/zeit/app): {"platform":{"config":{"driver":
+// "sqlite"|"pgsql",...,"database":"..."},...},"tables":[]}. Read exactly
+// that path, no guessed fallback shapes.
+function tryParseDbShow(stdout) {
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+}
+
 function laravelDbGuard(root, config, runner = defaultRunner) {
   const cachePath = join(root, 'bootstrap/cache/config.php');
   if (existsSync(cachePath)) {
     return { ok: false, reason: 'config cache present; run php artisan config:clear' };
   }
   const env = (config.web && config.web.env) || {};
-  const result = runner('php', ['artisan', 'db:show', '--json'], env);
-  let parsed;
-  try {
-    parsed = JSON.parse(result.stdout);
-  } catch {
-    return { ok: false, reason: 'db:show output not parseable JSON' };
+  const isolated = config.web && config.web.isolated_db;
+  if (!isolated) return { ok: false, reason: 'config.web.isolated_db not set' };
+
+  let result = runner('php', ['artisan', 'db:show', '--json'], env);
+  let parsed = tryParseDbShow(result.stdout);
+
+  // A missing pgsql database makes db:show fail to connect entirely, before
+  // it can report anything: create it once and retry (only ever attempted
+  // for a config that already declares pgsql isolation via the `_screens`
+  // suffix, never for a sqlite path).
+  if (!parsed && isolated.endsWith('_screens')) {
+    const createResult = runner('createdb', [isolated], {});
+    if (createResult.status !== 0) {
+      return { ok: false, reason: `isolated database ${isolated} missing and createdb failed; run: createdb ${isolated}` };
+    }
+    result = runner('php', ['artisan', 'db:show', '--json'], env);
+    parsed = tryParseDbShow(result.stdout);
   }
+
+  if (!parsed) return { ok: false, reason: 'db:show output not parseable JSON' };
   const platformConfig = parsed.platform && parsed.platform.config;
   if (!platformConfig) {
     return { ok: false, reason: 'db:show output missing platform.config' };
   }
   const driver = platformConfig.driver;
   const database = platformConfig.database;
-  const expected = config.web && config.web.isolated_db;
-  if (!expected) return { ok: false, reason: 'config.web.isolated_db not set' };
-  if (driver !== 'sqlite') return { ok: false, reason: `resolved DB driver is ${driver}, expected sqlite` };
-  if (!database || resolve(root, database) !== resolve(root, expected)) {
-    return { ok: false, reason: `resolved DB path ${database} does not match isolated path ${expected}` };
+
+  if (driver === 'sqlite') {
+    if (!database || resolve(root, database) !== resolve(root, isolated)) {
+      return { ok: false, reason: `resolved DB path ${database} does not match isolated path ${isolated}` };
+    }
+    return { ok: true };
   }
-  return { ok: true };
+
+  if (driver === 'pgsql') {
+    if (!isolated.endsWith('_screens')) {
+      return { ok: false, reason: `isolated_db "${isolated}" must end in _screens` };
+    }
+    if (database !== isolated) {
+      return { ok: false, reason: `resolved database ${database} does not match isolated_db ${isolated}` };
+    }
+    const devResult = runner('php', ['artisan', 'db:show', '--json'], {});
+    const devParsed = tryParseDbShow(devResult.stdout);
+    const devDatabase = devParsed && devParsed.platform && devParsed.platform.config && devParsed.platform.config.database;
+    if (devDatabase === database) {
+      return { ok: false, reason: `isolated_db ${isolated} equals the dev database; config must not point dev at a _screens name` };
+    }
+    return { ok: true };
+  }
+
+  return { ok: false, reason: `unsupported database driver: ${driver} (v1 supports sqlite and pgsql)` };
 }
 
 // Bun/Hono guard: the resolved DB path env var must live inside .screens/.
@@ -381,8 +432,12 @@ function cmdDown(args, root = process.cwd()) {
       }
       rmSync(pidFile, { force: true });
     }
+    // Only a sqlite isolated_db is a file `down` may delete; a pgsql
+    // isolated_db is a database name, reused (and reset by migrate:fresh)
+    // on the next run, never dropped here (plan's "Isolation and
+    // lifecycle": "down never drops the pgsql database").
     const isolatedDb = config[platform] && config[platform].isolated_db;
-    if (isolatedDb) {
+    if (isolatedDb && isolatedDb.endsWith('.sqlite')) {
       try {
         rmSync(join(root, isolatedDb), { force: true });
       } catch {
@@ -468,6 +523,11 @@ function cmdPromote(args, root = process.cwd()) {
       state.entries[id].dir = relDir;
       state.entries[id].pngs = state.entries[id].pngs || {};
       state.entries[id].pngs[rest] = hash;
+      // Persisted here (not just computed transiently in `plan`): without
+      // this, `plan`'s `prev.fingerprint` is always undefined on the next
+      // run, and every entry reports `stale` forever even with zero source
+      // changes (Step 6's `run 2 -> new=0 updated=0` requirement).
+      state.entries[id].fingerprint = computeFingerprint(root, entry.sources || [], config.global_sources || []);
       if (didChange) changed++;
       else unchanged++;
       lines.push(`PROMOTE_ENTRY ${id} ${didChange ? 'changed' : 'unchanged'}`);

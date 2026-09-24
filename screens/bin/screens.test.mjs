@@ -21,11 +21,14 @@ import {
   laravelDbGuard,
   promoteFile,
   moveRemovedEntries,
+  cmdPromote,
+  cmdPlan,
   cmdTrust,
   computeCommandHash,
   marketingTargetDir,
   affectedIds,
   writeJson,
+  readJson,
 } from './screens.mjs';
 
 function fixture() {
@@ -175,6 +178,27 @@ test('promote: different bytes -> target file replaced', () => {
   assert.equal(readFileSync(targetPath, 'utf8'), 'new-bytes');
 });
 
+// --- promote persists the fingerprint plan needs on the next run ---------
+
+test('promote: persists entry fingerprint so a later plan call with no source changes reports unchanged', () => {
+  const root = fixture();
+  writeFile(root, 'view.blade.php', 'a');
+  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
+  });
+  writeJson(join(root, '.screens/state.json'), { entries: {} });
+  writeFile(root, '.screens/.incoming/web/entry__filled.png', 'bytes');
+
+  cmdPromote(['--platform', 'web'], root);
+
+  const stateAfterPromote = readJson(join(root, '.screens/state.json'), {});
+  assert.ok(stateAfterPromote.entries.entry.fingerprint, 'promote must store a fingerprint');
+
+  const planLines = cmdPlan([], root);
+  assert.ok(planLines.includes('PLAN_ENTRY entry unchanged'), planLines.join('\n'));
+});
+
 // --- up: lock present -> FAIL ----------------------------------------------
 
 test('up: lock present -> FAIL', () => {
@@ -268,6 +292,65 @@ test('laravelDbGuard: flat-shape db:show output -> FAIL (real output nests under
   const guard = laravelDbGuard(root, config, flatShapeRunner);
   assert.equal(guard.ok, false);
   assert.match(guard.reason, /platform\.config/);
+});
+
+// --- pgsql guard (revised 2026-09-24: zeit/events are Postgres-only) -------
+
+function pgDbShowOutput(driver, database) {
+  return JSON.stringify({
+    platform: { config: { driver, url: null, database, prefix: '' }, name: 'PostgreSQL', connection: driver, version: '16.0', open_connections: null },
+    tables: [],
+  });
+}
+
+test('laravelDbGuard: pgsql isolated_db equals the dev database -> FAIL', () => {
+  const root = fixture();
+  const config = { web: { isolated_db: 'zeit_screens' } };
+  // Both the overridden and the no-override db:show calls resolve to the
+  // same database: the override never actually isolated anything.
+  const stubRunner = () => ({ stdout: pgDbShowOutput('pgsql', 'zeit_screens'), status: 0 });
+  const guard = laravelDbGuard(root, config, stubRunner);
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /equals the dev database/);
+});
+
+test('laravelDbGuard: pgsql isolated_db missing the _screens suffix -> FAIL', () => {
+  const root = fixture();
+  const config = { web: { isolated_db: 'zeit_isolated' } };
+  let call = 0;
+  // Dev db is distinct from the isolated one, so only the missing-suffix
+  // check (not the equals-dev-db check) can produce this FAIL.
+  const stubRunner = () => {
+    call++;
+    return { stdout: pgDbShowOutput('pgsql', call === 1 ? 'zeit_isolated' : 'zeit'), status: 0 };
+  };
+  const guard = laravelDbGuard(root, config, stubRunner);
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /must end in _screens/);
+});
+
+test('laravelDbGuard: pgsql isolated_db valid and distinct from dev -> OK', () => {
+  const root = fixture();
+  const config = { web: { isolated_db: 'zeit_screens' } };
+  let call = 0;
+  const stubRunner = (_cmd, _args, env) => {
+    call++;
+    // First call carries the override env (isolated db); second call (dev
+    // check) is invoked with an empty env and resolves the real dev db.
+    if (call === 1) return { stdout: pgDbShowOutput('pgsql', 'zeit_screens'), status: 0 };
+    return { stdout: pgDbShowOutput('pgsql', 'zeit'), status: 0 };
+  };
+  const guard = laravelDbGuard(root, config, stubRunner);
+  assert.equal(guard.ok, true);
+});
+
+test('laravelDbGuard: unsupported driver (mysql) -> FAIL', () => {
+  const root = fixture();
+  const config = { web: { isolated_db: 'zeit_screens' } };
+  const stubRunner = () => ({ stdout: pgDbShowOutput('mysql', 'zeit_screens'), status: 0 });
+  const guard = laravelDbGuard(root, config, stubRunner);
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /unsupported database driver: mysql/);
 });
 
 // --- trust: changed command hash -> NEEDS_CONFIRM --------------------------

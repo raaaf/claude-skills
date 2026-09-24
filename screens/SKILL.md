@@ -22,10 +22,10 @@ allowed-tools:
 > **Architecture note:** Discovery is agent work (`agents/screens-view-discoverer.md`, worker spec
 > `screens/agents/view-discoverer.md`), capture is scripted (`screens/bin/screens.mjs`). Per-project
 > files live under `.screens/` and `screenshots/` in the TARGET project, never under `.claude/`
-> (subagents cannot write there: orchestrator writes, subagents return). The web/iOS/Android
-> drivers this phase 5 loop invokes (`screens/references/platform-*.md`,
-> `screens/templates/*`) are added in later delivery stages; this stage wires the phases that will
-> call them and reports `SKIP` where a driver does not exist yet.
+> (subagents cannot write there: orchestrator writes, subagents return). The web driver
+> (`screens/references/platform-web.md`, `screens/templates/capture.spec.ts`) is live as of stage b;
+> the iOS/Android drivers this phase 5 loop invokes are added in later delivery stages, and Phase 5
+> reports `SKIP (driver added in a later stage)` for those platforms until then.
 
 ## Phase 0: Preflight
 
