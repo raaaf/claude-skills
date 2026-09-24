@@ -21,9 +21,17 @@ import {
   laravelDbGuard,
   composePhpIniScanDir,
   phpFixedClockEnv,
+  laravelPerfEnv,
+  playwrightWorkers,
+  computeSeedFingerprint,
+  commandOnPath,
+  readPngDimensions,
   promoteFile,
+  deviceClassFor,
+  buildScreenshotPath,
   moveRemovedEntries,
   cmdPromote,
+  cmdMigrateLayout,
   cmdPlan,
   cmdTrust,
   computeCommandHash,
@@ -32,6 +40,16 @@ import {
   writeJson,
   readJson,
 } from './screens.mjs';
+
+// Minimal valid PNG byte layout for readPngDimensions: 8-byte signature +
+// 4-byte chunk length + 4-byte "IHDR" type + 4-byte width + 4-byte height
+// (big-endian), the rest is irrelevant filler.
+function fakePng(width, height, filler = 'x') {
+  const buf = Buffer.alloc(30, filler);
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return buf;
+}
 
 function fixture() {
   return mkdtempSync(join(tmpdir(), 'screens-test-'));
@@ -175,9 +193,74 @@ test('promote: different bytes -> target file replaced', () => {
   const targetPath = join(root, 'screenshots/web/area/entry/filled.png');
   writeFile(root, 'screenshots/web/area/entry/filled.png', 'old-bytes');
   const prevHash = require_sha256('old-bytes');
-  const { changed } = promoteFile(join(root, 'incoming/entry__filled.png'), targetPath, prevHash);
+  const { changed } = promoteFile(join(root, 'incoming/entry__filled.png'), targetPath, prevHash, { hasCompare: false });
   assert.equal(changed, true);
   assert.equal(readFileSync(targetPath, 'utf8'), 'new-bytes');
+});
+
+// --- promote: tolerance compare (diff_tolerance, ImageMagick compare) ------
+
+test('promote: AE within diff_tolerance -> old file kept (tolerated)', () => {
+  const root = fixture();
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, 'incoming/entry__filled.png', newBuf);
+  const targetPath = join(root, 'screenshots/web/area/entry/filled.png');
+  writeFile(root, 'screenshots/web/area/entry/filled.png', oldBuf);
+  const prevHash = createHash('sha256').update(oldBuf).digest('hex');
+  // 50 differing pixels of 1,000,000 = 0.005%, under the default 0.01% tolerance.
+  const compareRunner = () => ({ stderr: '50' });
+  const { changed, tolerated, hash } = promoteFile(
+    join(root, 'incoming/entry__filled.png'), targetPath, prevHash,
+    { hasCompare: true, compareRunner },
+  );
+  assert.equal(changed, false);
+  assert.equal(tolerated, true);
+  assert.equal(hash, prevHash);
+  assert.equal(readFileSync(targetPath).compare(oldBuf), 0, 'old file must stay untouched');
+});
+
+test('promote: AE above diff_tolerance -> target file replaced', () => {
+  const root = fixture();
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, 'incoming/entry__filled.png', newBuf);
+  const targetPath = join(root, 'screenshots/web/area/entry/filled.png');
+  writeFile(root, 'screenshots/web/area/entry/filled.png', oldBuf);
+  const prevHash = createHash('sha256').update(oldBuf).digest('hex');
+  // 5,000 of 1,000,000 pixels = 0.5%, above the default 0.01% tolerance.
+  const compareRunner = () => ({ stderr: '5000' });
+  const { changed, tolerated } = promoteFile(
+    join(root, 'incoming/entry__filled.png'), targetPath, prevHash,
+    { hasCompare: true, compareRunner },
+  );
+  assert.equal(changed, true);
+  assert.equal(tolerated, false);
+  assert.equal(readFileSync(targetPath).compare(newBuf), 0);
+});
+
+test('promote: ImageMagick missing -> byte-exact compare (no tolerance applied)', () => {
+  const root = fixture();
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, 'incoming/entry__filled.png', newBuf);
+  const targetPath = join(root, 'screenshots/web/area/entry/filled.png');
+  writeFile(root, 'screenshots/web/area/entry/filled.png', oldBuf);
+  const prevHash = createHash('sha256').update(oldBuf).digest('hex');
+  const compareRunner = () => {
+    throw new Error('compareRunner must not be called when hasCompare is false');
+  };
+  const { changed, tolerated } = promoteFile(
+    join(root, 'incoming/entry__filled.png'), targetPath, prevHash,
+    { hasCompare: false, compareRunner },
+  );
+  assert.equal(changed, true);
+  assert.equal(tolerated, false);
+});
+
+test('readPngDimensions reads width/height from IHDR bytes 16-23', () => {
+  const buf = fakePng(1440, 900);
+  assert.deepEqual(readPngDimensions(buf), { width: 1440, height: 900 });
 });
 
 // --- promote persists the fingerprint plan needs on the next run ---------
@@ -190,7 +273,7 @@ test('promote: persists entry fingerprint so a later plan call with no source ch
     entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
   });
   writeJson(join(root, '.screens/state.json'), { entries: {} });
-  writeFile(root, '.screens/.incoming/web/entry__filled.png', 'bytes');
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', 'bytes');
 
   cmdPromote(['--platform', 'web'], root);
 
@@ -213,12 +296,185 @@ test('promote: known_nondeterministic entry is reported separately, not counted 
     }],
   });
   writeJson(join(root, '.screens/state.json'), { entries: {} });
-  writeFile(root, '.screens/.incoming/web/reorderable__filled.png', 'bytes');
+  writeFile(root, '.screens/.incoming/web/reorderable__filled__guest__1440x900__light.png', 'bytes');
 
   const lines = cmdPromote(['--platform', 'web'], root);
 
   assert.ok(lines.some((l) => l === 'PROMOTE_ENTRY reorderable known_nondeterministic (row order has no ORDER BY tie-break)'), lines.join('\n'));
-  assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 removed=0 known_nondeterministic=1')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 tolerated=0 removed=0 known_nondeterministic=1')), lines.join('\n'));
+});
+
+// --- device-class path builder (Output layout) ------------------------------
+
+test('buildScreenshotPath: viewport maps to device class, viewport drops out of the filename', () => {
+  const config = { axes: { device_classes: { web: { '1440x900': 'desktop', '390x844': 'mobile' } } } };
+  const entry = { area: 'app', view: 'dashboard' };
+  const { relDir, relPath } = buildScreenshotPath(config, entry, 'web', {
+    state: 'filled', role: 'admin', viewport: '1440x900', theme: 'light',
+  });
+  assert.equal(relDir, join('web', 'desktop', 'app', 'dashboard'));
+  assert.equal(relPath, join('web', 'desktop', 'app', 'dashboard', 'filled__admin__light.png'));
+});
+
+test('buildScreenshotPath: locale suffix only when a locale part is present', () => {
+  const config = { axes: { device_classes: { web: { '1440x900': 'desktop' } } } };
+  const entry = { area: 'marketing', view: 'home' };
+  const { relPath } = buildScreenshotPath(config, entry, 'web', {
+    state: 'filled', role: 'guest', viewport: '1440x900', theme: 'light', locale: 'en',
+  });
+  assert.equal(relPath, join('web', 'desktop', 'marketing', 'home', 'filled__guest__light__en.png'));
+});
+
+test('deviceClassFor: unconfigured viewport falls back to itself', () => {
+  const config = { axes: { device_classes: { web: { '1440x900': 'desktop' } } } };
+  assert.equal(deviceClassFor(config, 'web', '999x999'), '999x999');
+});
+
+// --- migrate-layout: moves existing PNGs into device-class folders, keeps hash ---
+
+test('cmdMigrateLayout: moves a flat-layout PNG to the device-class path, state.json key + hash updated', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), {
+    platforms: ['web'], axes: { device_classes: { web: { '1440x900': 'desktop' } } },
+  });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'dashboard', platform: 'web', area: 'app', view: 'dashboard' }],
+  });
+  const oldRel = 'web/app/dashboard/filled__admin__1440x900__light.png';
+  writeFile(root, `screenshots/${oldRel}`, 'png-bytes');
+  const hash = require_sha256('png-bytes');
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { dashboard: { dir: 'web/app/dashboard', fingerprint: 'x', pngs: { 'filled__admin__1440x900__light.png': hash } } },
+  });
+
+  const lines = cmdMigrateLayout([], root);
+
+  assert.ok(lines.some((l) => l.startsWith('MIGRATE_RESULT=OK moved=1')), lines.join('\n'));
+  const newRel = 'web/desktop/app/dashboard/filled__admin__light.png';
+  assert.ok(!existsSync(join(root, 'screenshots', oldRel)));
+  assert.ok(existsSync(join(root, 'screenshots', newRel)));
+  const state = readJson(join(root, '.screens/state.json'), {});
+  assert.equal(state.entries.dashboard.dir, undefined);
+  assert.equal(state.entries.dashboard.pngs[newRel], hash);
+});
+
+// --- up: worker-count formula ------------------------------------------------
+
+test('playwrightWorkers: min(4, floor(cores/2))', () => {
+  assert.equal(playwrightWorkers(2), 1);
+  assert.equal(playwrightWorkers(4), 2);
+  assert.equal(playwrightWorkers(8), 4);
+  assert.equal(playwrightWorkers(16), 4);
+  assert.equal(playwrightWorkers(1), 1);
+});
+
+// --- up: seed-on-change (fingerprint unchanged + isolated DB exists -> SKIP) ---
+
+test('up: seed fingerprint unchanged from last run -> SEED=SKIP (unchanged), seed command not run', () => {
+  const root = fixture();
+  writeFile(root, 'database/seeders/ScreensDemoSeeder.php', '<?php // v1');
+  const config = {
+    platforms: ['web'],
+    web: {
+      framework: 'laravel', isolated_db: 'app_screens', fixed_now: '2026-05-12T09:41:00+02:00',
+      health_url: null, seed_command: 'php artisan migrate:fresh --seed', start_command: null,
+    },
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  const fingerprint = computeSeedFingerprint(root, config);
+  writeJson(join(root, '.screens/state.json'), { seed_fingerprint: fingerprint });
+
+  let seedCalls = 0;
+  let dbShowCalls = 0;
+  const stubRunner = (cmd, args, env) => {
+    if (cmd === 'php' && args[0] === 'artisan' && args[1] === 'db:show') {
+      dbShowCalls++;
+      // First call carries the override env (isolated db); the guard's
+      // second, no-override call resolves the real (distinct) dev db.
+      const database = (env && env.DB_DATABASE) || (dbShowCalls === 1 ? 'app_screens' : 'app');
+      return { stdout: JSON.stringify({ platform: { config: { driver: 'pgsql', database } } }), status: 0 };
+    }
+    if (cmd === 'sh' && args[1] && args[1].includes('migrate:fresh')) seedCalls++;
+    return { stdout: '', status: 0 };
+  };
+  const lines = cmdUp([], root, stubRunner);
+  assert.ok(lines.some((l) => l === 'SEED=SKIP (unchanged)'), lines.join('\n'));
+  assert.equal(seedCalls, 0);
+});
+
+test('up: seed fingerprint changed -> reseeds and stores the new fingerprint', () => {
+  const root = fixture();
+  writeFile(root, 'database/seeders/ScreensDemoSeeder.php', '<?php // v1');
+  const config = {
+    platforms: ['web'],
+    web: {
+      framework: 'laravel', isolated_db: 'app_screens', fixed_now: '2026-05-12T09:41:00+02:00',
+      health_url: null, seed_command: 'php artisan migrate:fresh --seed', start_command: null,
+    },
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  writeJson(join(root, '.screens/state.json'), { seed_fingerprint: 'stale-fingerprint' });
+
+  let seedCalls = 0;
+  let dbShowCalls = 0;
+  const stubRunner = (cmd, args, env) => {
+    if (cmd === 'php' && args[0] === 'artisan' && args[1] === 'db:show') {
+      dbShowCalls++;
+      // First call carries the override env (isolated db); the guard's
+      // second, no-override call resolves the real (distinct) dev db.
+      const database = (env && env.DB_DATABASE) || (dbShowCalls === 1 ? 'app_screens' : 'app');
+      return { stdout: JSON.stringify({ platform: { config: { driver: 'pgsql', database } } }), status: 0 };
+    }
+    if (cmd === 'sh' && args[1] && args[1].includes('migrate:fresh')) seedCalls++;
+    return { stdout: '', status: 0 };
+  };
+  const lines = cmdUp([], root, stubRunner);
+  assert.ok(lines.some((l) => l === 'SEED=OK'), lines.join('\n'));
+  assert.equal(seedCalls, 1);
+  const state = readJson(join(root, '.screens/state.json'), {});
+  assert.equal(state.seed_fingerprint, computeSeedFingerprint(root, config));
+});
+
+test('up: --full forces reseed even when the fingerprint is unchanged', () => {
+  const root = fixture();
+  writeFile(root, 'database/seeders/ScreensDemoSeeder.php', '<?php // v1');
+  const config = {
+    platforms: ['web'],
+    web: {
+      framework: 'laravel', isolated_db: 'app_screens', fixed_now: '2026-05-12T09:41:00+02:00',
+      health_url: null, seed_command: 'php artisan migrate:fresh --seed', start_command: null,
+    },
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  const fingerprint = computeSeedFingerprint(root, config);
+  writeJson(join(root, '.screens/state.json'), { seed_fingerprint: fingerprint });
+
+  let seedCalls = 0;
+  let dbShowCalls = 0;
+  const stubRunner = (cmd, args, env) => {
+    if (cmd === 'php' && args[0] === 'artisan' && args[1] === 'db:show') {
+      dbShowCalls++;
+      // First call carries the override env (isolated db); the guard's
+      // second, no-override call resolves the real (distinct) dev db.
+      const database = (env && env.DB_DATABASE) || (dbShowCalls === 1 ? 'app_screens' : 'app');
+      return { stdout: JSON.stringify({ platform: { config: { driver: 'pgsql', database } } }), status: 0 };
+    }
+    if (cmd === 'sh' && args[1] && args[1].includes('migrate:fresh')) seedCalls++;
+    return { stdout: '', status: 0 };
+  };
+  const lines = cmdUp(['--full'], root, stubRunner);
+  assert.ok(lines.some((l) => l === 'SEED=OK'), lines.join('\n'));
+  assert.equal(seedCalls, 1);
+});
+
+// --- laravelPerfEnv: PHP_CLI_SERVER_WORKERS + APP_DEBUG=false on laravel ----
+
+test('laravelPerfEnv: laravel framework -> PHP_CLI_SERVER_WORKERS=4, APP_DEBUG=false', () => {
+  assert.deepEqual(laravelPerfEnv({ framework: 'laravel' }), { PHP_CLI_SERVER_WORKERS: '4', APP_DEBUG: 'false' });
+});
+
+test('laravelPerfEnv: non-laravel framework -> {} (inert)', () => {
+  assert.deepEqual(laravelPerfEnv({ framework: 'astro' }), {});
 });
 
 // --- up: lock present -> FAIL ----------------------------------------------

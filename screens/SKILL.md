@@ -185,7 +185,10 @@ move to the next platform, no capture attempted. `UP_RESULT=FAIL (...)`: report 
 Driver step: read `screens/references/platform-web.md` (web, added stage b),
 `screens/references/platform-apple.md` (iOS/macOS, stage d), `screens/references/platform-maestro.md`
 (Android/Capacitor, stage e); when the reference file does not exist yet, report `DRIVER=SKIP
-(driver added in a later stage)` for that platform and skip straight to `down`.
+(driver added in a later stage)` for that platform and skip straight to `down`. On the web platform,
+run the driver command under `nice -n 10` and pass `--workers=<PLAYWRIGHT_WORKERS>` from `up`'s own
+output line (`min(4, floor(cores/2))`, plan's "Capture efficiency"; the user reported earlier runs
+overloading the machine), never a hardcoded `--workers=4`.
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" \

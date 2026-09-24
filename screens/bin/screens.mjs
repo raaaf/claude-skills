@@ -28,6 +28,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync, spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 
 // ---------------------------------------------------------------------
 // Generic JSON + glob helpers
@@ -127,9 +128,34 @@ function computeFingerprint(root, sources, globalSources) {
   return hash.digest('hex');
 }
 
+// `pngs` keys are full paths relative to `screenshots/` (device-class layout,
+// Output layout section) since the migrate-layout pass; a legacy entry that
+// still carries `dir` is resolved through it so `plan` stays correct before
+// `migrate-layout` has run.
 function entryPngsExist(root, entryState) {
-  if (!entryState || !entryState.dir || !entryState.pngs) return false;
-  return Object.keys(entryState.pngs).some((f) => existsSync(join(root, 'screenshots', entryState.dir, f)));
+  if (!entryState || !entryState.pngs) return false;
+  return Object.keys(entryState.pngs).some((f) => {
+    const rel = entryState.dir ? join(entryState.dir, f) : f;
+    return existsSync(join(root, 'screenshots', rel));
+  });
+}
+
+function listDirFiles(root, relDir) {
+  const out = [];
+  (function walk(dir) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else out.push(relative(root, full));
+    }
+  })(join(root, relDir));
+  return out;
 }
 
 // ---------------------------------------------------------------------
@@ -366,6 +392,51 @@ function phpFixedClockEnv(root, config, runner = defaultRunner) {
   return { PHP_INI_SCAN_DIR: scanDir, SCREENS_FIXED_NOW: platformConfig.fixed_now };
 }
 
+// Capture efficiency (plan "Capture efficiency", revised 2026-09-24 after
+// the user reported runs too slow / machine overloaded): a Laravel `artisan
+// serve` worker pool handles the parallel Playwright workers instead of
+// serializing every request through PHP's single-threaded dev server, and
+// APP_DEBUG=false skips the debugbar/error-page overhead on every request.
+// `view:cache` (never `config:cache`, see the Laravel DB guard) precompiles
+// Blade views once per run instead of per-request.
+function laravelPerfEnv(platformConfig) {
+  if (platformConfig.framework !== 'laravel') return {};
+  return { PHP_CLI_SERVER_WORKERS: '4', APP_DEBUG: 'false' };
+}
+
+// `min(4, floor(cores/2))`: leaves half the machine free for the PHP server
+// pool + the user's own processes (plan "Capture efficiency").
+function playwrightWorkers(cpuCount) {
+  return Math.max(1, Math.min(4, Math.floor(cpuCount / 2)));
+}
+
+// Seed-on-change (plan "Capture efficiency"): fingerprints the files that can
+// change what the demo seeder produces -- migrations, seeders, factories,
+// the instantiated `.screens/web/php/*` files (fixed-clock + Faker
+// determinism shims, platform-web.md), and `fixed_now` itself. `up` skips
+// `migrate:fresh --seed` when this is unchanged from the last run's stored
+// value and the isolated DB already exists (the Laravel DB guard already
+// confirmed/created it before this runs); `--full`/`--reseed` force it.
+function computeSeedFingerprint(root, config) {
+  const platformConfig = config.web || {};
+  const files = listRepoFiles(root);
+  const globPaths = resolveGlobs(root, [
+    'database/migrations/**', 'database/seeders/**', 'database/factories/**',
+  ], files);
+  const phpFiles = listDirFiles(root, '.screens/web/php').sort();
+  const hash = createHash('sha256');
+  for (const p of [...globPaths, ...phpFiles]) {
+    hash.update(p);
+    try {
+      hash.update(readFileSync(join(root, p)));
+    } catch {
+      // unreadable file: contributes its path only, never fatal
+    }
+  }
+  hash.update(String(platformConfig.fixed_now || ''));
+  return hash.digest('hex');
+}
+
 function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
@@ -405,10 +476,19 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   writeFileSync(lockPath, String(process.pid));
 
   const clockEnv = platform === 'web' ? phpFixedClockEnv(root, config, runner) : {};
-  const runEnv = { ...(platformConfig.env || {}), ...clockEnv };
+  const perfEnv = platform === 'web' ? laravelPerfEnv(platformConfig) : {};
+  const runEnv = { ...(platformConfig.env || {}), ...clockEnv, ...perfEnv };
+
+  // `nice -n 10` on every process the skill drives here (server + view:cache
+  // + seed), per the user's "machine overloaded" report (plan "Capture
+  // efficiency"); the Playwright driver itself is niced by the caller
+  // (screens/references/platform-web.md).
+  if (platform === 'web' && platformConfig.framework === 'laravel') {
+    runner('sh', ['-c', 'nice -n 10 php artisan view:cache'], runEnv);
+  }
 
   if (platformConfig.start_command) {
-    const child = spawn(platformConfig.start_command, {
+    const child = spawn(`nice -n 10 ${platformConfig.start_command}`, {
       shell: true,
       cwd: root,
       detached: true,
@@ -431,14 +511,27 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   }
 
   if (platformConfig.seed_command) {
-    const seedResult = runner('sh', ['-c', platformConfig.seed_command], runEnv);
-    if (seedResult.status !== 0) {
-      lines.push('UP_RESULT=FAIL (seed command failed)');
-      return lines;
+    const full = args.includes('--full') || args.includes('--reseed');
+    const seedFingerprint = platform === 'web' ? computeSeedFingerprint(root, config) : null;
+    const seedState = readJson(join(root, '.screens/state.json'), {});
+    const seedUnchanged = !full && seedFingerprint && seedState.seed_fingerprint === seedFingerprint;
+    if (seedUnchanged) {
+      lines.push('SEED=SKIP (unchanged)');
+    } else {
+      const seedResult = runner('sh', ['-c', `nice -n 10 ${platformConfig.seed_command}`], runEnv);
+      if (seedResult.status !== 0) {
+        lines.push('UP_RESULT=FAIL (seed command failed)');
+        return lines;
+      }
+      lines.push('SEED=OK');
+      if (seedFingerprint) {
+        seedState.seed_fingerprint = seedFingerprint;
+        writeJson(join(root, '.screens/state.json'), seedState);
+      }
     }
-    lines.push('SEED=OK');
   }
 
+  lines.push(`PLAYWRIGHT_WORKERS=${playwrightWorkers(os.cpus().length)}`);
   lines.push('UP_RESULT=OK');
   return lines;
 }
@@ -488,19 +581,92 @@ function cmdDown(args, root = process.cwd()) {
 // promote
 // ---------------------------------------------------------------------
 
-// Byte-hash compare: unchanged content leaves the target file untouched
-// (mtime included), changed content overwrites it. No pixel decoder (see
-// plan's Approach: fixed clock + disabled animations + masks make an
-// identical render produce identical PNG bytes from the same encoder).
-function promoteFile(incomingPath, targetPath, prevHash) {
+function commandOnPath(cmd) {
+  const res = spawnSync('which', [cmd], { encoding: 'utf8' });
+  return res.status === 0;
+}
+
+// PNG IHDR: 8-byte signature + 4-byte chunk length + 4-byte "IHDR" type,
+// then width (4 bytes) at offset 16, height (4 bytes) at offset 20, both
+// big-endian. No pixel decoder (plan's Approach).
+function readPngDimensions(buf) {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+function defaultCompareRunner(oldPath, newPath) {
+  const res = spawnSync('compare', ['-metric', 'AE', '-fuzz', '2%', oldPath, newPath, 'null:'], { encoding: 'utf8' });
+  return { stderr: res.stderr || '' };
+}
+
+// `compare -metric AE` writes the differing-pixel count to stderr, plainly
+// (e.g. "1234") or with a normalized ratio in parens ("1234 (0.0188)");
+// either way the leading number is the AE count.
+function parseAeCount(stderr) {
+  const m = /^([\d.]+)/.exec((stderr || '').trim());
+  return m ? parseFloat(m[1]) : NaN;
+}
+
+// Byte-hash compare: an unchanged sha256 leaves the target file untouched
+// (mtime included). A differing hash is not automatically `changed`
+// (revised 2026-09-24, plan's Incremental rule: headless Chromium font
+// anti-aliasing jitters 1-100 px across runs): when ImageMagick `compare` is
+// on PATH, keep the old file when the AE (differing-pixel count, 2% fuzz)
+// is at most `diffTolerance * width * height` (config `diff_tolerance`,
+// default 0.0001 = 0.01% of the image area). Without ImageMagick it stays
+// byte-exact (the caller reports that via a NOTE line).
+function promoteFile(incomingPath, targetPath, prevHash, opts = {}) {
+  const {
+    diffTolerance = 0.0001,
+    hasCompare = commandOnPath('compare'),
+    compareRunner = defaultCompareRunner,
+  } = opts;
   const buf = readFileSync(incomingPath);
   const hash = createHash('sha256').update(buf).digest('hex');
   if (prevHash && hash === prevHash && existsSync(targetPath)) {
-    return { changed: false, hash };
+    return { changed: false, hash, tolerated: false };
+  }
+  if (prevHash && existsSync(targetPath) && hasCompare) {
+    const { width, height } = readPngDimensions(buf);
+    const { stderr } = compareRunner(targetPath, incomingPath);
+    const ae = parseAeCount(stderr);
+    const maxAe = diffTolerance * width * height;
+    if (!Number.isNaN(ae) && ae <= maxAe) {
+      return { changed: false, hash: prevHash, tolerated: true };
+    }
   }
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, buf);
-  return { changed: true, hash };
+  return { changed: true, hash, tolerated: false };
+}
+
+// Device-class folders (Output layout, revised 2026-09-24, user request:
+// split by capture device). `config.axes.device_classes.<platform>` maps a
+// viewport spec to a class name (e.g. "1440x900" -> "desktop"); an
+// unconfigured viewport falls back to itself so the folder stays stable
+// instead of colliding with another class.
+function deviceClassFor(config, platform, viewport) {
+  const classes = (config.axes && config.axes.device_classes && config.axes.device_classes[platform]) || {};
+  return classes[viewport] || viewport;
+}
+
+// Capture filenames (incoming and legacy-promoted) are
+// `<state>__<role>__<viewport>__<theme>[__<locale>].png`.
+function parseCaptureFilename(rest) {
+  const base = rest.replace(/\.png$/, '');
+  const [state, role, viewport, theme, locale] = base.split('__');
+  return { state, role, viewport, theme, locale };
+}
+
+// Output layout: `<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>[__<locale>].png`
+// -- the viewport moves from the filename into the device-class folder.
+function buildScreenshotPath(config, entry, platform, parts) {
+  const deviceClass = deviceClassFor(config, platform, parts.viewport);
+  const area = entry.area || 'misc';
+  const view = entry.view || entry.id;
+  const localeSuffix = parts.locale ? `__${parts.locale}` : '';
+  const filename = `${parts.state}__${parts.role}__${parts.theme}${localeSuffix}.png`;
+  const relDir = join(platform, deviceClass, area, view);
+  return { relDir, relPath: join(relDir, filename) };
 }
 
 function todayStr() {
@@ -511,13 +677,15 @@ function moveRemovedEntries(root, manifestIds, state, dateStr = todayStr()) {
   const moved = [];
   for (const id of Object.keys(state.entries || {})) {
     if (manifestIds.includes(id)) continue;
-    const dir = state.entries[id].dir;
-    if (!dir) continue;
-    const src = join(root, 'screenshots', dir);
-    if (!existsSync(src)) continue;
-    const dest = join(root, 'screenshots', '_removed', dateStr, dir);
-    mkdirSync(dirname(dest), { recursive: true });
-    renameSync(src, dest);
+    const entryState = state.entries[id];
+    for (const relPath of Object.keys(entryState.pngs || {})) {
+      const rel = entryState.dir ? join(entryState.dir, relPath) : relPath;
+      const src = join(root, 'screenshots', rel);
+      if (!existsSync(src)) continue;
+      const dest = join(root, 'screenshots', '_removed', dateStr, rel);
+      mkdirSync(dirname(dest), { recursive: true });
+      renameSync(src, dest);
+    }
     delete state.entries[id];
     moved.push(id);
   }
@@ -537,9 +705,13 @@ function cmdPromote(args, root = process.cwd()) {
   const state = readJson(join(root, '.screens/state.json'), { entries: {} });
   state.entries = state.entries || {};
 
+  const diffTolerance = typeof config.diff_tolerance === 'number' ? config.diff_tolerance : 0.0001;
+  const hasCompare = commandOnPath('compare');
+
   const incomingDir = join(root, '.screens/.incoming', platform || '');
   let changed = 0;
   let unchanged = 0;
+  let tolerated = 0;
   let knownNondeterministic = 0;
   if (existsSync(incomingDir)) {
     for (const file of readdirSync(incomingDir)) {
@@ -548,15 +720,16 @@ function cmdPromote(args, root = process.cwd()) {
       const rest = file.slice(file.indexOf('__') + 2);
       const entry = manifest.entries.find((e) => e.id === id);
       if (!entry) continue;
-      const targetDir = join(root, 'screenshots', entry.platform || platform, entry.area || 'misc', entry.view || entry.id);
-      const targetPath = join(targetDir, rest);
-      const relDir = relative(join(root, 'screenshots'), targetDir);
-      const prevHash = state.entries[id] && state.entries[id].pngs && state.entries[id].pngs[rest];
-      const { changed: didChange, hash } = promoteFile(join(incomingDir, file), targetPath, prevHash);
-      state.entries[id] = state.entries[id] || { dir: relDir };
-      state.entries[id].dir = relDir;
+      const parts = parseCaptureFilename(rest);
+      const { relPath } = buildScreenshotPath(config, entry, entry.platform || platform, parts);
+      const targetPath = join(root, 'screenshots', relPath);
+      state.entries[id] = state.entries[id] || {};
       state.entries[id].pngs = state.entries[id].pngs || {};
-      state.entries[id].pngs[rest] = hash;
+      const prevHash = state.entries[id].pngs[relPath];
+      const { changed: didChange, hash, tolerated: didTolerate } = promoteFile(
+        join(incomingDir, file), targetPath, prevHash, { diffTolerance, hasCompare },
+      );
+      state.entries[id].pngs[relPath] = hash;
       // Persisted here (not just computed transiently in `plan`): without
       // this, `plan`'s `prev.fingerprint` is always undefined on the next
       // run, and every entry reports `stale` forever even with zero source
@@ -573,10 +746,15 @@ function cmdPromote(args, root = process.cwd()) {
       if (entry.known_nondeterministic) {
         knownNondeterministic++;
         lines.push(`PROMOTE_ENTRY ${id} known_nondeterministic (${entry.known_nondeterministic})`);
+      } else if (didTolerate) {
+        tolerated++;
+        lines.push(`PROMOTE_ENTRY ${id} tolerated`);
+      } else if (didChange) {
+        changed++;
+        lines.push(`PROMOTE_ENTRY ${id} changed`);
       } else {
-        if (didChange) changed++;
-        else unchanged++;
-        lines.push(`PROMOTE_ENTRY ${id} ${didChange ? 'changed' : 'unchanged'}`);
+        unchanged++;
+        lines.push(`PROMOTE_ENTRY ${id} unchanged`);
       }
     }
   }
@@ -586,7 +764,55 @@ function cmdPromote(args, root = process.cwd()) {
   for (const id of removed) lines.push(`PROMOTE_REMOVED ${id}`);
 
   writeJson(join(root, '.screens/state.json'), state);
-  lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} removed=${removed.length} known_nondeterministic=${knownNondeterministic}`);
+  if (!hasCompare) lines.push('NOTE=imagemagick missing, byte-exact compare');
+  lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} tolerated=${tolerated} removed=${removed.length} known_nondeterministic=${knownNondeterministic}`);
+  return lines;
+}
+
+// ---------------------------------------------------------------------
+// migrate-layout: one-time move of pre-existing PNGs (flat
+// `<platform>/<area>/<view>/` layout) into the device-class layout
+// (Output layout), rewriting state.json's pngs keys to match. Chosen over
+// doing this automatically inside `promote` (plan step 4, "your choice, say
+// which") because a migration is a one-time structural move over the WHOLE
+// existing tree, while `promote` only ever touches the files a driver just
+// produced; folding it into `promote` would silently half-migrate a tree
+// across many incremental runs instead of doing it once, deliberately.
+function cmdMigrateLayout(args, root = process.cwd()) {
+  const lines = [];
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
+  const state = readJson(join(root, '.screens/state.json'), { entries: {} });
+  const defaultPlatform = (config.platforms && config.platforms[0]) || 'web';
+  let moved = 0;
+  for (const entry of manifest.entries || []) {
+    const entryState = state.entries && state.entries[entry.id];
+    if (!entryState || !entryState.dir || !entryState.pngs) continue;
+    const oldDir = entryState.dir;
+    const newPngs = {};
+    for (const [filename, hash] of Object.entries(entryState.pngs)) {
+      const parts = parseCaptureFilename(filename);
+      const oldPath = join(root, 'screenshots', oldDir, filename);
+      if (!parts.state) {
+        // Not a recognized capture filename shape: keep it untouched.
+        newPngs[filename] = hash;
+        continue;
+      }
+      const { relPath } = buildScreenshotPath(config, entry, entry.platform || defaultPlatform, parts);
+      if (existsSync(oldPath) && resolve(oldPath) !== resolve(join(root, 'screenshots', relPath))) {
+        const newPath = join(root, 'screenshots', relPath);
+        mkdirSync(dirname(newPath), { recursive: true });
+        renameSync(oldPath, newPath);
+        moved++;
+        lines.push(`MIGRATE_MOVED ${entry.id} ${filename} -> ${relPath}`);
+      }
+      newPngs[relPath] = hash;
+    }
+    entryState.pngs = newPngs;
+    delete entryState.dir;
+  }
+  writeJson(join(root, '.screens/state.json'), state);
+  lines.push(`MIGRATE_RESULT=OK moved=${moved}`);
   return lines;
 }
 
@@ -716,6 +942,7 @@ function main(argv) {
     up: cmdUp,
     down: cmdDown,
     promote: cmdPromote,
+    'migrate-layout': cmdMigrateLayout,
     marketing: cmdMarketing,
     index: cmdIndex,
     trust: cmdTrust,
@@ -744,6 +971,7 @@ export {
   resolveGlobs,
   computeFingerprint,
   entryPngsExist,
+  listDirFiles,
   planEntries,
   cmdPlan,
   checkLock,
@@ -752,11 +980,22 @@ export {
   bunDbGuard,
   composePhpIniScanDir,
   phpFixedClockEnv,
+  laravelPerfEnv,
+  playwrightWorkers,
+  computeSeedFingerprint,
   cmdUp,
   cmdDown,
+  commandOnPath,
+  readPngDimensions,
+  defaultCompareRunner,
+  parseAeCount,
   promoteFile,
+  deviceClassFor,
+  parseCaptureFilename,
+  buildScreenshotPath,
   moveRemovedEntries,
   cmdPromote,
+  cmdMigrateLayout,
   marketingTargetDir,
   marketingNeedsRender,
   cmdMarketing,

@@ -10,8 +10,13 @@ From the target project root, after `screens.mjs up --platform web` reported `UP
 
 ```
 cd <project root>
-npx playwright test .screens/web/capture.spec.ts --workers=4 [--grep <pattern>]
+nice -n 10 npx playwright test .screens/web/capture.spec.ts --workers=<PLAYWRIGHT_WORKERS> [--grep <pattern>]
 ```
+
+`<PLAYWRIGHT_WORKERS>` is `up`'s own `PLAYWRIGHT_WORKERS=<n>` output line (`min(4, floor(cores/2))`,
+`screens.mjs`'s `playwrightWorkers`), never a hardcoded `--workers=4`: the user reported earlier runs
+overloading the machine (plan's "Capture efficiency"), and `nice -n 10` applies to this process the
+same way `screens.mjs up` already nices the PHP server and seed/migrate commands it starts.
 
 `--grep <pattern>` narrows the run to the entry ids `screens.mjs plan`'s `PLAN_ENTRY <id>
 {new|stale|missing_png}` lines named (skip `unchanged` ids); omit the flag on a first run or
@@ -26,9 +31,9 @@ driver must read the manifest at runtime instead of hard-coding entries").
 
 ## What the spec does
 
-- One Playwright `test()` per entry x state x role x viewport x theme (states/roles/viewports/themes
-  default to `['filled']`/`['guest']`/`config.axes.viewports.web`/`config.axes.themes` when an entry
-  omits them).
+- One Playwright `test()` per entry x state x role (states/roles default to `['filled']`/`['guest']`
+  when an entry omits them) -- **not** per viewport/theme too (revised 2026-09-24, "Capture
+  efficiency"): one context, one login, one navigation per test.
 - `page.clock.setFixedTime('2026-05-12T09:41:00+02:00')` before navigation (topf-secret's
   `-ScreensFixedDate` convention, web equivalent).
 - A CSS override disables all animations/transitions (`animation-duration`/`transition-duration:
@@ -39,10 +44,28 @@ driver must read the manifest at runtime instead of hard-coding entries").
   `config.demo_password` through `/login` (`input[name=email]`, `input[name=password]`, `button[type=submit]`),
   then `waitForLoadState('networkidle')`.
 - Navigation: `page.goto(BASE_URL + entry.reach)`, `waitForLoadState('networkidle')`, then
-  `entry.ready` (a CSS selector) via `waitForSelector` if set.
-- `entry.mask` selectors are hidden (`visibility: hidden`) before the screenshot.
+  `entry.ready` (a CSS selector) via `waitForSelector` if set; `entry.mask` selectors and the `error`
+  state's form submission are applied once, right after this single navigation.
+- **Device-class x theme loop, in the same page (Capture efficiency):** for each `viewport` in
+  `config.axes.viewports.web`, `page.setViewportSize` + two `requestAnimationFrame` ticks +
+  `waitForLoadState('networkidle')` (an entry with `reload_per_viewport: true` gets a fresh
+  `page.goto` + mask/error re-application instead); for each `theme` inside that viewport,
+  `page.emulateMedia({colorScheme})` + `context.addCookies([{name:'dark_mode',...}])` (for any later
+  navigation) + `document.documentElement.classList.toggle('dark', ...)` via `page.evaluate` (drives
+  the project's own client-side class the way a live toggle would, since a cookie alone only takes
+  effect on the next full navigation) + two rAF ticks, then the screenshot. No reload between
+  device-class/theme combinations unless the entry opts in.
 - Output: `.screens/.incoming/web/<entryId>__<state>__<role>__<viewport>__<theme>.png`, `fullPage:
-  true`, matching the filename shape `screens.mjs promote` parses (`<entryId>__<rest>.png`).
+  true`, matching the filename shape `screens.mjs promote` parses (`<entryId>__<rest>.png`);
+  `promote` maps `<viewport>` to a device class (`config.axes.device_classes.web`) and drops it from
+  the final filename (Output layout, `references/config-schema.md`).
+
+### `reload_per_viewport` (manifest flag)
+
+Set on a manifest entry only when a same-page viewport switch genuinely differs from a fresh reload
+at that viewport (verified once per candidate entry with an ImageMagick `compare -metric AE` between
+the two capture paths, not assumed) -- e.g. a view whose mobile layout is server-rendered
+differently rather than purely CSS-responsive. Every other entry stays on the one-navigation path.
 
 ## Server-side fixed clock (PHP projects, added after stage (b) STOP 2)
 
@@ -117,6 +140,28 @@ follows, and the demo seeder documents which ones actually applied:
    `Cache::remember(...)` badge count) never survives a reseed: `migrate:fresh` only resets database
    tables, not the project's configured cache store, so a `file`/`redis`-backed cache would keep
    serving a stale value from before the reseed.
+
+## Server perf: parallel PHP workers, no per-request debug overhead, seed-on-change
+
+Added 2026-09-24 after the user reported earlier runs overloading the machine (plan's "Capture
+efficiency"):
+
+- `screens.mjs up` sets `PHP_CLI_SERVER_WORKERS=4` and `APP_DEBUG=false` on a `laravel` project
+  before starting `artisan serve`, so the built-in dev server handles the Playwright workers'
+  parallel requests instead of serializing them, and drops the debugbar/error-page overhead per
+  request (`laravelPerfEnv`).
+- `up` runs `php artisan view:cache` once before starting the server (never `config:cache`, see the
+  Laravel DB guard) to precompile Blade views.
+- Every process `up` starts (the server, `view:cache`, the seed/migrate command) runs under
+  `nice -n 10`; the driver invocation (above) is niced by the caller for the same reason.
+- **Seed-on-change:** `up` fingerprints `database/migrations/**`, `database/seeders/**`,
+  `database/factories/**`, the instantiated `.screens/web/php/*` files, and `fixed_now`
+  (`computeSeedFingerprint`). When that fingerprint matches the value stored from the last run AND
+  the isolated DB already exists (implied by the Laravel DB guard passing), `up` reports
+  `SEED=SKIP (unchanged)` instead of running `migrate:fresh --seed`. `--full`/`--reseed` force a
+  reseed regardless.
+- `up`'s output includes `PLAYWRIGHT_WORKERS=<min(4, floor(cores/2))>`, read by the driver
+  invocation above instead of a hardcoded worker count.
 
 ## Theme axis: cookie-driven dark mode, not prefers-color-scheme
 

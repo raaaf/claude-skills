@@ -45,8 +45,18 @@ writes, subagents return").
     "viewports": { "web": ["1440x900", "390x844"] },
     "devices": { "ios": ["iPhone 17 Pro", "iPad Pro 13\""], "android": ["Pixel 9"] },
     "themes": ["light"],                   // ["light", "dark"] only when the discoverer found dark-mode support
-    "locales": { "primary": "de", "marketing": ["de", "en"] }
+    "locales": { "primary": "de", "marketing": ["de", "en"] },
+    "device_classes": {                    // viewport -> device-class folder name (Output layout);
+      "web": { "1440x900": "desktop", "390x844": "mobile" } // an unmapped viewport falls back to itself
+    }
   },
+
+  "diff_tolerance": 0.0001,                // promote: keep the old PNG when ImageMagick `compare
+                                            // -metric AE -fuzz 2%` reports at most this fraction of
+                                            // the image area differing (default 0.01%, revised
+                                            // 2026-09-24: headless Chromium font AA jitters 1-100 px
+                                            // across runs even with --disable-gpu); byte-exact when
+                                            // ImageMagick is not on PATH
 
   "global_sources": [
     "resources/css/**", "tailwind.config.*", "composer.lock", "package-lock.json", "bun.lock",
@@ -90,13 +100,25 @@ writes, subagents return").
         { "selector": "input[name=password]", "value": "wrong-password" }
       ],                                   // filled then the form is submitted so the page renders
                                             // its own real server-side validation error
-      "known_nondeterministic": "row order has no ORDER BY tie-break" // optional: seeder
+      "known_nondeterministic": "row order has no ORDER BY tie-break", // optional: seeder
                                             // determinism rule (4), platform-web.md; excludes this
                                             // entry from the changed/unchanged byte-identical count
+      "reload_per_viewport": false         // optional (default false): capture.spec.ts reloads this
+                                            // entry per viewport instead of resizing the same page
+                                            // in place (Capture efficiency); set only when verified
+                                            // to differ (ImageMagick compare, platform-web.md)
     }
   ]
 }
 ```
+
+Output layout (Output layout section of the plan; `screens.mjs`'s `buildScreenshotPath`):
+`screenshots/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>[__<locale>].png`.
+`<device-class>` comes from `axes.device_classes.<platform>[<viewport>]` (falls back to the viewport
+spec itself when unmapped); the viewport therefore does not appear in the filename, only in the
+folder. `screens.mjs migrate-layout` moves a pre-existing flat `<platform>/<area>/<view>/` tree into
+this layout once, rewriting `state.json`'s per-entry `pngs` keys (now full paths relative to
+`screenshots/`) without recapturing; run it once before the first `plan` after upgrading.
 
 `sources[]` and `global_sources` are globs matched against repo-relative paths
 (`screens/bin/screens.mjs`'s `matchesGlob`: `**` any depth, `*` no `/`, `?` one char). A route with
