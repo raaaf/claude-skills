@@ -169,6 +169,47 @@ one test method itself, scoping the whole run to `ScreensCatalogTests` and skipp
 test class in the same target (e.g. topf-secret's own `ScreenshotTourTests`,
 `CookFlowTests`, ...).
 
+## System permission prompts
+
+A TCC permission alert (camera, local network, contacts, ...) can cover the app right after
+`app.launch()` and land in the capture (reproduced live against the layer pilot's local-network
+alert: `screenshots/macos/mac/main/ContentView/filled__guest__dark.png` shows the German "Darf
+„Layer" nach Geräten in lokalen Netzwerken suchen?" dialog over the app). `ScreensCatalogTests.swift`
+now calls `dismissSystemPrompt(app:)` right after every `app.launch()`, before `perform(steps:)`:
+
+- **macOS** queries `XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter")`
+  (the process that owns a TCC alert window on this Xcode 27/macOS toolchain) and taps the button
+  matching `config.macos.system_prompts` (`"allow"` default -> "Erlauben"/"Allow", `"deny"` ->
+  "Nicht erlauben"/"Don't Allow", config-schema.md), bounded to a 3s `waitForExistence`; no prompt
+  within that window is not a failure, the call just returns.
+- **iOS** registers an `addUIInterruptionMonitor` in `setUp` (springboard alerts render outside
+  the app process) using the same button-matching helper, and `dismissSystemPrompt` issues one
+  `app.tap()` right after launch, the standard nudge that makes XCTest actually check a registered
+  interruption monitor before the first real interaction.
+
+Live verification note (2026-09-24): the local-network prompt did not reproduce in two early
+re-runs in this session (including after a `tccutil reset All de.rafaelalex.layerapp`), then
+reproduced on a later run against the same pilot -- it is decision-cached per bundle id, so it only
+shows again after a reset or a fresh TCC decision, not on every launch. That live run confirmed
+`com.apple.UserNotificationCenter` as the owning process and also caught a real bug in the first
+version of `tapSystemPromptButton`: the bare `buttons[label]` subscript throws on an ambiguous
+accessibility-tree match (the alert's "Erlauben" button matched more than one element), fixed with
+`.firstMatch`.
+
+**Known limitation, confirmed live, not resolved by this stage:** `xcodebuild`'s own log shows
+`tapSystemPromptButton` finding the "Erlauben" button and completing a tap ("Synthesize event")
+each time it is called, but the local-network alert still appears in the final capture (`layer`
+pilot, `filled` entry, both before and after adding a second `dismissSystemPrompt` call right
+before `capture()`), and the very same prompt re-opens roughly once per app relaunch afterwards
+rather than staying granted. This matches Apple's TCC hardening against synthetic consent on
+security-sensitive prompts (camera/mic/local-network/contacts): an XCUITest tap that succeeds at
+the accessibility-tree level does not count as the real user gesture TCC requires to record a
+grant, so the button-tap approach in this file does not reliably clear a TCC-class prompt out of a
+macOS capture. It stays in place because it does work for prompts that are not TCC-gated. A project
+that needs a clean macOS capture with a TCC-class prompt in the picture needs the permission
+pre-authorized outside XCUITest (an MDM/TCC profile, or a `tccutil`/`TCC.db` grant run once before
+`up`, both out of scope for this stage) rather than dismissed during the run.
+
 ## Determinism notes
 
 - Fixed status bar (9:41, full battery/signal) covers the same non-deterministic chrome the web

@@ -49,9 +49,24 @@ final class ScreensCatalogTests: XCTestCase {
     override func setUp() {
         super.setUp()
         continueAfterFailure = true
+        #if !os(macOS)
+        // iOS system alerts (camera/local network/contacts/...) render in springboard, outside
+        // the app under test; a monitor is the only way to observe and dismiss them there. Only
+        // fires while an alert is actually on screen, so it is safe to register unconditionally.
+        addUIInterruptionMonitor(withDescription: "System permission prompt") { [weak self] alert in
+            guard let self else { return false }
+            return self.tapSystemPromptButton(in: alert, allow: self.allowSystemPrompts)
+        }
+        #endif
     }
 
     private var env: [String: String] { ProcessInfo.processInfo.environment }
+
+    /// `config.<platform>.system_prompts` ("allow"|"deny", default "allow", config-schema.md):
+    /// which button `dismissSystemPrompt`/the interruption monitor taps on a TCC permission
+    /// prompt (camera, local network, contacts, ...) that can appear before a capture. Read once
+    /// per test run rather than per entry, same source as `launchPrefix`/`seedFlag` below.
+    private var allowSystemPrompts = true
 
     #if os(macOS)
     private let platformName = "macos"
@@ -104,6 +119,7 @@ final class ScreensCatalogTests: XCTestCase {
         let launchPrefix = (platformConfig["launch_args_prefix"] as? [String]) ?? ["-UITests"]
         let seedFlag = (platformConfig["seed_flag"] as? String) ?? "-UITestSeed"
         let fixedDate = platformConfig["fixed_date"] as? String
+        allowSystemPrompts = (platformConfig["system_prompts"] as? String) != "deny"
 
         let allEntries = (manifest["entries"] as? [[String: Any]] ?? [])
             .filter { ($0["platform"] as? String) == platformName }
@@ -137,14 +153,59 @@ final class ScreensCatalogTests: XCTestCase {
                     let app = XCUIApplication()
                     app.launchArguments = args
                     app.launch()
+                    dismissSystemPrompt(app: app)
 
                     perform(steps: steps, in: app)
+                    // A prompt triggered by app state (e.g. the layer pilot's local-network
+                    // request, fired once the imported model settles rather than at launch) can
+                    // still appear between `app.launch()` and the capture; check again right
+                    // before the screenshot, same bounded/never-fails contract as above.
+                    dismissSystemPrompt(app: app)
                     capture(app: app, id: id, state: state, role: role, viewportId: viewportId, theme: theme, dir: shotDir)
 
                     app.terminate()
                 }
             }
         }
+    }
+
+    // MARK: - System permission prompts
+
+    /// A TCC prompt (camera, local network, contacts, ...) can appear right after `app.launch()`,
+    /// covering the app under test (reproduced live against the layer pilot's local-network
+    /// prompt, `screenshots/macos/mac/main/ContentView/filled__guest__dark.png`, and again while
+    /// building this handler, platform-apple.md "System permission prompts"). macOS renders it as
+    /// a separate process's window (`com.apple.UserNotificationCenter`, verified against the
+    /// accessibility tree of a live prompt on this Xcode 27/macOS); iOS renders it in springboard,
+    /// reached only through a registered `addUIInterruptionMonitor` (`setUp` above), which needs a
+    /// `tap()` to be checked. Bounded to <= 3s and never fails the test when no prompt appears.
+    private func dismissSystemPrompt(app: XCUIApplication) {
+        #if os(macOS)
+        let systemDialog = XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter")
+        tapSystemPromptButton(in: systemDialog, allow: allowSystemPrompts)
+        #else
+        app.tap()
+        #endif
+    }
+
+    /// Shared by the macOS direct query above and the iOS interruption-monitor closure in
+    /// `setUp`. Only tries the labels for the configured action (never falls back to the
+    /// opposite button) so a `system_prompts: "deny"` config can never accidentally grant access.
+    @discardableResult
+    private func tapSystemPromptButton(in container: XCUIElement, allow: Bool, timeout: TimeInterval = 3) -> Bool {
+        let labels = allow ? ["Erlauben", "Allow"] : ["Nicht erlauben", "Don\u{2019}t Allow", "Don't Allow"]
+        guard container.waitForExistence(timeout: timeout) else { return false }
+        for label in labels {
+            // `.firstMatch`: a TCC alert's button can match more than one element in the
+            // accessibility tree (reproduced live against the layer pilot's local-network
+            // prompt), and the bare `buttons[label]` subscript throws on an ambiguous query.
+            let button = container.buttons[label].firstMatch
+            if button.exists {
+                button.tap()
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: - Step vocabulary

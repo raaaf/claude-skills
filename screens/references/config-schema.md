@@ -45,16 +45,22 @@ writes, subagents return").
                                             // the project's own UITestLauncher-style master switch
     "seed_flag": "-UITestSeed",            // flag name for a manifest entry's per-state seed
                                             // scenario (entry `seeds` map, see manifest below)
-    "fixed_date": null                     // optional, e.g. "2026-05-12T09:41:00Z": appended as
+    "fixed_date": null,                    // optional, e.g. "2026-05-12T09:41:00Z": appended as
                                             // "-ScreensFixedDate <value>" only when the app supports
                                             // it; unset entries with date-dependent content get a
                                             // discoverer note instead (native has no mask[])
+    "system_prompts": "allow"              // "allow"|"deny", default "allow": which button
+                                            // ScreensCatalogTests.swift taps on a system TCC
+                                            // permission prompt (camera/local network/contacts/...)
+                                            // that appears before a capture (platform-apple.md
+                                            // "System permission prompts")
   },
   "macos": {                               // stage d: no simulator (plan "macOS: no device"),
                                             // otherwise the same block shape as ios minus device_class
     "launch_args_prefix": ["-UITests"],
     "seed_flag": "-UITestSeed",
-    "fixed_date": null
+    "fixed_date": null,
+    "system_prompts": "allow"
   },
 
   "android": {                              // stage e: Maestro, plain Android or a Capacitor app's
