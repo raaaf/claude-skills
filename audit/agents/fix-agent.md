@@ -50,6 +50,20 @@ If the fix touches a credential, token, or `.env` value, the `{short description
 5. **Briefly verify**: re-read the file, fix is in, syntax crash unlikely.
 6. Return the result.
 
+## Special case: shared tasks (producer and joiner)
+
+A fix that guards a shared, awaited task has two paths through it: the one that creates the task
+and the one that joins an existing one. Check cancellation on both. A joiner that returns the
+producer's result without its own cancellation check keeps a cancelled caller waiting, and the
+producer path alone looks correct in review. Origin: Journal/Services/AssistanceCoordinator.swift:69.
+
+## Special case: retention and pruning fixes
+
+A fix that drops old entries has to survive a failed write. Verify it by writing, failing the
+write, and reading again in the same process: an in-memory copy that was already pruned while the
+file still holds the old set makes the next read disagree with the last write. Origin:
+Journal/Services/Signals/PlaceNameMemory.swift:63.
+
 ## Special case: a fix to a shell-based guard (permission, gate, matcher)
 
 When the fix changes a pattern that decides whether a command is allowed, blocked or escalated
@@ -373,15 +387,15 @@ If the fix genuinely seems to need any of the above, `FIX_RESULT=FAILED` with th
 ## Output
 
 Reply with the fix schema (`references/finding-schema.md`): `{fix_result, files, diff_summary,
-test, tool_calls}`.
+test?}`. Include `test` when you ran a filtered test; otherwise you may omit it because the
+orchestrator's full-suite run and fix-verifier remain gates.
 
 - `fix_result`: `APPLIED` | `PARTIAL` | `NOT_FOUND` | `SUPPRESSED` | `FAILED`.
 - `files`: every file you changed (never a file outside your assignment).
 - `diff_summary`: what changed, max 50 words — same evidence bar as a finding: `file:line`, no
   code snippets. For `PARTIAL`, state what remains.
-- `test`: the test command you ran (via `test-lock.sh`) and its result, or `none` with a one-line
-  reason (no runnable check, or `TEST_ENV_BLOCKED: {reason}`).
-- `tool_calls`: the number of tool calls you used.
+- `test` (optional): when present, the filtered test command you ran via `test-lock.sh` and its
+  result, or `none` with a one-line reason (no runnable check, or `TEST_ENV_BLOCKED: {reason}`).
 
 ## Prohibited
 
