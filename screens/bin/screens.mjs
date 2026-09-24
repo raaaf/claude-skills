@@ -178,8 +178,31 @@ function cmdPlan(args, root = process.cwd()) {
 // up / down: generic lifecycle driven entirely by config.json
 // ---------------------------------------------------------------------
 
+// A crashed run leaves `.screens/.lock` behind forever, FAILing every later
+// `up`. If the PID recorded in the lock file is no longer alive
+// (`process.kill(pid, 0)` throws ESRCH), the lock is stale: remove it, emit
+// `LOCK=STALE_REMOVED`, and report unlocked. An unparsable PID (e.g. from an
+// older lock format) or a PID whose liveness can't be confirmed (EPERM: a
+// process exists but is owned by someone else) is treated conservatively as
+// still locked.
 function checkLock(root) {
-  return existsSync(join(root, '.screens/.lock'));
+  const lockPath = join(root, '.screens/.lock');
+  if (!existsSync(lockPath)) return false;
+  const pid = parseInt(readFileSync(lockPath, 'utf8').trim(), 10);
+  if (pid) {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (err) {
+      if (err && err.code === 'ESRCH') {
+        rmSync(lockPath, { force: true });
+        console.log('LOCK=STALE_REMOVED');
+        return false;
+      }
+      return true;
+    }
+  }
+  return true;
 }
 
 function defaultRunner(cmd, args, env) {
@@ -204,6 +227,10 @@ function deviceSetupHook(platform) {
 //   2. `php artisan db:show --json` (via the injected runner, so tests
 //      never spawn php) resolves to anything other than sqlite at the
 //      configured isolated_db path.
+// Real `db:show --json` output nests the values under `platform.config`
+// (verified against apps/zeit/app, DB_CONNECTION=sqlite DB_DATABASE=...):
+// {"platform":{"config":{"driver":"sqlite","url":null,"database":"...","prefix":""},...},"tables":[]}
+// Read exactly that path, no guessed fallback shapes.
 function laravelDbGuard(root, config, runner = defaultRunner) {
   const cachePath = join(root, 'bootstrap/cache/config.php');
   if (existsSync(cachePath)) {
@@ -217,8 +244,12 @@ function laravelDbGuard(root, config, runner = defaultRunner) {
   } catch {
     return { ok: false, reason: 'db:show output not parseable JSON' };
   }
-  const driver = parsed.driver || parsed.type || parsed.connection;
-  const database = parsed.database || parsed.path || parsed.file;
+  const platformConfig = parsed.platform && parsed.platform.config;
+  if (!platformConfig) {
+    return { ok: false, reason: 'db:show output missing platform.config' };
+  }
+  const driver = platformConfig.driver;
+  const database = platformConfig.database;
   const expected = config.web && config.web.isolated_db;
   if (!expected) return { ok: false, reason: 'config.web.isolated_db not set' };
   if (driver !== 'sqlite') return { ok: false, reason: `resolved DB driver is ${driver}, expected sqlite` };
@@ -470,7 +501,10 @@ function marketingNeedsRender(prevRecord, sourceHash, headlineText) {
   return prevRecord.sourceHash !== sourceHash || prevRecord.headlineText !== headlineText;
 }
 
-function cmdMarketing(args, root = process.cwd()) {
+// `_args` is unused today (no marketing flags yet, e.g. a future --platform
+// filter) but kept, underscore-prefixed, so this stays call-compatible with
+// main()'s uniform `handler(rest)` dispatch and with cmdIndex below.
+function cmdMarketing(_args, root = process.cwd()) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
   const entries = (config.marketing && config.marketing.entries) || [];
@@ -491,7 +525,10 @@ function cmdMarketing(args, root = process.cwd()) {
   return lines;
 }
 
-function cmdIndex(args, root = process.cwd()) {
+// Both parameters are unused in this stage: the renderer (stage c) is what
+// will actually read the manifest/state under `root` and accept args. Kept,
+// underscore-prefixed, for the same call-compatibility reason as cmdMarketing.
+function cmdIndex(_args, _root = process.cwd()) {
   return ['INDEX_RESULT=SKIP (renderer added in stage c)'];
 }
 

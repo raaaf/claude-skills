@@ -12,6 +12,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSy
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 import {
   planEntries,
@@ -193,6 +194,26 @@ test('checkLock reflects the lock file directly', () => {
   assert.equal(checkLock(root), true);
 });
 
+// --- checkLock: stale lock (dead PID) -> not locked, removed ---------------
+
+test('checkLock: lock file with a dead PID -> not locked, stale lock removed', () => {
+  const root = fixture();
+  // spawnSync is synchronous: by the time it returns, the child has already
+  // exited, so its pid is guaranteed dead for the rest of this test.
+  const dead = spawnSync(process.execPath, ['-e', '0']);
+  writeFile(root, '.screens/.lock', String(dead.pid));
+  assert.equal(checkLock(root), false);
+  assert.equal(existsSync(join(root, '.screens/.lock')), false);
+});
+
+// --- checkLock: lock file with the current (alive) PID -> FAIL (locked) ----
+
+test('checkLock: lock file with the current process PID -> locked', () => {
+  const root = fixture();
+  writeFile(root, '.screens/.lock', String(process.pid));
+  assert.equal(checkLock(root), true);
+});
+
 // --- Laravel guard: config cache present -> FAIL ----------------------------
 
 test('laravelDbGuard: config cache present -> FAIL, runner never called', () => {
@@ -206,23 +227,47 @@ test('laravelDbGuard: config cache present -> FAIL, runner never called', () => 
   assert.match(guard.reason, /config cache/);
 });
 
+// Real `php artisan db:show --json` output, captured from apps/zeit/app with
+// DB_CONNECTION=sqlite DB_DATABASE=/tmp/screens-probe.sqlite: values nest
+// under platform.config, not at the top level.
+function dbShowOutput(driver, database) {
+  return JSON.stringify({
+    platform: { config: { driver, url: null, database, prefix: '' }, name: 'SQLite', connection: 'sqlite', version: '3.53.4', open_connections: null },
+    tables: [],
+  });
+}
+
 // --- Laravel guard: resolved DB path != isolated path -> FAIL --------------
 
-test('laravelDbGuard: resolved DB path mismatch -> FAIL (stubbed db:show)', () => {
+test('laravelDbGuard: resolved DB path mismatch -> FAIL (stubbed db:show, real nested shape)', () => {
   const root = fixture();
   const config = { web: { isolated_db: '.screens/web/screens.sqlite' } };
-  const stubRunner = () => ({ stdout: JSON.stringify({ driver: 'sqlite', database: '/real/app/database.sqlite' }), status: 0 });
+  const stubRunner = () => ({ stdout: dbShowOutput('sqlite', '/real/app/database.sqlite'), status: 0 });
   const guard = laravelDbGuard(root, config, stubRunner);
   assert.equal(guard.ok, false);
   assert.match(guard.reason, /does not match isolated path/);
 });
 
-test('laravelDbGuard: resolved DB path matches isolated path -> OK', () => {
+test('laravelDbGuard: resolved DB path matches isolated path -> OK (real nested shape)', () => {
   const root = fixture();
   const config = { web: { isolated_db: '.screens/web/screens.sqlite' } };
-  const stubRunner = () => ({ stdout: JSON.stringify({ driver: 'sqlite', database: join(root, '.screens/web/screens.sqlite') }), status: 0 });
+  const stubRunner = () => ({ stdout: dbShowOutput('sqlite', join(root, '.screens/web/screens.sqlite')), status: 0 });
   const guard = laravelDbGuard(root, config, stubRunner);
   assert.equal(guard.ok, true);
+});
+
+// --- Laravel guard: flat (wrong) shape -> FAIL ------------------------------
+
+test('laravelDbGuard: flat-shape db:show output -> FAIL (real output nests under platform.config)', () => {
+  const root = fixture();
+  const config = { web: { isolated_db: '.screens/web/screens.sqlite' } };
+  const flatShapeRunner = () => ({
+    stdout: JSON.stringify({ driver: 'sqlite', database: join(root, '.screens/web/screens.sqlite') }),
+    status: 0,
+  });
+  const guard = laravelDbGuard(root, config, flatShapeRunner);
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /platform\.config/);
 });
 
 // --- trust: changed command hash -> NEEDS_CONFIRM --------------------------
