@@ -77,5 +77,5 @@ Dieses Log wird automatisch nach jedem Plan aktualisiert.
 - Not yet established — only one plan shows the "choose less than recommended" behavior; needs a second occurrence to count as a preference per the >=2x rule.
 
 ### Suggested improvements
-- [ ] Phase 1 questions: add an explicit "any product-level constraints (no CLI args, no config flags, etc.)?" question, since plan 2's mid-turn correction suggests this isn't asked directly.
-- [ ] Evaluation agent template: keep the CLAUDE.md-invariant checklist step (Opus-for-security, guideline-scoping) as explicit — plan 2's notable section flags this as otherwise silently missed.
+- [x] Phase 1 questions: add an explicit "any product-level constraints (no CLI args, no config flags, etc.)?" question, since plan 2's mid-turn correction suggests this isn't asked directly.
+- [x] Evaluation agent template: keep the CLAUDE.md-invariant checklist step (Opus-for-security, guideline-scoping) as explicit — plan 2's notable section flags this as otherwise silently missed.

@@ -73,6 +73,8 @@ Two questions get skipped or deferred over and over, and both cost a whole extra
 
 **Where does it run.** Whenever a plan touches more than one machine, service or runtime (a repo plus an automation host, a local tool plus a cloud API, a worker plus a web app): ask in round 1 which side owns which part, before drafting anything. Put the candidates side by side, with what each one costs and what it forces. Red flag: if the plan's v1 assumes a split and the user corrects it later, the whole architecture section gets rewritten. Evidence: late-stage rewrites in two plans running.
 
+**Product constraints.** Ask in round 1 whether hard product rules limit the solution space (no CLI arguments, no config flags, no new dependencies, no extra setup step). Users state these as corrections mid-plan when nobody asks, which costs a round. Evidence: a "no custom args" rule arrived as a mid-turn correction.
+
 **Scope split.** Before proposing any MVP cut or phase split, answer for yourself: is this a real saving in complexity or differentiation, or does it tear apart something the user sees as one coherent feature? Only propose the split in the first case. When in doubt, ask in exactly those terms:
 
 ```

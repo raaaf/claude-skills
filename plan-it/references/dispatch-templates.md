@@ -145,6 +145,7 @@ Agent(
     - For AI/ML features: capability matrix checked (language x region x model availability x device class)?
     - PR consolidation: can the planned PRs be merged into fewer, or should one be split?
     - Preview/mockup resolutions: when a round was decided by picking a preview or mockup, diff the details it implies against every earlier separate answer. A chosen mockup silently overrides answers it contradicts.
+    - CLAUDE.md invariants: does the plan violate a rule from the global or project CLAUDE.md (model choice per task type, e.g. opus for complex security analysis; guideline scoping to nested CLAUDE.md files)? Name the rule.
     - Non-functional requirements checked: logging strategy, telemetry, accessibility, simulator vs production differences?
 
     At the end: an overall verdict in ONE sentence.
