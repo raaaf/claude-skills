@@ -327,6 +327,8 @@ Re-run `pre-checks.sh`, `check-silencing.sh` and `check-test-count-drift.sh` now
 
 ## Phase 4: Log, marker, run-ledger
 
+**Re-check the audited range before the marker.** Run `git log --oneline {BASE_REF}..HEAD` and compare it with the commit list the scope was computed from. A commit that landed after scoping (another session committing into the same tree) is unaudited: either re-run `find.js` over its files or name it under `## Notes` and do not write the marker. 2026-09-24: a foreign commit landed 50 minutes after scoping and was deployed unaudited.
+
 Finalize `LOGFILE` from `references/audit-log-template.md`: Result, Findings per dimension, Fixes, Discarded (with reason), Unverified, Not completed, Open Points. Include the mechanical checks from Phase 1 and a chat display of the finished log (markdown block).
 
 Every finding line, in every section listed above, MUST be exactly `- [Severity][Dimension]
