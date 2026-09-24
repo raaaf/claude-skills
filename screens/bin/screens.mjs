@@ -668,6 +668,40 @@ function androidThemeArgs(serial, theme) {
   return ['-s', serial, 'shell', 'cmd', 'uimode', 'night', theme === 'dark' ? 'yes' : 'no'];
 }
 
+// Explicit-component intent (plan step 9, live 2026-09-24 against the events
+// pilot): Maestro's `openLink` resolves an IMPLICIT VIEW intent, which
+// Android routes to Chrome because the app's own App Link intent-filter only
+// verifies the production host (`AndroidManifest.xml`), never the isolated
+// backend host the driver points `server.url` at
+// (`am start -a VIEW -d http://10.0.2.2:<port>/...` -> "Unable to resolve
+// Intent", reproduced live). An EXPLICIT component intent (`-n
+// <appId>/.MainActivity`) skips intent-filter resolution entirely and is
+// delivered straight to the running app's `onNewIntent`, where Capacitor's
+// App plugin fires `appUrlOpen` with the intent's data -- the app's own JS
+// then narrows that event by hostname (`androidDeepLinkUrl` below) before
+// navigating. The activity is always `.MainActivity` (Capacitor's own
+// generated activity name, never renamed per-project).
+function androidExplicitIntentArgs(serial, appId, url) {
+  return [
+    '-s', serial, 'shell', 'am', 'start',
+    '-n', `${appId}/.MainActivity`,
+    '-a', 'android.intent.action.VIEW',
+    '-d', url,
+  ];
+}
+
+// The intent's `-d` URL must carry the app's own verified deep-link host
+// (the app's JS narrows the `appUrlOpen` event by exact hostname, see
+// `androidExplicitIntentArgs` above and `platform-maestro.md` "Explicit-
+// intent navigation"), never the isolated backend host the webview is
+// actually pointed at -- the app then loads only the URL's path against its
+// already-isolated `server.url`. `config.android.deep_link_host` declares
+// that host per project (the App Link intent-filter's own `android:host` in
+// `AndroidManifest.xml`); there is no safe generic default.
+function androidDeepLinkUrl(deepLinkHost, reach) {
+  return `https://${deepLinkHost}${reach}`;
+}
+
 // `adb shell getprop sys.boot_completed` polling, the Android equivalent of
 // `waitForHealth` above (same 90s budget as the web health check and the
 // STOP-condition-adjacent iOS boot, though iOS's `simctl boot` call itself
@@ -904,6 +938,29 @@ function laravelPerfEnv(platformConfig) {
   return { PHP_CLI_SERVER_WORKERS: '4', APP_DEBUG: 'false' };
 }
 
+// Capacitor-dependent web backend (live 2026-09-24 STOP, "Explicit-intent
+// navigation" in platform-maestro.md): a Laravel `route()`/`asset()` call
+// builds an ABSOLUTE url from `APP_URL`, and a client-side redirect using it
+// (e.g. an unauthenticated Livewire redirect to the login route) takes the
+// Android webview OFF `server.url`'s origin. Capacitor's plugin bridge is
+// injected per-origin, so leaving it drops EVERY plugin to "not implemented
+// on android", not just navigation (live: 9 hits across App/SystemBars/
+// PushNotifications/Keyboard/Preferences after the very first such
+// redirect, `APP_URL` still resolving to the project's own dev host).
+// `config.android.depends_on === 'web'` is the same declared relationship
+// `androidDeviceSetup`'s own doc already describes; `APP_URL` is set to the
+// emulator-reachable host so every redirect stays on the origin the bridge
+// was injected into. Never overrides an explicit `config.web.env.APP_URL`
+// (a project's own choice always wins).
+function androidAppUrlEnv(config) {
+  const androidConfig = config.android;
+  if (!androidConfig || androidConfig.depends_on !== 'web') return {};
+  if (config.web && config.web.env && config.web.env.APP_URL) return {};
+  const webConfig = config.web || {};
+  const appUrl = androidConfig.base_url || `http://10.0.2.2:${webConfig.port || ''}`;
+  return { APP_URL: appUrl };
+}
+
 // `min(4, floor(cores/2))`: leaves half the machine free for the PHP server
 // pool + the user's own processes (plan "Capture efficiency").
 function playwrightWorkers(cpuCount) {
@@ -1002,7 +1059,8 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
 
   const clockEnv = platform === 'web' ? phpFixedClockEnv(root, config, runner) : {};
   const perfEnv = platform === 'web' ? laravelPerfEnv(platformConfig) : {};
-  const runEnv = { ...(platformConfig.env || {}), ...clockEnv, ...perfEnv };
+  const appUrlEnv = platform === 'web' ? androidAppUrlEnv(config) : {};
+  const runEnv = { ...(platformConfig.env || {}), ...clockEnv, ...perfEnv, ...appUrlEnv };
 
   // `nice -n 10` on every process the skill drives here (server + view:cache
   // + seed), per the user's "machine overloaded" report (plan "Capture
@@ -1087,6 +1145,36 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   return lines;
 }
 
+// Process-tree fallback (plan step 9, live 2026-09-24 STOP: a `php artisan
+// serve --port=<port>` worker child, spawned via `PHP_CLI_SERVER_WORKERS`
+// (`laravelPerfEnv`), survived the pidfile's own `-pid` process-group kill
+// below on a real run against the events pilot). Kills any process still
+// listening on the recorded port, but ONLY when that process's own cwd
+// resolves under `root` -- never an unrelated listener on the same port
+// from another tool, checked via `lsof -a -p <pid> -d cwd` before the kill,
+// same "verify ownership before touching" reasoning as the lock/PID checks
+// above.
+function killPortListeners(root, port, runner = defaultRunner) {
+  if (!port) return;
+  const lsofRes = runner('lsof', ['-ti', `tcp:${port}`], {});
+  const pids = (lsofRes.stdout || '').trim().split('\n').filter(Boolean);
+  for (const pidStr of pids) {
+    const pid = parseInt(pidStr, 10);
+    if (!pid) continue;
+    const cwdRes = runner('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], {});
+    const cwdLine = (cwdRes.stdout || '').split('\n').find((l) => l.startsWith('n'));
+    const procCwd = cwdLine ? resolve(cwdLine.slice(1)) : '';
+    const rootAbs = resolve(root);
+    const underRoot = procCwd && (procCwd === rootAbs || procCwd.startsWith(rootAbs + sep));
+    if (!underRoot) continue;
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // already gone
+    }
+  }
+}
+
 function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
   const lines = [];
   const config = readJson(join(root, '.screens/config.json'), {});
@@ -1146,6 +1234,12 @@ function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
       }
       rmSync(pidFile, { force: true });
     }
+    // Process-tree fallback (`killPortListeners` above): only a platform
+    // config that declares `port` (web) is checked -- android's `adb emu
+    // kill` above is the emulator's own graceful shutdown, no port to fall
+    // back on.
+    const platformPort = config[platform] && config[platform].port;
+    if (platformPort) killPortListeners(root, platformPort, runner);
     // Only a sqlite isolated_db is a file `down` may delete; a pgsql
     // isolated_db is a database name, reused (and reset by migrate:fresh)
     // on the next run, never dropped here (plan's "Isolation and
@@ -1162,6 +1256,53 @@ function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
 
   rmSync(join(root, '.screens/.lock'), { force: true });
   lines.push('DOWN_RESULT=OK');
+  return lines;
+}
+
+// ---------------------------------------------------------------------
+// android-navigate: sends the per-entry explicit intent
+// (`androidExplicitIntentArgs`/`androidDeepLinkUrl` above) ahead of that
+// entry's Maestro flow (platform-maestro.md "Explicit-intent navigation"),
+// one call per manifest entry from the driver's invocation loop -- the
+// Maestro flow itself only brings the app to the foreground (`launchApp`)
+// and waits/screenshots, it never navigates.
+// ---------------------------------------------------------------------
+
+function cmdAndroidNavigate(args, root = process.cwd(), runner = defaultRunner) {
+  const lines = [];
+  const entryId = argValue(args, '--entry');
+  const serial = argValue(args, '--serial');
+  if (!entryId || !serial) {
+    lines.push('ANDROID_NAVIGATE_RESULT=FAIL (--entry and --serial required)');
+    return lines;
+  }
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
+  const entry = (manifest.entries || []).find((e) => e.id === entryId);
+  if (!entry) {
+    lines.push(`ANDROID_NAVIGATE_RESULT=FAIL (unknown entry ${entryId})`);
+    return lines;
+  }
+  if (!entry.reach) {
+    lines.push(`ANDROID_NAVIGATE_RESULT=SKIP (entry ${entryId} has no reach URL)`);
+    return lines;
+  }
+  const androidConfig = config.android || {};
+  const appId = androidConfig.app_id;
+  const deepLinkHost = androidConfig.deep_link_host;
+  if (!appId || !deepLinkHost) {
+    lines.push('ANDROID_NAVIGATE_RESULT=FAIL (config.android.app_id and deep_link_host required)');
+    return lines;
+  }
+  const url = androidDeepLinkUrl(deepLinkHost, entry.reach);
+  const sdkRoot = resolveAndroidSdkRoot();
+  const adb = androidToolPaths(sdkRoot).adb;
+  const res = runner(adb, androidExplicitIntentArgs(serial, appId, url), {});
+  if (res.status !== 0) {
+    lines.push(`ANDROID_NAVIGATE_RESULT=FAIL (am start exited ${res.status})`);
+    return lines;
+  }
+  lines.push(`ANDROID_NAVIGATE_RESULT=OK url=${url}`);
   return lines;
 }
 
@@ -1996,6 +2137,7 @@ function main(argv) {
     plan: cmdPlan,
     up: cmdUp,
     down: cmdDown,
+    'android-navigate': cmdAndroidNavigate,
     'macos-export': cmdMacosExport,
     promote: cmdPromote,
     'migrate-layout': cmdMigrateLayout,
@@ -2058,6 +2200,8 @@ export {
   androidAvdCreateShellCmd,
   androidDemoModeArgs,
   androidThemeArgs,
+  androidExplicitIntentArgs,
+  androidDeepLinkUrl,
   waitForAndroidBoot,
   androidDeviceSetup,
   deviceSetupHook,
@@ -2066,10 +2210,13 @@ export {
   composePhpIniScanDir,
   phpFixedClockEnv,
   laravelPerfEnv,
+  androidAppUrlEnv,
   playwrightWorkers,
   computeSeedFingerprint,
   cmdUp,
+  killPortListeners,
   cmdDown,
+  cmdAndroidNavigate,
   commandOnPath,
   readPngDimensions,
   defaultCompareRunner,

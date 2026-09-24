@@ -14,32 +14,38 @@
 
 appId: {{APP_ID}}
 ---
-# clearState guarantees a fresh app install per run (no leftover session
-# from a previous capture), the Maestro/Android equivalent of Playwright's
-# fresh BrowserContext per (entry, state, role) test in capture.spec.ts.
+# clearState is true only for the FIRST entry captured for a given role
+# (`{{CLEAR_STATE}}`, generator's `roleSeen` tracking): a fresh app install
+# once per role, not once per (entry, state, role) -- an `openLink`-era
+# `clearState: true` on every flow forced a full relogin per entry, and
+# `openLink` itself resolves an implicit VIEW intent that Android routes to
+# Chrome (the app's own App Link intent-filter only verifies the production
+# host, never the isolated backend host `server.url` is pointed at, live
+# STOP 2026-09-24). Navigation for an entry with a `reach` URL now happens
+# BEFORE this flow even starts: the driver sends an explicit-component
+# intent via `screens.mjs android-navigate` (platform-maestro.md
+# "Explicit-intent navigation"), so `launchApp` here only brings the
+# already-navigated app to the foreground.
 - launchApp:
-    clearState: true
+    clearState: {{CLEAR_STATE}}
 
-# Login (state != "guest"): reuses the SAME web login form the Capacitor
-# webview renders (plan step 9 context: "it wraps the Laravel web UI: reuse
-# the web routes"), matched by the Laravel Breeze/Jetstream default input
-# ids -- the same selectors capture.spec.ts's loginAs() targets via CSS,
-# expressed here as Maestro webview element ids (verify against the real
-# rendered login form during scaffold; a project with different ids sets
-# `config.android.login_selectors`).
+# Login (state != "guest", first entry of the role only -- see
+# `{{CLEAR_STATE}}` above; a later entry of the same role reuses the still-
+# logged-in session instead of re-submitting the form): reuses the SAME web
+# login form the Capacitor webview renders (plan step 9 context: "it wraps
+# the Laravel web UI: reuse the web routes"), matched by the Laravel
+# Breeze/Jetstream default input ids -- the same selectors capture.spec.ts's
+# loginAs() targets via CSS, expressed here as Maestro webview element ids
+# (verify against the real rendered login form during scaffold; a project
+# with different ids sets `config.android.login_selectors`).
 {{LOGIN_STEPS}}
 
-# Reach: an entry with a `reach` URL (the common case -- Capacitor wraps
-# the Laravel web routes, plan step 9) deep-links straight there via the
-# app's own verified App Link (`- openLink:`, verified installed on the
-# events pilot: `android/app/src/main/AndroidManifest.xml`'s
-# `android:autoVerify="true"` intent-filter) instead of simulating taps
-# through the UI -- far more deterministic than a tap sequence and, unlike
-# `steps[]`, works unmodified for any manifest entry with a stable URL. An
-# entry with no `reach` (only reachable through a UI flow with no direct
-# route) falls back to the shared native `steps[]` vocabulary
-# (tap_tab/tap/wait/type/swipe_up/swipe_down, config-schema.md, same
-# mapping the generator applies for the Apple driver's `steps[]`).
+# Reach: an entry with a `reach` URL is navigated externally before this
+# flow runs (see `{{CLEAR_STATE}}` comment above), so no in-flow step is
+# needed here. An entry with no `reach` (only reachable through a UI flow
+# with no direct route) falls back to the shared native `steps[]`
+# vocabulary (tap_tab/tap/wait/type/swipe_up/swipe_down, config-schema.md,
+# same mapping the generator applies for the Apple driver's `steps[]`).
 {{REACH_STEPS}}
 
 # State axis "error" (entry.error_fill, same {selector, value} shape the

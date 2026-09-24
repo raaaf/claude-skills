@@ -43,9 +43,15 @@ import {
   androidAvdCreateShellCmd,
   androidDemoModeArgs,
   androidThemeArgs,
+  androidExplicitIntentArgs,
+  androidDeepLinkUrl,
   waitForAndroidBoot,
   androidDeviceSetup,
   cmdUp,
+  cmdDown,
+  cmdAndroidNavigate,
+  killPortListeners,
+  androidAppUrlEnv,
   laravelDbGuard,
   composePhpIniScanDir,
   phpFixedClockEnv,
@@ -1529,6 +1535,17 @@ test('androidThemeArgs: composes light/dark uimode night switch', () => {
   assert.deepEqual(androidThemeArgs('emulator-5554', 'light'), ['-s', 'emulator-5554', 'shell', 'cmd', 'uimode', 'night', 'no']);
 });
 
+test('androidExplicitIntentArgs: explicit component intent, never an implicit VIEW', () => {
+  assert.deepEqual(
+    androidExplicitIntentArgs('emulator-5554', 'de.rafaelalex.events', 'https://events.rafaelalex.de/e/x'),
+    ['-s', 'emulator-5554', 'shell', 'am', 'start', '-n', 'de.rafaelalex.events/.MainActivity', '-a', 'android.intent.action.VIEW', '-d', 'https://events.rafaelalex.de/e/x'],
+  );
+});
+
+test('androidDeepLinkUrl: production host + entry reach path, never the isolated backend host', () => {
+  assert.equal(androidDeepLinkUrl('events.rafaelalex.de', '/e/screenshot-event'), 'https://events.rafaelalex.de/e/screenshot-event');
+});
+
 // --- Boot wait ---------------------------------------------------------------
 
 test('waitForAndroidBoot: sys.boot_completed=1 -> true immediately', () => {
@@ -1701,4 +1718,127 @@ test('androidDeviceSetup: no installed system image -> SKIP with the install com
   } finally {
     delete process.env.ANDROID_HOME;
   }
+});
+
+// --- android-navigate ---------------------------------------------------------
+
+test('cmdAndroidNavigate: composes the explicit intent for a manifest entry with a reach URL', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), {
+    android: { app_id: 'de.rafaelalex.events', deep_link_host: 'events.rafaelalex.de' },
+  });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'event-page', platform: 'android', reach: '/e/screenshot-event' }],
+  });
+  let calledArgs = null;
+  const runner = (cmd, args) => {
+    calledArgs = args;
+    return { stdout: '', status: 0 };
+  };
+  const lines = cmdAndroidNavigate(['--entry', 'event-page', '--serial', 'emulator-5554'], root, runner);
+  assert.ok(lines.some((l) => l === 'ANDROID_NAVIGATE_RESULT=OK url=https://events.rafaelalex.de/e/screenshot-event'), lines.join('\n'));
+  assert.deepEqual(calledArgs, [
+    '-s', 'emulator-5554', 'shell', 'am', 'start',
+    '-n', 'de.rafaelalex.events/.MainActivity',
+    '-a', 'android.intent.action.VIEW',
+    '-d', 'https://events.rafaelalex.de/e/screenshot-event',
+  ]);
+});
+
+test('cmdAndroidNavigate: entry with no reach URL -> SKIP, no intent sent', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), {
+    android: { app_id: 'de.rafaelalex.events', deep_link_host: 'events.rafaelalex.de' },
+  });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'steps-only', platform: 'android', steps: [] }],
+  });
+  let called = false;
+  const runner = () => {
+    called = true;
+    return { stdout: '', status: 0 };
+  };
+  const lines = cmdAndroidNavigate(['--entry', 'steps-only', '--serial', 'emulator-5554'], root, runner);
+  assert.ok(lines.some((l) => l === 'ANDROID_NAVIGATE_RESULT=SKIP (entry steps-only has no reach URL)'), lines.join('\n'));
+  assert.equal(called, false);
+});
+
+test('cmdAndroidNavigate: missing config.android.deep_link_host -> FAIL, never sends a bare-isolated-host intent', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { android: { app_id: 'de.rafaelalex.events' } });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'event-page', platform: 'android', reach: '/e/x' }],
+  });
+  const lines = cmdAndroidNavigate(['--entry', 'event-page', '--serial', 'emulator-5554'], root, () => ({ stdout: '', status: 0 }));
+  assert.ok(lines.some((l) => l.startsWith('ANDROID_NAVIGATE_RESULT=FAIL')), lines.join('\n'));
+});
+
+// --- down: process-tree teardown -----------------------------------------------
+
+test('killPortListeners: kills a listener whose cwd is under root, skips one that is not', () => {
+  const root = '/Users/rafael/Developer/apps/events';
+  const calls = [];
+  const runner = (cmd, args) => {
+    calls.push([cmd, args]);
+    if (cmd === 'lsof' && args[0] === '-ti') return { stdout: '111\n222\n', status: 0 };
+    if (cmd === 'lsof' && args.includes('111')) return { stdout: `p111\nn${root}/native\n`, status: 0 };
+    if (cmd === 'lsof' && args.includes('222')) return { stdout: 'p222\nn/some/other/project\n', status: 0 };
+    return { stdout: '', status: 0 };
+  };
+  const killed = [];
+  const originalKill = process.kill;
+  process.kill = (pid, sig) => { killed.push([pid, sig]); };
+  try {
+    killPortListeners(root, 8737, runner);
+  } finally {
+    process.kill = originalKill;
+  }
+  assert.deepEqual(killed, [[111, 'SIGTERM']]);
+});
+
+test('cmdDown --platform web: falls back to killing a lingering port listener under the pilot root', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { web: { port: 8737 } });
+  const calls = [];
+  const runner = (cmd, args) => {
+    calls.push([cmd, args]);
+    if (cmd === 'lsof' && args[0] === '-ti') return { stdout: '999\n', status: 0 };
+    if (cmd === 'lsof') return { stdout: `p999\nn${root}\n`, status: 0 };
+    return { stdout: '', status: 0 };
+  };
+  const killed = [];
+  const originalKill = process.kill;
+  process.kill = (pid, sig) => { killed.push([pid, sig]); };
+  try {
+    const lines = cmdDown(['--platform', 'web'], root, runner);
+    assert.ok(lines.includes('DOWN_RESULT=OK'));
+  } finally {
+    process.kill = originalKill;
+  }
+  assert.ok(killed.some(([pid, sig]) => pid === 999 && sig === 'SIGTERM'));
+});
+
+// --- APP_URL for a Capacitor-dependent web backend --------------------------
+
+test('androidAppUrlEnv: android depends_on web -> APP_URL set to the emulator-reachable host', () => {
+  const config = { android: { depends_on: 'web' }, web: { port: 8737 } };
+  assert.deepEqual(androidAppUrlEnv(config), { APP_URL: 'http://10.0.2.2:8737' });
+});
+
+test('androidAppUrlEnv: config.android.base_url overrides the computed default', () => {
+  const config = { android: { depends_on: 'web', base_url: 'http://10.0.2.2:9999' }, web: { port: 8737 } };
+  assert.deepEqual(androidAppUrlEnv(config), { APP_URL: 'http://10.0.2.2:9999' });
+});
+
+test('androidAppUrlEnv: no android platform -> {}, never touches APP_URL', () => {
+  assert.deepEqual(androidAppUrlEnv({ web: { port: 8737 } }), {});
+});
+
+test('androidAppUrlEnv: android.depends_on is not "web" -> {}', () => {
+  assert.deepEqual(androidAppUrlEnv({ android: { depends_on: null }, web: { port: 8737 } }), {});
+});
+
+test('androidAppUrlEnv: explicit config.web.env.APP_URL always wins, never overridden', () => {
+  const config = { android: { depends_on: 'web' }, web: { port: 8737, env: { APP_URL: 'http://localhost:9001' } } };
+  assert.deepEqual(androidAppUrlEnv(config), {});
 });

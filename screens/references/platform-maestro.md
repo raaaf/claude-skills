@@ -14,6 +14,7 @@ a Capacitor iOS webview needs the same Maestro-over-XCUITest reasoning, not buil
 - [SDK and tool resolution](#sdk-and-tool-resolution)
 - [Preflight](#preflight)
 - [Flow generation](#flow-generation)
+- [Explicit-intent navigation](#explicit-intent-navigation)
 - [Capacitor backend isolation](#capacitor-backend-isolation)
 - [Invocation](#invocation)
 - [Determinism notes](#determinism-notes)
@@ -123,17 +124,46 @@ Login steps (`loginStepsFor`) reuse the Laravel login form's own input ids (Bree
 Capacitor wraps the Laravel web UI (plan step 3 context), so the webview renders the identical form.
 `config.android.login_selectors` overrides the ids when a project's form differs.
 
-An entry with a `reach` URL (the common case, same field web entries already use) deep-links
-straight there via Maestro's `- openLink:` instead of simulated taps (verified against the events
-pilot: `android/app/src/main/AndroidManifest.xml` carries a verified App Link intent-filter,
-`android:autoVerify="true"`), far more deterministic than a tap sequence and, unlike `steps[]`, works
-unmodified for any entry with a stable URL. `config.android.base_url` (default `http://10.0.2.2:<web
-port>`, the Android emulator's own alias for the host machine, never `127.0.0.1`) is prepended.
-Entries with no `reach` (a view only reachable through a UI flow with no direct route) fall back to
-`steps[]`. `entry.ready` holds visible TEXT for an android/capacitor entry (matched via Maestro's
-`extendedWaitUntil: visible: text:`), not a CSS selector the way a web entry's `ready` does -- the
-same convention the pilot's own hand-written `.maestro/*.yaml` flows already use exclusively (text/
-accessibility matching, never an id, per that file's own header comment on webview robustness).
+An entry with a `reach` URL (the common case, same field web entries already use) is navigated to
+EXTERNALLY, before its flow even starts (see "Explicit-intent navigation" below) -- the generated
+flow itself carries only a comment where the navigation step used to be. `clearState` (the
+generator's `roleSeen` tracking) is `true` only for the first flow generated for a given role, so a
+role's login session survives across its own entries instead of relogging in on every one;
+`{{LOGIN_STEPS}}` is skipped the same way for every entry after the role's first. Entries with no
+`reach` (a view only reachable through a UI flow with no direct route) fall back to `steps[]`, run
+inside the flow as before. `entry.ready` holds visible TEXT for an android/capacitor entry (matched
+via Maestro's `extendedWaitUntil: visible: text:`), not a CSS selector the way a web entry's `ready`
+does -- the same convention the pilot's own hand-written `.maestro/*.yaml` flows already use
+exclusively (text/accessibility matching, never an id, per that file's own header comment on webview
+robustness).
+
+## Explicit-intent navigation
+
+Maestro's `- openLink:` resolves an IMPLICIT `VIEW` intent, which Android hands to whichever app's
+intent-filter matches the URL's host -- for the isolated backend's own host (`http://10.0.2.2:<web
+port>`, never the app's verified production host) nothing matches, so the OS falls back to Chrome
+instead of the app (`adb shell am start -a VIEW -d http://10.0.2.2:<port>/... -p <appId>` reproduced
+live: "Unable to resolve Intent"). An EXPLICIT-component intent (`-n <appId>/.MainActivity`) skips
+intent-filter resolution entirely and is delivered straight to the app's `onNewIntent`; Capacitor's
+`@capacitor/app` plugin fires `appUrlOpen` with the intent's data, and the app's own JS (verified
+against the events pilot, `resources/js/app.js`'s `appUrlOpen` listener) narrows that event by exact
+hostname before navigating -- so the intent's URL must carry the app's own verified production host
+(`config.android.deep_link_host`, the App Link intent-filter's own `android:host` in
+`AndroidManifest.xml`), never the isolated backend host the webview is actually pointed at. The app
+then loads only the URL's path against its already-isolated `server.url`
+(`window.location.href = path`, same pattern the plan step anticipated as the primary path, not a
+fallback).
+
+`screens.mjs android-navigate --entry <id> --serial <serial>` (`androidExplicitIntentArgs` +
+`androidDeepLinkUrl`, runner-injected like every other Android driver function) composes and sends
+this intent for one manifest entry, reading `entry.reach` + `config.android.app_id` +
+`config.android.deep_link_host` from `.screens/manifest.json`/`config.json`. It reports
+`ANDROID_NAVIGATE_RESULT=OK url=<url>`, `SKIP (entry <id> has no reach URL)` for a `steps[]`-only
+entry, or `FAIL (...)` when the config fields are missing. The invocation loop below calls it once
+per entry,
+right before that entry's own `maestro test` call -- never batched, since the intent must land before
+Maestro's `launchApp` brings the (already-navigated) app to the foreground and starts waiting for the
+ready text.
 
 ## Capacitor backend isolation
 
@@ -152,7 +182,9 @@ a developer runs, exactly like an Xcode derivedData artifact.
 
 ## Invocation
 
-From the project root, after `screens.mjs up --platform android` reported `UP_RESULT=OK`:
+From the project root, after `screens.mjs up --platform android` reported `UP_RESULT=OK`. `$SCREENS_BIN`
+is `SKILL.md`'s own resolved path to `screens.mjs` (Phase 0's `SCREENS_BIN=...` block), reused here
+rather than re-derived:
 
 ```
 cd <project root>
@@ -166,8 +198,20 @@ adb -s "$ANDROID_SERIAL" install -r android/app/build/outputs/apk/debug/app-debu
 
 for THEME in light dark; do   # only the themes config.axes.themes lists
   adb -s "$ANDROID_SERIAL" shell cmd uimode night $([ "$THEME" = dark ] && echo yes || echo no)
-  node .screens/android/generate-maestro-flows.mjs "<comma-separated stale entry ids>" "$THEME"
-  nice -n 10 maestro --device "$ANDROID_SERIAL" test .screens/.maestro-generated/
+  # Capture the `FLOW <path>` lines in the printed order (see
+  # generate-maestro-flows.mjs's own header comment): `clearState`/login-skip
+  # was assigned per role in exactly this order, so an out-of-order or
+  # batched run would clear state mid-role.
+  FLOWS=$(node .screens/android/generate-maestro-flows.mjs "<comma-separated stale entry ids>" "$THEME" | grep '^FLOW ' | cut -d' ' -f2)
+  for FLOW_FILE in $FLOWS; do
+    ENTRY_ID=$(basename "$FLOW_FILE" .yaml | cut -d_ -f1)  # `<id>__<state>__<role>.yaml`
+    # Explicit-intent navigation (see "Explicit-intent navigation" above)
+    # happens BEFORE this entry's flow, never batched with the others --
+    # `maestro test` on a whole directory would run flows in its own order,
+    # not the generator's role-tracked one.
+    node "$SCREENS_BIN" android-navigate --entry "$ENTRY_ID" --serial "$ANDROID_SERIAL"
+    nice -n 10 maestro --device "$ANDROID_SERIAL" test "$FLOW_FILE"
+  done
   # `takeScreenshot: <name>` writes <name>.png to the project ROOT (verified
   # against the events pilot's own pre-existing .gitignore comment), not an
   # arbitrary path -- move this pass's PNGs into the incoming dir. Matched
@@ -197,6 +241,34 @@ being redirected under `.screens/.build/android` the way the Apple driver's deri
 
 ## Known limits
 
+- **A cross-origin client-side redirect can still take the webview off `server.url` and break the
+  whole Capacitor plugin bridge, including `appUrlOpen` -- not just `openLink`.** Live against the
+  events pilot (2026-09-24, full chain: isolated pgsql backend, `npx cap sync android`,
+  `server.url` overridden to `http://10.0.2.2:8737`, real `./gradlew assembleDebug` + install): the
+  explicit-component intent above IS delivered correctly and Capacitor's native `App` plugin DOES
+  fire `appUrlOpen`, but the webview had already navigated to `https://events.rafaelalex.de/login`
+  (confirmed via `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` +
+  `curl localhost:9222/json`'s `"url"` field) before that -- once off the isolated origin,
+  Capacitor's JS-side plugin proxy loses the bridge entirely (every plugin, not just `App`, logs
+  `"<name>" plugin is not implemented on android`), so the app's own `App.addListener('appUrlOpen',
+  ...)` never re-registers and the intent's event is delivered to nobody
+  (`Notifying listeners for event appUrlOpen` / `No listeners found for event appUrlOpen`). The
+  first suspect, Laravel's `route()`/`asset()` building absolute URLs from a dev-machine `APP_URL`
+  (`http://localhost:9001` on the events pilot, wired into web `.env`, unrelated to the isolated
+  backend), was real but not sufficient: `screens.mjs`'s `androidAppUrlEnv` now sets `APP_URL` to
+  the emulator-reachable host automatically for a web platform an android platform `depends_on`
+  (never overriding an explicit `config.web.env.APP_URL`), verified live to stop the "not
+  implemented" spam this specific cause was producing, but the webview still ended up on
+  `https://events.rafaelalex.de/login` afterward -- the redirect's actual trigger was not
+  identified (a PWA `start_url`/service-worker navigation in the built JS bundle, loaded via an
+  absolute production asset URL regardless of `APP_URL`/`ASSET_URL`, is the leading remaining
+  suspect, but confirming it needs either an app-source change or JS-level `Runtime.evaluate`
+  tracing outside this stage's scope). **Net effect: `screens.mjs android-navigate` is correct and
+  tested, and closes the `openLink`-resolves-to-Chrome failure mode entirely, but does not by
+  itself make Android captures work end-to-end on an app whose build also performs this kind of
+  absolute-URL client-side redirect** -- re-verify against a project without that redirect (or once
+  the app's PWA/service-worker startup logic is confirmed not to fire on the isolated origin) before
+  relying on this for a live capture run.
 - **No `mask[]` equivalent inside a webview.** Maestro's `runScript` can call into a webview-exposed
   JS hook when the app defines one (`window.screensApplyMask`), but the generator emits nothing when
   no such hook exists (documented, not silently attempted) -- same "no mask equivalent" limitation

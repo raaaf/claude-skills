@@ -17,7 +17,12 @@
 // call, never committed -- the generated-output relationship to
 // `maestro-flow.yaml` mirrors `.screens/.incoming/<platform>/` for PNGs).
 // Prints one `FLOW <path>` line per generated file and a final
-// `GENERATE_RESULT=OK count=<n>` line, exit 0.
+// `GENERATE_RESULT=OK count=<n>` line, exit 0. The driver invocation loop
+// (platform-maestro.md "Explicit-intent navigation") MUST run the printed
+// `FLOW` lines in the order printed, not glob a directory: `clearState`
+// (true only for the first flow of a given role, see `roleSeen` below) is
+// assigned in this same iteration order, so running out of order would
+// clear state mid-role and drop the login session unexpectedly.
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -56,11 +61,6 @@ const theme = process.argv[3] || 'light';
 
 const androidConfig = config.android || {};
 const appId = androidConfig.app_id || (config.web && config.web.app_id) || 'com.example.app';
-// The Android emulator's own alias for the host machine's localhost (not
-// 127.0.0.1: the emulator is a separate network namespace), platform-maestro.md
-// "Capacitor backend isolation". `config.android.base_url` overrides it for
-// a project not driven through the isolated web backend's own port.
-const baseUrl = androidConfig.base_url || `http://10.0.2.2:${(config.web && config.web.port) || ''}`;
 const loginSelectors = androidConfig.login_selectors
   || { email: 'email', password: 'password', submit: 'password' };
 const deviceClass = androidConfig.device_class || 'android-phone';
@@ -117,6 +117,13 @@ function errorFillSteps(entry) {
 let count = 0;
 const lines = [];
 
+// `clearState: true` (and therefore `{{LOGIN_STEPS}}`) fires only for the
+// FIRST flow generated for a given role in this call (platform-maestro.md
+// "Explicit-intent navigation"): a fresh app install once per role, not
+// once per (entry, state, role), so a logged-in role's session survives
+// across its own entries instead of re-logging in on every one.
+const roleSeen = new Set();
+
 for (const entry of manifest.entries || []) {
   if (entry.platform !== 'android' && entry.platform !== 'capacitor') continue;
   if (staleIds && !staleIds.has(entry.id)) continue;
@@ -126,12 +133,19 @@ for (const entry of manifest.entries || []) {
 
   for (const state of states) {
     for (const role of roles) {
-      // Deep link (openLink) when the entry has a stable URL (the common
-      // case, Capacitor wraps the Laravel web routes); falls back to the
-      // shared steps[] tap vocabulary only when no `reach` URL exists
-      // (platform-maestro.md "Reach").
+      const clearState = !roleSeen.has(role);
+      roleSeen.add(role);
+
+      // Navigation for an entry with a `reach` URL happens externally,
+      // before this flow runs (`screens.mjs android-navigate`, see
+      // platform-maestro.md "Explicit-intent navigation") -- `openLink`
+      // resolved an implicit VIEW intent to Chrome instead of the app,
+      // since the app's App Link intent-filter only verifies the
+      // production host, never the isolated backend host `server.url`
+      // points at (live STOP 2026-09-24). Falls back to the shared
+      // steps[] tap vocabulary only when no `reach` URL exists.
       const reachSteps = entry.reach
-        ? `- openLink: "${baseUrl}${entry.reach}"`
+        ? '# navigated externally via `screens.mjs android-navigate` before this flow runs'
         : (entry.steps || []).map(stepToMaestro).join('\n') || '# no steps[] or reach configured';
       const errorSteps = state === 'error' ? errorFillSteps(entry) : '';
       const filename = `${entry.id}__${state}__${role}__${deviceClass}__${theme}.png`;
@@ -148,7 +162,8 @@ for (const entry of manifest.entries || []) {
 
       const flow = template
         .replaceAll('{{APP_ID}}', appId)
-        .replaceAll('{{LOGIN_STEPS}}', loginStepsFor(role))
+        .replaceAll('{{CLEAR_STATE}}', String(clearState))
+        .replaceAll('{{LOGIN_STEPS}}', clearState ? loginStepsFor(role) : '# already logged in (clearState: false, see {{CLEAR_STATE}})')
         .replaceAll('{{REACH_STEPS}}', reachSteps)
         .replaceAll('{{ERROR_FILL_STEPS}}', errorSteps)
         .replaceAll('{{MASK_STEPS}}', '') // see platform-maestro.md "Known limits"
