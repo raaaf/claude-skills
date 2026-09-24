@@ -540,6 +540,7 @@ function cmdPromote(args, root = process.cwd()) {
   const incomingDir = join(root, '.screens/.incoming', platform || '');
   let changed = 0;
   let unchanged = 0;
+  let knownNondeterministic = 0;
   if (existsSync(incomingDir)) {
     for (const file of readdirSync(incomingDir)) {
       if (!file.endsWith('.png') || !file.includes('__')) continue;
@@ -561,9 +562,22 @@ function cmdPromote(args, root = process.cwd()) {
       // run, and every entry reports `stale` forever even with zero source
       // changes (Step 6's `run 2 -> new=0 updated=0` requirement).
       state.entries[id].fingerprint = computeFingerprint(root, entry.sources || [], config.global_sources || []);
-      if (didChange) changed++;
-      else unchanged++;
-      lines.push(`PROMOTE_ENTRY ${id} ${didChange ? 'changed' : 'unchanged'}`);
+      // Seeder determinism rule (4), plan's "Isolation and lifecycle": a
+      // view whose content is correct but whose row order isn't pinned by
+      // an ORDER BY tie-break can hash differently on a byte-identical
+      // reseed. That is not a promote defect and not maskable (the content
+      // is right, only the order differs), so a manifest entry carrying
+      // `known_nondeterministic` is reported separately and never counted
+      // as `changed`/`unchanged` -- a byte-identical verify (Step 6 run 2b)
+      // excludes it instead of failing on it.
+      if (entry.known_nondeterministic) {
+        knownNondeterministic++;
+        lines.push(`PROMOTE_ENTRY ${id} known_nondeterministic (${entry.known_nondeterministic})`);
+      } else {
+        if (didChange) changed++;
+        else unchanged++;
+        lines.push(`PROMOTE_ENTRY ${id} ${didChange ? 'changed' : 'unchanged'}`);
+      }
     }
   }
 
@@ -572,7 +586,7 @@ function cmdPromote(args, root = process.cwd()) {
   for (const id of removed) lines.push(`PROMOTE_REMOVED ${id}`);
 
   writeJson(join(root, '.screens/state.json'), state);
-  lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} removed=${removed.length}`);
+  lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} removed=${removed.length} known_nondeterministic=${knownNondeterministic}`);
   return lines;
 }
 

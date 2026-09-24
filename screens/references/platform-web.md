@@ -84,6 +84,40 @@ determinism (a real dashboard KPI changed between run 2a and run 2b on `apps/zei
   order, so the last-registered provider's method shadows the built-in one without touching
   fakerphp/faker's vendor code.
 
+## Seeder determinism rules (scaffold checklist, added after stage (b) STOP 3)
+
+A demo seeder is deterministic only if every random draw is seeded. Five rules the Phase 2 scaffold
+follows, and the demo seeder documents which ones actually applied:
+
+1. **Faker seed on both generators.** `fake()->seed(<fixed>)` AND the same seed/provider setup on
+   `app(\Faker\Generator::class)` (the locale-less singleton Eloquent's `Factory::withFaker()`
+   resolves, distinct from `fake()`'s locale-keyed one — see above).
+2. **Seeded string/UUID/ULID factories.** `Str::createRandomStringsUsing(...)` and
+   `Str::createUuidsUsing(...)`/`Str::createUlidsUsing(...)` (or their `...UsingSequence()` helpers)
+   with a fixed, deterministic sequence, set at the very start of the demo seeder — cheap and
+   defensive even when no seeder in the chain currently calls `Str::random()`/`uuid()`/`ulid()`
+   directly, since a later seeder addition would otherwise silently go non-deterministic.
+3. **Laravel 13's secure Randomizer ignores every seed.** `Collection::random`/`Arr::random`,
+   `->shuffle()`, `->inRandomOrder()` and `random_int()` all resolve through PHP's
+   `Random\Randomizer` with the secure engine (`vendor/laravel/framework/src/Illuminate/Collections/Arr.php`
+   `Arr::random`, verified: `(new Randomizer)->pickArrayKeys(...)`), which never reads
+   `mt_srand`/`fake()->seed()`. The scaffold greps every seeder the demo seeder calls for
+   `->random(`, `Arr::random`, `->shuffle(`, `inRandomOrder`, `random_int(` and, for each hit,
+   either avoids calling that seeder or (when the seeder is otherwise needed, the common case)
+   deletes the non-deterministic rows it created and recreates them deterministically inside the
+   demo seeder itself (same factory, same count logic, a fixed selection — e.g. "first N rows
+   ordered by id" — instead of the random pick).
+4. **Row order without an `ORDER BY` tie-break can reorder between reseeds** even when every value
+   in every row is identical. If a captured view differs only by row order, a `mask[]` is not the
+   right tool (the content itself is correct, just reordered) — the manifest entry gets a
+   `"known_nondeterministic": "<reason>"` field instead, and the Phase 8 report lists such entries
+   separately; `screens.mjs`'s byte-identical verify count excludes them.
+5. **`CACHE_STORE=array`** in the isolation env (`config.json`'s `web.env`, alongside
+   `QUEUE_CONNECTION=sync`/`MAIL_MAILER=log`/`BROADCAST_DRIVER=log`) so a cached aggregate (e.g. a
+   `Cache::remember(...)` badge count) never survives a reseed: `migrate:fresh` only resets database
+   tables, not the project's configured cache store, so a `file`/`redis`-backed cache would keep
+   serving a stale value from before the reseed.
+
 ## Preconditions
 
 - `screens.mjs up --platform web` must have started the service and passed the DB guard;

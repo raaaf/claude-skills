@@ -201,6 +201,26 @@ test('promote: persists entry fingerprint so a later plan call with no source ch
   assert.ok(planLines.includes('PLAN_ENTRY entry unchanged'), planLines.join('\n'));
 });
 
+// --- promote: known_nondeterministic entries excluded from changed/unchanged ---
+
+test('promote: known_nondeterministic entry is reported separately, not counted as changed or unchanged', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{
+      id: 'reorderable', platform: 'web', area: 'area', view: 'reorderable', sources: [],
+      known_nondeterministic: 'row order has no ORDER BY tie-break',
+    }],
+  });
+  writeJson(join(root, '.screens/state.json'), { entries: {} });
+  writeFile(root, '.screens/.incoming/web/reorderable__filled.png', 'bytes');
+
+  const lines = cmdPromote(['--platform', 'web'], root);
+
+  assert.ok(lines.some((l) => l === 'PROMOTE_ENTRY reorderable known_nondeterministic (row order has no ORDER BY tie-break)'), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=0 unchanged=0 removed=0 known_nondeterministic=1')), lines.join('\n'));
+});
+
 // --- up: lock present -> FAIL ----------------------------------------------
 
 test('up: lock present -> FAIL', () => {

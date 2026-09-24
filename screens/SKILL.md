@@ -104,8 +104,13 @@ project, also instantiate `screens/templates/php/fixed-clock.php` verbatim into
 `.screens/web/fixed-clock.php` and `screens/templates/php/zz-screens.ini` into
 `.screens/web/php/zz-screens.ini` with `{{PROJECT_ROOT}}` replaced by the project's absolute path,
 and set `config.web.fixed_now` to the same instant as `capture.spec.ts`'s `FIXED_TIME`
-(`screens/references/platform-web.md` "Server-side fixed clock"). The orchestrator never writes
-these files itself (subagent Write scope is the target project, not `.claude/`).
+(`screens/references/platform-web.md` "Server-side fixed clock"), also instantiate
+`screens/templates/php/FixedClockDateTime.php` into `.screens/web/php/FixedClockDateTime.php` and
+have the demo seeder require it and register it on `fake()` and `app(\Faker\Generator::class)`
+before calling the project's own seeders, and follow the "Seeder determinism rules" checklist
+(`screens/references/platform-web.md`) for `Str::create*Using` seeding and any `->random(`-family
+call inside the seeders it calls. The orchestrator never writes these files itself (subagent Write
+scope is the target project, not `.claude/`).
 
 After the executor returns, run a seeder dry run:
 
