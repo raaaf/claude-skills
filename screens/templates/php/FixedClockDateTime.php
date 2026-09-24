@@ -1,5 +1,7 @@
 <?php
 
+use Carbon\Carbon;
+
 // FixedClockDateTime.php: /screens server-side fixed clock for Faker (repo
 // CLAUDE.md "Isolation and lifecycle", added after stage (b) STOP 3:
 // TimeEntryFactory/ExpenditureFactory call Faker's dateTimeBetween(...,
@@ -34,7 +36,7 @@
 // Inert (falls back to the parent's real-time behavior) unless
 // SCREENS_FIXED_NOW is set, so this file is safe to leave registered
 // between /screens runs.
-class FixedClockDateTime extends \Faker\Provider\DateTime
+class FixedClockDateTime extends Faker\Provider\DateTime
 {
     /**
      * The fixed instant (as a Unix timestamp) to resolve every relative
@@ -51,7 +53,7 @@ class FixedClockDateTime extends \Faker\Provider\DateTime
             return null;
         }
 
-        return \Carbon\Carbon::now()->getTimestamp();
+        return Carbon::now()->getTimestamp();
     }
 
     /**
@@ -70,7 +72,7 @@ class FixedClockDateTime extends \Faker\Provider\DateTime
             return (int) $max;
         }
 
-        if ($max instanceof \DateTime) {
+        if ($max instanceof DateTime) {
             return $max->getTimestamp();
         }
 
@@ -90,18 +92,18 @@ class FixedClockDateTime extends \Faker\Provider\DateTime
             return parent::dateTimeBetween($startDate, $endDate, $timezone);
         }
 
-        $startTimestamp = $startDate instanceof \DateTime
+        $startTimestamp = $startDate instanceof DateTime
             ? $startDate->getTimestamp()
             : strtotime($startDate, $base);
         $endTimestamp = static::getMaxTimestamp($endDate);
 
         if ($startTimestamp > $endTimestamp) {
-            throw new \InvalidArgumentException('Start date must be anterior to end date.');
+            throw new InvalidArgumentException('Start date must be anterior to end date.');
         }
 
         $timestamp = self::numberBetween($startTimestamp, $endTimestamp);
 
-        return self::applyTimezone(new \DateTime('@'.$timestamp), $timezone);
+        return self::applyTimezone(new DateTime('@'.$timestamp), $timezone);
     }
 
     /**
@@ -116,8 +118,8 @@ class FixedClockDateTime extends \Faker\Provider\DateTime
             return parent::dateTimeInInterval($date, $interval, $timezone);
         }
 
-        $datetime = $date instanceof \DateTime ? $date : new \DateTime('@'.strtotime($date, $base));
-        $intervalObject = \DateInterval::createFromDateString($interval);
+        $datetime = $date instanceof DateTime ? $date : new DateTime('@'.strtotime($date, $base));
+        $intervalObject = DateInterval::createFromDateString($interval);
         $otherDatetime = clone $datetime;
         $otherDatetime->add($intervalObject);
 
@@ -133,10 +135,10 @@ class FixedClockDateTime extends \Faker\Provider\DateTime
      * behavior via the parent's public getDefaultTimezone() accessor
      * instead of reaching into private parent state.
      */
-    private static function applyTimezone(\DateTime $dt, $timezone)
+    private static function applyTimezone(DateTime $dt, $timezone)
     {
         $resolved = $timezone ?? (static::getDefaultTimezone() ?: date_default_timezone_get());
 
-        return $dt->setTimezone(new \DateTimeZone($resolved));
+        return $dt->setTimezone(new DateTimeZone($resolved));
     }
 }

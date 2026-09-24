@@ -1,5 +1,7 @@
 <?php
 
+use Carbon\Carbon;
+
 // fixed-clock.php: server-side fixed clock for /screens (repo CLAUDE.md
 // "Isolation and lifecycle", "Server-side fixed clock", added after stage
 // (b) STOP 2: a dashboard's server-side `now()` aggregates drifted between
@@ -18,5 +20,5 @@
 $fixedNow = getenv('SCREENS_FIXED_NOW');
 if ($fixedNow !== false && $fixedNow !== '') {
     require_once __DIR__.'/../../vendor/autoload.php';
-    \Carbon\Carbon::setTestNow($fixedNow);
+    Carbon::setTestNow($fixedNow);
 }

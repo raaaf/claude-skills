@@ -117,6 +117,46 @@ not `TEST_RUNNER_SCREENS_MANIFEST_PATH` (verified against a real `xcodebuild tes
 topf-secret pilot: the prefixed name is invisible inside the test process, only the stripped one
 resolves).
 
+### macOS: attachment export (sandbox write defect)
+
+The macOS UI test runner is sandboxed and cannot write a PNG into the project directory
+(`NSCocoaErrorDomain` 513 / EPERM, reproduced live against the layer pilot on 2026-09-24: automation
+itself works, the process launches and captures the app, only the `FileManager` write into
+`.screens/.incoming/macos/` fails). `ScreensCatalogTests.swift`'s `capture` therefore never attempts
+a direct write on macOS at all -- it always calls `attachScreenshot`, which creates an
+`XCTAttachment(screenshot:)`, sets `name` to the same `<entryId>__<state>__<role>__<viewport>__<theme>.png`
+the direct write would have used, sets `lifetime = .keepAlways`, and calls `add(attachment)`. (iOS
+keeps the direct write as its primary path -- the simulator runner can reach host paths -- and only
+falls back to the same `attachScreenshot` when that write itself throws.)
+
+The macOS `xcodebuild test` invocation above therefore also carries `-resultBundlePath
+.screens/.build/macos/Result.xcresult`. Right after each themed pass (before the next theme's
+`xcodebuild` call overwrites that path), the driver step runs:
+
+```
+node "$SCREENS_BIN" macos-export
+```
+
+`screens.mjs`'s `macos-export` subcommand (`cmdMacosExport`) runs `xcrun xcresulttool export
+attachments --path .screens/.build/macos/Result.xcresult --output-path
+.screens/.build/macos/_export --filter "*.png"`, reads the `manifest.json` xcresulttool writes into
+that output directory, and renames every exported PNG into `.screens/.incoming/macos/` under the
+name `promote` expects.
+
+xcresulttool never names the exported file exactly what `XCTAttachment.name` was set to: it appends
+a `_<index>_<UUID>` disambiguation suffix before the extension unconditionally (verified live against
+Xcode 27, `xcrun xcresulttool export attachments --path ... --output-path ...`:
+`content-view-with-model__filled__guest__mac__dark.png` came back as
+`..._0_96B887EF-3941-4AF2-B98F-5ECBAEE2068E.png` in both `exportedFileName` and
+`suggestedHumanReadableName`). `mapXcresultExportToIncoming` strips exactly that suffix back off; the
+export manifest's real shape (`xcrun xcresulttool export attachments --schema`) is a top-level array
+of `{testIdentifier, attachments: [{exportedFileName, suggestedHumanReadableName, ...}]}`.
+
+`down --platform macos` never deletes the result bundle explicitly: it already lives inside
+`.screens/.build/macos/`, and `down`'s existing `.screens/.build/<platform>` removal (the same disk
+guard cleanup that deletes the derivedDataPath) deletes it along with everything else under that
+directory.
+
 ## Filtering
 
 `-only-testing` only selects whole test methods, and `ScreensCatalogTests` is one method that loops

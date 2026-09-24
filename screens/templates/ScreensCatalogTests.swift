@@ -213,6 +213,15 @@ final class ScreensCatalogTests: XCTestCase {
     /// (`<entryId>__<state>__<role>__<viewport>__<theme>.png`); `promote`
     /// maps `viewportId` to the device-class folder the same way the web
     /// driver's real viewport does (Output layout, config-schema.md).
+    ///
+    /// macOS never attempts the direct write: the macOS UI test runner is
+    /// sandboxed and cannot write into the project directory (NSCocoaErrorDomain
+    /// 513 / EPERM, reproduced live against the layer pilot), so every macOS
+    /// capture is delivered as an `XCTAttachment` instead and extracted from
+    /// the `.xcresult` bundle by `screens.mjs up`'s macOS driver
+    /// (`platform-apple.md`). iOS keeps the direct write as its primary path
+    /// (the simulator runner can reach host paths) and only falls back to the
+    /// same attachment mechanism if that write itself fails.
     private func capture(app: XCUIApplication, id: String, state: String, role: String, viewportId: String, theme: String, dir: String) {
         #if os(macOS)
         let screenshot = app.windows.firstMatch.screenshot()
@@ -220,12 +229,27 @@ final class ScreensCatalogTests: XCTestCase {
         let screenshot = XCUIScreen.main.screenshot()
         #endif
         let filename = "\(id)__\(state)__\(role)__\(viewportId)__\(theme).png"
+        #if os(macOS)
+        attachScreenshot(screenshot, filename: filename)
+        #else
         let url = URL(fileURLWithPath: dir).appendingPathComponent(filename)
         do {
             try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
             try screenshot.pngRepresentation.write(to: url)
         } catch {
-            XCTFail("failed to write screenshot for \(id) (\(state)/\(role)): \(error)")
+            attachScreenshot(screenshot, filename: filename)
         }
+        #endif
+    }
+
+    /// `name` is read back by `screens.mjs up`'s macOS xcresult export step
+    /// as the `suggestedHumanReadableName` in xcresulttool's export manifest,
+    /// the same filename the direct write would have used, so both delivery
+    /// paths land in `.screens/.incoming/<platform>/` under an identical name.
+    private func attachScreenshot(_ screenshot: XCUIScreenshot, filename: String) {
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = filename
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }

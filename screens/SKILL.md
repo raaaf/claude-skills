@@ -206,6 +206,12 @@ straight to `down`. On the web platform, run the driver command under `nice -n 1
 SIMULATOR_UDID output line>"` (iOS only), and `xcrun simctl ui <SIMULATOR_UDID> appearance
 light|dark` before each themed pass (platform-apple.md "Invocation"); the per-entry stale filter is
 the `TEST_RUNNER_SCREENS_ENTRIES` env var, not `-only-testing` (platform-apple.md "Filtering"). On
+macOS specifically, the xcodebuild invocation also carries `-resultBundlePath
+.screens/.build/macos/Result.xcresult`, and `node "$SCREENS_BIN" macos-export` runs right after
+each themed pass, before the next theme's xcodebuild call overwrites that bundle: the macOS UI test
+runner is sandboxed and cannot write a PNG into the project directory, so every macOS screenshot
+arrives as an `XCTAttachment` inside the result bundle instead of a direct file write
+(platform-apple.md "Invocation" and "Known limits"). On
 android, `npx cap sync android` + the isolated `capacitor.config.json` server.url rewrite (Capacitor
 apps only, skip both for a plain Android project) + `nice -n 10 ./gradlew assembleDebug` + `adb -s
 <up's ANDROID_SERIAL output line> install -r`, then for each theme: `adb -s <serial> shell cmd uimode

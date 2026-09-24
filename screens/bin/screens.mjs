@@ -408,6 +408,102 @@ function macosDeviceSetup(root, runner = defaultRunner) {
 }
 
 // ---------------------------------------------------------------------
+// macOS attachment export (xcresulttool). The macOS UI test runner is
+// sandboxed and cannot write a PNG into the project directory
+// (NSCocoaErrorDomain 513 / EPERM, reproduced live against the layer
+// pilot on 2026-09-24), so `ScreensCatalogTests.swift`'s macOS `capture`
+// never attempts the direct write it uses for iOS: every macOS screenshot
+// is delivered as an `XCTAttachment`
+// inside the `.xcresult` bundle `-resultBundlePath` wrote instead
+// (`screens/references/platform-apple.md` "Invocation"). This step pulls
+// those PNGs back out via `xcrun xcresulttool export attachments` and
+// renames them into `.screens/.incoming/macos/` under the filename
+// `promote` already expects, so `promote` stays generic over how a
+// driver got a PNG there.
+// ---------------------------------------------------------------------
+
+// Pure command composition (plan step 1 testability: "Tests (node, runner
+// injected): export command composition"); the actual spawn happens in
+// `cmdMacosExport` via the injected runner. `--filter "*.png"` skips the
+// UI-hierarchy/debug-description/video attachments XCUITest itself
+// records on every run (verified live: 27 attachments for 2 screenshots
+// without the filter).
+function xcresultExportAttachmentsArgs(resultBundlePath, outputPath) {
+  return ['xcresulttool', 'export', 'attachments', '--path', resultBundlePath, '--output-path', outputPath, '--filter', '*.png'];
+}
+
+// xcresulttool's own export manifest.json never names an exported file
+// exactly what `ScreensCatalogTests.swift`'s `attachScreenshot` set as the
+// `XCTAttachment.name`: it appends a `_<index>_<UUID>` disambiguation
+// suffix before the extension unconditionally (verified live against
+// Xcode 27: `content-view-with-model__filled__guest__mac__dark.png` came
+// back as `..._0_96B887EF-3941-4AF2-B98F-5ECBAEE2068E.png`), so recovering
+// the name `promote` expects means stripping exactly that suffix, not
+// trusting `suggestedHumanReadableName` verbatim.
+const XCRESULT_SUFFIX_RE = /_\d+_[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(\.[^.]+)$/;
+
+function stripXcresultSuffix(suggestedName) {
+  return suggestedName.replace(XCRESULT_SUFFIX_RE, '$1');
+}
+
+// Parses xcresulttool's `export attachments` manifest.json (top-level
+// array of `{testIdentifier, attachments: [{exportedFileName,
+// suggestedHumanReadableName, ...}]}`, verified against a real export on
+// this Xcode 27 install, `xcrun xcresulttool export attachments --schema`)
+// into `{exportedFileName -> incomingFilename}` pairs for every `.png`
+// attachment, so `cmdMacosExport` never has to re-derive xcresulttool's
+// naming convention itself.
+function mapXcresultExportToIncoming(manifestJson) {
+  const out = {};
+  for (const testEntry of manifestJson || []) {
+    for (const attachment of testEntry.attachments || []) {
+      const exportedFileName = attachment.exportedFileName;
+      const suggestedName = attachment.suggestedHumanReadableName;
+      if (!exportedFileName || !suggestedName || !suggestedName.endsWith('.png')) continue;
+      out[exportedFileName] = stripXcresultSuffix(suggestedName);
+    }
+  }
+  return out;
+}
+
+// Runs the export, reads its manifest.json, and moves every mapped PNG
+// into `.screens/.incoming/macos/` (platform-apple.md "Invocation" runs
+// this once per themed xcodebuild pass, right after that pass's
+// `-resultBundlePath` bundle is written and before the next theme
+// overwrites it). No result bundle yet (a driver failure before any test
+// ran) is a SKIP, not a FAIL: `down` still needs to run.
+function cmdMacosExport(args, root = process.cwd(), runner = defaultRunner) {
+  const lines = [];
+  const resultBundlePath = argValue(args, '--result-bundle') || join(root, '.screens/.build/macos/Result.xcresult');
+  if (!existsSync(resultBundlePath)) {
+    lines.push(`MACOS_EXPORT_RESULT=SKIP (no result bundle at ${resultBundlePath})`);
+    return lines;
+  }
+
+  const incomingDir = join(root, '.screens/.incoming/macos');
+  const exportDir = join(root, '.screens/.build/macos/_export');
+  rmSync(exportDir, { recursive: true, force: true });
+  const exportRes = runner('xcrun', xcresultExportAttachmentsArgs(resultBundlePath, exportDir), {});
+  if (exportRes.status !== 0) {
+    lines.push(`MACOS_EXPORT_RESULT=FAIL (xcresulttool export attachments exited ${exportRes.status})`);
+    return lines;
+  }
+
+  const manifestJson = readJson(join(exportDir, 'manifest.json'), null);
+  const mapping = manifestJson ? mapXcresultExportToIncoming(manifestJson) : {};
+  mkdirSync(incomingDir, { recursive: true });
+  let moved = 0;
+  for (const [exportedFileName, incomingFilename] of Object.entries(mapping)) {
+    const src = join(exportDir, exportedFileName);
+    if (!existsSync(src)) continue;
+    renameSync(src, join(incomingDir, incomingFilename));
+    moved++;
+  }
+  lines.push(`MACOS_EXPORT_RESULT=OK moved=${moved}`);
+  return lines;
+}
+
+// ---------------------------------------------------------------------
 // Android device setup (Maestro, stage e). SDK resolution + dedicated AVD,
 // mirroring the Apple find-or-create/reuse shape above but for
 // avdmanager/adb instead of simctl.
@@ -1697,6 +1793,7 @@ function main(argv) {
     plan: cmdPlan,
     up: cmdUp,
     down: cmdDown,
+    'macos-export': cmdMacosExport,
     promote: cmdPromote,
     'migrate-layout': cmdMigrateLayout,
     marketing: cmdMarketing,
@@ -1742,6 +1839,10 @@ export {
   appearanceArgs,
   iosDeviceSetup,
   macosDeviceSetup,
+  xcresultExportAttachmentsArgs,
+  stripXcresultSuffix,
+  mapXcresultExportToIncoming,
+  cmdMacosExport,
   androidAvdName,
   androidEmulatorPort,
   resolveAndroidSdkRoot,

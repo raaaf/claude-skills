@@ -28,6 +28,10 @@ import {
   appearanceArgs,
   iosDeviceSetup,
   macosDeviceSetup,
+  xcresultExportAttachmentsArgs,
+  stripXcresultSuffix,
+  mapXcresultExportToIncoming,
+  cmdMacosExport,
   androidAvdName,
   androidEmulatorPort,
   resolveAndroidSdkRoot,
@@ -614,6 +618,96 @@ test('macosDeviceSetup: below disk threshold -> SKIP; above -> ok, no simulator'
   assert.equal(ok.ok, true);
   assert.equal(ok.skip, false);
   assert.equal(ok.udid, undefined);
+});
+
+// --- macOS xcresult export (attachments, since a macOS XCUITest runner is
+// sandboxed and cannot write a PNG into the project directory) -----------
+
+test('xcresultExportAttachmentsArgs: composes the export command with a png filter', () => {
+  const args = xcresultExportAttachmentsArgs('/tmp/Result.xcresult', '/tmp/export');
+  assert.deepEqual(args, ['xcresulttool', 'export', 'attachments', '--path', '/tmp/Result.xcresult', '--output-path', '/tmp/export', '--filter', '*.png']);
+});
+
+test("stripXcresultSuffix: strips xcresulttool's _<index>_<UUID> disambiguation suffix", () => {
+  const name = 'content-view-with-model__filled__guest__mac__dark_0_96B887EF-3941-4AF2-B98F-5ECBAEE2068E.png';
+  assert.equal(stripXcresultSuffix(name), 'content-view-with-model__filled__guest__mac__dark.png');
+});
+
+test('stripXcresultSuffix: a name without the suffix is left untouched', () => {
+  assert.equal(stripXcresultSuffix('content-view-empty__empty__guest__mac__dark.png'), 'content-view-empty__empty__guest__mac__dark.png');
+});
+
+// Fixture shaped exactly like a real `xcrun xcresulttool export attachments`
+// manifest.json (Xcode 27, captured live against the layer pilot,
+// 2026-09-24): our two screenshot attachments plus one of XCUITest's own
+// debug-description attachments, which `mapXcresultExportToIncoming` must
+// ignore even though the CLI's own `--filter "*.png"` would normally have
+// kept it out already.
+const REAL_XCRESULT_MANIFEST_FIXTURE = [
+  {
+    testIdentifier: 'ScreensCatalogTests/test_screensCatalog()',
+    testIdentifierURL: 'test://com.apple.xcode/Layer/LayerScreensUITests/ScreensCatalogTests/test_screensCatalog',
+    attachments: [
+      {
+        exportedFileName: '70634DCB-2F28-4B5D-8656-D5275404B510.png',
+        suggestedHumanReadableName: 'content-view-with-model__filled__guest__mac__dark_0_96B887EF-3941-4AF2-B98F-5ECBAEE2068E.png',
+        isAssociatedWithFailure: false,
+        configurationName: 'Test Scheme Action',
+        deviceName: 'My Mac',
+        deviceId: '00006040-000849E92600801C',
+      },
+      {
+        exportedFileName: '9E6FBB06-C68E-4DF9-A9E6-2181BEF01602.png',
+        suggestedHumanReadableName: 'content-view-empty__empty__guest__mac__dark_0_C066E3BB-C9E3-47D3-9B32-E3C1A586B828.png',
+        isAssociatedWithFailure: false,
+        configurationName: 'Test Scheme Action',
+        deviceName: 'My Mac',
+        deviceId: '00006040-000849E92600801C',
+      },
+      {
+        exportedFileName: '05B9F5AE-C43E-405E-9F25-B68CC117D35B.txt',
+        suggestedHumanReadableName: 'App UI hierarchy for de.rafaelalex_0_CD6E34A0-B69D-443B-8C8E-B5C57516AA6F.layerapp',
+        isAssociatedWithFailure: false,
+        configurationName: 'Test Scheme Action',
+        deviceName: 'My Mac',
+        deviceId: '00006040-000849E92600801C',
+      },
+    ],
+  },
+];
+
+test('mapXcresultExportToIncoming: maps every .png attachment to its stripped incoming name, ignores non-png noise', () => {
+  const mapping = mapXcresultExportToIncoming(REAL_XCRESULT_MANIFEST_FIXTURE);
+  assert.deepEqual(mapping, {
+    '70634DCB-2F28-4B5D-8656-D5275404B510.png': 'content-view-with-model__filled__guest__mac__dark.png',
+    '9E6FBB06-C68E-4DF9-A9E6-2181BEF01602.png': 'content-view-empty__empty__guest__mac__dark.png',
+  });
+});
+
+test('cmdMacosExport: no result bundle yet -> SKIP, never spawns xcresulttool', () => {
+  const root = fixture();
+  const lines = cmdMacosExport([], root, () => { throw new Error('should not spawn'); });
+  assert.match(lines[0], /^MACOS_EXPORT_RESULT=SKIP/);
+});
+
+test('cmdMacosExport: runs the export, moves mapped PNGs into .screens/.incoming/macos/', () => {
+  const root = fixture();
+  const bundlePath = join(root, '.screens/.build/macos/Result.xcresult');
+  mkdirSync(bundlePath, { recursive: true }); // a real result bundle is a directory
+  const runner = (cmd, args) => {
+    assert.equal(cmd, 'xcrun');
+    const outputPath = args[args.indexOf('--output-path') + 1];
+    mkdirSync(outputPath, { recursive: true });
+    writeFileSync(join(outputPath, '70634DCB-2F28-4B5D-8656-D5275404B510.png'), 'fake-png-bytes');
+    writeJson(join(outputPath, 'manifest.json'), REAL_XCRESULT_MANIFEST_FIXTURE);
+    return { stdout: '', status: 0 };
+  };
+  const lines = cmdMacosExport([], root, runner);
+  assert.equal(lines[0], 'MACOS_EXPORT_RESULT=OK moved=1');
+  assert.equal(
+    readFileSync(join(root, '.screens/.incoming/macos/content-view-with-model__filled__guest__mac__dark.png'), 'utf8'),
+    'fake-png-bytes',
+  );
 });
 
 // --- Apple device setup: status-bar / appearance command composition --------
