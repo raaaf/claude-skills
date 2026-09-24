@@ -154,13 +154,22 @@ async function submitErrorState(page, entry) {
 // copy still matches on substring) -- a manifest entry authored for the
 // Maestro/Android driver (which matches by visible text) uses `ready_text`
 // instead of hand-writing a `[data-testid=...]` the app may not even carry.
-// Both may be set; both are waited for.
+// Both may be set; both are waited for. `.filter({ visible: true })` before
+// `.first()` (live STOP, events pilot): a name repeated in a hidden
+// duplicate -- e.g. a mobile-nav/sidebar copy of the same user/menu text --
+// otherwise lets `.first()` lock onto the DOM-order-first match regardless
+// of visibility, which then never becomes visible and times out forever;
+// filtering to visible matches first picks the one that actually renders.
+// (Not `.locator('visible=true')`: that selector-engine string form
+// resolves to zero matches on Playwright 1.63.0 -- verified against
+// events -- `filter({ visible: true })` is the supported API for this.)
 async function waitForReady(page, entry) {
   if (entry.ready) {
     await page.waitForSelector(entry.ready, { timeout: 15000 });
   }
   if (entry.ready_text) {
-    await page.getByText(entry.ready_text, { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await page.getByText(entry.ready_text, { exact: false }).filter({ visible: true }).first()
+      .waitFor({ state: 'visible', timeout: 15000 });
   }
 }
 
