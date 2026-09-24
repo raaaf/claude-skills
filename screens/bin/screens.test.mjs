@@ -2005,6 +2005,33 @@ test('up: config.web.env has a PASSWORD-like key -> FAIL before the runner is ev
   assert.ok(lines.some((l) => l.startsWith('UP_RESULT=FAIL') && l.includes('SEED_ADMIN_PASSWORD')), lines.join('\n'));
 });
 
+test('up: web platform with marketing.entries configured -> gitignores .screens/.marketing-src/', () => {
+  const root = fixture();
+  const config = {
+    platforms: ['web'],
+    web: { framework: 'astro', seed_command: 'echo seeding', health_url: null, start_command: null },
+    marketing: { entries: [{ id: 'dashboard' }] },
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  const stubRunner = () => ({ stdout: '', status: 1 }); // git check-ignore: not ignored yet
+  cmdUp([], root, stubRunner);
+  const gitignore = readFileSync(join(root, '.gitignore'), 'utf8');
+  assert.ok(gitignore.includes('/.screens/.marketing-src/'), gitignore);
+});
+
+test('up: no marketing.entries configured -> .screens/.marketing-src/ never gitignored', () => {
+  const root = fixture();
+  const config = {
+    platforms: ['web'],
+    web: { framework: 'astro', seed_command: 'echo seeding', health_url: null, start_command: null },
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  const stubRunner = () => ({ stdout: '', status: 1 });
+  cmdUp([], root, stubRunner);
+  const gitignore = existsSync(join(root, '.gitignore')) ? readFileSync(join(root, '.gitignore'), 'utf8') : '';
+  assert.ok(!gitignore.includes('.marketing-src'), gitignore);
+});
+
 test('up: seed step creates secrets.local.json and never leaks the password in its emitted lines', () => {
   const root = fixture();
   const config = {

@@ -1112,6 +1112,16 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
   }
   lines.push(`PLATFORM=${platform}`);
 
+  // Marketing 2x source captures (`marketing.source_scale`, config-schema.md)
+  // land in `.screens/.marketing-src/` via the project's own `capture.spec.ts`
+  // (outside screens.mjs's control), so this is the only point in the
+  // lifecycle where the directory's existence is known ahead of the write:
+  // same "gitignore before the generated file exists" pattern as the secrets
+  // file and `.run/` above.
+  if (platform === 'web' && config.marketing && config.marketing.entries && config.marketing.entries.length) {
+    ensureGitignoreEntry(root, '/.screens/.marketing-src/', runner);
+  }
+
   const secretGuard = secretConfigGuard(config);
   if (!secretGuard.ok) {
     lines.push(`UP_RESULT=FAIL (${secretGuard.reason})`);
