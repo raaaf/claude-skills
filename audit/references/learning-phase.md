@@ -28,6 +28,8 @@ echo "RECUR_FEED confirmed=$CONFIRMED_N fed_today=$FED_N"
 
 `FED_N >= CONFIRMED_N` (or `CONFIRMED_N=0`): go to Step 1. `FED_N < CONFIRMED_N`: back-fill NOW, before the agent runs: write the patterns of every confirmed finding that has no entry yet to a file with the Write tool (one per line, the same normalized pattern string the verdict table would have used) and run `orch_patterns_from_file recur <file>` in a sourced block; a pattern is finding text and never goes on a command line, re-run the check, and write one line under `## Notes` in the current audit log (`Recurrence feed: {CONFIRMED_N - FED_N}/{CONFIRMED_N} confirmed findings back-filled at Phase 5, per-verdict recur was skipped`). A back-fill is a process failure worth recording, not a silent repair: the learning agent must see the note so the retro can name it.
 
+**Step 0.7: record the retro lag.** Before dispatching, compute the gap between the audit log's date (from its filename) and today, and write one line under `## Notes` in the current audit log: `Retro lag: {N} days` (0 when the retro runs in the same session). A retro written days after its audit reasons from memory instead of the run, and only a recorded number makes late retros visible as a pattern.
+
 **Step 1: dispatch the learning agent**
 
 ```
