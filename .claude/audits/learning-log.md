@@ -2,37 +2,22 @@
 
 Dieses Log wird automatisch nach jedem Audit aktualisiert.
 
-## Trends (as of 2026-09-16)
+## Trends (as of 2026-09-25)
 
 | Metric | Value |
 |---|---|
-| Total audits | 23 raw logs on disk (22 regular + 1 full-audit outlier); counted from `.claude/audits/` on 2026-09-16, not carried over |
-| Critical trend (last 3 regular) | 0 -> 0 -> 0 (stable) (from the 2026-09-10 sample, not recomputed) |
-| Important trend (last 3 regular) | unknown -> 8 -> 13 (rising; the two 2026-09-15 runs audited the same growing branch, so the second count includes defects the first run's fixes introduced) (from the 2026-09-10 sample, not recomputed) |
-| Top category (last 5 regular) | architecture (9x across the two 2026-09-15 runs) (from the 2026-09-10 sample, not recomputed) |
-| Avg findings/audit (last 5 regular) | 10.5 over the two runs tallied here; the three earlier runs were not re-tallied (from the 2026-09-10 sample, not recomputed) |
+| Total audits | 25 raw logs on disk |
+| Critical trend (last 3) | 1 -> 0 -> 2 (2026-09-16_191112: 1, 2026-09-16_210908: 0, 2026-09-25_163354: 2) |
+| Important trend (last 3) | 13 -> 11 -> 11 (2026-09-16_210908, 2026-09-16_222102, 2026-09-25_163354) |
+| Top category (last 5) | docs_sync / architecture tied in the 2026-09-25 run; not re-tallied across all 5 |
+| Avg findings/audit | 19.8 (last 5 regular: 26, 12, 24, 21, 16) |
 
-**Repeat offenders (from `patterns-store.sh recurrences`, >=2):**
-- 7x meta doc drift (claude readme skill / skill feature changes), last seen unknown (legacy entry)
-- 5x audit-owned infrastructure (hooks, guidelines, bin scripts) only found incidentally, last seen unknown (legacy entry)
-- 3x fix agent self-designed test table clean finds real defect, last seen unknown (legacy entry)
-- 2x resolution loop with two candidate paths vs three, last seen 2026-09-16; resolved by removing the dead third path everywhere (`4265a58`), not by adding it
+**Pipeline performance (regular complete `/audit` runs; window N=0):** insufficient data (N=0). durationMs was null in the 2026-09-25 telemetry, so no usable timing sample exists yet.
 
-Note: the feed for the two 2026-09-15 runs was back-filled at Phase 5 (30 confirmed findings), so the counts above moved only after the fact; see the retro below and `learning-phase.md` Step 0.5.
-
-## Retro — 2026-07-07 — main (audit)
-
-### Statistik
-- Erster Audit im Projekt — noch keine Pattern-Erkennung moeglich
-
-### Baseline
-- Critical: 0, Important: 1, Minor: 4
-- Saubere Dimensionen: Architektur, Security (Critical/Important), Code Quality, A11y, UI Design, UX (nach Fix), Docs Sync, Cross-Ref (nach Fix)
-- Kontext: HUGE-Diff (64 Dateien, 2100 Zeilen) per User-Override als LARGE auditiert; SAUBER nach Runde 1 (Early-Exit)
-- Routing-Floor-Override griff 4x (security, a11y, ui_design, ux) wegen Eval-Fixture blade.php als Frontend-Signal — Worker bestaetigten n/a
-
-### Vorgeschlagene Verbesserungen
-- [x] check-skips.sh: Dateien unter `audit/evals/fixtures/` nicht als Frontend-/Code-Signal fuer den Routing-Floor zaehlen (4 unnötige Worker-Dispatches in diesem Audit)
+**Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
+- 7x meta doc drift (claude readme skill / skill feature changes) -- last seen: unknown (legacy entry)
+- 5x audit-owned infrastructure (hooks, guidelines, bin scripts) only found incidentally -- last seen: unknown (legacy entry)
+- 3x fix agent self-designed test table clean finds real defect -- last seen: unknown (legacy entry)
 
 ---
 
@@ -263,3 +248,32 @@ Note: the feed for the two 2026-09-15 runs was back-filled at Phase 5 (30 confir
 - The variable-crossing-blocks class (runs 8, 10, 11) got its mechanism instead of a fourth patch: `orch_state_save`/`orch_state_load` and the variable half of `check-fresh-shell.sh`. The scan found seven affected blocks where three runs of specialists had found one each; a deterministic check for a class beats a specialist finding an instance per run.
 - Two findings this session were not in any run's output but fell out of the scan: the dimension answer never reached the shell (`AUDIT_DIMENSIONS` from an env var that is unset interactively), and every `/ship` ledger row recorded `gate=n/a`. Both had been in the files for days.
 
+---
+
+## Retro — 2026-09-25 — main (audit)
+
+### Statistics
+- Total audits in the project: 25 raw logs on disk
+- Findings this run: 2 Critical, 11 Important, 3 Minor; all fixed, 2 discarded with reasons (2026-09-25_163354-main.md)
+
+### What went well
+- First run under the "every finding including Minor goes to the fix wave" policy ended with 0 Critical/Important open.
+- The orchestrator caught what the pipeline missed: the stale sentence at audit/references/learning-phase.md:17 (found in Phase 5) and the missing fix-verifier verdict on audit/SKILL.md (read the diff itself).
+
+### What went poorly
+- Three fix waves for one audit: each wave's own prose created the next regression (injection-note exception vs the no-drop rule, then a summary section no phase produced, then five stale "fixes every item automatically" claims).
+- One fixer change was a no-op: orch_hash_state keyed on CLAUDE_SKILL_DIR, which is only text-substituted into SKILL.md and never exported to a shell (audit/bin/lib-orchestrator.sh); reverted in wave 2.
+- One fixer reported the ~/.claude/skills symlink path, so fix.js's ownership check skipped the fix-verifier for audit/SKILL.md.
+- Cost telemetry unavailable: the run-cost.sh call was denied by the session's permission classifier.
+
+### What was missing
+- Pipeline Telemetry wall-clock times are unavailable for every dimension (durationMs null).
+
+### Detected patterns
+- Fix-wave self-regression: a fixer's added prose contradicts a sibling rule in the same file, caught only by the next regression pass. Watch over the next audits.
+- Path-identity mismatch breaking a mechanical check (symlink path vs repo path in fix.js's ownership check).
+
+### Suggested improvements
+- [ ] audit/workflows/fix.js: resolve a fixer-reported path through the ~/.claude/skills symlink to the repo path before hasOwnedChange, so a symlink-path report no longer skips the fix-verifier (2026-09-25_163354-main.md Notes).
+- [x] audit/references/learning-phase.md:17: stale "Minor is never fixed at any scope" sentence (applied 2026-09-25: audit/references/learning-phase.md)
+- [ ] eval-fixture: process/fix-wave-self-regression, replaying the wave-1 injection-note exception against design-audit's no-drop rule.
