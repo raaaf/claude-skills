@@ -26,7 +26,7 @@
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync,
-  rmSync, renameSync, chmodSync, copyFileSync,
+  rmSync, renameSync, chmodSync, copyFileSync, statSync, appendFileSync,
 } from 'node:fs';
 import { join, dirname, basename, relative, resolve, sep } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
@@ -1617,11 +1617,18 @@ function parseAeCount(stderr) {
 // is at most `diffTolerance * width * height` (config `diff_tolerance`,
 // default 0.0001 = 0.01% of the image area). Without ImageMagick it stays
 // byte-exact (the caller reports that via a NOTE line).
+// `historyPath` (Change history spec item 1), when given, is where the
+// PNG about to be overwritten is moved first -- gated on the exact same
+// condition that already distinguishes a real overwrite (`changed`/`drift`)
+// from a brand-new promotion (`new`, no `prevHash`) or a no-write verdict
+// (`unchanged`/`tolerated`, both return above before this point): a
+// `prevHash` was recorded AND a file exists at `targetPath` right now.
 function promoteFile(incomingPath, targetPath, prevHash, opts = {}) {
   const {
     diffTolerance = 0.0001,
     hasCompare = commandOnPath('compare'),
     compareRunner = defaultCompareRunner,
+    historyPath = null,
   } = opts;
   const buf = readFileSync(incomingPath);
   const hash = createHash('sha256').update(buf).digest('hex');
@@ -1637,9 +1644,15 @@ function promoteFile(incomingPath, targetPath, prevHash, opts = {}) {
       return { changed: false, hash: prevHash, tolerated: true };
     }
   }
+  let historized = false;
+  if (prevHash && existsSync(targetPath) && historyPath) {
+    mkdirSync(dirname(historyPath), { recursive: true });
+    renameSync(targetPath, historyPath);
+    historized = true;
+  }
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, buf);
-  return { changed: true, hash, tolerated: false };
+  return { changed: true, hash, tolerated: false, historized };
 }
 
 // Device-class folders (Output layout, revised 2026-09-24, user request:
@@ -1676,7 +1689,11 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function moveRemovedEntries(root, manifestIds, state, dateStr = todayStr()) {
+// `onMove(id, rel)` (Change history spec item 3, run log) is an optional
+// per-file hook so `cmdPromote` can collect `{id, path}` detail for
+// `runs.jsonl`'s `removed` array without this function's own return shape
+// (plain array of moved ids, asserted by an existing test) changing.
+function moveRemovedEntries(root, manifestIds, state, dateStr = todayStr(), onMove = () => {}) {
   const config = readJson(join(root, '.screens/config.json'), {});
   const { outputRoot } = ensureProjectConfigured(root, config);
   const moved = [];
@@ -1690,11 +1707,115 @@ function moveRemovedEntries(root, manifestIds, state, dateStr = todayStr()) {
       const dest = join(outputRoot, '_removed', dateStr, rel);
       mkdirSync(dirname(dest), { recursive: true });
       renameSync(src, dest);
+      onMove(id, rel);
     }
     delete state.entries[id];
     moved.push(id);
   }
   return moved;
+}
+
+// ---------------------------------------------------------------------
+// Change history (`_history/<run-id>/<same relative path>`, spec items
+// 1-3): `promoteFile` moves a PNG here right before overwriting it on a
+// `changed`/`drift` verdict; this section provides the run-id, retention
+// (per-combo `history_keep` + whole-project `history_max_mb`) and the
+// `runs.jsonl` run log `cmdPromote` appends to.
+// ---------------------------------------------------------------------
+
+// UTC `YYYY-MM-DD_HHMMSS`, one per `promote` invocation (spec item 1).
+function runIdFor(date = new Date()) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${date.getUTCFullYear()}-${p2(date.getUTCMonth() + 1)}-${p2(date.getUTCDate())}_${p2(date.getUTCHours())}${p2(date.getUTCMinutes())}${p2(date.getUTCSeconds())}`;
+}
+
+function historyRunIds(outputRoot) {
+  const historyRoot = join(outputRoot, '_history');
+  if (!existsSync(historyRoot)) return [];
+  return readdirSync(historyRoot, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+}
+
+// Every historical version of one combo (`relPath`, OS-native separators),
+// oldest first -- the run-id's `YYYY-MM-DD_HHMMSS` format sorts
+// lexicographically = chronologically, so no separate timestamp parse.
+function historyVersionsFor(outputRoot, relPath) {
+  return historyRunIds(outputRoot)
+    .filter((runId) => existsSync(join(outputRoot, '_history', runId, relPath)))
+    .map((runId) => ({ runId, path: join('_history', runId, relPath).split(sep).join('/') }));
+}
+
+function dirSizeBytes(dir) {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    total += entry.isDirectory() ? dirSizeBytes(full) : statSync(full).size;
+  }
+  return total;
+}
+
+// Removes now-empty directories under `dir`, bottom-up, never `dir` itself
+// (called with `_history` itself as `dir`, which is fine left empty).
+function pruneEmptyDirs(dir) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const full = join(dir, entry.name);
+    pruneEmptyDirs(full);
+    if (readdirSync(full).length === 0) rmSync(full, { recursive: true });
+  }
+}
+
+// Retention (spec item 2): per-combo `history_keep` (default 5, oldest
+// versions deleted first) for every combo `cmdPromote` touched this run,
+// then a whole-project `history_max_mb` size cap (default 1024, oldest RUN
+// folders deleted first, `currentRunId`'s folder never touched), then a
+// sweep for run folders either prune left empty.
+function enforceHistoryRetention(outputRoot, config, currentRunId, touchedRelPaths) {
+  const historyRoot = join(outputRoot, '_history');
+  if (!existsSync(historyRoot)) return;
+  const keep = typeof config.history_keep === 'number' ? config.history_keep : 5;
+  const maxBytes = (typeof config.history_max_mb === 'number' ? config.history_max_mb : 1024) * 1024 * 1024;
+
+  for (const relPath of touchedRelPaths) {
+    const versions = historyVersionsFor(outputRoot, relPath);
+    const excess = versions.length - keep;
+    for (let i = 0; i < excess; i++) {
+      rmSync(join(outputRoot, versions[i].path.split('/').join(sep)), { force: true });
+    }
+  }
+
+  pruneEmptyDirs(historyRoot);
+
+  const runIds = historyRunIds(outputRoot).filter((id) => id !== currentRunId);
+  while (dirSizeBytes(historyRoot) > maxBytes && runIds.length) {
+    const oldest = runIds.shift();
+    rmSync(join(historyRoot, oldest), { recursive: true, force: true });
+  }
+}
+
+function appendRunLog(outputRoot, record) {
+  mkdirSync(outputRoot, { recursive: true });
+  appendFileSync(join(outputRoot, 'runs.jsonl'), `${JSON.stringify(record)}\n`);
+}
+
+function readRunsJsonl(outputRoot) {
+  const path = join(outputRoot, 'runs.jsonl');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 // Incoming filenames are `<entryId>__<rest>.png`, written by a driver into
@@ -1713,6 +1834,12 @@ function cmdPromote(args, root = process.cwd()) {
 
   const diffTolerance = typeof config.diff_tolerance === 'number' ? config.diff_tolerance : 0.0001;
   const hasCompare = commandOnPath('compare');
+
+  const startedAt = new Date();
+  const runId = runIdFor(startedAt);
+  const touchedRelPaths = new Set();
+  const changedDetails = [];
+  const newDetails = [];
 
   const full = args.includes('--full');
   const incomingDir = join(root, '.screens/.incoming', platform || '');
@@ -1736,8 +1863,9 @@ function cmdPromote(args, root = process.cwd()) {
       state.entries[id].pngs = state.entries[id].pngs || {};
       const prevHash = state.entries[id].pngs[relPath];
       const prevFingerprint = state.entries[id].fingerprint;
-      const { changed: didChange, hash, tolerated: didTolerate } = promoteFile(
-        join(incomingDir, file), targetPath, prevHash, { diffTolerance, hasCompare },
+      const historyPath = join(outputRoot, '_history', runId, relPath);
+      const { changed: didChange, hash, tolerated: didTolerate, historized } = promoteFile(
+        join(incomingDir, file), targetPath, prevHash, { diffTolerance, hasCompare, historyPath },
       );
       state.entries[id].pngs[relPath] = hash;
       // Persisted here (not just computed transiently in `plan`): without
@@ -1770,12 +1898,20 @@ function cmdPromote(args, root = process.cwd()) {
       // Phase 5 after-screenshot step deciding "unchanged" from this result
       // instead of a raw sha256 compare.
       const combo = rest.replace(/\.png$/, '');
+      const forwardPath = relPath.split(sep).join('/');
       if (entry.known_nondeterministic) {
         knownNondeterministic++;
         lines.push(`PROMOTE_ENTRY ${id} ${combo} known_nondeterministic (${entry.known_nondeterministic})`);
       } else if (isDrift) {
         drift++;
         lines.push(`PROMOTE_ENTRY ${id} ${combo} drift`);
+        if (historized) {
+          touchedRelPaths.add(relPath);
+          changedDetails.push({
+            id, combo, path: forwardPath, verdict: 'drift',
+            history_path: join('_history', runId, relPath).split(sep).join('/'),
+          });
+        }
       } else if (didTolerate) {
         tolerated++;
         lines.push(`PROMOTE_ENTRY ${id} ${combo} tolerated`);
@@ -1786,9 +1922,17 @@ function cmdPromote(args, root = process.cwd()) {
         if (prevHash) {
           changed++;
           lines.push(`PROMOTE_ENTRY ${id} ${combo} changed`);
+          if (historized) {
+            touchedRelPaths.add(relPath);
+            changedDetails.push({
+              id, combo, path: forwardPath, verdict: 'changed',
+              history_path: join('_history', runId, relPath).split(sep).join('/'),
+            });
+          }
         } else {
           newCount++;
           lines.push(`PROMOTE_ENTRY ${id} ${combo} new`);
+          newDetails.push({ id, combo, path: forwardPath });
         }
       } else {
         unchanged++;
@@ -1797,9 +1941,16 @@ function cmdPromote(args, root = process.cwd()) {
     }
   }
 
+  enforceHistoryRetention(outputRoot, config, runId, [...touchedRelPaths]);
+
   const manifestIds = manifest.entries.map((e) => e.id);
-  const removed = moveRemovedEntries(root, manifestIds, state);
+  const removedDetails = [];
+  const removed = moveRemovedEntries(root, manifestIds, state, todayStr(), (id, rel) => {
+    removedDetails.push({ id, path: rel.split(sep).join('/') });
+  });
   for (const id of removed) lines.push(`PROMOTE_REMOVED ${id}`);
+
+  const commit = (spawnSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout || '').trim() || null;
 
   // Persisted for `index` (plan step 3, "Top: last run summary"): index.html
   // is a separate `screens.mjs index` invocation with no other way to see
@@ -1811,10 +1962,28 @@ function cmdPromote(args, root = process.cwd()) {
     new: newCount, updated: changed, unchanged, removed: removed.length,
     drift, failed: (state.last_run && state.last_run.failed) || 0,
     date: todayStr(),
-    commit: (spawnSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout || '').trim() || null,
+    commit,
   };
 
   writeJson(join(root, '.screens/state.json'), state);
+
+  // Run log (spec item 3): one JSON line per promote invocation, read back
+  // by `index` for the catalog's "Verlauf" (change history) section.
+  appendRunLog(outputRoot, {
+    run_id: runId,
+    started_at: startedAt.toISOString(),
+    finished_at: new Date().toISOString(),
+    commit,
+    platform: platform || null,
+    counts: {
+      new: newCount, changed, unchanged, tolerated, drift,
+      removed: removed.length, failed: (state.last_run && state.last_run.failed) || 0,
+    },
+    changed: changedDetails,
+    new: newDetails,
+    removed: removedDetails,
+  });
+
   if (!hasCompare) lines.push('NOTE=imagemagick missing, byte-exact compare');
   lines.push(`PROMOTE_RESULT=OK changed=${changed} unchanged=${unchanged} tolerated=${tolerated} removed=${removed.length} known_nondeterministic=${knownNondeterministic} drift=${drift} new=${newCount}`);
   return lines;
@@ -2297,6 +2466,21 @@ function buildIndexItems(manifest, state) {
   return items;
 }
 
+// Attaches each item's `_history/*/<relPath>` versions (Change history spec
+// item 4, "n Versionen" badge + per-item before/after), newest first;
+// `history` is `[]` for an item with no historical version. Separate from
+// `buildIndexItems` above (manifest/state only, no filesystem) since this
+// one has to read `outputRoot`.
+function attachIndexHistory(items, outputRoot) {
+  return items.map((item) => ({
+    ...item,
+    history: historyVersionsFor(outputRoot, item.path.split('/').join(sep))
+      .slice()
+      .reverse()
+      .map((v) => ({ run_id: v.runId, path: v.path })),
+  }));
+}
+
 // `state.marketing` keys are `${id}__${locale}__${format}`; each stored
 // record already carries everything index needs (relPath, headline,
 // reviewed) without re-reading config.json.
@@ -2343,8 +2527,9 @@ function buildTopIndexHtml(projects) {
     const platforms = escapeHtml((p.platforms || []).join(', '));
     const count = p.count || 0;
     const lastRun = escapeHtml((p.last_run && p.last_run.date) || '');
+    const changedCount = (p.last_run && p.last_run.updated) || 0;
     const link = `./${p.dir}/index.html`;
-    return `    <tr><td>${name}</td><td>${platforms}</td><td>${count}</td><td>${lastRun}</td><td><a href="${link}">View</a></td></tr>`;
+    return `    <tr><td>${name}</td><td>${platforms}</td><td>${count}</td><td>${lastRun}</td><td>${changedCount}</td><td><a href="${link}">View</a></td></tr>`;
   }).join('\n');
   return `<!doctype html>
 <html>
@@ -2361,7 +2546,7 @@ th { background: #f5f5f7; }
 <body>
 <h1>Screens</h1>
 <table>
-  <thead><tr><th>Project</th><th>Platforms</th><th>Images</th><th>Last run</th><th></th></tr></thead>
+  <thead><tr><th>Project</th><th>Platforms</th><th>Images</th><th>Last run</th><th>Changed</th><th></th></tr></thead>
   <tbody>
 ${rows}
   </tbody>
@@ -2408,9 +2593,10 @@ function cmdIndex(_args, root = process.cwd()) {
     return lines;
   }
 
-  const items = buildIndexItems(manifest, state);
+  const items = attachIndexHistory(buildIndexItems(manifest, state), outputRoot);
   const marketing = buildIndexMarketing(state);
-  const data = { items, marketing, last_run: state.last_run || {} };
+  const runs = readRunsJsonl(outputRoot).slice().reverse(); // newest first (Verlauf)
+  const data = { items, marketing, last_run: state.last_run || {}, runs };
 
   const template = readFileSync(templatePath, 'utf8');
   const html = template.replace('__SCREENS_DATA__', () => JSON.stringify(data));
@@ -2662,6 +2848,14 @@ export {
   parseCaptureFilename,
   buildScreenshotPath,
   moveRemovedEntries,
+  runIdFor,
+  historyRunIds,
+  historyVersionsFor,
+  dirSizeBytes,
+  pruneEmptyDirs,
+  enforceHistoryRetention,
+  appendRunLog,
+  readRunsJsonl,
   cmdPromote,
   cmdMigrateLayout,
   marketingTargetDir,
@@ -2680,6 +2874,7 @@ export {
   cmdMarketing,
   parsePromotedFilename,
   buildIndexItems,
+  attachIndexHistory,
   buildIndexMarketing,
   buildCatalogSummary,
   buildTopIndexHtml,

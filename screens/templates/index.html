@@ -80,7 +80,9 @@
     border-color: var(--accent);
   }
   button.filter-toggle:focus-visible,
-  a:focus-visible {
+  a:focus-visible,
+  input[type="range"]:focus-visible,
+  .version-badge:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
@@ -114,6 +116,33 @@
   }
   #marketing .badge.needs-review { border-color: #b45309; color: #b45309; }
   code { font-size: 12px; }
+  .shot-wrap { width: 160px; }
+  .version-badge {
+    display: inline-block;
+    font: inherit;
+    font-size: 11px;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .version-panel { width: 340px; margin-top: 8px; }
+  .compare-sbs { display: flex; gap: 8px; margin-bottom: 8px; }
+  .compare-col { flex: 1; min-width: 0; }
+  .compare-label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .compare-col img { width: 100%; display: block; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+  .compare-frame { position: relative; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--card-bg); }
+  .compare-frame img { display: block; width: 100%; height: auto; }
+  .compare-frame .compare-after { position: absolute; top: 0; left: 0; }
+  .compare-slider { width: 100%; margin-top: 6px; }
+  #history h2 { margin-top: 28px; }
+  .history-run { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; background: var(--card-bg); }
+  .history-run summary { cursor: pointer; font-size: 14px; }
+  .history-counts { color: var(--muted); font-size: 12px; margin-left: 10px; }
+  .history-entry { margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -125,6 +154,7 @@
   <div class="filters" id="filters"></div>
   <section id="catalog"></section>
   <section id="marketing"></section>
+  <section id="history"></section>
 </main>
 
 <script id="screens-data" type="application/json">__SCREENS_DATA__</script>
@@ -135,6 +165,61 @@
   var filtersEl = document.getElementById('filters');
   var catalogEl = document.getElementById('catalog');
   var marketingEl = document.getElementById('marketing');
+  var historyEl = document.getElementById('history');
+
+  // Before/after comparison (Verlauf, per-view "n Versionen" badge): a
+  // side-by-side pair plus a slider overlay (range input + clip-path,
+  // native keyboard support, visible focus via the `:focus-visible` rule
+  // above).
+  function buildCompare(beforeSrc, afterSrc) {
+    var wrap = document.createElement('div');
+    wrap.className = 'compare';
+
+    var sbs = document.createElement('div');
+    sbs.className = 'compare-sbs';
+    [['before', beforeSrc], ['after', afterSrc]].forEach(function (pair) {
+      var col = document.createElement('div');
+      col.className = 'compare-col';
+      var label = document.createElement('span');
+      label.className = 'compare-label';
+      label.textContent = pair[0];
+      var img = document.createElement('img');
+      img.src = pair[1];
+      img.alt = pair[0];
+      col.appendChild(label);
+      col.appendChild(img);
+      sbs.appendChild(col);
+    });
+
+    var frame = document.createElement('div');
+    frame.className = 'compare-frame';
+    var frameBefore = document.createElement('img');
+    frameBefore.src = beforeSrc;
+    frameBefore.alt = '';
+    var frameAfter = document.createElement('img');
+    frameAfter.className = 'compare-after';
+    frameAfter.src = afterSrc;
+    frameAfter.alt = '';
+    frameAfter.style.clipPath = 'inset(0 0 0 50%)';
+    frame.appendChild(frameBefore);
+    frame.appendChild(frameAfter);
+
+    var slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.value = '50';
+    slider.className = 'compare-slider';
+    slider.setAttribute('aria-label', 'Vorher/Nachher-Regler');
+    slider.addEventListener('input', function () {
+      frameAfter.style.clipPath = 'inset(0 0 0 ' + slider.value + '%)';
+    });
+
+    wrap.appendChild(sbs);
+    wrap.appendChild(frame);
+    wrap.appendChild(slider);
+    return wrap;
+  }
 
   var run = DATA.last_run || {};
   summaryEl.innerHTML =
@@ -233,6 +318,8 @@
             var strip = document.createElement('div');
             strip.className = 'view-strip';
             byView[view].forEach(function (item) {
+              var itemWrap = document.createElement('div');
+              itemWrap.className = 'shot-wrap';
               var a = document.createElement('a');
               a.className = 'shot';
               a.href = item.path;
@@ -246,7 +333,31 @@
               span.textContent = [item.state, item.role, item.theme, item.locale].filter(Boolean).join(' / ');
               a.appendChild(img);
               a.appendChild(span);
-              strip.appendChild(a);
+              itemWrap.appendChild(a);
+
+              if (item.history && item.history.length) {
+                var badge = document.createElement('button');
+                badge.type = 'button';
+                badge.className = 'version-badge';
+                badge.setAttribute('aria-expanded', 'false');
+                badge.textContent = item.history.length + ' Versionen';
+                var panel = document.createElement('div');
+                panel.className = 'version-panel hidden';
+                badge.addEventListener('click', function () {
+                  var open = badge.getAttribute('aria-expanded') === 'true';
+                  badge.setAttribute('aria-expanded', String(!open));
+                  if (open) {
+                    panel.classList.add('hidden');
+                    return;
+                  }
+                  if (!panel.childNodes.length) panel.appendChild(buildCompare(item.history[0].path, item.path));
+                  panel.classList.remove('hidden');
+                });
+                itemWrap.appendChild(badge);
+                itemWrap.appendChild(panel);
+              }
+
+              strip.appendChild(itemWrap);
             });
             catalogEl.appendChild(strip);
           });
@@ -284,6 +395,45 @@
       marketingEl.appendChild(card);
     });
   }
+
+  // Verlauf: timeline of `runs.jsonl` entries, newest first (already
+  // ordered that way by `cmdIndex`), each expandable to its changed
+  // entries' before/after view.
+  function renderHistory() {
+    var runs = DATA.runs || [];
+    if (!runs.length) return;
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Verlauf';
+    historyEl.appendChild(h2);
+    runs.forEach(function (run) {
+      var c = run.counts || {};
+      var details = document.createElement('details');
+      details.className = 'history-run';
+      var summary = document.createElement('summary');
+      var dateText = (run.finished_at || run.started_at || run.run_id || '').slice(0, 10);
+      summary.textContent = dateText + (run.commit ? ' (' + run.commit + ')' : '');
+      var counts = document.createElement('span');
+      counts.className = 'history-counts';
+      counts.textContent = (c.new || 0) + ' new, ' + (c.changed || 0) + ' changed, ' +
+        (c.drift || 0) + ' drift, ' + (c.removed || 0) + ' removed';
+      summary.appendChild(counts);
+      details.appendChild(summary);
+
+      (run.changed || []).forEach(function (entry) {
+        if (!entry.history_path) return;
+        var wrap = document.createElement('div');
+        wrap.className = 'history-entry';
+        var label = document.createElement('div');
+        label.textContent = entry.id + ' / ' + entry.combo + ' (' + entry.verdict + ')';
+        wrap.appendChild(label);
+        wrap.appendChild(buildCompare(entry.history_path, entry.path));
+        details.appendChild(wrap);
+      });
+
+      historyEl.appendChild(details);
+    });
+  }
+  renderHistory();
 })();
 </script>
 </body>

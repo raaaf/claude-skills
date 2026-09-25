@@ -93,7 +93,12 @@ import {
   cmdMarketing,
   parsePromotedFilename,
   buildIndexItems,
+  attachIndexHistory,
   buildIndexMarketing,
+  runIdFor,
+  historyVersionsFor,
+  enforceHistoryRetention,
+  readRunsJsonl,
   buildCatalogSummary,
   buildTopIndexHtml,
   regenerateTopIndex,
@@ -478,6 +483,224 @@ test('promote --full: changed fingerprint + changed image -> changed, not drift'
   assert.ok(lines.includes('PROMOTE_ENTRY entry filled__guest__1440x900__light changed'), lines.join('\n'));
   assert.ok(!lines.some((l) => l.endsWith(' drift')), lines.join('\n'));
   assert.ok(lines.some((l) => l.startsWith('PROMOTE_RESULT=OK changed=1 unchanged=0 tolerated=0 removed=0 known_nondeterministic=0 drift=0')), lines.join('\n'));
+});
+
+// --- change history: promote moves a changed/drift PNG into _history/ ----
+
+test('promote: changed verdict moves the old PNG to _history/<run-id>/, writes the new one', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: [] }],
+  });
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, join('screenshots', relPath), oldBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { entry: { fingerprint: 'x', pngs: { [relPath]: require_sha256(oldBuf) } } },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', newBuf);
+
+  const lines = cmdPromote(['--platform', 'web'], root);
+  assert.ok(lines.includes('PROMOTE_ENTRY entry filled__guest__1440x900__light changed'), lines.join('\n'));
+
+  const targetPath = join(root, 'screenshots', relPath);
+  assert.equal(readFileSync(targetPath).compare(newBuf), 0, 'new bytes at the catalog path');
+  const versions = historyVersionsFor(join(root, 'screenshots'), relPath);
+  assert.equal(versions.length, 1, 'exactly one historical version');
+  const historyFile = join(root, 'screenshots', versions[0].path);
+  assert.ok(existsSync(historyFile));
+  assert.equal(readFileSync(historyFile).compare(oldBuf), 0, 'old bytes preserved under _history/');
+});
+
+test('promote --full: drift verdict also moves the old PNG to _history/', () => {
+  const root = fixture();
+  writeFile(root, 'view.blade.php', 'same-content');
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: ['view.blade.php'] }],
+  });
+  const fingerprint = require_sha256('view.blade.php' + 'same-content');
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, join('screenshots', relPath), oldBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { entry: { fingerprint, pngs: { [relPath]: require_sha256(oldBuf) } } },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', newBuf);
+
+  const lines = cmdPromote(['--platform', 'web', '--full'], root);
+  assert.ok(lines.includes('PROMOTE_ENTRY entry filled__guest__1440x900__light drift'), lines.join('\n'));
+
+  const versions = historyVersionsFor(join(root, 'screenshots'), relPath);
+  assert.equal(versions.length, 1);
+  assert.equal(readFileSync(join(root, 'screenshots', versions[0].path)).compare(oldBuf), 0);
+});
+
+// `promoteFile` is where the history-vs-no-history decision is actually
+// made (`cmdPromote` only supplies `historyPath`), so unchanged/tolerated
+// are exercised here with an injected `compareRunner` for a deterministic
+// AE instead of the real ImageMagick `compare` binary on tiny fixture PNGs.
+
+test('promoteFile: unchanged verdict (identical bytes) writes nothing, no history', () => {
+  const root = fixture();
+  const targetPath = join(root, 'target.png');
+  const buf = fakePng(1000, 1000, 'a');
+  writeFileSync(targetPath, buf);
+  const incoming = join(root, 'incoming-same.png');
+  writeFileSync(incoming, buf);
+  const historyPath = join(root, '_history/run1/target.png');
+
+  const result = promoteFile(incoming, targetPath, require_sha256(buf), { historyPath });
+
+  assert.equal(result.changed, false);
+  assert.ok(!existsSync(historyPath));
+});
+
+test('promoteFile: tolerated verdict (AE within diff_tolerance) writes nothing, no history', () => {
+  const root = fixture();
+  const targetPath = join(root, 'target.png');
+  const oldBuf = fakePng(1000, 1000, 'a');
+  writeFileSync(targetPath, oldBuf);
+  const incoming = join(root, 'incoming-tolerated.png');
+  writeFileSync(incoming, fakePng(1000, 1000, 'b'));
+  const historyPath = join(root, '_history/run1/target.png');
+
+  const result = promoteFile(incoming, targetPath, require_sha256(oldBuf), {
+    historyPath, hasCompare: true, compareRunner: () => ({ stderr: '1' }),
+  });
+
+  assert.equal(result.tolerated, true);
+  assert.ok(!existsSync(historyPath));
+});
+
+test('promoteFile: a brand-new promotion (no prevHash) writes no history even with historyPath given', () => {
+  const root = fixture();
+  const targetPath = join(root, 'new-target.png');
+  const buf = fakePng(10, 10, 'z');
+  const incoming = join(root, 'incoming-new.png');
+  writeFileSync(incoming, buf);
+  const historyPath = join(root, '_history/run1/new-target.png');
+
+  const result = promoteFile(incoming, targetPath, undefined, { historyPath, hasCompare: false });
+
+  assert.equal(result.changed, true);
+  assert.ok(!existsSync(historyPath), 'no previous file to move, so no history for a brand-new PNG');
+  assert.equal(readFileSync(targetPath).compare(buf), 0);
+});
+
+// --- change history: retention (history_keep, history_max_mb) ------------
+
+test('enforceHistoryRetention: keeps only history_keep versions per combo, oldest deleted first', () => {
+  const root = fixture();
+  const outputRoot = join(root, 'screenshots');
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const runIds = ['2026-09-01_120000', '2026-09-08_120000', '2026-09-15_120000', '2026-09-22_120000'];
+  for (const runId of runIds) writeFile(root, join('screenshots/_history', runId, relPath), `bytes-${runId}`);
+
+  enforceHistoryRetention(outputRoot, { history_keep: 2 }, runIds[runIds.length - 1], [relPath]);
+
+  const remaining = historyVersionsFor(outputRoot, relPath).map((v) => v.runId);
+  assert.deepEqual(remaining, runIds.slice(-2), 'only the two newest versions survive');
+  assert.ok(!existsSync(join(outputRoot, '_history', runIds[0])), 'the emptied oldest run folder is removed');
+});
+
+test('enforceHistoryRetention: size cap removes oldest run folders first, never the current run', () => {
+  const root = fixture();
+  const outputRoot = join(root, 'screenshots');
+  const relPathA = 'web/1440x900/area/a/filled__guest__light.png';
+  const relPathB = 'web/1440x900/area/b/filled__guest__light.png';
+  const runIds = ['2026-09-01_120000', '2026-09-08_120000', '2026-09-15_120000'];
+  const bigBuf = Buffer.alloc(1024 * 1024, 'x'); // 1 MiB per file
+  for (const runId of runIds) {
+    writeFile(root, join('screenshots/_history', runId, relPathA), bigBuf);
+    writeFile(root, join('screenshots/_history', runId, relPathB), bigBuf);
+  }
+  // 3 runs * 2 MiB each = 6 MiB total; cap at 3 MiB forces the two oldest
+  // run folders out (current run stays, even if it alone exceeds nothing).
+  enforceHistoryRetention(outputRoot, { history_keep: 10, history_max_mb: 3 / 1024 }, runIds[runIds.length - 1], []);
+
+  assert.ok(!existsSync(join(outputRoot, '_history', runIds[0])), 'oldest run folder removed');
+  assert.ok(!existsSync(join(outputRoot, '_history', runIds[1])), 'second-oldest run folder removed');
+  assert.ok(existsSync(join(outputRoot, '_history', runIds[2])), 'current run folder never removed by the size cap');
+});
+
+// --- change history: runs.jsonl run log -----------------------------------
+
+test('promote: appends one runs.jsonl line with the expected counts and changed/new/removed detail', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: [] }],
+  });
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, join('screenshots', relPath), oldBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { entry: { fingerprint: 'x', pngs: { [relPath]: require_sha256(oldBuf) } } },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', newBuf);
+
+  cmdPromote(['--platform', 'web'], root);
+
+  const runs = readRunsJsonl(join(root, 'screenshots'));
+  assert.equal(runs.length, 1);
+  const run = runs[0];
+  assert.ok(/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(run.run_id), run.run_id);
+  assert.equal(run.counts.changed, 1);
+  assert.equal(run.counts.new, 0);
+  assert.equal(run.changed.length, 1);
+  assert.equal(run.changed[0].id, 'entry');
+  assert.equal(run.changed[0].combo, 'filled__guest__1440x900__light');
+  assert.ok(run.changed[0].history_path.startsWith('_history/'));
+  assert.deepEqual(run.new, []);
+  assert.deepEqual(run.removed, []);
+});
+
+// --- change history: index data builder -----------------------------------
+
+test('attachIndexHistory: catalog item carries its historical versions, newest first', () => {
+  const root = fixture();
+  const outputRoot = join(root, 'screenshots');
+  const relPath = 'web/desktop/area/entry/filled__guest__light.png';
+  writeFile(root, join('screenshots/_history/2026-09-01_120000', relPath), 'v1');
+  writeFile(root, join('screenshots/_history/2026-09-08_120000', relPath), 'v2');
+  const items = [{ id: 'entry', platform: 'web', deviceClass: 'desktop', area: 'area', view: 'entry', path: relPath }];
+
+  const withHistory = attachIndexHistory(items, outputRoot);
+
+  assert.equal(withHistory[0].history.length, 2);
+  assert.equal(withHistory[0].history[0].run_id, '2026-09-08_120000', 'newest first');
+});
+
+test('cmdIndex: embedded data includes runs (from runs.jsonl) and per-item history', () => {
+  const root = fixture();
+  writeJson(join(root, '.screens/config.json'), { output_dir: '${PROJECT_ROOT}/screenshots', platforms: ['web'], global_sources: [] });
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'entry', platform: 'web', area: 'area', view: 'entry', sources: [] }],
+  });
+  const relPath = 'web/1440x900/area/entry/filled__guest__light.png';
+  const oldBuf = fakePng(1000, 1000, 'a');
+  const newBuf = fakePng(1000, 1000, 'b');
+  writeFile(root, join('screenshots', relPath), oldBuf);
+  writeJson(join(root, '.screens/state.json'), {
+    entries: { entry: { fingerprint: 'x', pngs: { [relPath]: require_sha256(oldBuf) } } },
+  });
+  writeFile(root, '.screens/.incoming/web/entry__filled__guest__1440x900__light.png', newBuf);
+  cmdPromote(['--platform', 'web'], root);
+
+  cmdIndex([], root);
+
+  const html = readFileSync(join(root, 'screenshots/index.html'), 'utf8');
+  const match = /<script id="screens-data" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
+  const data = JSON.parse(match[1]);
+  assert.equal(data.runs.length, 1);
+  assert.equal(data.runs[0].counts.changed, 1);
+  assert.equal(data.items.length, 1);
+  assert.equal(data.items[0].history.length, 1);
 });
 
 // --- device-class path builder (Output layout) ------------------------------

@@ -134,6 +134,13 @@ writes, subagents return").
                                             // nondeterminism the tolerance did not catch, reported
                                             // separately instead of hidden inside "updated"
 
+  "history_keep": 5,                       // Change history: max historical versions kept per
+                                            // combo under `_history/`, oldest deleted first after
+                                            // every `promote`
+  "history_max_mb": 1024,                  // Change history: whole-project `_history/` size cap in
+                                            // MB, oldest RUN folders deleted first (never the
+                                            // current run's), applied after `history_keep`
+
   "global_sources": [
     "resources/css/**", "tailwind.config.*", "composer.lock", "package-lock.json", "bun.lock",
     "Package.resolved", "gradle/libs.versions.toml",
@@ -287,6 +294,25 @@ spec itself when unmapped); the viewport therefore does not appear in the filena
 folder. `screens.mjs migrate-layout` moves a pre-existing flat `<platform>/<area>/<view>/` tree into
 this layout once, rewriting `state.json`'s per-entry `pngs` keys (now full paths relative to the
 output root) without recapturing; run it once before the first `plan` after upgrading.
+
+**Change history** (`_history/`, `runs.jsonl`, relative to the output root): `screens.mjs promote`
+moves the previous PNG to `_history/<run-id>/<same relative path as the catalog PNG>` right before
+overwriting it, on a `changed` or `drift` verdict only (never `new`/`unchanged`/`tolerated`, and
+`removed` keeps using `_removed/<date>/` as before). `<run-id>` is `YYYY-MM-DD_HHMMSS` (UTC), one per
+`promote` invocation (`runIdFor`); the format sorts lexicographically = chronologically, so no
+separate timestamp parse is needed to find a combo's oldest/newest version. Retention
+(`enforceHistoryRetention`, run once per `promote` after every combo is processed): first
+`config.history_keep` (default 5) per combo, oldest historical version deleted first; then
+`config.history_max_mb` (default 1024) for the whole project's `_history/`, oldest RUN folders
+deleted first and the CURRENT run's folder never touched even if it alone exceeds the cap; a run
+folder either prune leaves empty is removed. `screens.mjs promote` also appends one JSON line to
+`runs.jsonl` per invocation: `{run_id, started_at, finished_at, commit, platform, counts: {new,
+changed, unchanged, tolerated, drift, removed, failed}, changed: [{id, combo, path, history_path,
+verdict}], new: [{id, combo, path}], removed: [{id, path}]}` (`verdict` is `"changed"` or `"drift"`;
+only a `changed`/`drift` entry that actually moved a file carries `history_path`). `screens.mjs
+index` reads `runs.jsonl` back (newest run first) into `index.html`'s "Verlauf" section, and attaches
+each catalog item's own historical versions (`attachIndexHistory`, newest first) for its "n
+Versionen" badge.
 
 **`${PROJECT_ROOT}` placeholder**: a manifest/config string value (`launch_args`, `extra_args`,
 `steps[]` inputs, a fixture path, `env` values passed to a driver) may use `${PROJECT_ROOT}` instead

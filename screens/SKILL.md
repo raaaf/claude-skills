@@ -278,9 +278,19 @@ node "$SCREENS_BIN" index
 Writes `<output root>/index.html` (embedded JSON + vanilla JS, `screens/templates/index.html`
 instantiated with the current catalog + marketing state, no dependency, opens straight from disk),
 plus `<output root>/catalog.json` and a regenerated `~/Developer/screens/index.html` listing every
-project that has a catalog there (`TOP_INDEX_RESULT=OK projects=<n>`). `INDEX_RESULT=OK path=...`:
-report that path. `INDEX_RESULT=FAIL (...)`: report the reason, the run still completes (the PNGs
-themselves are unaffected).
+project that has a catalog there (`TOP_INDEX_RESULT=OK projects=<n>`, now also the last run's changed
+count per project). `INDEX_RESULT=OK path=...`: report that path. `INDEX_RESULT=FAIL (...)`: report
+the reason, the run still completes (the PNGs themselves are unaffected).
+
+`index.html`'s "Verlauf" section (change history, `references/config-schema.md` "Change history")
+reads `<output root>/runs.jsonl`, one line per `promote` invocation: a timeline of runs newest first,
+each expandable to its `changed`/`drift` entries with a before/after view (side-by-side plus a
+keyboard-accessible slider overlay) linking the `_history/<run-id>/` PNG and the current one. Every
+catalog view carries an "n Versionen" badge when it has historical versions, opening the same
+before/after view against its own most recent one. `promote` moves the previous PNG into
+`_history/<run-id>/` on every `changed`/`drift` verdict (never on `new`/`unchanged`/`tolerated`),
+retained per `config.history_keep` (default 5 versions per combo) and `config.history_max_mb`
+(default 1024, whole-project cap, oldest run folders pruned first, never the current run's).
 
 ## Phase 8: Report
 
