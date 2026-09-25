@@ -43,7 +43,8 @@ PRICE_JSON='{
   "claude-fable-5-1": {"input": 10,   "cache_write": 12.5, "cache_read": 0.25, "output": 50},
   "claude-opus-5-5":  {"input": 4,    "cache_write": 5,    "cache_read": 0.2,  "output": 20},
   "claude-opus-5":    {"input": 5,    "cache_write": 6.25, "cache_read": 0.5,  "output": 25},
-  "claude-sonnet-5":  {"input": 2,    "cache_write": 2.5,  "cache_read": 0.2,  "output": 10},
+  "claude-sonnet-5":  {"input": 3,    "cache_write": 3.75, "cache_read": 0.3,  "output": 15},
+  "claude-sonnet-5-before-2026-09-01": {"input": 2, "cache_write": 2.5, "cache_read": 0.2, "output": 10},
   "claude-haiku-4-5": {"input": 1,    "cache_write": 1.25, "cache_read": 0.1,  "output": 5}
 }'
 
@@ -61,7 +62,7 @@ def valid_usage:
   (.usage.input_tokens | valid_number) and (.usage.output_tokens | valid_number) and
   (.usage.cache_creation_input_tokens // 0 | valid_number) and
   (.usage.cache_read_input_tokens // 0 | valid_number);
-[.[] | select(.type == "assistant") | .message
+[.[] | select(.type == "assistant") | (.message + {transcript_timestamp: .timestamp})
  | select(.model != "<synthetic>" or
      ([.usage.input_tokens // 0, .usage.output_tokens // 0,
        .usage.cache_creation_input_tokens // 0, .usage.cache_read_input_tokens // 0] | add) != 0)]
@@ -81,10 +82,15 @@ def valid_usage:
     | .[$key].output += $m.usage.output_tokens)
 | . as $sums
 | ($sums | keys | map(select(startswith("unknown:")) | sub("^unknown:"; ""))) as $unknown
-| ($sums | to_entries | map(.key as $k | .value as $v | $prices[$k] as $p
+| ($messages | map(prefix(.model) as $key
+    | (if $key == "claude-sonnet-5" and
+          ((.transcript_timestamp // "9999")[0:10] < "2026-09-01")
+       then $prices["claude-sonnet-5-before-2026-09-01"] else $prices[$key] end) as $p
     | if $p == null then 0 else
-      ($v.input * $p.input + $v.cache_write * $p.cache_write +
-       $v.cache_read * $p.cache_read + $v.output * $p.output) / 1000000 end) | add // 0) as $known
+      (.usage.input_tokens * $p.input +
+       (.usage.cache_creation_input_tokens // 0) * $p.cache_write +
+       (.usage.cache_read_input_tokens // 0) * $p.cache_read +
+       .usage.output_tokens * $p.output) / 1000000 end) | add // 0) as $known
 | {status: (if ($unknown | length) == 0 then "complete" else "unavailable" end),
    usd: (if ($unknown | length) == 0 then $known else null end),
    known_usd: $known, models: $sums, unknown_models: $unknown,

@@ -22,7 +22,7 @@ test('counts nested actual-model turns, deduplicates snapshots, excludes journal
   const { code, value } = f.run();
   assert.equal(code, 0); assert.equal(value.agents, 2); assert.equal(value.turns, 3);
   assert.equal(value.models['claude-opus-5'].output, 50); assert.equal(value.models['claude-sonnet-5'].output, 30);
-  assert.deepEqual(value.unknown_models, []); assert.ok(Math.abs(value.usd - 0.00245) < 1e-10);
+  assert.deepEqual(value.unknown_models, []); assert.ok(Math.abs(value.usd - 0.0027) < 1e-10);
 });
 test('claude-opus-5-5 prices separately from claude-opus-5', t => {
   const f = fixture(t);
