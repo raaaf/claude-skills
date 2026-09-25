@@ -48,7 +48,7 @@ orch_run_log --start --skill delegate
 
 ## Phase 1: Analysis (orchestrator, expensive)
 
-- Translate the task into a verifiable goal ("add validation" → "tests for invalid inputs, then green").
+- Translate the task into a verifiable goal ("add validation" → "one test per invalid-input branch, then green"; "wire up UI" → "screenshot proof, no test"). Tests follow CLAUDE.md §6: required for bugfix repro and new branching logic, never for rendering, wiring, getters or mock-call checks. Zero new tests is a valid spec.
 - Targeted codebase scan: read affected files, **grep every identifier to be changed repo-wide** (parallel implementations, wizard duplicates — never assume there's only one spot).
 - Identify conventions + an exemplar file (components instead of raw HTML, error pattern, test style).
 - Determine the repo's verification commands (test runner, linter, typecheck) — do NOT guess, read from package.json/composer.json/CI. Only diff-scoped tests, never the full suite.
@@ -73,7 +73,7 @@ Inline (no file), executor-ready — the executor does not know this session:
 1. {concrete, file + what} → verify: {command → expected result}
 2. ...
 **Bugfix?** Step 1 is ALWAYS: write a repro test that's red. Fix afterward, test green.
-**Done criteria (all):** {test command → exit 0 including N new tests; lint/typecheck → exit 0; git status: only affected files}
+**Done criteria (all):** {test command → exit 0; new tests only where a step names one, 0 is a valid count; lint/typecheck → exit 0; git status: only affected files}
 **STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
 ```
 
@@ -174,7 +174,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 1. Read the full `git diff`; judge against the goal + conventions (does it read like the rest of the repo?).
 2. Re-run every done criterion yourself (Bash).
 3. Scope: `git diff --stat` against the affected-files list. A file outside it = fail.
-4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the fix line when in doubt (a happy-path test stays green while the new branch ships untested).
+4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the target line of every new test (invert it, the test must go red; a happy-path test stays green while the new branch ships untested). A test that only asserts mock calls, mounts a component, or has no assertion = fail.
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
 6. **After-screenshot.** When Phase 3.5's before set came from `/screens` (`SCREENS_AFFECTED_IDS`

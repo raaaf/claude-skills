@@ -61,7 +61,7 @@ what gets forgotten. Evidence: a plan removed a relationship and omitted the own
 from this list, so the executor hit a build error the plan had not scoped.
 
 ### Conventions
-{Which repo patterns apply, with an exemplar file: "Error handling follows the Result pattern — see src/lib/result.ts and its usage in src/users/api.ts:40-60. Exactly like that."}
+{Name every MANDATORY convention from CLAUDE.md that the affected files must follow, by name (required trait, base class, guard, rate-limit trait), not only via an exemplar file. Evidence: SanitizesInput was known from CLAUDE.md and still missing from a plan's Conventions. Then the repo patterns with an exemplar file: "Error handling follows the Result pattern — see src/lib/result.ts and its usage in src/users/api.ts:40-60. Exactly like that."}
 
 ## Edge Cases
 - {Case}: {Handling}

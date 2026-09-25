@@ -9,6 +9,11 @@ Bash logic and prompt templates for Phase 2.5 (codebase context), Phase 3 (chall
 
 ## Phase 2.5: Gather Codebase Context
 
+Precondition: the Bash tool must be available for the automated checks below and for the drift
+checks the architecture and risk agents run. When it is not (denied, sandboxed away), do not proceed
+silently: the agents verify by reading only, and the plan log records "drift checks manual-only" as
+a limitation.
+
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 

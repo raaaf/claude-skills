@@ -25,16 +25,24 @@ Check in order:
 
 ## Test Principles
 
+A test is worth writing only if its failure would tell you something you would otherwise learn in production. If the target code has no branch worth pinning, write no test and say so.
+
 ### What to Test
-- Happy path (expected behavior)
-- Edge cases (empty, null, boundaries)
-- Error cases (invalid input, exceptions)
-- Integration points (API calls, DB queries)
+- One test per branch of real logic: calculation, parsing, validation, date or status rules
+- Boundaries where behavior changes (empty, null, off-by-one), not every value in between
+- Error cases the code handles explicitly
+- A rule nobody else documents (a test is the cheapest place to pin it)
 
 ### What NOT to Test
-- Framework internals
-- Getter/Setter boilerplate
-- Third-party library behavior
+- Framework internals, third-party library behavior
+- Rendering/mount tests ("component renders"), wiring, getters and setters
+- Variants of the same path with other values
+- Tests that only assert mock calls were made
+
+### Quality Gate
+- Every test must go red when its target line is inverted. Name that line in the test description or a comment when it is not obvious.
+- Assert behavior and outputs, not call order or internal structure.
+- No test without a concrete assertion. "Runs without throwing" is not a test.
 
 ## Output Format
 
@@ -52,7 +60,7 @@ Arrange -> Act -> Assert
 - Clear test names describing behavior: `it('returns empty array when no items found')`
 - One assertion per test (when practical)
 - No test interdependence
-- Mock external dependencies
+- Real objects over mocks; mock only at I/O boundaries (network, filesystem, clock, DB)
 
 ## Rules
 - Match existing test style in the project

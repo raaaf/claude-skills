@@ -185,14 +185,13 @@ does not correct it.
         required: ['id', 'result']
       }
     },
-    test: { type: 'string' },
-    tool_calls: { type: 'integer' }
+    test: { type: 'string' }
   },
-  required: ['fix_result', 'files', 'diff_summary', 'test', 'tool_calls', 'outcomes']
+  required: ['fix_result', 'files', 'diff_summary', 'outcomes']
 }
 ```
 
-`outcomes` carries one entry per finding id the fixer was assigned, per `agents/fix-agent.md`'s per-finding contract. A `DISCARDED` outcome without a non-empty `reason` (after trimming whitespace) counts as unresolved, exactly like a missing outcome or a `FAILED`.
+`test` is included when the fixer ran a filtered test; otherwise it may be omitted. The orchestrator's full-suite run and fix-verifier remain gates. `outcomes` carries one entry per finding id the fixer was assigned, per `agents/fix-agent.md`'s per-finding contract. A `DISCARDED` outcome without a non-empty `reason` (after trimming whitespace) counts as unresolved, exactly like a missing outcome or a `FAILED`.
 
 ## Fix-verifier output (`fix-verifier.md`)
 
