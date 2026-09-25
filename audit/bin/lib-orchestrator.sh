@@ -31,7 +31,8 @@
 # right after the source line. The state dir is cleared by orch_progress_claim (a new run starts
 # empty), so a value that was never saved this run reads as unset, never as last run's.
 # check-fresh-shell.sh enforces both halves: a block reading a variable it did not set must load,
-# and the name must be saved by some scanned SKILL.md or references block (the state dir is shared per cwd).
+# and the name must be saved by some scanned SKILL.md or references block (the state dir is shared
+# per cwd, same hash as the in-progress marker; see the header comment below).
 #
 # Functions (all bash 3.2, no arrays exported, no side effects beyond the
 # variables named):
@@ -63,10 +64,18 @@
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
 #
-# The two hash conventions are deliberately two functions with two names. They
-# differ by one trailing newline, reading one family with the other produces a
-# different hash, and that exact mix-up broke /ship's audit gate once (CLAUDE.md
-# Gotchas). Callers name the family they mean.
+# There are two hash conventions, deliberately two functions with two names:
+# passed and progress. `orch_hash_progress` stays md5 of bare cwd because
+# pre-compact.sh independently recomputes exactly that (`pwd | md5`) to find the
+# in-progress marker; it is shared on purpose across every audit-family skill run
+# against the same cwd, since any of them in flight should still block compaction.
+# The state dir keys off the same progress hash, so two audit-family skills
+# sharing a cwd share one state dir and one claim; orch_progress_claim warns
+# instead of silently wiping a sibling skill's saved cross-block variables (see
+# its own comment below). Reading one family with the other's convention produces
+# a different hash outright, and that exact mix-up between passed and progress
+# broke /ship's audit gate once (CLAUDE.md Gotchas). Callers name the family they
+# mean.
 
 orch__md5() {
   # stdin -> hex digest, macOS (md5) or coreutils (md5sum)
@@ -109,7 +118,20 @@ orch__marker_ok() { [ ! -L "$1" ] && { [ ! -e "$1" ] || [ -O "$1" ]; }; }
 orch__progress_path() { printf '/tmp/claude-audit-in-progress-%s' "$(orch_hash_progress)"; }
 orch__passed_path()   { printf '/tmp/claude-audit-passed-%s' "$(orch_hash_passed)"; }
 orch_progress_touch()   { local m; m=$(orch__progress_path); orch__marker_ok "$m" || { echo "orch_progress_touch: refusing $m (symlink or not owned by $USER)" >&2; return 1; }; touch "$m"; }
-orch_progress_claim()   { orch_state_clear; orch_progress_touch; }
+# Warn, never refuse: a crashed run must stay re-runnable, so a same-cwd claim from another
+# audit-family skill only gets a heads-up before its cross-block state is wiped, not a block.
+orch__progress_claim_warn() {
+  local m mtime now age
+  m=$(orch__progress_path)
+  [ -f "$m" ] || return 0
+  mtime=$(stat -f %m "$m" 2>/dev/null) || mtime=$(stat -c %Y "$m" 2>/dev/null) || return 0
+  case "$mtime" in ''|*[!0-9]*) return 0 ;; esac
+  now=$(date +%s) || return 0
+  age=$((now - mtime))
+  [ "$age" -ge 0 ] && [ "$age" -lt 2700 ] || return 0
+  echo "orch_progress_claim: WARNING another audit-family run claimed this cwd ${age}s ago; its cross-block state is being cleared" >&2
+}
+orch_progress_claim()   { orch__progress_claim_warn; orch_state_clear; orch_progress_touch; }
 orch_progress_release() { local m; m=$(orch__progress_path); [ -L "$m" ] && { rm -f "$m"; return 0; }; orch__marker_ok "$m" || return 1; rm -f "$m"; }
 
 # Cross-block variable state. One file per variable, raw bytes, under a 0700 dir the

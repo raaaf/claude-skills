@@ -39,4 +39,6 @@ level.
 **Validation:** `SELECTED_DIMENSIONS` must contain at least 1 valid dimension out of the 13, plus
 `payments` when `STRIPE=yes` (14 valid values in that case). Discard invalid values.
 
-**Display:** `Audit Scope: {N}/13 dimensions (14 when `payments` runs) — {list} | Fix scope: {all|none}`.
+**Display:** each orchestrator's Phase 1.5 block echoes the resolved values as
+`AUDIT_DIMENSIONS=... AUDIT_FIX_SCOPE=...` (`audit/SKILL.md`, `full-audit/SKILL.md`); there is no
+separate formatted "Audit Scope: {N}/13 dimensions" line.

@@ -137,7 +137,7 @@ orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES
 
 ## Phase 2-5: same as `audit/SKILL.md`, with `SCOPE=repo`, no marker
 
-Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
+Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with three substitutions:
 
 - `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `floorFiles`
   built the same way as `audit/SKILL.md` Phase 2: the orchestrator never reads scope-file content at
@@ -179,10 +179,19 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with two substitutions:
   plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)` to the `--counts` argument,
   same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
   the next run.
-- Every finding line follows the machine-parsed contract stated once in `audit/SKILL.md` Phase 4
-  (one physical line, `- [Severity][Dimension] file:line: description`); this file no longer
-  repeats the wording, since a rewording that lands in one copy and not the other is how that
-  contract drifted unnoticed on 2026-09-10.
+- `audit/SKILL.md`'s Phase 2 block also computes `HUNK_SCOPE` from `$DIFF_SIZE_RESULT` (`case
+  "$DIFF_SIZE_RESULT" in LARGE|HUGE) HUNK_SCOPE=true ;; *) HUNK_SCOPE=false ;; esac`), reused
+  verbatim here even though `/full-audit`'s Phase 0 never runs `diff-size-gate.sh` and so never
+  sets `DIFF_SIZE_RESULT` or `BASE_REF` (there is no diff; `SCOPE=repo` walks the whole tree). The
+  unset variable falls through to the `*)` branch, so `HUNK_SCOPE` is always `false` here, which is
+  the correct behavior (hunk-scoped review only makes sense against a diff); it is accidental
+  correctness from an unset var, not a deliberate substitution, so it is called out here rather than
+  left implicit.
+
+Every finding line follows the machine-parsed contract stated once in `audit/SKILL.md` Phase 4
+(one physical line, `- [Severity][Dimension] file:line: description`); this file no longer
+repeats the wording, since a rewording that lands in one copy and not the other is how that
+contract drifted unnoticed on 2026-09-10.
 
 `runId` for both the find and fix workflows goes into the same log-header position `audit/SKILL.md`
 uses, so `Workflow({ scriptPath, resumeFromRunId })` resumes a full-audit run exactly like a

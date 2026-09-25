@@ -123,6 +123,46 @@
     "[minor][performance] audit/evals/run-evals.sh:444 :754: `validate_expected()` `score_against_log()` spawn|per expectation entry.": {
       "count": 1,
       "last_seen": "2026-09-16"
+    },
+    "doc prose count contradicts table same file": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "documented display line implemented orchestrator": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "hand-copied frontend extension regex outside lib-git-base.sh": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "pipeline summary omits newly added mode": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "substitution list incomplete after shared phase change": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "hardcoded absolute home path lib source loop": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "cwd-keyed progress marker shared across orchestrator skills": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "agent instruction left old wire format after contract change": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "fixer self-discard unblocks push gate without independent review": {
+      "count": 1,
+      "last_seen": "2026-09-25"
+    },
+    "injection note auto-dispatched fix agent without human checkpoint": {
+      "count": 1,
+      "last_seen": "2026-09-25"
     }
   }
 }

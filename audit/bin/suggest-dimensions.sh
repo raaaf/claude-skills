@@ -2,6 +2,16 @@
 # Print an advisory dimension suggestion from changed paths on stdin.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Guarded source: a missing lib-git-base.sh must not silently kill this
+# script. Fallback below mirrors collect-scope.sh's pattern.
+[ -r "$SCRIPT_DIR/lib-git-base.sh" ] && source "$SCRIPT_DIR/lib-git-base.sh"
+# FRONTEND_EXT_RE is the canonical frontend-extension pattern, defined once in
+# lib-git-base.sh so this script cannot drift from collect-scope.sh's FRONTEND
+# list the way collect-scope.sh and check-skips.sh once did. Literal fallback
+# only fires when the lib is missing.
+FE_RE="${FRONTEND_EXT_RE:-\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$}"
+
 paths=()
 while IFS= read -r path; do
   [ -n "$path" ] && paths+=("$path")
@@ -26,7 +36,7 @@ for path in "${paths[@]}"; do
   esac
 
   if [[ "$path" =~ ^(backend|server|api|cmd|internal|worker|workers|functions|lambda)/ ]] ||
-     [[ ! "$path" =~ \.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$ ]]; then
+     [[ ! "$path" =~ $FE_RE ]]; then
     all_frontend=0
   fi
 

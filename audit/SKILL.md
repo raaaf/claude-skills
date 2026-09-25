@@ -91,6 +91,9 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 Otherwise, before the question, display the advisory recommendation from changed paths:
 
 ```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }   # sets AUDIT_BIN
+orch_state_load   # ALLE_DATEIEN as Phase 0 saved it
 printf '%s\n' "$ALLE_DATEIEN" | bash "$AUDIT_BIN/suggest-dimensions.sh"
 ```
 
@@ -254,7 +257,7 @@ This telemetry is descriptive only and must not change findings, status, routing
 elsewhere in the codebase collapses onto the same key) and hand it to the store:
 
 ```bash
-for c in "/Users/rafael/.claude/skills/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
 orch_patterns_from_file recur {path of the file you just wrote}   # a pattern is finding text and never goes on a command line
 ```
@@ -361,7 +364,12 @@ orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocke
   dimension `incomplete` only for a Critical or Important finding (decided after runs 5 and 7): an
   unverified Minor changes no action and is only listed under `### Unverified`. An unverified
   Critical/Important no longer blocks once the fix wave resolved it, either `FIXED` and fix-verifier
-  `VERIFIED`, or `DISCARDED` with a reason. It still blocks when it stays open after the fix wave
+  `VERIFIED`, or `DISCARDED` with a reason the orchestrator has independently re-checked against the
+  code before counting it as resolved: `fix.js`'s fix-verifier peer-reviews only `FIXED` outcomes,
+  never `DISCARDED` ones, so a self-reported discard by the same fix agent that owns the file is not
+  yet a second opinion. Re-read the cited `file:line` yourself; if the discard does not hold up,
+  treat the finding as still open, it blocks the marker below like any other unresolved
+  Critical/Important. It still blocks when it stays open after the fix wave
   (a `FAILED` outcome, an unresolved outcome, or `AUDIT_FIX_SCOPE=none` ran no fix wave at all): a
   possible push-blocker nobody has ruled on,
 - a single dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when
@@ -397,8 +405,10 @@ on exactly the state it exists to catch.
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 # Counts from the Phase 2 find.js result: how many dimensions were selected, and how many came
 # back skipped / incomplete / degraded. They are mandatory, and the helper refuses on its own if
-# they do not hold, so the gate no longer depends on this prose being read correctly.
-orch_marker_write "$N_SELECTED" "$N_SKIPPED" "$N_INCOMPLETE" "$N_DEGRADED"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
+# they do not hold, so the gate no longer depends on this prose being read correctly. The
+# orchestrator substitutes the {N_...} placeholders with the counts it derived from the find.js
+# JSON before running this block, same convention as the COUNTS line above.
+orch_marker_write "{N_SELECTED}" "{N_SKIPPED}" "{N_INCOMPLETE}" "{N_DEGRADED}"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
 ```
 
 Release the in-progress marker, unconditionally (the block above only runs when the gate passed):
