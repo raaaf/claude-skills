@@ -222,3 +222,11 @@ transient failure, re-attest) is written out at three or more call sites, report
 helper candidate that lists every site. Each copy drifts on its own (one site gains a backoff or a
 status check the others lack), and the drift is the defect. Severity: Important when the copies
 already differ in retry or error handling, Minor when they are still identical.
+
+## Oversized SwiftUI Body Modifier Chains (2026-09-25)
+
+A SwiftUI `body` whose modifier chain mixes more than three overlays, sheets, alerts and
+`onChange` handlers is an Important refactor candidate, not a Minor: it hides state interactions
+and makes every change to the view risky. Suggest extracting the presentation modifiers into a
+dedicated `ViewModifier` or a `presentations()` helper and the change handlers into named methods
+(3rd recurrence, topf-secret ChatView).

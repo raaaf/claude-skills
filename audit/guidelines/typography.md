@@ -284,3 +284,11 @@ When the project defines typographic token classes (`.heading-1`, `.text-body`, 
 When the same hardcoded plural ternary (`n == 1 ? "Technik" : "Techniken"`) or the same straight-vs-curly apostrophe slip appears in two or more files within one run, report it once as a shared String-Catalog-plural (or shared constant) candidate that lists every site, not as separate unlinked Minor findings per file.
 
 Enforcement: a user-facing count with a hand-written singular/plural ternary or `if n == 1` branch is a finding even at a single site when the project has a String Catalog (`*.xcstrings`) or an equivalent plural mechanism: the fix is a plural variant in the catalog, not a better ternary. Severity Minor at one site, Important once the same pattern appears in three or more files (2026-09-24).
+
+## XVII. Straight Quotes and Apostrophes in German Copy Are Non-Negotiable (2026-09-25)
+
+A straight apostrophe (U+0027) or straight double quote (U+0022) inside German user-facing copy
+("Versuch's", "\"Diese Website\"") is always a finding, never a style preference: German uses ’ for
+the apostrophe and „…“ for quotes. Severity Minor at one site, Important when the same file or
+three or more files repeat it, so it lands in fix scope instead of being logged forever
+(3rd recurrence, topf-secret 2026-09-24/25).
