@@ -36,9 +36,10 @@ On `prose`:
 
 - **one round**, not three. A second round exists to catch what a fix broke, and a prose fix that
   breaks something is caught by the same round's verification.
-- **no Minor fixes.** Minor findings go into the audit log and, if they recur, into the learning
-  backlog. This is the half of the rule that actually breaks the loop: an unfixed Minor produces no
-  new diff, so it cannot trigger the next audit.
+- **Minors are fixed here too (decided 2026-09-25).** What bounds the loop is the other three
+  constraints on this list, not withholding a fix: one round, floor dimensions only, and the
+  marker certifying the post-fix tree, so the fixes this run makes need no second audit before the
+  push they gate.
 - **floor dimensions only.** No orchestrator additions "to be safe". If the floor derives only
   `docs_sync` from a documentation diff, that is the answer, not a starting point.
 - **`CONFIDENCE_FLOOR=medium`**, so D.7 still verifies the uncertain findings. The gate lowers the

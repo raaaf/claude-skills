@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. Two start questions (dimensions, fix scope) replace the old argument form. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every finding, including Minor, is fixed or discarded with a reason. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
 when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
 model: inherit
 effort: high
@@ -84,9 +84,9 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 
 **WIP/stale-snapshot scope check:** does the working tree contain files that clearly do NOT belong to the current task? Ask via `AskUserQuestion`: only the session/task changes vs. the entire working tree.
 
-## Phase 1.5: Start questions (dimensions + fix scope)
+## Phase 1.5: Start question (dimensions)
 
-**A set variable suppresses both questions.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, the other takes its default (all dimensions; fix-scope preselection from `CLAUDE_EFFORT` below). This guarantees a headless run never hangs on a question.
+**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, `AUDIT_DIMENSIONS` takes its default (all dimensions). This guarantees a headless run never hangs on a question.
 
 Otherwise, before the question, display the advisory recommendation from changed paths:
 
@@ -94,16 +94,15 @@ Otherwise, before the question, display the advisory recommendation from changed
 printf '%s\n' "$ALLE_DATEIEN" | bash "$AUDIT_BIN/suggest-dimensions.sh"
 ```
 
-Show its output as context for question (a), not as a new preset or preselected answer. Then ask
-exactly one `AskUserQuestion` round, two questions, presets from
+Show its output as context for the question, not as a new preset or preselected answer. Then ask
+exactly one `AskUserQuestion` round, one question, presets from
 `references/dimension-selection.md`. The suggestion is advisory only: Everything remains the
 default, the user may choose any existing preset or Custom, and the suggestion never sets or edits
 `AUDIT_DIMENSIONS`. Do not run it for headless runs where either audit environment variable is set.
 
-- **(a) Dimensions:** Everything (default) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
-- **(b) Fix scope:** find & log only | fix Critical | fix Critical and Important. Preselection from `${CLAUDE_EFFORT:-medium}`: `low` → find only, `medium` → Critical, `high`/`xhigh` → Critical and Important.
+- **Dimensions:** Everything (default) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
 
-Result: `AUDIT_DIMENSIONS` (comma list) and `AUDIT_FIX_SCOPE` (`none|critical|all`). A partial selection at (a) never writes the push marker (same rule as before), and the log names the dimensions not checked.
+Result: `AUDIT_DIMENSIONS` (comma list). A partial selection never writes the push marker (same rule as before), and the log names the dimensions not checked.
 
 **`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when BOTH hold:
 `STRIPE=yes` (from Phase 1) AND the changed-file set intersects `STRIPE_FILES`. The intersection is
@@ -116,9 +115,9 @@ of defect this dimension exists to catch.
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from Phase 1
-AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from question (a); all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
 [ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
-AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-{none|critical|all from question (b)}}"
+AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else fixes every finding incl. Minor
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
   if [ -n "$STRIPE_TOUCHED" ]; then
@@ -260,15 +259,15 @@ orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; 
 orch_patterns_from_file recur {path of the file you just wrote}   # a pattern is finding text and never goes on a command line
 ```
 
-This step runs after EVERY `find.js` call of the run, including a re-run of single dimensions (a copy/ux re-run on 2026-09-20 produced 5 confirmed findings that reached the store only via the Phase 5 back-fill). It belongs HERE, at the verdicts, and not in the fix wave: `AUDIT_FIX_SCOPE=none` is the common
-case, `Minor` is never fixed at any scope, and a fix wave that never runs cannot feed a counter.
+This step runs after EVERY `find.js` call of the run, including a re-run of single dimensions (a copy/ux re-run on 2026-09-20 produced 5 confirmed findings that reached the store only via the Phase 5 back-fill). It belongs HERE, at the verdicts, and not in the fix wave: `AUDIT_FIX_SCOPE=none` runs no
+fix wave at all, so a counter that only fed from the fix wave would never move on that common case.
 Until 2026-09-18 this duty was documented in `references/learning-phase.md` and
 `agents/learning-agent.md` as living in `workflows/fix.js` and `agents/fix-agent.md`, and it was in
 neither: 192 audit logs on disk had produced 36 store entries, so `patterns.json` had effectively
 never been fed by the loop, and every retro reasoned about recurrence from a counter that did not
 move. Phase 5 Step 0.5 still checks the count and back-fills, but that is the repair, not the path.
 
-**Decide per finding** (`CONFIRMED` verdicts only; `REFUTED` discarded with reason, `UNCERTAIN` never fixed, listed under `### Unverified`): fix / log / discard, following `AUDIT_FIX_SCOPE` — `none` logs everything, `critical` fixes only `severity: Critical`, `all` fixes `Critical` and `Important`. **Minor is never fixed, always logged.** Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion. When a dimension returns `incomplete` twice in a row, re-run it once more with `files` narrowed to the files its scout reported plus its floor files (2026-09-24: privacy stayed incomplete over the full diff twice and completed on a 5-file re-run); if it is still incomplete after that, it stays under `## Not completed` and blocks the marker.
+**Decide per finding:** `REFUTED` is discarded before any file is touched, with the verifier's reason. `CONFIRMED` and `UNCERTAIN`, at every severity including Minor, all go to `fix.js` unless `AUDIT_FIX_SCOPE=none` (find & log only). The orchestrator does no severity-based triage; that decision now belongs entirely to the fix agent per finding (`agents/fix-agent.md`'s FIXED/DISCARDED/FAILED contract). An `UNCERTAIN` finding carries `verdict: "UNCERTAIN"` in its `fixes[]` entry so the fixer re-checks it against the code before deciding. Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion. When a dimension returns `incomplete` twice in a row, re-run it once more with `files` narrowed to the files its scout reported plus its floor files (2026-09-24: privacy stayed incomplete over the full diff twice and completed on a 5-file re-run); if it is still incomplete after that, it stays under `## Not completed` and blocks the marker.
 
 ## Phase 3: Fix
 
@@ -314,7 +313,9 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 orch_progress_touch
 ```
 
-Read `{fixes, verdicts, regressions, rejected, blockingRegressions, verificationGap, attemptedVerification, verifiedCount}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
+Read `{fixes, discarded, verdicts, regressions, rejected, blockingRegressions, verificationGap, attemptedVerification, verifiedCount}`. A `REJECT` fix-verdict or a rejected fix stays an open point — `fix.js` runs no second round in the same pass.
+
+Every entry in `discarded` (`{id, file, severity, dimension, reason}`) goes into the log's `## Discarded` section as `- [Severity][Dimension] file:line: discarded by fixer: {reason}`. Every finding that came back `FAILED`, or that `fix.js` counted as `unresolved` (a `outcome:{id}` entry in `uncovered`), goes into `## Open Points` with the fixer's reason.
 
 **`status: 'verification_gap'`** (distinct from `'incomplete'`) means the fix-verifier covered fewer files than were fixed (`verifiedCount < attemptedVerification`) — a coverage failure of the verify stage itself, not a normal per-file `incomplete` where a fix WAS reviewed and found wanting. Retro 2026-09-16 (raaaf/neues-feedback): verify covered 1/20 fixed files and the run still reported plain `incomplete`, so the orchestrator's manual diff verification of the other 19 was an unplanned recovery. On `verification_gap`, manually diff every fixed file that has no verdict (`fixes[]` entries where `verdict` is null) before treating the round as done, and note the gap size (`verifiedCount`/`attemptedVerification`) under `## Notes` in the log.
 
@@ -357,10 +358,12 @@ orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocke
 - no Critical is open, including every `SECRET ...` line either `pre-checks.sh` run (Phase 1, and again after the fix wave in Phase 3) printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
 - no new test failure beyond `BASELINE_FAILURES`,
 - no selected dimension has `status: incomplete`. Since 2026-09-16 an `UNCERTAIN` verdict makes a
-  dimension `incomplete` only for a Critical or Important finding (decided after runs 5 and 7: a
-  Minor is never fixed whatever its verdict, so an unverified Minor changes no action and is only
-  listed under `### Unverified`; an unverified Critical/Important is a possible push-blocker nobody
-  has ruled on and blocks until re-verified or decided),
+  dimension `incomplete` only for a Critical or Important finding (decided after runs 5 and 7): an
+  unverified Minor changes no action and is only listed under `### Unverified`. An unverified
+  Critical/Important no longer blocks once the fix wave resolved it, either `FIXED` and fix-verifier
+  `VERIFIED`, or `DISCARDED` with a reason. It still blocks when it stays open after the fix wave
+  (a `FAILED` outcome, an unresolved outcome, or `AUDIT_FIX_SCOPE=none` ran no fix wave at all): a
+  possible push-blocker nobody has ruled on,
 - a single dimension with `status: skipped` does NOT block: `find.js`'s `runDimension` (search for `'incomplete' : 'skipped'`; line numbers in that file move) only reaches `skipped` when
   both scouts ran without failing and returned zero files and zero clusters, so it means the
   dimension had nothing in scope. A failed scout puts `scout:files`/`scout:clusters` into

@@ -322,10 +322,10 @@ Two removal rules, both deliberately narrow so a genuine false positive is never
   (case-insensitive), the exact vocabulary `audit-log-template.md` defines for a rejected finding —
   a fallback for a drifted log that inlines the verdict without the section.
 
-Neither rule fires on `Minor` severity, `low confidence`, or `never fixed` alone: every logged
-Minor finding reads "never fixed" by policy (Minor is never fixed, always logged), so treating that
-phrase alone as a discard signal would exempt every real Minor false positive from ever being
-counted.
+Neither rule fires on `Minor` severity, `low confidence`, or `never fixed` alone: until 2026-09-25,
+every logged Minor finding read "never fixed" by policy (Minor was never fixed, always logged), so
+treating that phrase alone as a discard signal would exempt every real Minor false positive from
+ever being counted.
 
 Found 2026-09-12: `advisory-landing-hero-auditlog.md` logged a `[Minor][security]` line under `##
 Discarded` ("Discarded as out of scope: the finding itself states the file is static markup...")
@@ -551,8 +551,8 @@ correctly.
 Discarded findings are now stripped before the check, by the `## Discarded` section that
 `audit-log-template.md` defines and, as a fallback for drifted logs, by an explicit `REFUTED` or
 `discarded as` marker on the line. Deliberately NOT by `Minor`, `low confidence` or `never fixed`:
-every logged Minor carries "never fixed" by policy, so treating that as the signal would have
-exempted every real Minor false positive and quietly emptied the metric.
+until 2026-09-25 every logged Minor carried "never fixed" by policy, so treating that as the signal
+would have exempted every real Minor false positive and quietly emptied the metric.
 
 ### The security dimension did not need a prompt change
 

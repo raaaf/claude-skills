@@ -7,7 +7,7 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, writ
 # Audit: {DATE}: Branch: {BRANCH}
 
 ## Scope
-- Dimensions: N/13: {list} | Fix scope: {none|critical|all}
+- Dimensions: N/13: {list} | Fix scope: {all|none}
 - Changed files: list (or "SCOPE=repo" for /full-audit)
 - HEAD at audit time: {git rev-parse HEAD}
 - runId (find): {runId} | runId (fix): {runId}
@@ -31,6 +31,7 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, writ
 
 ## Discarded
 - [Dimension] file:line: reason (refuted, or discard: conflict with {id})
+- [Severity][Dimension] file:line: discarded by fixer: {reason}
 
 ## Not completed
 - {dimension}: incomplete at stage {stage}: {reason}

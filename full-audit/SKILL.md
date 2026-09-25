@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework, runs the same per-dimension Workflow pipeline as /audit across all 13 dimensions (plus a conditional 14th, payments, on repos with a Stripe integration) with SCOPE=repo, fixes per the chosen scope (Minor always logged, never fixed). Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
+description: "Comprehensive one-time audit of an entire codebase (not just recent changes). Auto-detects framework, runs the same per-dimension Workflow pipeline as /audit across all 13 dimensions (plus a conditional 14th, payments, on repos with a Stripe integration) with SCOPE=repo, fixes every finding incl. Minor or discards it with a reason. Use when the user runs /full-audit, starts on a new project, asks for a comprehensive review, or wants the whole codebase checked. NOT for pre-push of recent changes — use /audit instead."
 when_to_use: "/full-audit, ganzes projekt prüfen, komplette codebase auditen, gesamten code einmal durchchecken, neues projekt komplett prüfen, full codebase audit, audit whole project, starting on a new project, comprehensive review"
 model: inherit
 effort: high
@@ -100,10 +100,10 @@ In-progress marker: claimed in the Phase 0 block above; the touch after each Not
 release at Phase 4 are the `audit/SKILL.md` blocks that Phases 2-5 run (same lib functions, same
 state dir).
 
-## Phase 1.5: Start questions
+## Phase 1.5: Start question
 
-**Same rule and same two questions as `audit/SKILL.md` Phase 1.5** ("A set variable suppresses
-both questions"): `AUDIT_DIMENSIONS` / `AUDIT_FIX_SCOPE`, `references/dimension-selection.md`
+**Same rule and same question as `audit/SKILL.md` Phase 1.5** ("A set variable suppresses the
+question"): `AUDIT_DIMENSIONS` / `AUDIT_FIX_SCOPE`, `references/dimension-selection.md`
 (now under `audit/references/`) for the presets. `/full-audit` sets no push marker regardless of
 the answer, so a partial selection here has no gate consequence, only a smaller log.
 
@@ -120,9 +120,9 @@ guideline always applies when it runs.
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
 orch_state_load   # STRIPE, PAYMENTS_RERUN, PAYMENTS_SKIP_NOTE from Phase 0; GUIDELINE_MATCHES from the scope walk
-AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from question (a); all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here
 [ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
-AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-{none|critical|all from question (b)}}"
+AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else fixes every finding incl. Minor
 if [ "$STRIPE" = "yes" ]; then
   if [ "$PAYMENTS_RERUN" = "1" ]; then
     AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:+$AUDIT_DIMENSIONS,}payments"

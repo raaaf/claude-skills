@@ -695,10 +695,12 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   }
 
   // Decided 2026-09-16 (open since run 5): an unverified finding blocks the dimension only
-  // at Critical/Important. A Minor is never fixed regardless of verdict, so an UNCERTAIN
-  // Minor changes no action and still appears under Unverified in the log; an UNCERTAIN
-  // Critical/Important is a possible push-blocker nobody has ruled on, and that stays
-  // `incomplete` until a re-verification or a human decision.
+  // at Critical/Important. An UNCERTAIN Minor does not block: it still goes to the fix wave
+  // like every finding, where the fixer re-checks it against the code before deciding, and it
+  // still appears under Unverified in the log. An UNCERTAIN Critical/Important is a possible
+  // push-blocker nobody has ruled on, and that stays `incomplete` until a re-verification, a
+  // human decision, or (since 2026-09-25) the fix wave resolving it itself: FIXED and
+  // fix-verifier VERIFIED, or DISCARDED with a reason (audit/SKILL.md's marker rule).
   const blockingUnverified = unverified.filter((id) => {
     const f = allFindings.find((x) => x.id === id);
     return !f || f.severity === 'Critical' || f.severity === 'Important';

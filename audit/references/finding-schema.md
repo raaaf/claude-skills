@@ -173,12 +173,26 @@ does not correct it.
     fix_result: { type: 'string', enum: ['APPLIED', 'PARTIAL', 'NOT_FOUND', 'SUPPRESSED', 'FAILED'] },
     files: { type: 'array', items: { type: 'string' } },
     diff_summary: { type: 'string' },
+    outcomes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          result: { type: 'string', enum: ['FIXED', 'DISCARDED', 'FAILED'] },
+          reason: { type: 'string' }
+        },
+        required: ['id', 'result']
+      }
+    },
     test: { type: 'string' },
     tool_calls: { type: 'integer' }
   },
-  required: ['fix_result', 'files', 'diff_summary', 'test', 'tool_calls']
+  required: ['fix_result', 'files', 'diff_summary', 'test', 'tool_calls', 'outcomes']
 }
 ```
+
+`outcomes` carries one entry per finding id the fixer was assigned, per `agents/fix-agent.md`'s per-finding contract. A `DISCARDED` outcome without a non-empty `reason` (after trimming whitespace) counts as unresolved, exactly like a missing outcome or a `FAILED`.
 
 ## Fix-verifier output (`fix-verifier.md`)
 

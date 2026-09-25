@@ -24,17 +24,24 @@ If the fix touches a credential, token, or `.env` value, the `{short description
 
 ## Input
 
-- `FINDING` — A single finding as JSON:
+- `FINDINGS` — every finding assigned to this file, as a JSON array:
   ```json
-  {
-    "severity": "Important",
-    "dimension": "security",
-    "file": "app/UserService.php",
-    "line": 42,
-    "message": "Raw DB query with user input — SQL injection risk",
-    "confidence": "high"
-  }
+  [
+    {
+      "id": "security-3",
+      "severity": "Important",
+      "dimension": "security",
+      "file": "app/UserService.php",
+      "line": 42,
+      "message": "Raw DB query with user input — SQL injection risk",
+      "confidence": "high"
+    }
+  ]
   ```
+  Severity never decides whether a finding gets fixed: a `Minor` gets the exact same treatment as
+  a `Critical`. A finding whose `verdict` field is `"UNCERTAIN"` (the verifier could not confirm it)
+  is checked against the code first, same as step 2 below; confirm it and fix it, or `DISCARDED`
+  under ground (a).
 - `PROJECT_CONTEXT` — Audit context from CLAUDE.md (if present)
 - `SUPPRESSIONS` — List of accepted patterns
 - `TEST_COMMAND` — the project's full-suite command, run via `bash {AUDIT_BIN}/test-lock.sh {TEST_COMMAND}`, never unlocked. Never run the full suite yourself: filter it to only the test files covering your changed file (the runner's own filter syntax); if none cover it, say so in NOTES instead.
@@ -43,12 +50,28 @@ If the fix touches a credential, token, or `.env` value, the `{short description
 
 ## Process
 
-1. **Read the file** (`Read {file}`), focus on `{line} +/- 20`
-2. **Verify the problem**: is it really there where the finding says? No → `FIX_RESULT=NOT_FOUND`, done. Any root cause stated in the briefing is a HYPOTHESIS, not a finding — confirm it against the actual code before fixing it. If it's wrong, say so and fix the real cause instead of spending the budget disproving the briefing in silence.
-3. **Suppression check**: does the spot fall under a `SUPPRESSIONS` pattern? Yes → `FIX_RESULT=SUPPRESSED`, done.
+Work through `FINDINGS` one by one; every id gets exactly one entry in `outcomes` (see Output).
+
+1. **Read the file** (`Read {file}`), focus on `{line} +/- 20` of the finding at hand.
+2. **Verify the problem**: is it really there where the finding says? No → `result: DISCARDED`,
+   `reason` names the `file:line` you checked and what you found instead (ground a). Any root cause
+   stated in the briefing is a HYPOTHESIS, not a finding — confirm it against the actual code before
+   fixing it. If it's wrong, say so and fix the real cause instead of spending the budget disproving
+   the briefing in silence.
+3. **Suppression / decided-tradeoff check**: does the spot fall under a `SUPPRESSIONS` pattern
+   (ground b), or does `DECIDED_TRADEOFFS`/`DESIGN.md`/an ADR/the project's own `CLAUDE.md` document
+   this as intended (ground c)? Yes → `result: DISCARDED`, `reason` cites the pattern or the
+   document. A fix that would make the code worse than the problem it fixes (ground d) is also a
+   `DISCARDED`, `reason` names the concrete cost.
 4. **Apply the fix** via the Edit tool. Minimal change, no side effects.
 5. **Briefly verify**: re-read the file, fix is in, syntax crash unlikely.
-6. Return the result.
+6. Return the result: `result: FIXED` for every finding you changed code for.
+
+If you tried and could not land a fix, or the fix needs a file outside your assignment or a design
+decision nobody has settled: `result: FAILED`, `reason` states exactly what blocks it. `FAILED`
+stays an open point for the orchestrator, it is not a way to skip a finding you simply judged not
+worth it: "only Minor", "low value", "too much effort" and "cosmetic" are not valid grounds for
+`DISCARDED` or `FAILED` on their own.
 
 ## Special case: shared tasks (producer and joiner)
 
@@ -387,13 +410,27 @@ If the fix genuinely seems to need any of the above, `FIX_RESULT=FAILED` with th
 ## Output
 
 Reply with the fix schema (`references/finding-schema.md`): `{fix_result, files, diff_summary,
-test?}`. Include `test` when you ran a filtered test; otherwise you may omit it because the
+outcomes, test?}`. Include `test` when you ran a filtered test; otherwise you may omit it because the
 orchestrator's full-suite run and fix-verifier remain gates.
 
-- `fix_result`: `APPLIED` | `PARTIAL` | `NOT_FOUND` | `SUPPRESSED` | `FAILED`.
+- `fix_result`: `APPLIED` | `PARTIAL` | `NOT_FOUND` | `SUPPRESSED` | `FAILED`, the file-level
+  summary. `APPLIED` when at least one finding was `FIXED`; a file whose findings are all
+  `DISCARDED` reports `NOT_FOUND` or `SUPPRESSED` (whichever ground applied to most of them).
 - `files`: every file you changed (never a file outside your assignment).
 - `diff_summary`: what changed, max 50 words — same evidence bar as a finding: `file:line`, no
   code snippets. For `PARTIAL`, state what remains.
+- `outcomes`: one entry per finding id in `FINDINGS`, no exceptions: `{id, result, reason}`.
+  - `result: FIXED`: the change is applied. `reason` optional.
+  - `result: DISCARDED`: `reason` is MANDATORY, one sentence, max 40 words, with `file:line`
+    evidence, no code. Allowed grounds only: (a) the problem is not present at the cited location;
+    (b) the spot is covered by a `SUPPRESSIONS` pattern; (c) a documented decision
+    (`DECIDED_TRADEOFFS`, `DESIGN.md`, an ADR, the project's `CLAUDE.md`) makes it intended; (d) the
+    fix would make the code worse than the problem, naming the concrete cost. "Only Minor", "low
+    value", "too much effort" and "cosmetic" are never valid grounds on their own.
+  - `result: FAILED`: you tried and could not land it, or it needs a file outside your assignment
+    or an unsettled decision. `reason` states what blocks it. Stays an open point.
+  - A `DISCARDED` outcome without a non-empty `reason` counts as unresolved by the orchestrator, same
+    as no outcome at all.
 - `test` (optional): when present, the filtered test command you ran via `test-lock.sh` and its
   result, or `none` with a one-line reason (no runnable check, or `TEST_ENV_BLOCKED: {reason}`).
 

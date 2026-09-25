@@ -10,7 +10,7 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 |---|---|
 | `/audit` | Audits your uncommitted and unpushed changes before a push. 13 dimensions, verified findings, one fix wave, then the push is unlocked. |
 | `/full-audit` | The same pipeline over a whole codebase. No push gate. |
-| `/design-audit` | Visual pass over the entire frontend: typography, color, spacing, motion, visual accessibility. Reports first, fixes only what you pick. |
+| `/design-audit` | Visual pass over the entire frontend: typography, color, spacing, motion, visual accessibility. Reports first, then fixes every defect and elevation automatically. |
 | `/plan-it` | Interviews you, writes an executor-grade plan, challenges it from five perspectives. `execute` runs it in a worktree and reviews the result. |
 | `/delegate` | Default way to implement: the session model writes a mini-spec, Sonnet builds it, the session model reviews the diff. |
 | `/ship` | Docs sync, commit, audit gate, push, deploy, verify. |
@@ -19,7 +19,7 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 ## How an audit runs
 
 1. Deterministic pre-checks: secrets, lockfile drift, i18n keys, dependency vulnerabilities, CI hardening.
-2. Two start questions: which dimensions, and whether to fix nothing, Critical only, or Critical and Important. Minor is logged, never fixed.
+2. One start question: which dimensions. Every confirmed finding, including Minor, is fixed or discarded with a stated reason.
 3. `find.js`, one Workflow pipeline per dimension in parallel: a scout picks the relevant files (a content-based floor guarantees the obvious ones), specialists read chunks of 5 to 8 files, a fresh verifier confirms or refutes every finding, an Opus refuter double-checks each Critical.
 4. You decide per confirmed finding: fix, log, discard.
 5. `fix.js`: one fixer per file, a fix-verifier per 3 to 5 fixes, a regression pass over everything touched, then the test suite once.
@@ -42,8 +42,7 @@ Symlinks, not copies: an edit in the clone is live in the next session. `audit`,
 
 - `.claude/audit-guidelines.md`: project rules the audit workers read first. Optional lines `perf-measure: <command that prints PERF_METRIC=<number>>` for measured performance fixes and `scope-extensions: md` to widen the full-audit scope.
 - `.claude/plan-guidelines.md`: rules every plan challenger gets.
-- `AUDIT_DIMENSIONS=security,a11y` and `AUDIT_FIX_SCOPE=none|critical|all` skip the start questions, for CI or headless runs.
-- `CLAUDE_EFFORT=low|medium|high` preselects the fix scope.
+- `AUDIT_DIMENSIONS=security,a11y` and `AUDIT_FIX_SCOPE=none|all` skip the start question, for CI or headless runs. `none` means find and log only; any other value fixes every finding incl. Minor.
 
 Audit logs land in `.claude/audits/`, plans in `docs/plans/`, learnings in `.claude/audits/learning-log.md`. Logs reference `file:line`, never file contents, so they are safe to commit.
 

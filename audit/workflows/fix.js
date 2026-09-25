@@ -28,9 +28,21 @@ const FIX_SCHEMA = {
     fix_result: { type: 'string', enum: ['APPLIED', 'PARTIAL', 'NOT_FOUND', 'SUPPRESSED', 'FAILED'] },
     files: { type: 'array', items: { type: 'string' } },
     diff_summary: { type: 'string' },
+    outcomes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          result: { type: 'string', enum: ['FIXED', 'DISCARDED', 'FAILED'] },
+          reason: { type: 'string' }
+        },
+        required: ['id', 'result']
+      }
+    },
     test: { type: 'string' }
   },
-  required: ['fix_result', 'files', 'diff_summary']
+  required: ['fix_result', 'files', 'diff_summary', 'outcomes']
 };
 
 const FIX_VERDICT_SCHEMA = {
@@ -162,7 +174,6 @@ const testLine = testCommand
   : 'TEST_COMMAND= (none: this repo declares no test command; do not run tests, verify by reading, and say so in NOTES)';
 const baselineFailures = args.baselineFailures || [];
 
-const excluded = (args.fixes || []).flatMap((f) => f.findings.filter((finding) => finding.severity === 'Minor').map((finding) => finding.id));
 // Fixers and reviewers may return absolute paths (/Users/.../repo/app/Foo.php)
 // while FIXES[].file is repo-relative (app/Foo.php). Every path comparison in
 // this script runs on the repo-relative form; without it hasOwnedChange never
@@ -175,7 +186,7 @@ function toRepoRelative(path) {
   return rel.replace(/^\.\//, '');
 }
 
-const requested = (args.fixes || []).map((f) => ({ ...f, file: toRepoRelative(f.file), findings: f.findings.filter((finding) => finding.severity !== 'Minor') }));
+const requested = (args.fixes || []).map((f) => ({ ...f, file: toRepoRelative(f.file) }));
 const uncovered = [];
 
 // Stage 1: one fixer per file, all actionable findings in one dispatch.
@@ -201,6 +212,29 @@ log(`fix.js: ${fixResults.filter((r) => r.fix).length}/${requested.length} fixer
 function hasOwnedChange(result) {
   return result.fix && Array.isArray(result.fix.files) &&
     result.fix.files.length === 1 && result.fix.files[0] === result.file;
+}
+
+// Every finding id in a file's assignment must resolve to exactly one outcome: FIXED, DISCARDED
+// with a non-blank reason, or it counts as unresolved (a fixer that returned FAILED, or omitted
+// the id entirely, or returned DISCARDED with no reason). Severity plays no part here on purpose
+// (decided 2026-09-25): a Minor gets the same treatment as a Critical.
+function classifyOutcomes(findings, fix) {
+  const discarded = [];
+  const unresolved = [];
+  const outcomes = fix && Array.isArray(fix.outcomes) ? fix.outcomes : null;
+  for (const finding of findings) {
+    const outcome = outcomes && outcomes.find((o) => o && o.id === finding.id);
+    if (!outcome) { unresolved.push(finding.id); continue; }
+    if (outcome.result === 'FIXED') continue;
+    if (outcome.result === 'DISCARDED') {
+      const reason = typeof outcome.reason === 'string' ? outcome.reason.trim() : '';
+      if (reason) discarded.push({ id: finding.id, reason });
+      else unresolved.push(finding.id);
+      continue;
+    }
+    unresolved.push(finding.id);
+  }
+  return { discarded, unresolved };
 }
 
 // Stage 2: fix-verifier per 3-5 fixes.
@@ -229,10 +263,22 @@ for (const result of fixResults) {
   const verification = verified.find((v) => v.file === result.file);
   result.verdict = verification && verification.verdict || null;
   if (result.status !== 'skipped') {
-    result.status = hasOwnedChange(result) && result.fix.fix_result === 'APPLIED' && result.verdict &&
+    const classified = classifyOutcomes(result.findings, result.fix);
+    result.discarded = classified.discarded;
+    const verifiedComplete = hasOwnedChange(result) && result.fix.fix_result === 'APPLIED' && result.verdict &&
       result.verdict.verdict === 'VERIFIED' && Array.isArray(result.verdict.regressions) &&
-      result.verdict.regressions.length === 0 ? 'complete' : 'incomplete';
-    if (result.status === 'incomplete') uncovered.push(`fix:${result.file}`);
+      result.verdict.regressions.length === 0;
+    // A file where the fixer touched no files and EVERY finding is a DISCARDED with a reason has
+    // nothing for the fix-verifier to review, which is completion, not a coverage gap. An empty
+    // `files` list alone is not enough: a fixer that claimed FIXED without touching a file is a
+    // contradiction, not a discard-only file, and must not slip through as complete.
+    const noChangeAllDiscarded = result.fix && Array.isArray(result.fix.files) && result.fix.files.length === 0 &&
+      classified.discarded.length === result.findings.length;
+    result.status = (verifiedComplete || noChangeAllDiscarded) && classified.unresolved.length === 0 ? 'complete' : 'incomplete';
+    if (result.status === 'incomplete') {
+      uncovered.push(`fix:${result.file}`);
+      for (const id of classified.unresolved) uncovered.push(`outcome:${id}`);
+    }
   }
 }
 
@@ -306,11 +352,16 @@ if (blockingRegressions.length) {
   }
 }
 
+const discarded = fixResults.flatMap((result) => (result.discarded || []).map((d) => {
+  const finding = result.findings.find((f) => f.id === d.id);
+  return { id: d.id, file: result.file, severity: finding && finding.severity, dimension: finding && finding.dimension, reason: d.reason };
+}));
+
 return {
   status: verificationGap ? 'verification_gap' : uncovered.length || blockingRegressions.length ? 'incomplete' : 'complete',
   fixes: fixResults,
   uncovered,
-  excluded,
+  discarded,
   verdicts: verified.map((v) => v.verdict).filter(Boolean),
   regressions,
   rejected: rejected.map((r) => r.file),
