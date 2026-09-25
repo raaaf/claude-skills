@@ -4,6 +4,12 @@ Used by both `audit/SKILL.md` and `full-audit/SKILL.md`. One `AskUserQuestion` r
 question, unless `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set — a set variable suppresses the
 question (headless/CI/eval-harness never hangs on a prompt).
 
+For interactive `/audit` only, `audit/bin/suggest-dimensions.sh` may display a path-based
+recommendation immediately before the question. It is context, not a preset, does not preselect an
+answer, and never changes `AUDIT_DIMENSIONS`. Everything remains the default and all existing
+choices remain available. `/full-audit` does not use this diff-based suggestion. The suggestion
+does not bypass dimension validation, deterministic checks, Stripe gating, or push-marker rules.
+
 **`payments` is a CONDITIONAL 14th dimension, not one of the 13 offered here.** It is never
 presented in the Custom multi-select and never part of any preset unless `detect-stripe.sh`
 reports `STRIPE=yes` for the current repo; a repo without Stripe never sees it at all. Gating and

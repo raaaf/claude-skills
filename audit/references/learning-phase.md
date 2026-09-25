@@ -39,10 +39,17 @@ Agent(
     PROJECT_ROOT={PROJECT_ROOT}
     AKTUELLES_LOG={Inhalt des gerade geschriebenen Audit-Logs}
     AUDIT_TYPE=audit
-    PATTERNS_RECURRENCES={Ausgabe von `patterns-store.sh recurrences`, hier vom Orchestrator eingesammelt}",
+    PATTERNS_RECURRENCES={Ausgabe von `patterns-store.sh recurrences`, hier vom Orchestrator eingesammelt}
+    PERFORMANCE_TELEMETRY={die `## Pipeline Telemetry` Sektion aus AKTUELLES_LOG, falls vorhanden}",
   run_in_background: false
 )
 ```
+
+`PERFORMANCE_TELEMETRY` is measurement input only. The learning agent compares it with prior
+regular `/audit` logs, writes a sparse performance snapshot into `TRENDS_BLOCK`, and may add a
+repeated hotspot to the improvement backlog. It cannot alter the dimension selection, prompts,
+dispatch limits, or push gate. `CLAUDE_EFFORT=low` continues to skip the learning agent to avoid
+adding model cost; the current audit still records its per-dimension telemetry for a later run.
 
 **Why `PATTERNS_RECURRENCES` is passed in, not fetched by the agent:** `audit-learning-agent` has no `Bash` grant (Read/Grep/Glob only), so it cannot call `patterns-store.sh recurrences` itself. The orchestrator runs it here, before dispatch, and pastes the raw output into the prompt — see `agents/learning-agent.md`, section 2, "Use the counter, do not eyeball the logs."
 

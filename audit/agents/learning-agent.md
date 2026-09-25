@@ -13,6 +13,7 @@ You receive:
 - `AKTUELLES_LOG` — content of the audit log just written (the dispatcher passes this name; it is a listed cross-file contract identifier, see CLAUDE.md Conventions)
 - `AUDIT_TYPE` — "audit" or "full-audit"
 - `PATTERNS_RECURRENCES` — raw output of `patterns-store.sh recurrences`, collected by the orchestrator before dispatch. You have no `Bash` grant (Read/Grep/Glob only), so you cannot run this yourself; use the passed-in text verbatim, do not try to invoke the script.
+- `PERFORMANCE_TELEMETRY` — the current log's `## Pipeline Telemetry` section, or empty when no section exists. Use it as a cross-check against the saved audit log; do not treat missing measurements as zero.
 
 ## Process
 
@@ -33,8 +34,11 @@ Extract from past audit log files (`.claude/audits/*-*.md`) into a trends block 
 - Most frequent finding category over the last 5 audits
 - Average findings/audit (last 5)
 - "Repeat offenders": findings that appear in >= 3 audits AND are not marked `DORMANT` by `patterns-store.sh recurrences` (candidate for a guideline update)
+- Pipeline performance from the most recent 5 regular `/audit` logs that contain a parseable `## Pipeline Telemetry` section: per dimension, report sample count, median wall time, median dispatches per stage, and complete/incomplete/skipped counts. Include only numeric measurements and clearly name the sample count. Treat each dimension independently; dimensions and their stage times overlap because they execute concurrently, so never sum them into total run time. This is descriptive telemetry, not a cost estimate.
 
 **Full-audit batch runs distort the windows.** A full-audit's batched scans produce finding counts one to two orders of magnitude above a regular audit. Compute last-3/last-5 and the average over regular audits only, and report any full-audit run in the window as a separately annotated outlier, never blended into the trend or the average.
+
+**Performance telemetry has a separate, sparse window.** Exclude `/full-audit`, partial-dimension runs, old logs without a telemetry section, and any dimension whose status is incomplete or whose time is unavailable from median-time comparisons. Still report incomplete/skipped counts separately. Fewer than 3 comparable samples means `insufficient data`, not an optimization conclusion. A dimension with many dispatches or a long duration is a hotspot to investigate, not evidence it can be skipped. Never infer that a dimension is unnecessary from a clean result, and never infer stage cost from elapsed time or dispatches.
 
 **Use the counter, do not eyeball the logs.** Recurrence is tracked persistently, so it survives log rotation and stays consistent between `/audit` and `/full-audit`. **You do not populate it yourself:** the orchestrator calls `patterns-store.sh recur {pattern}` for every `CONFIRMED` finding in `SKILL.md` Phase 2, right after the verdicts are read and before the fix decision, with a normalized pattern (short, no file/line, so the same problem elsewhere in the codebase collapses into it). By the time you run, `patterns.json` already reflects this run — read it from `PATTERNS_RECURRENCES`, the text the orchestrator collected and passed you (you have no `Bash` grant to fetch it yourself):
 
@@ -64,6 +68,14 @@ Format of the metrics block:
 | Important trend (last 3) | {a} → {b} → {c} |
 | Top category (last 5) | {Category} ({M}x) |
 | Avg findings/audit | {X} |
+
+**Pipeline performance (regular complete `/audit` runs; window N={N}):**
+
+| Dimension | Samples | Median wall (ms) | Scout dispatches | Specialist dispatches | Verifier dispatches | Refuter dispatches | Coverage |
+|---|---:|---:|---:|---:|---:|---:|---|
+| {dimension} | {n} | {median or unavailable} | {median or unavailable} | {median or unavailable} | {median or unavailable} | {median or unavailable} | {complete/incomplete/skipped counts} |
+
+If fewer than 3 comparable runs have telemetry, write `insufficient data (N={N})` instead of recommending a pipeline change.
 
 **Repeat offenders (from `patterns-store.sh recurrences`, >=3):**
 - {N}x {Pattern} -- last seen {date or "unknown"} -- candidate for guideline update

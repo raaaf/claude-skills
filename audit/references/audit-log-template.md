@@ -22,6 +22,11 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, writ
 - Cost: {usd|null} USD | Accounting: {complete|unavailable} | Source: {actual source or reason unavailable}
 - API turns/tokens: {actual values or unavailable}; never substitute zero for missing accounting
 
+## Pipeline Telemetry
+- {dimension}: status {complete|incomplete|skipped} | wall {ms|null} ms | scout {ms|null} ms / {dispatches} dispatch(es) | specialist {ms|null} ms / {dispatches} dispatch(es) | verifier {ms|null} ms / {dispatches} dispatch(es) | refuter {ms|null} ms / {dispatches} dispatch(es)
+- A stage that did not run: `not run / 0 dispatches`; a missing clock measurement: `unavailable`, not zero.
+- Dimension wall times and stage times overlap because dimensions execute concurrently. Do not sum them as total audit wall time. These counters do not attribute cost, tokens, or provider-internal retries.
+
 ## Findings per Dimension
 - [Critical][Dimension] file:line: description
 - [Important][Dimension] file:line: description
