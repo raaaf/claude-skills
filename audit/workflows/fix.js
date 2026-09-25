@@ -28,10 +28,9 @@ const FIX_SCHEMA = {
     fix_result: { type: 'string', enum: ['APPLIED', 'PARTIAL', 'NOT_FOUND', 'SUPPRESSED', 'FAILED'] },
     files: { type: 'array', items: { type: 'string' } },
     diff_summary: { type: 'string' },
-    test: { type: 'string' },
-    tool_calls: { type: 'integer' }
+    test: { type: 'string' }
   },
-  required: ['fix_result', 'files', 'diff_summary', 'test', 'tool_calls']
+  required: ['fix_result', 'files', 'diff_summary']
 };
 
 const FIX_VERDICT_SCHEMA = {
@@ -87,7 +86,12 @@ const FINDINGS_SCHEMA = {
         files: { type: 'array', items: { type: 'string' } }
       },
       required: ['status', 'files']
-    }
+    },
+    // Only meaningful under hunkScope (see HUNK SCOPE below): a count of issues the
+    // specialist noticed but excluded from `findings` because they sit in pre-existing
+    // code outside the changed hunks. Optional so the schema stays backward-compatible
+    // for a dimension/run that never sets hunkScope.
+    outOfScope: { type: 'integer' }
   },
   required: ['findings', 'coverage']
 };

@@ -123,7 +123,12 @@ const FINDINGS_SCHEMA = {
         files: { type: 'array', items: { type: 'string' } }
       },
       required: ['status', 'files']
-    }
+    },
+    // Only meaningful under hunkScope (see HUNK SCOPE below): a count of issues the
+    // specialist noticed but excluded from `findings` because they sit in pre-existing
+    // code outside the changed hunks. Optional so the schema stays backward-compatible
+    // for a dimension/run that never sets hunkScope.
+    outOfScope: { type: 'integer' }
   },
   required: ['findings', 'coverage']
 };
@@ -159,6 +164,30 @@ function warnIfNull(logFn, result, message) {
   return false;
 }
 
+function workflowNow() {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : null;
+}
+
+function elapsedSince(startedAt) {
+  const endedAt = workflowNow();
+  return startedAt === null || endedAt === null ? null : Math.max(0, Math.round(endedAt - startedAt));
+}
+
+function emptyTelemetry() {
+  return {
+    durationMs: null,
+    outOfScope: 0,
+    stages: {
+      scout: { durationMs: null, dispatches: 0 },
+      specialist: { durationMs: null, dispatches: 0 },
+      verifier: { durationMs: null, dispatches: 0 },
+      refuter: { durationMs: null, dispatches: 0 }
+    }
+  };
+}
+
 // Prepended to every agent briefing so a specialist reads the audited repo,
 // not the directory the Workflow tool happened to launch from (round-2 defect:
 // 4 of 6 specialists answered "file does not exist" because the briefing never
@@ -168,6 +197,25 @@ const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
   'Audit and edit source files only inside REPO_ROOT. Relative source paths resolve as REPO_ROOT/<path>. ' +
   'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
   'Do not use the current working directory, it may be a different repository.\n\n';
+
+// HUNK SCOPE: on a LARGE/HUGE diff (audit/bin/diff-size-gate.sh, wired in SKILL.md Phase 1/2),
+// the orchestrator passes hunkScope:true + baseRef so specialists stop reviewing whole files.
+// Evidence for this (learning-log 2026-09-25, events repo): three audits in a row reported
+// mostly Important findings in untouched, pre-existing code of files the diff happened to touch,
+// turning every release into an open-ended refactor. Appended to both the specialist prompt (so
+// it reports fewer out-of-scope findings) and the verifier prompt (so it can REFUTE any that slip
+// through anyway). `forRole` only changes the closing sentence; the scope rule itself is shared.
+function hunkScopeClause(ctx, forRole) {
+  if (!ctx.hunkScope) return '';
+  const rule = `HUNK SCOPE (large diff): BASE_REF=${ctx.baseRef}. For each file under review, run ` +
+    '`git -C REPO_ROOT diff ' + ctx.baseRef + ' -U15 -- <file>` and note which lines fall inside a changed ' +
+    'hunk (plus its 15 lines of context on each side). A finding is in scope only if its cited lines ' +
+    'intersect a changed hunk, or the change makes pre-existing code wrong (e.g. a new caller of an ' +
+    'already-broken helper). A pre-existing issue elsewhere in the file, untouched by this diff, is out of scope.';
+  return forRole === 'verifier'
+    ? `\n${rule} REFUTE any CONFIRMED finding that is out of scope by this rule.`
+    : `\n${rule} Do not add an out-of-scope issue to findings; instead count it in outOfScope.`;
+}
 
 // One row per dimension: prompt-file number and slug, and the agent type that
 // audits it. Three hand-kept maps over the same ids (agent type, file number,
@@ -266,7 +314,8 @@ const SELECTIVE_FLOOR_DIMENSIONS = ['docs_sync', 'copy', 'typography', 'architec
 // 2026-09-06, a scout given "do not thin the list" stopped narrowing at all:
 // 203/209/199/150/141/139 files across 6 dimensions, 273 agents total, 124
 // USD against a 100 USD target). Floor entries are never dropped; non-floor
-// entries beyond the cap are dropped in scout order.
+// entries beyond the cap are dropped in scout order. Dropping any non-floor
+// candidate marks file-scout coverage incomplete; floor-only overflow does not.
 const MAX_SCOUT_FILES = 70;
 
 // CONTENT-based floor: replaces the extension-based per-file floor for the
@@ -399,8 +448,11 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
     const nonFloorKeep = Math.max(0, MAX_SCOUT_FILES - floorEntries.length);
     const kept = floorEntries.concat(nonFloorEntries.slice(0, nonFloorKeep));
     const dropped = result.files.length - kept.length;
-    logFn(`${dimension}: scout returned ${result.files.length} files, kept ${kept.length}, dropped ${dropped}`);
-    return { files: kept };
+    const droppedNonFloor = Math.max(0, nonFloorEntries.length - nonFloorKeep);
+    logFn(droppedNonFloor
+      ? `${dimension}: scout returned ${result.files.length} files, kept ${kept.length}, dropped ${droppedNonFloor} non-floor candidate(s); coverage is incomplete`
+      : `${dimension}: scout returned ${result.files.length} files, kept ${kept.length}, dropped no candidates; floor overflow is retained`);
+    return { files: kept, incomplete: droppedNonFloor > 0 };
   }
   return { files: result.files };
 }
@@ -418,6 +470,17 @@ async function runClusterScout(ctx, dimension, agentFn, logFn) {
 }
 
 async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
+  const telemetry = emptyTelemetry();
+  const stage = async (name, dispatches, run) => {
+    const startedAt = workflowNow();
+    telemetry.stages[name].dispatches = dispatches;
+    try {
+      return await run();
+    } finally {
+      telemetry.stages[name].durationMs = elapsedSince(startedAt);
+    }
+  };
+  const finish = (result) => ({ ...result, telemetry });
   // Stage 1: retain scout failures independently from deterministic floor coverage.
   const scoutJobs = [];
   if (!CLUSTER_ONLY_DIMENSIONS.includes(dimension)) {
@@ -426,20 +489,21 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   if (CLUSTER_ONLY_DIMENSIONS.includes(dimension) || BOTH_SCOUTS_DIMENSIONS.includes(dimension)) {
     scoutJobs.push(['clusters', () => runClusterScout(ctx, dimension, agentFn, logFn)]);
   }
-  const scoutResults = await parallelFn(scoutJobs.map((job) => job[1]));
+  const scoutResults = await stage('scout', scoutJobs.length, () => parallelFn(scoutJobs.map((job) => job[1])));
   const uncovered = [];
   let files = [];
   let clusters = [];
   scoutJobs.forEach(([kind], i) => {
     const result = scoutResults[i];
     if (!result || result.failed) uncovered.push(`scout:${kind}`);
+    if (result && result.incomplete) uncovered.push(`scout:${kind}:cap`);
     if (kind === 'files') files = result && result.files || [];
     else clusters = result && result.clusters || [];
   });
   if (files.length === 0 && clusters.length === 0) {
     const status = uncovered.length ? 'incomplete' : 'skipped';
     logFn(`${dimension}: ${status}, no relevant files`);
-    return { status, files: [], chunks: 0, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] };
+    return finish({ status, files: [], chunks: 0, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] });
   }
 
   // Stage 2: chunking (code, not an agent).
@@ -487,7 +551,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   const dimDoc = ctx.dimensionDoc[dimension];
 
   // Stage 3: specialists, one per chunk, in parallel.
-  const specialistResults = await parallelFn(chunks.map((c, i) => async () => {
+  const specialistResults = await stage('specialist', chunks.length, () => parallelFn(chunks.map((c, i) => async () => {
     const briefing = c.kind === 'cluster'
       ? `CLUSTER=${JSON.stringify(c.cluster)}`
       : `FILES=${JSON.stringify(c.files)}`;
@@ -506,20 +570,24 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       `the assigned paths you read in full, spelled as given here (no ./ or absolute prefix) and ` +
       `nothing else: not guideline files, not files you opened while following a lead. Could not ` +
       `read one in full? Leave it out and set status "incomplete".`;
+    // payments' scope is the FULL STRIPE_FILES surface by design (dimensionFiles, Phase 1.5),
+    // not the diff's changed hunks, so it never gets the hunk-scope clause.
+    const hunkClause = dimension === 'payments' ? '' : hunkScopeClause(ctx, 'specialist');
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
       `for DIMENSION=${dimension}.\nCHUNK_INDEX=${i}\n${briefing}\n` +
       `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
-      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause +
+      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause + hunkClause +
       (ctx.projectGuidelines ? `\nPROJECT_GUIDELINES (the audited repo's .claude/audit-guidelines.md, precedence over MATCHED_GUIDELINES):\n${ctx.projectGuidelines}` : ''),
       { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
     if (warnIfNull(logFn, result, `${dimension}: specialist for chunk ${i} returned null`)) return null;
     return result;
-  }));
+  })));
   const specialists = specialistResults.filter(Boolean);
   logFn(`${dimension}: ${specialists.length}/${chunks.length} specialists done`);
+  telemetry.outOfScope = specialists.reduce((sum, s) => sum + (typeof s.outOfScope === 'number' ? s.outOfScope : 0), 0);
 
   chunks.forEach((c, i) => {
     const assigned = c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files;
@@ -542,29 +610,30 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   const allFindings = dedupeFindings(specialists.flatMap((s) => s.findings), dimension, logFn);
 
   if (allFindings.length === 0) {
-    return { status: uncovered.length ? 'incomplete' : 'complete', files: filePaths, chunks: chunks.length, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] };
+    return finish({ status: uncovered.length ? 'incomplete' : 'complete', files: filePaths, chunks: chunks.length, findings: [], verdicts: [], uncovered, unverified: [], unrefuted: [] });
   }
 
   const findingIds = new Set(allFindings.map((finding) => finding.id));
   if (findingIds.size !== allFindings.length) {
     uncovered.push('findings:duplicate-id');
     logFn(`${dimension}: duplicate finding IDs prevent unambiguous verification`);
-    return { status: 'incomplete', files: filePaths, chunks: chunks.length, findings: allFindings, verdicts: [], uncovered, unverified: [...findingIds], unrefuted: [] };
+    return finish({ status: 'incomplete', files: filePaths, chunks: chunks.length, findings: allFindings, verdicts: [], uncovered, unverified: [...findingIds], unrefuted: [] });
   }
 
   // Stage 4: verifier, one agent per 35-40 findings.
   const verifierGroups = chunk(allFindings, 38);
-  const verifierResults = await parallelFn(verifierGroups.map((group) => async () => {
+  const verifierHunkClause = dimension === 'payments' ? '' : hunkScopeClause(ctx, 'verifier');
+  const verifierResults = await stage('verifier', verifierGroups.length, () => parallelFn(verifierGroups.map((group) => async () => {
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/finding-verifier.md and verify these findings.\n` +
       (ctx.projectGuidelines ? `PROJECT_GUIDELINES=${ctx.projectGuidelines}\n` : '') +
-      `FINDINGS=${JSON.stringify(group)}`,
+      `FINDINGS=${JSON.stringify(group)}` + verifierHunkClause,
       { agentType: 'code-reviewer', model: 'sonnet', schema: VERDICTS_SCHEMA, phase: 'Verify' }
     );
     if (warnIfNull(logFn, result, `${dimension}: a verifier group returned null (${group.length} findings uncovered)`)) return null;
     return result.verdicts;
-  }));
+  })));
   const unverified = [];
   const unrefuted = [];
   const verdicts = [];
@@ -598,7 +667,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   // Stage 5: refuter, one per CONFIRMED Critical.
   const criticalConfirmed = verdicts.filter((v) => v.verdict === 'CONFIRMED' && v.severity === 'Critical');
   if (criticalConfirmed.length) {
-    const refuterResults = await parallelFn(criticalConfirmed.map((v) => async () => {
+    const refuterResults = await stage('refuter', criticalConfirmed.length, () => parallelFn(criticalConfirmed.map((v) => async () => {
       const finding = allFindings.find((f) => f.id === v.id);
       const refuterVerdict = await agentFn(
         ROOT_HEADER +
@@ -607,7 +676,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
         { agentType: 'code-reviewer', model: 'opus', schema: VERDICTS_SCHEMA, phase: 'Verify' }
       );
       return refuterVerdict;
-    }));
+    })));
     refuterResults.forEach((r, i) => {
       const original = criticalConfirmed[i];
       const refuted = r && Array.isArray(r.verdicts) && r.verdicts.length === 1 && r.verdicts[0];
@@ -634,7 +703,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     const f = allFindings.find((x) => x.id === id);
     return !f || f.severity === 'Critical' || f.severity === 'Important';
   });
-  return {
+  return finish({
     status: uncovered.length || blockingUnverified.length || unrefuted.length ? 'incomplete' : 'complete',
     files: filePaths,
     chunks: chunks.length,
@@ -643,7 +712,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     uncovered,
     unverified,
     unrefuted
-  };
+  });
 }
 
 function validVerdict(verdict) {
@@ -790,7 +859,14 @@ function dimensionFileName(dim) {
 //         dimensionContext (optional, object keyed by dimension id, e.g.
 //         { payments: 'STRIPE_MODE=cashier,sdk' }); a dimension listed here gets that
 //         string appended to its specialist briefing as its own line, never mixed into
-//         MATCHED_GUIDELINES }
+//         MATCHED_GUIDELINES,
+//         hunkScope (optional boolean) + baseRef (required non-empty string when hunkScope is
+//         true): on a LARGE/HUGE diff (SKILL.md Phase 1/2, diff-size-gate.sh), every specialist
+//         and verifier prompt gets a clause instructing it to diff each file against baseRef and
+//         only report/confirm findings inside a changed hunk (plus 15 lines of context), or where
+//         the change makes pre-existing code wrong. Findings a specialist judges out of scope are
+//         counted in its outOfScope reply field, not added to findings. Excluded from `payments`,
+//         which intentionally audits the whole STRIPE_FILES surface, not the diff's hunks. }
 if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
   args.dimensions.some((dimension) => !ALL_DIMENSIONS.includes(dimension)))) {
   throw new Error('args.dimensions must be an array of supported dimension ids');
@@ -825,6 +901,13 @@ if ((args.scope ?? 'diff') === 'diff' && (!Array.isArray(args.files) || args.fil
   throw new Error('args.files must be a non-empty array for scope "diff". ' +
     'Split the newline-separated scope list before passing it.');
 }
+// hunkScope needs a base to diff against; without it hunkScopeClause would tell every
+// specialist to run `git diff undefined`, silently no-op the whole scope rule, and every
+// finding would look in-scope. Refuse the run instead (SKILL.md Phase 2 always passes both
+// together, from diff-size-gate.sh's BASE_REF, on a LARGE/HUGE diff).
+if (args.hunkScope && (typeof args.baseRef !== 'string' || args.baseRef === '')) {
+  throw new Error('args.baseRef must be a non-empty string when args.hunkScope is true.');
+}
 
 const ctx = {
   repoRoot: args.repoRoot,
@@ -832,6 +915,8 @@ const ctx = {
   files: args.files || [],
   dimensionFiles,
   dimensionContext: args.dimensionContext || {},
+  hunkScope: !!args.hunkScope,
+  baseRef: args.baseRef || '',
   // .claude/audit-guidelines.md of the audited repo, verbatim. Read by the orchestrator in
   // Phase 1 since the rebuild and passed nowhere until 2026-09-16, so "takes precedence over
   // global guidelines" (CLAUDE.md) was true of the read and false of the pipeline.
@@ -878,14 +963,17 @@ const results = {};
 const skipped = [];
 
 const dimensionResults = await parallel(ordered.map((dim) => async () => {
+  const startedAt = workflowNow();
   const r = await runDimension(ctx, dim, agent, parallel, log);
+  r.telemetry = r.telemetry || emptyTelemetry();
+  r.telemetry.durationMs = elapsedSince(startedAt);
   return [dim, r];
 }));
 
 for (const [index, entry] of dimensionResults.entries()) {
   const [dim, r] = entry || [ordered[index], {
     status: 'incomplete', files: [], chunks: 0, findings: [], verdicts: [],
-    uncovered: ['dimension:failed'], unverified: [], unrefuted: []
+    uncovered: ['dimension:failed'], unverified: [], unrefuted: [], telemetry: emptyTelemetry()
   }];
   results[dim] = r;
   if (r.status === 'skipped') skipped.push(dim);

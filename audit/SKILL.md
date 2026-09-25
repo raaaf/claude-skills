@@ -70,13 +70,14 @@ bash "$AUDIT_BIN/check-fresh-shell.sh"      # HITS: a SKILL.md bash block calls 
 PROJECT_GUIDELINES_FILE="$(git rev-parse --show-toplevel)/.claude/audit-guidelines.md"
 PROJECT_GUIDELINES=""
 [ -f "$PROJECT_GUIDELINES_FILE" ] && PROJECT_GUIDELINES=$(cat "$PROJECT_GUIDELINES_FILE")
-bash "$AUDIT_BIN/diff-size-gate.sh"
+DIFF_SIZE_OUT="$(bash "$AUDIT_BIN/diff-size-gate.sh")"; printf '%s\n' "$DIFF_SIZE_OUT"
+DIFF_SIZE_RESULT=$(printf '%s\n' "$DIFF_SIZE_OUT" | sed -n 's/^DIFF_SIZE_RESULT=//p')
 eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"
 GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)
 
 # In-progress marker: run-scoped (claim now, touch after find.js, touch after fix.js, release at Phase 4).
 orch_progress_claim   # progress-family hash (pwd WITH newline); touched after each Notification, released in Phase 4
-orch_state_save ALLE_DATEIEN BASE_REF FRAMEWORK SOURCE_DIRS PLATFORM PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_GUIDELINES GUIDELINE_MATCHES   # later blocks read these back with orch_state_load (fresh shell per block, lib header); after the claim, which clears the state
+orch_state_save ALLE_DATEIEN BASE_REF FRAMEWORK SOURCE_DIRS PLATFORM PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_GUIDELINES GUIDELINE_MATCHES DIFF_SIZE_RESULT   # later blocks read these back with orch_state_load (fresh shell per block, lib header); after the claim, which clears the state
 ```
 
 Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`SUPPRESSIONS`/`PROJECT_CONTEXT`/`DECIDED_TRADEOFFS`: `references/scope-and-pre-checks.md`. Prose gate (`DIFF_CLASS=prose`, from `bin/classify-diff.sh`) limits the dimension preselection to `docs_sync`+`copy` and the fix-scope preselection to "find only": `references/prose-gate.md`.
@@ -87,7 +88,17 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 
 **A set variable suppresses both questions.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, the other takes its default (all dimensions; fix-scope preselection from `CLAUDE_EFFORT` below). This guarantees a headless run never hangs on a question.
 
-Otherwise ask exactly one `AskUserQuestion` round, two questions, presets from `references/dimension-selection.md`:
+Otherwise, before the question, display the advisory recommendation from changed paths:
+
+```bash
+printf '%s\n' "$ALLE_DATEIEN" | bash "$AUDIT_BIN/suggest-dimensions.sh"
+```
+
+Show its output as context for question (a), not as a new preset or preselected answer. Then ask
+exactly one `AskUserQuestion` round, two questions, presets from
+`references/dimension-selection.md`. The suggestion is advisory only: Everything remains the
+default, the user may choose any existing preset or Custom, and the suggestion never sets or edits
+`AUDIT_DIMENSIONS`. Do not run it for headless runs where either audit environment variable is set.
 
 - **(a) Dimensions:** Everything (default) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
 - **(b) Fix scope:** find & log only | fix Critical | fix Critical and Important. Preselection from `${CLAUDE_EFFORT:-medium}`: `low` → find only, `medium` → Critical, `high`/`xhigh` → Critical and Important.
@@ -173,20 +184,9 @@ orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT f
 FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
 FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
 printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
+case "$DIFF_SIZE_RESULT" in LARGE|HUGE) HUNK_SCOPE=true ;; *) HUNK_SCOPE=false ;; esac   # from Phase 1's diff-size-gate.sh; used by the Workflow call below
+echo "HUNK_SCOPE=$HUNK_SCOPE"
 
-# Optional Jev routing. The global default is `assist`; set `AUDIT_JEV_MODE=off`
-# to disable Jev. `shadow` only records a comparison;
-# `assist` may provide bounded priority hints to file scouts. `prune` is
-# explicit and requires bounded code context; find.js independently limits it
-# to complete-context, non-floor, low-risk file-scout pairs.
-AUDIT_JEV_MODE="${AUDIT_JEV_MODE:-assist}"
-AUDIT_JEV_CONTEXT_MODE="${AUDIT_JEV_CONTEXT_MODE:-paths}"   # code upload is opt-in; paths remains the default
-JEV_DIMENSION_FILES='{}'
-if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
-  JEV_DIMENSION_FILES=$(printf '%s\n' "$STRIPE_FILES" | node -e 'const fs=require("fs"); console.log(JSON.stringify({payments:fs.readFileSync(0,"utf8").split("\n").filter(Boolean)}))')
-fi
-JEV_ROUTER=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-jev-routes.mjs" "$PROJECT_ROOT" "$AUDIT_JEV_MODE" "$AUDIT_DIMENSIONS" "$JEV_DIMENSION_FILES" diff "$AUDIT_JEV_CONTEXT_MODE")
-printf 'JEV_ROUTER=%s\n' "$JEV_ROUTER"   # pass this JSON unchanged as jevRouter below
 ```
 
 This matters because two real sessions hit the old inline-content approach's cost directly: one
@@ -203,38 +203,27 @@ on commas when building the call. A real run on 2026-09-15 failed here in 14ms b
 read as if the shell values could be passed through unchanged.
 
 Before making the call, estimate its total size: `printf '%s' "$ALLE_DATEIEN" | wc -c` plus the
-byte length of `FLOOR_FILES` and `JEV_ROUTER`. At roughly 40 KB and above, do not pass these args
+byte length of `FLOOR_FILES`. At roughly 40 KB and above, do not pass these args
 to `Workflow` inline; a real run hit 57 KB there and the call failed. Instead copy `find.js` into
 the scratchpad, embed the resolved args object as a constant near the top of the copy (`const
 ARGS2 = {...}`), replace every place the script reads `args` with `ARGS2`, and pass that copy's
 path as `scriptPath`. See `.claude/audits/2026-09-21_040559-main.md` (Incidents) for the origin of
 this workaround.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, jevRouter: JSON.parse(JEV_ROUTER) } })`,
-where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`. One call, one `runId`,
-`payments` scouts `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF } : {}) } })`,
+where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`, and `HUNK_SCOPE` is
+`DIFF_SIZE_RESULT` (Phase 1, `diff-size-gate.sh`, carried via `orch_state_save`) being `LARGE` or
+`HUGE`. One call, one `runId`, `payments` scouts `STRIPE_FILES` while every other dimension scouts
+`ALLE_DATEIEN` as before.
 
-`JEV_ROUTER` is an optional path-and-metadata-only Jev router. Its default mode is `assist`; set
-`AUDIT_JEV_MODE=off` to disable it. A
-missing key, response failure, invalid result, or scope over 64 complete file-dimension pairs returns
-observable fallback metadata and leaves the existing pipeline identical. `shadow` leaves scout
-briefings unchanged. `assist` adds only a normalized `JEV_ASSIST_PRIORITY_HINT` to file-scout
-briefings; all `SCOPE_FILES` and `FLOOR_FILES` remain eligible and no route is pruned. `prune` is
-only effective with `AUDIT_JEV_CONTEXT_MODE=code` and may remove a file only for `seo`, `a11y`,
-`typography`, `ui_design`, `ux`, `animation`, or `copy`, when Jev returns `not_relevant`, context is
-complete, and no deterministic floor covers that file. `docs_sync` remains cluster-only and is not
-pruned. Architecture, security, performance, code quality, privacy, and payments never prune. A
-fallback, invalid response, uncertain response, unsafe context, or incomplete context preserves full scope. Read
-`references/jev-shadow-router.md` before changing this pilot. Routing agreement is not bug recall.
-`AUDIT_JEV_CONTEXT_MODE=code` is an explicit opt-in that sends bounded, safe source context for the
-supported routing dimensions. It falls back before the API call for unsafe context. The assist hint is
-advisory and is omitted for fallback, incomplete, or invalid Jev results. When `AUDIT_JEV_MODE=prune`,
-record `jevRouter.prune.prunedCount`, `preservedCount`, and per-dimension counts alongside the usual
-scope and coverage results. When `AUDIT_JEV_MODE` is `shadow`, `assist`, or `prune`, record `jevRouter.status`, fallback `reason`, candidate count, latency,
-cache status, usage, and comparison totals from the Workflow result in the audit log. Set the
-optional `JEV_ROUTER_CACHE_DIR` only to a private directory when repeated code-context runs should
-reuse normalized routes. The cache stores no source content and is disabled by default. Never log
-the key or API body.
+**Why `hunkScope`:** on 2026-09-25 (events repo) three audits in a row reported mostly Important
+findings in untouched, pre-existing code of files the diff merely touched, turning every release
+into an open-ended refactor. On a LARGE/HUGE diff, `hunkScope` makes every specialist (and the
+verifier, so it can refute one that slips through) diff each assigned file against `BASE_REF` and
+report a finding only if it falls inside a changed hunk (plus 15 lines of context) or the change
+makes pre-existing code wrong. `find.js` excludes `payments` from this by itself: its scope is
+deliberately the whole `STRIPE_FILES` surface, not the diff's hunks.
+
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
@@ -251,7 +240,15 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 orch_progress_touch
 ```
 
-Then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered}}, skipped, degradedDimensions}`.
+Then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered, telemetry}}, skipped, degradedDimensions}`.
+For each dimension, copy its returned status and telemetry into `## Pipeline Telemetry` in the audit
+log: dimension wall time and elapsed milliseconds plus dispatch count for scout, specialist,
+verifier, and refuter. Dispatches count agent work items submitted to `parallel`, not hidden provider
+retries.
+If a stage did not run, record `0 dispatches` and `not run`; if the clock is unavailable, record
+`unavailable`, never `0 ms`. These are timings only, not token or dollar attribution. Dimensions
+run concurrently, so their wall times overlap and must not be added to estimate total audit time.
+This telemetry is descriptive only and must not change findings, status, routing, or gates.
 
 **Feed the recurrence store NOW, before deciding anything.** Write one normalized pattern per
 `CONFIRMED` verdict to a file (Write tool, one per line: short, no file or line, so the same problem
