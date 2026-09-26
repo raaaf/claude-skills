@@ -7,7 +7,7 @@ tools:
   - Glob
   - Bash
 model: sonnet
-effort: medium
+effort: max
 ---
 
 # Security Auditor Agent

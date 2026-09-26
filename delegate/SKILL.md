@@ -3,7 +3,7 @@ name: delegate
 description: "Default working mode for implementation tasks: the expensive session model (currently Opus 5.5) analyzes the task, asks clarifying questions on genuine ambiguities, writes an executor-ready mini-spec, and hands off implementation to a Sonnet executor. Afterward the expensive model reviews the result like a tech lead (reads the diff, re-runs criteria itself) and renders a verdict. Use when the user asks to implement, build, fix, change, or refactor code (even without typing /delegate). NOT for: questions/explanations (answer directly), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
 when_to_use: "/delegate, implementiere, baue, aendere, fixe, setz das um, refactor this, build this feature"
 argument-hint: "[Task in your own words; optional --worktree]"
-effort: medium
+effort: high
 allowed-tools:
   - Agent
   - Bash

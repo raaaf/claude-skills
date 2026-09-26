@@ -7,7 +7,7 @@ tools:
   - Glob
   - Write
 model: sonnet
-effort: medium
+effort: high
 ---
 
 # Test Writer Agent

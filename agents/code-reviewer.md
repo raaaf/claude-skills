@@ -6,7 +6,7 @@ tools:
   - Grep
   - Glob
 model: sonnet
-effort: medium
+effort: high
 ---
 
 # Code Reviewer Agent
