@@ -124,6 +124,8 @@ File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
 
 ## Challenge Result
 - Concerns: {N_raw} raw -> {N_dedup} after dedupe -> {X} incorporated / {Y} accepted / {Z} rejected (always all five numbers, `0` written out)
+- Per dimension (raw): product {n} / architecture {n} / risk {n} / simplicity {n} / design {n} (all five, `0` written out; the learning retro computes the top-dimension trend from this line)
+- Drift check: {orchestrator-run | manual-only (challengers had no Bash)}
 
 ## Notable
 - {Pattern or surprise, e.g. "user rejected all design concerns"}

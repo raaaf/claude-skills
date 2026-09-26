@@ -105,11 +105,18 @@ Agent(
     DRIFT CHECK: compare the plan's claims against the WORKING TREE, not only
     committed history. Run `git status --short` and `git diff --stat` (uncommitted)
     in addition to `git diff --stat {PLANNED_AT_SHA}..HEAD`. Report 'no drift'
-    only when all three are empty for in-scope paths.",
+    only when all three are empty for in-scope paths.
+    If you have no Bash, use this output the orchestrator ran for you:
+    {DRIFT_OUTPUT}",
   subagent_type: plan-challenger,
   run_in_background: false
 )
 ```
+
+`{DRIFT_OUTPUT}`: before dispatch, the orchestrator runs the three drift commands itself and pastes
+their output (or `all empty`). The `plan-challenger` agent type has no Bash (seen 2026-09-26: both
+architecture and risk reported drift checks as manual-only), so without this the check silently
+degrades to reading cited lines. Record which way it ran in the plan log's `Drift check:` line.
 
 | Agent | File | Perspective |
 |---|---|---|
