@@ -17,7 +17,8 @@ Detailed logic for Phase 1. Read by the orchestrator when pre-checks are non-tri
 
 | `DIFF_SIZE_RESULT` | Action |
 |---|---|
-| `OK` | Continue. Model routing is fixed by find.js/fix.js (Sonnet everywhere except the scout and the Critical refuter, which run Opus). |
+| `SMALL` (<=950 lines AND <=28 files) | Continue, no `hunkScope`. Below this a diff still shows real issues even on the smaller dimensions (measured 2026-09-26), so coverage stays full; only the specialist dispatch shape changes (`find.js`'s `chunkFilesForDimension` collapses each dimension to one unchunked specialist call, except `security`/`privacy`/`payments`, which always keep normal chunking). |
+| `OK` (everything above `SMALL`, up to the `LARGE` threshold) | Continue, with `hunkScope` on. Model routing is fixed by find.js/fix.js (Sonnet everywhere except the scout and the Critical refuter, which run Opus). |
 | `LARGE` (>2000 lines OR >20 files) | Report the file/line counts and continue; find.js's chunking handles the size. Size does not change worker models. |
 | `HUGE` (>5000 lines; or >50 files AND >=1000 lines) | Hard block: abort. "Diff too large for a meaningful audit. Please split into multiple commits/PRs." No audit run. |
 

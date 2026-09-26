@@ -8,6 +8,7 @@ tools:
 model: sonnet
 effort: medium
 maxTurns: 10
+omitClaudeMd: true
 ---
 
 # Design Reference Verdict

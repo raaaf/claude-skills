@@ -67,7 +67,7 @@ Inline (no file), executor-ready — the executor does not know this session:
 ## Task: {Title}
 **Goal:** {how success is recognized — measurable}
 **Context:** {current state with file:line; conventions with exemplar: "error handling like src/lib/result.ts, exactly like that"}
-**Affected files:** {final list}
+**Affected files:** {final list, each with its line range(s) and any known symbol/function name the step touches — e.g. `src/lib/result.ts:40-58 (formatResult)`}
 **Out of Scope:** {related-looking files that will NOT be touched — with reason}
 **Steps:**
 1. {concrete, file + what} → verify: {command → expected result}
@@ -157,7 +157,7 @@ Agent(
 
 The executor runs in the background (the default) and its report arrives as a completion notification. That is fine here, but **test authority follows the executor**: while it runs, the orchestrator does not start its own test run. Phase 5 verification begins after the report has arrived, not alongside it.
 
-Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, respect STOP conditions instead of improvising, check every report claim against a real tool result, same-diff duplication self-check at block level before reporting (identical guard/resolver/logic blocks in two places of the executor's own diff → extract, even inside otherwise different method bodies — the audit-side check cannot catch executor duplicates early), exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
+Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, do not explore beyond the mini-spec's listed files except to grep an identifier's usages, respect STOP conditions instead of improvising, if 40 tool calls pass without a verify criterion turning green stop and report what blocks, check every report claim against a real tool result, same-diff duplication self-check at block level before reporting (identical guard/resolver/logic blocks in two places of the executor's own diff → extract, even inside otherwise different method bodies — the audit-side check cannot catch executor duplicates early), exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 
 Resolve the reference (same candidate logic as full-audit → audit):
 

@@ -402,6 +402,27 @@ function chunkByDirectory(files) {
   return chunks;
 }
 
+// Dimensions that always keep normal (5-8-file) chunking on a SMALL diff, even though
+// bundling every other dimension into one unchunked specialist call is safe there.
+// security/privacy findings carry a different risk bar than a bundled pass reviewing every
+// file at once, and payments already scouts a separate file surface (dimensionFiles/
+// STRIPE_FILES) that a single, larger call would not shrink anyway.
+const ALWAYS_CHUNKED_DIMENSIONS = ['security', 'privacy', 'payments'];
+
+// Pure chunking-planning function for Stage 2, extracted so it is unit-testable without
+// running the pipeline (find.chunking.test.mjs slices this out of the source).
+// On a SMALL diff (diff-size-gate.sh), token cost is dominated by dispatch count more than
+// per-dispatch size, so a dimension gets ONE chunk (one specialist call) covering every
+// scouted file instead of the usual 5-8-file chunks -- except ALWAYS_CHUNKED_DIMENSIONS,
+// which keep chunkByDirectory's normal chunking regardless of sizeResult. On anything above
+// SMALL, behavior is unchanged: chunkByDirectory's normal chunking for every dimension.
+function chunkFilesForDimension(dimension, files, sizeResult) {
+  if (sizeResult === 'SMALL' && !ALWAYS_CHUNKED_DIMENSIONS.includes(dimension)) {
+    return files.length ? [files] : [];
+  }
+  return chunkByDirectory(files);
+}
+
 // A dimension listed in ctx.dimensionFiles scouts its own file list (e.g.
 // payments/STRIPE_FILES) instead of the shared diff/repo scope; every other
 // dimension falls back to ctx.files unchanged.
@@ -532,7 +553,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     }
     return valid;
   });
-  const fileChunks = chunkByDirectory(filePaths).map((group) => ({ kind: 'files', files: group }));
+  const fileChunks = chunkFilesForDimension(dimension, filePaths, ctx.sizeResult).map((group) => ({ kind: 'files', files: group }));
   const clusterChunks = clusters.map((c) => ({ kind: 'cluster', cluster: c }));
   let chunks;
   if (CLUSTER_ONLY_DIMENSIONS.includes(dimension)) {
@@ -863,12 +884,18 @@ function dimensionFileName(dim) {
 //         string appended to its specialist briefing as its own line, never mixed into
 //         MATCHED_GUIDELINES,
 //         hunkScope (optional boolean) + baseRef (required non-empty string when hunkScope is
-//         true): on a LARGE/HUGE diff (SKILL.md Phase 1/2, diff-size-gate.sh), every specialist
+//         true): on a diff above SMALL (SKILL.md Phase 1/2, diff-size-gate.sh), every specialist
 //         and verifier prompt gets a clause instructing it to diff each file against baseRef and
 //         only report/confirm findings inside a changed hunk (plus 15 lines of context), or where
 //         the change makes pre-existing code wrong. Findings a specialist judges out of scope are
 //         counted in its outOfScope reply field, not added to findings. Excluded from `payments`,
-//         which intentionally audits the whole STRIPE_FILES surface, not the diff's hunks. }
+//         which intentionally audits the whole STRIPE_FILES surface, not the diff's hunks.
+//         sizeResult (optional string, one of diff-size-gate.sh's DIFF_SIZE_RESULT values):
+//         passed straight through, unlike hunkScope/baseRef. A `SMALL` value makes
+//         chunkFilesForDimension return one unchunked chunk per dimension instead of
+//         chunkByDirectory's normal 5-8-file chunks, except ALWAYS_CHUNKED_DIMENSIONS
+//         (security, privacy, payments), which always keep normal chunking. Everything
+//         downstream of chunking (coverage, dedup, verifier, refuter) is unchanged either way. }
 if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
   args.dimensions.some((dimension) => !ALL_DIMENSIONS.includes(dimension)))) {
   throw new Error('args.dimensions must be an array of supported dimension ids');
@@ -917,6 +944,7 @@ const ctx = {
   files: args.files || [],
   dimensionFiles,
   dimensionContext: args.dimensionContext || {},
+  sizeResult: args.sizeResult || '',
   hunkScope: !!args.hunkScope,
   baseRef: args.baseRef || '',
   // .claude/audit-guidelines.md of the audited repo, verbatim. Read by the orchestrator in

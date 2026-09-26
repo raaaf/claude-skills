@@ -8,6 +8,7 @@ tools:
 model: sonnet
 effort: medium
 maxTurns: 12
+omitClaudeMd: true
 ---
 
 # Design Surface Mapper

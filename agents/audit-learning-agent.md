@@ -7,6 +7,7 @@ tools:
   - Glob
 model: sonnet
 effort: low
+omitClaudeMd: true
 ---
 
 # Audit Learning Agent

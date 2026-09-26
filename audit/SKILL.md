@@ -186,7 +186,7 @@ orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT f
 FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
 FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
 printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
-case "$DIFF_SIZE_RESULT" in LARGE|HUGE) HUNK_SCOPE=true ;; *) HUNK_SCOPE=false ;; esac   # from Phase 1's diff-size-gate.sh; used by the Workflow call below
+case "$DIFF_SIZE_RESULT" in SMALL|"") HUNK_SCOPE=false ;; *) HUNK_SCOPE=true ;; esac   # from Phase 1's diff-size-gate.sh; every result above SMALL scopes to changed hunks; empty (full-audit never runs diff-size-gate.sh) stays false; used by the Workflow call below
 echo "HUNK_SCOPE=$HUNK_SCOPE"
 
 ```
@@ -212,15 +212,20 @@ ARGS2 = {...}`), replace every place the script reads `args` with `ARGS2`, and p
 path as `scriptPath`. See `.claude/audits/2026-09-21_040559-main.md` (Incidents) for the origin of
 this workaround.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF } : {}) } })`,
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, sizeResult: DIFF_SIZE_RESULT, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF } : {}) } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`, and `HUNK_SCOPE` is
-`DIFF_SIZE_RESULT` (Phase 1, `diff-size-gate.sh`, carried via `orch_state_save`) being `LARGE` or
-`HUGE`. One call, one `runId`, `payments` scouts `STRIPE_FILES` while every other dimension scouts
-`ALLE_DATEIEN` as before.
+`DIFF_SIZE_RESULT` (Phase 1, `diff-size-gate.sh`, carried via `orch_state_save`) being anything
+other than `SMALL` (i.e. `OK`, `LARGE`, or `HUGE`). `sizeResult` passes the same `DIFF_SIZE_RESULT`
+value through unconditionally (unlike `hunkScope`/`baseRef`, which are only added when true): a
+`SMALL` result makes `find.js` dispatch one unchunked specialist per dimension instead of one per
+5-8-file chunk (`chunkFilesForDimension`), except `security`/`privacy`/`payments`, which always
+keep normal chunking; `architecture`/`docs_sync` are unaffected either way, since their chunks
+come from the cluster scout, never from file chunking. One call, one `runId`, `payments` scouts
+`STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
 
 **Why `hunkScope`:** on 2026-09-25 (events repo) three audits in a row reported mostly Important
 findings in untouched, pre-existing code of files the diff merely touched, turning every release
-into an open-ended refactor. On a LARGE/HUGE diff, `hunkScope` makes every specialist (and the
+into an open-ended refactor. On any diff above `SMALL`, `hunkScope` makes every specialist (and the
 verifier, so it can refute one that slips through) diff each assigned file against `BASE_REF` and
 report a finding only if it falls inside a changed hunk (plus 15 lines of context) or the change
 makes pre-existing code wrong. `find.js` excludes `payments` from this by itself: its scope is

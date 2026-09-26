@@ -180,13 +180,13 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with three substitutions:
   same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
   the next run.
 - `audit/SKILL.md`'s Phase 2 block also computes `HUNK_SCOPE` from `$DIFF_SIZE_RESULT` (`case
-  "$DIFF_SIZE_RESULT" in LARGE|HUGE) HUNK_SCOPE=true ;; *) HUNK_SCOPE=false ;; esac`), reused
+  "$DIFF_SIZE_RESULT" in SMALL|"") HUNK_SCOPE=false ;; *) HUNK_SCOPE=true ;; esac`), reused
   verbatim here even though `/full-audit`'s Phase 0 never runs `diff-size-gate.sh` and so never
   sets `DIFF_SIZE_RESULT` or `BASE_REF` (there is no diff; `SCOPE=repo` walks the whole tree). The
-  unset variable falls through to the `*)` branch, so `HUNK_SCOPE` is always `false` here, which is
-  the correct behavior (hunk-scoped review only makes sense against a diff); it is accidental
-  correctness from an unset var, not a deliberate substitution, so it is called out here rather than
-  left implicit.
+  unset variable matches the explicit `""` branch, so `HUNK_SCOPE` is always `false` here, which is
+  the correct behavior (hunk-scoped review only makes sense against a diff); the empty-string
+  branch exists precisely so an unset var here does not fall through to the catch-all `*)`, which
+  since the `SMALL` result was added now means "true", not "false".
 
 Every finding line follows the machine-parsed contract stated once in `audit/SKILL.md` Phase 4
 (one physical line, `- [Severity][Dimension] file:line: description`); this file no longer

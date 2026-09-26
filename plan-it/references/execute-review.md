@@ -25,8 +25,11 @@ The prompt MUST include:
 
 > You are the executor for the following plan. Follow it step by step.
 > Run every verify criterion and confirm the expected result before
-> moving on. Touch only the affected-files list. If a STOP condition
-> occurs: stop immediately and report, do not improvise.
+> moving on. Touch only the affected-files list. Do not explore beyond
+> those listed files except to grep an identifier's usages. If 40 tool
+> calls pass without a verify criterion turning green, stop and report
+> what blocks. If a STOP condition occurs: stop immediately and report,
+> do not improvise.
 > {COMMIT_RULE: Worktree -> "Commit your work in the worktree (Conventional
 > Commits)." | Working tree (/delegate default) -> "Do NOT commit — the
 > changes stay uncommitted, review happens before every commit."}

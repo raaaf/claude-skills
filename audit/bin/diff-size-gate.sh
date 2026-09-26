@@ -6,7 +6,7 @@
 # Output:
 #   DIFF_LINES=<n>
 #   DIFF_FILES=<n>
-#   DIFF_SIZE_RESULT=OK | LARGE | HUGE
+#   DIFF_SIZE_RESULT=SMALL | OK | LARGE | HUGE
 set -euo pipefail
 
 # shellcheck source=lib-git-base.sh
@@ -52,7 +52,9 @@ TOTAL_FILES=$((TOTAL_FILES + UNTRACKED_FILES))
 echo "DIFF_LINES=$TOTAL"
 echo "DIFF_FILES=$TOTAL_FILES"
 
-if [ "$TOTAL" -gt 5000 ]; then
+if [ "$TOTAL" -le 950 ] && [ "$TOTAL_FILES" -le 28 ]; then
+  echo "DIFF_SIZE_RESULT=SMALL"
+elif [ "$TOTAL" -gt 5000 ]; then
   echo "DIFF_SIZE_RESULT=HUGE"
 elif [ "$TOTAL_FILES" -gt 50 ]; then
   # Two-axis rule: file threshold exceeded, but lines under 20% of the line
