@@ -95,6 +95,7 @@ TRENDS_BLOCK_START
 | Phase 1 rounds (last 3) | {a} -> {b} -> {c} ({decreasing/stable/increasing}) |
 | Total concerns (last 3) | {a} -> {b} -> {c} |
 | Top dimension (last 5) | {Dimension} ({M}x) |
+| Dimension distribution (last 5, raw) | product {n} / architecture {n} / risk {n} / simplicity {n} / design {n} (from each log's `Per dimension (raw)` line; an even split is a signal of its own, not a missing leader) |
 | Avg concerns/plan | {X} |
 | Incorporation acceptance rate | {Y}% |
 
