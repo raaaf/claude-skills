@@ -87,6 +87,7 @@ subagents, see Conventions).
 | `/plan-it` | inherit (session model) | Iterative plan builder, parallel challenges |
 | `/delegate` | inherits session model (see `delegate/CLAUDE.md`) | Default implementation flow: the expensive model analyzes and reviews, Sonnet implements |
 | `/screens` | inherit (session model) | Screenshot catalog of every view in every applicable state plus App-Store marketing renders; `/delegate` reuses it for before/after proof |
+| `/store-assets` | inherit (session model) | App Store / Play Store screenshot stills from a project's own app screens + config: real device bezels, fixed headline/device grid, two-phone hero composition |
 
 ## Effort levels
 
@@ -144,6 +145,7 @@ there is read; everything else stays here.
 | `ship/CLAUDE.md` | Docs-sync-before-commit phase |
 | `delegate/CLAUDE.md` | `capture-screens.sh`, model-inherit rationale |
 | `screens/CLAUDE.md` | CLI and test suite |
+| `store-assets/CLAUDE.md` | Render/validate commands, bezel/status-bar cache rebuild, reviewed-hash and no-hardcoded-brand-value gotchas |
 
 ## Release process
 
