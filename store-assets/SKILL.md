@@ -1,6 +1,6 @@
 ---
 name: store-assets
-description: "Generates App Store and Play Store screenshots (stills) and an App Preview video from a folder of app screens plus a project config, so store images no longer need hand-built Figma frames per release. Look (fonts, colors, logo, device pose) comes from the project's own store-assets.json, never hardcoded in the skill. Use when the user runs /store-assets, wants to regenerate App Store or Play Store screenshots, or needs an App Preview video."
+description: "Generates App Store and Play Store screenshots (stills) and an App Preview video from a folder of app screens plus a project config, so store images no longer need hand-built Figma frames per release. Look (fonts, colors, logo) comes from the project's own store-assets.json, never hardcoded in the skill. Use when the user runs /store-assets, wants to regenerate App Store or Play Store screenshots, or needs an App Preview video."
 when_to_use: "/store-assets, Store-Screenshots erzeugen, App-Store-Bilder, Play-Store-Bilder, App Preview Video"
 argument-hint: "[--project <path>] [--video]"
 model: inherit
@@ -21,7 +21,7 @@ sub-composition mechanism, an App Preview video (Meilenstein B) from a project's
 and a project-local config (`.store-assets/store-assets.json`). Pattern follows `screens/`: this
 `SKILL.md` orchestrates, `bin/*.mjs` is deterministic, `references/*.md` holds specs and schema,
 `templates/` holds the rendering surface. No brand values live in this skill; everything (fonts,
-colors, logo, device pose, headlines) comes from the target project's config.
+colors, logo, headlines) comes from the target project's config.
 
 ## Ablauf
 
@@ -35,8 +35,9 @@ colors, logo, device pose, headlines) comes from the target project's config.
    sample (hero scene, one format, one locale) and show it next to the project's previous store
    images for a look-and-feel approval (Gate 2).
 4. **Vollrender.** `bin/render.mjs --project <path>` renders every scene x locale x format into
-   `<project>/native/store-assets/generated/<format>/<locale>/NN-<id>.jpg`, plus a contact-sheet
-   `generated/index.html`.
+   `<project>/native/store-assets/generated/<format>/<locale>/<id>.jpg` (`play-feature` renders
+   once per locale from the config's first/hero scene, see `references/config-schema.md`). A
+   contact-sheet `generated/index.html` is not implemented yet.
 5. **Validator.** `bin/validate.mjs --project <path>` checks exact pixel dimensions, no alpha
    channel, sRGB profile, file size, per-format image counts, and that every rendered scene is
    `reviewed: true` with a matching hash. Exit 0 only when every check passes.
@@ -62,17 +63,25 @@ HyperFrames (video only, Meilenstein B): exact pinned version in
 
 ## Devices
 
-`templates/devices/iphone.svg` and `templates/devices/android.svg` are frame-only SVGs (no Apple
-marketing asset): a bezel with a transparent viewport window. `templates/scene.html` places the
-project's screen PNG behind the frame, aligned to that window, then applies pose (rotation,
-translation) from the scene's config entry.
+Classic upright layout (headline, subline, device below, centered, running off the bottom edge),
+ported from the orchestrator's approved prototype after the tilted-panorama look was rejected
+(2026-09-27 REVISE round 1). Device choice follows the store format, not the scene:
+`ios-6.9` -> iPhone-shaped screen, `play-phone` -> Android-shaped screen, `play-feature` -> no
+device (`bin/render.mjs`'s `DEVICE_BY_FORMAT`).
+
+The device frame in `templates/scene.html` is deliberately minimal for now: a rounded-corner screen
+container (`#device[data-device]`) with the project's screen PNG inside, no bezel, status bar,
+notch/punch-hole, buttons, or nav pill. The user rejected a realistic CSS-drawn bezel as not
+realistic (same REVISE round, follow-up message); a later round replaces `#device` with a real
+bezel-image overlay. Do not add CSS bezel/status-bar polish back in until that round.
 
 ## Edge Cases
 
 - Source PNG missing for a locale/theme: pre-flight in `render.mjs` fails before any render, lists
   every missing combination.
-- Source PNG aspect ratio differs from the device viewport: `object-fit: cover` from the top, and
-  the contact sheet flags the image with a visible warning.
+- Source PNG has a page header/status bar that should not show in the store screenshot:
+  `crop_top_px` (per-scene config field) hides it by shifting the image up inside the device's
+  screen container.
 - A font fails to load (`document.fonts.check`): abort, no silent fallback font in the output.
 - Headline text too long for its box: CSS `clamp()` down to a minimum size; below that, error.
 - Headline or subline text changed after Gate 1 approval: `reviewed_hash` no longer matches ->

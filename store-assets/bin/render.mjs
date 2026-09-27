@@ -8,15 +8,23 @@
 //
 // Without --scene/--format/--locale, renders every scene x locale x format
 // combination in the config. With all three given, renders exactly one file
-// (used by the Step 4 verify sample and for quick iteration).
+// (used by the Step 4 verify sample and for quick iteration). `play-feature`
+// is not per-scene: it always renders once per locale from the config's
+// first scene (the app's hero identity), regardless of --scene.
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { reviewedHash, parseArgs } from './lib.mjs';
 
 const SKILL_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+
+// Device choice follows the store format, never the scene (REVISE round 1):
+// ios-6.9 always shows an iPhone screen, play-phone always an Android
+// screen, play-feature never shows a device at all (scene.html's own
+// `format === 'play-feature'` branch drops it).
+const DEVICE_BY_FORMAT = { 'ios-6.9': 'iphone', 'play-phone': 'android' };
 
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -101,40 +109,26 @@ function fileUrl(projectRoot, relPath) {
   return pathToFileURL(path.join(projectRoot, relPath)).href;
 }
 
-async function renderOne({ projectRoot, config, scene, formatId, locale, chromium }) {
-  const format = config.formats[formatId];
-  if (!format) fail(`unknown format: ${formatId}`);
+function baseParams(projectRoot, config, formatId, format, scene, locale) {
   const text = scene.text[locale];
   if (!text) fail(`scene ${scene.id} has no text for locale ${locale}`);
-
-  const localeSources = scene.source[locale];
-  const theme = localeSources.light ? 'light' : Object.keys(localeSources)[0];
-  const screenSrc = fileUrl(projectRoot, localeSources[theme]);
-
-  const params = new URLSearchParams({
+  return {
     format: formatId,
     width: String(format.width),
     height: String(format.height),
-    bg: config.brand.colors.background,
+    bg: scene.background,
+    fg: scene.foreground,
     headlineFont: fileUrl(projectRoot, config.brand.headline_font.path),
     headlineFamily: config.brand.headline_font.family,
     sublineFont: fileUrl(projectRoot, config.brand.subline_font.path),
     sublineFamily: config.brand.subline_font.family,
-    headlineColor: config.brand.colors.headline,
-    sublineColor: config.brand.colors.subline,
     headline: text.headline,
-    subline: text.subline,
+    subline: text.subline ?? '',
     logoSrc: fileUrl(projectRoot, config.brand.logo),
-    device: scene.device,
-    screenSrc,
-    rotateDeg: String(scene.device_pose?.rotate_deg ?? 0),
-    xPct: String(scene.device_pose?.x_pct ?? 50),
-    yPct: String(scene.device_pose?.y_pct ?? 60),
-    scalePct: String(scene.device_pose?.scale_pct ?? 90),
-  });
+  };
+}
 
-  const sceneUrl = pathToFileURL(path.join(SKILL_DIR, 'templates', 'scene.html')).href + '?' + params.toString();
-
+async function shootScene(sceneUrl, format, outDir, fileId, chromium) {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: format.width, height: format.height } });
   await page.goto(sceneUrl);
@@ -142,13 +136,12 @@ async function renderOne({ projectRoot, config, scene, formatId, locale, chromiu
   const ready = await page.evaluate(() => document.body.dataset.ready);
   if (ready !== 'true') {
     await browser.close();
-    fail(`font failed to load for scene ${scene.id} (${locale}): document.fonts.check returned false`);
+    fail(`font failed to load for ${fileId}: document.fonts.check returned false`);
   }
 
-  const outDir = path.join(projectRoot, 'native', 'store-assets', 'generated', formatId, locale);
   mkdirSync(outDir, { recursive: true });
-  const pngPath = path.join(outDir, `${scene.id}.png`);
-  const jpgPath = path.join(outDir, `${scene.id}.jpg`);
+  const pngPath = path.join(outDir, `${fileId}.png`);
+  const jpgPath = path.join(outDir, `${fileId}.jpg`);
   await page.screenshot({ path: pngPath });
   await browser.close();
 
@@ -158,8 +151,40 @@ async function renderOne({ projectRoot, config, scene, formatId, locale, chromiu
     pngPath,
     '--out', jpgPath,
   ], { stdio: 'inherit' });
+  unlinkSync(pngPath);
 
   return jpgPath;
+}
+
+async function renderOne({ projectRoot, config, scene, formatId, locale, chromium }) {
+  const format = config.formats[formatId];
+  if (!format) fail(`unknown format: ${formatId}`);
+
+  const localeSources = scene.source[locale];
+  const theme = localeSources.light ? 'light' : Object.keys(localeSources)[0];
+
+  const params = new URLSearchParams({
+    ...baseParams(projectRoot, config, formatId, format, scene, locale),
+    device: DEVICE_BY_FORMAT[formatId],
+    screenSrc: fileUrl(projectRoot, localeSources[theme]),
+    cropTopPx: String(scene.crop_top_px ?? 0),
+  });
+
+  const sceneUrl = pathToFileURL(path.join(SKILL_DIR, 'templates', 'scene.html')).href + '?' + params.toString();
+  const outDir = path.join(projectRoot, 'native', 'store-assets', 'generated', formatId, locale);
+  return shootScene(sceneUrl, format, outDir, scene.id, chromium);
+}
+
+async function renderFeatureGraphic({ projectRoot, config, locale, chromium }) {
+  const formatId = 'play-feature';
+  const format = config.formats[formatId];
+  if (!format) fail(`unknown format: ${formatId}`);
+  const heroScene = config.scenes[0];
+
+  const params = new URLSearchParams(baseParams(projectRoot, config, formatId, format, heroScene, locale));
+  const sceneUrl = pathToFileURL(path.join(SKILL_DIR, 'templates', 'scene.html')).href + '?' + params.toString();
+  const outDir = path.join(projectRoot, 'native', 'store-assets', 'generated', formatId, locale);
+  return shootScene(sceneUrl, format, outDir, 'feature-graphic', chromium);
 }
 
 async function main() {
@@ -179,8 +204,16 @@ async function main() {
   const { chromium } = await resolvePlaywright(projectRoot);
 
   const written = [];
-  for (const scene of scenes) {
-    for (const formatId of formats) {
+  for (const formatId of formats) {
+    if (formatId === 'play-feature') {
+      for (const locale of locales) {
+        const out = await renderFeatureGraphic({ projectRoot, config, locale, chromium });
+        console.log(`WROTE ${out}`);
+        written.push(out);
+      }
+      continue;
+    }
+    for (const scene of scenes) {
       for (const locale of locales) {
         const out = await renderOne({ projectRoot, config, scene, formatId, locale, chromium });
         console.log(`WROTE ${out}`);

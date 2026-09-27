@@ -1,31 +1,38 @@
 <!doctype html>
 <!--
-  Single scene canvas for store stills (Meilenstein A) and, once
-  templates/preview.html exists, a HyperFrames sub-composition (Meilenstein
-  B, data-composition-src="scene.html?..."). All brand values (fonts,
-  colors, logo, screen image, device pose, copy) arrive as query params from
-  bin/render.mjs, resolved to absolute file:// paths for anything that lives
-  in the target project -- this file itself never hardcodes a project value
-  (SKILL.md "Conventions": no brand values in the skill).
+  Single scene canvas for store stills. All brand values (fonts, colors,
+  logo, screen image, copy) arrive as query params from bin/render.mjs,
+  resolved to absolute file:// paths for anything that lives in the target
+  project -- this file itself never hardcodes a project value (SKILL.md
+  "Conventions": no brand values in the skill).
+
+  Layout: classic upright screenshot (headline, then subline, then an
+  upright device below, horizontally centered, running off the bottom
+  edge). Ported from the orchestrator's approved prototype (2026-09-27
+  REVISE round 1) after the user rejected the tilted-panorama look.
+
+  Device frames are intentionally minimal (a rounded-corner screen
+  container only, `.dev[data-device]` as the slot) per the same round's
+  follow-up: realistic bezels/status bars are rejected too and will be
+  replaced by real bezel-image overlays in a later round. Do not add
+  status-bar icons, buttons, notch/punch-hole art, or nav pills here.
 
   Query params:
     format          ios-6.9 | play-phone | play-feature (selects width/height + layout branch)
-    width, height    canvas pixel size (must match `format`'s size in store-specs.md)
-    bg               background hex color
-    headlineFont     absolute file:// path to the headline @font-face source
-    headlineFamily   font-family name used in @font-face + headline element
-    sublineFont      absolute file:// path to the subline @font-face source
-    sublineFamily    font-family name used in @font-face + subline element
-    headlineColor    headline text color
-    sublineColor     subline text color
-    headline         headline copy
-    subline          subline copy
-    logoSrc          absolute file:// path to the logo asset
-    device           iphone | android (selects templates/devices/<device>.svg, skipped on play-feature)
-    screenSrc        absolute file:// path to the source screen PNG
-    rotateDeg        device rotation in degrees
-    xPct, yPct       device center, percent of canvas
-    scalePct         device scale relative to its natural viewport-fit size
+    width, height   canvas pixel size (must match `format`'s size in store-specs.md)
+    bg, fg          background / foreground (text) hex color for this scene
+    headlineFont    absolute file:// path to the headline @font-face source
+    headlineFamily  font-family name used in @font-face + headline element
+    sublineFont     absolute file:// path to the subline @font-face source
+    sublineFamily   font-family name used in @font-face + subline element
+    headline        headline copy
+    subline         subline copy (play-feature omits it, logo + headline only)
+    logoSrc         absolute file:// path to the logo asset
+    device          iphone | android | none (none on play-feature: no device shown)
+    screenSrc       absolute file:// path to the source screen PNG
+    cropTopPx       px to hide from the top of the screenshot (header/status bar),
+                    calibrated against a 1320px-wide canvas and scaled linearly for
+                    other canvas widths (references/config-schema.md "crop_top_px")
 -->
 <html lang="de">
   <head>
@@ -40,84 +47,95 @@
       html,
       body {
         overflow: hidden;
+        font-family: 'Inter Variable', system-ui, sans-serif;
       }
       #canvas {
         position: relative;
-        overflow: hidden;
-      }
-      #logo {
-        position: absolute;
-        top: 6%;
-        left: 50%;
-        transform: translateX(-50%);
-        height: 6%;
-      }
-      #headline {
-        position: absolute;
-        top: 16%;
-        left: 6%;
-        right: 6%;
-        text-align: center;
-        font-weight: 400;
-        line-height: 1.05;
-        /* Long headlines shrink down to a floor instead of overflowing
-           (SKILL.md Edge Cases: "Headline zu lang"); below that floor the
-           render script's pre-flight is expected to reject the copy. */
-        font-size: clamp(28px, 6.2vw, 72px);
-      }
-      #subline {
-        position: absolute;
-        top: 30%;
-        left: 10%;
-        right: 10%;
-        text-align: center;
-        font-size: clamp(14px, 2.4vw, 28px);
-        line-height: 1.4;
-      }
-      #device-wrap {
-        position: absolute;
-        transform-origin: center center;
-      }
-      #device-wrap img {
-        position: absolute;
-        top: 0;
-        left: 0;
         width: 100%;
         height: 100%;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
-      #screen {
-        object-fit: cover;
-        object-position: top;
-        /* Matches the transparent viewport window declared in
-           templates/devices/iphone.svg / android.svg (x/y/w/h/radius noted
-           in each file's own comment), so the screen image lines up with
-           the frame's cutout instead of showing square corners under a
-           rounded window. */
-        clip-path: inset(2.3% round 4.8%);
+      #logo {
+        height: 6%;
+        margin-top: calc(var(--h) * 0.06);
       }
-      body.landscape #device-wrap {
+      #headline {
+        font-weight: 400;
+        line-height: 1.02;
+        text-align: center;
+        text-wrap: balance;
+        margin: calc(var(--h) * 0.03) 7% 0;
+        font-size: calc(var(--w) * 0.1);
+      }
+      #subline {
+        font-weight: 500;
+        line-height: 1.3;
+        text-align: center;
+        text-wrap: balance;
+        opacity: 0.78;
+        margin: calc(var(--w) * 0.033) 10% 0;
+        font-size: calc(var(--w) * 0.041);
+      }
+      /* Minimal device slot: a rounded-corner screen container only. No
+         bezel, status bar, notch, punch-hole, buttons, or nav pill (see
+         the file-level comment). `data-device` is the hook a later round
+         swaps for a real bezel-image overlay.
+
+         Positioned in normal flow (not absolute with a fixed top offset)
+         so it always follows the headline/subline regardless of how many
+         lines they wrap to -- a fixed percentage offset let a 3-line
+         headline push the subline down far enough that the device (opaque,
+         painted on top since it would otherwise need its own stacking
+         context) covered the subline entirely. #canvas's flex column
+         still centers it horizontally; the device's own aspect ratio
+         naturally runs it off the bottom edge (#canvas is overflow:hidden). */
+      #device {
+        width: var(--device-width);
+        margin-top: calc(var(--h) * 0.02);
+      }
+      #device .screen {
+        position: relative;
+        overflow: hidden;
+        background: #fff;
+        border-radius: 6%;
+        aspect-ratio: var(--device-ar);
+      }
+      #device .screen img {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        top: calc(var(--crop-scaled) * -1);
+      }
+      #device[data-device='iphone'] {
+        --device-width: 76%;
+        --device-ar: 440 / 956;
+      }
+      #device[data-device='android'] {
+        --device-width: 70%;
+        --device-ar: 1280 / 2856;
+      }
+      body.landscape #device {
         display: none;
       }
-      body.landscape #headline {
-        top: 50%;
-        left: 6%;
-        right: auto;
-        width: 55%;
-        text-align: left;
-        transform: translateY(-65%);
-      }
-      body.landscape #subline {
-        top: 50%;
-        left: 6%;
-        right: auto;
-        width: 55%;
-        text-align: left;
-        transform: translateY(40%);
+      body.landscape #canvas {
+        align-items: flex-start;
       }
       body.landscape #logo {
-        left: 6%;
-        top: 8%;
-        transform: none;
+        margin: calc(var(--h) * 0.08) 0 0 6%;
+      }
+      body.landscape #headline {
+        margin: calc(var(--h) * 0.09) 0 0 6%;
+        width: 70%;
+        text-align: left;
+        /* play-feature's canvas is short and wide (1024x500), unlike the
+           portrait formats this font-size formula was tuned for: sizing off
+           --w here would overflow the 500px height, so landscape sizes off
+           --h instead, with a wider column so the headline wraps to fewer
+           lines. */
+        font-size: calc(var(--h) * 0.16);
       }
     </style>
   </head>
@@ -126,9 +144,8 @@
       <img id="logo" alt="" />
       <h1 id="headline"></h1>
       <p id="subline"></p>
-      <div id="device-wrap">
-        <img id="screen" alt="" />
-        <img id="frame" alt="" />
+      <div id="device">
+        <div class="screen"><img alt="" /></div>
       </div>
     </div>
     <script>
@@ -140,14 +157,14 @@
       const height = Number(get('height', 2868));
       const isLandscape = format === 'play-feature';
 
-      const canvas = document.getElementById('canvas');
-      canvas.style.width = width + 'px';
-      canvas.style.height = height + 'px';
-      canvas.style.background = get('bg', '#04081f');
+      document.documentElement.style.setProperty('--w', width + 'px');
+      document.documentElement.style.setProperty('--h', height + 'px');
       document.documentElement.style.width = width + 'px';
       document.documentElement.style.height = height + 'px';
       document.body.style.width = width + 'px';
       document.body.style.height = height + 'px';
+      document.body.style.background = get('bg', '#04081f');
+      document.body.style.color = get('fg', '#ffffff');
       if (isLandscape) document.body.classList.add('landscape');
 
       const headlineFamily = get('headlineFamily', 'Holdstone');
@@ -172,46 +189,45 @@
       `;
       document.head.appendChild(fontStyle);
 
-      const logo = document.getElementById('logo');
-      logo.src = get('logoSrc', '');
+      document.getElementById('logo').src = get('logoSrc', '');
 
       const headlineEl = document.getElementById('headline');
       headlineEl.textContent = get('headline', '');
       headlineEl.style.fontFamily = `"${headlineFamily}", system-ui, sans-serif`;
-      headlineEl.style.color = get('headlineColor', '#ffffff');
 
       const sublineEl = document.getElementById('subline');
-      sublineEl.textContent = get('subline', '');
-      sublineEl.style.fontFamily = `"${sublineFamily}", system-ui, sans-serif`;
-      sublineEl.style.color = get('sublineColor', '#c7cbe0');
-
-      if (!isLandscape) {
-        const device = get('device', 'iphone');
-        const screenEl = document.getElementById('screen');
-        const frameEl = document.getElementById('frame');
-        screenEl.src = get('screenSrc', '');
-        frameEl.src = `devices/${device}.svg`;
-
-        const deviceWrap = document.getElementById('device-wrap');
-        const rotateDeg = get('rotateDeg', '0');
-        const xPct = Number(get('xPct', 50));
-        const yPct = Number(get('yPct', 60));
-        const scalePct = Number(get('scalePct', 90));
-        const deviceWidth = width * (scalePct / 100) * 0.55;
-        const deviceHeight = (deviceWidth * 620) / 300;
-        deviceWrap.style.width = deviceWidth + 'px';
-        deviceWrap.style.height = deviceHeight + 'px';
-        deviceWrap.style.left = (width * (xPct / 100) - deviceWidth / 2) + 'px';
-        deviceWrap.style.top = (height * (yPct / 100) - deviceHeight / 2) + 'px';
-        deviceWrap.style.transform = `rotate(${rotateDeg}deg)`;
+      if (isLandscape) {
+        sublineEl.remove();
+      } else {
+        sublineEl.textContent = get('subline', '');
+        sublineEl.style.fontFamily = `"${sublineFamily}", system-ui, sans-serif`;
       }
 
-      // Render readiness contract for bin/render.mjs and the HyperFrames
-      // spike: fonts must be the requested family, never a silent fallback
-      // (SKILL.md Edge Cases: "Font lädt nicht").
+      if (isLandscape) {
+        document.getElementById('device').remove();
+      } else {
+        const device = get('device', 'iphone');
+        const deviceEl = document.getElementById('device');
+        deviceEl.dataset.device = device;
+        deviceEl.querySelector('img').src = get('screenSrc', '');
+
+        // Reference canvas width the crop_top_px config value is
+        // calibrated against (ios-6.9's 1320px); scales linearly for
+        // other canvas widths (play-phone's 1440px), per this file's
+        // header comment.
+        const cropTopPx = Number(get('cropTopPx', 0));
+        deviceEl.style.setProperty('--crop-scaled', `calc(${cropTopPx}px * (var(--w) / 1320px))`);
+      }
+
+      // Render readiness contract for bin/render.mjs: fonts must be the
+      // requested family, never a silent fallback (SKILL.md Edge Cases:
+      // "Font lädt nicht"). play-feature never renders a subline (isLandscape
+      // removes #subline above), so the browser never fetches that font
+      // file and document.fonts.check would always report it unloaded --
+      // only checked when the subline is actually on the page.
       document.fonts.ready.then(() => {
         const headlineLoaded = document.fonts.check(`16px "${headlineFamily}"`);
-        const sublineLoaded = document.fonts.check(`16px "${sublineFamily}"`);
+        const sublineLoaded = isLandscape || document.fonts.check(`16px "${sublineFamily}"`);
         document.body.dataset.ready = headlineLoaded && sublineLoaded ? 'true' : 'font-failed';
       });
     </script>
