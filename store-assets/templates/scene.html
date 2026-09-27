@@ -8,19 +8,24 @@
   "Conventions").
 
   Layout (2026-09-27 REVISE round 2, real device bezels; round 3 added the
-  compact text zone + the play-feature device): fixed text zone (top 28% of
-  the canvas height, headline + optional subline + optional pills
-  vertically centered inside it; the headline shrinks in 4px steps to a
-  40px floor if it overflows), then a device (or two, `layout=combo`) whose
-  top edge is fixed at 30% of the canvas height (26% when the text zone is
-  compact, see `.compact-hd`), running off the bottom edge. A scene with no
-  subline and no pills gets an auto-height text zone instead (`.compact-hd`)
-  and a larger headline ceiling (0.12 instead of 0.1). Device frames are
-  real bezel PNGs + real status-bar capture overlays (store-specs.md
-  "Devices"), not CSS-drawn approximations (superseded from round 1).
-  play-feature (landscape) can also show one device on the right, sized off
-  canvas height instead of width (see the `front`/`deviceSpec` handling in
-  the `isLandscape` branch).
+  compact text zone + the play-feature device; round 4 made the combo
+  layout fit fully on-canvas and dropped the compact headline enlargement):
+  fixed text zone (top 28% of the canvas height, headline + optional
+  subline + optional pills vertically centered inside it; the headline
+  shrinks in 4px steps to a 40px floor if it overflows), then a device (or
+  two, `layout=combo`) whose top edge is fixed at 30% of the canvas height
+  (26% when the text zone is compact, see `.compact-hd`). A single-device
+  scene runs off the bottom edge; a `combo` scene instead binary-searches
+  the largest scale (measured live via `getBoundingClientRect`, so it
+  adapts to any device kind/canvas aspect) that keeps BOTH phones fully
+  on-canvas with a margin (>=4% width on the sides, >=3% height at the
+  bottom). A scene with no subline and no pills gets an auto-height text
+  zone instead (`.compact-hd`), same headline size. Device frames are real
+  bezel PNGs + real status-bar capture overlays (store-specs.md "Devices"),
+  not CSS-drawn approximations (superseded from round 1). play-feature
+  (landscape) can also show one device on the right, sized off canvas
+  height instead of width (see the `front`/`deviceSpec` handling in the
+  `isLandscape` branch).
 
   Query params:
     format, width, height     canvas selection (as before)
@@ -165,9 +170,6 @@
       body.compact-hd #hd {
         height: auto;
         padding-bottom: calc(var(--h) * 0.02);
-      }
-      body.compact-hd #headline {
-        font-size: calc(var(--w) * 0.12);
       }
       body.landscape #hd {
         height: auto;
@@ -372,30 +374,75 @@
         }
       } else if (layout === 'combo') {
         // Fixed compositional constants for the two-phone hero (not a
-        // brand value: purely how this one layout is art-directed).
-        // Order matters: back appended first (painted behind), front
+        // brand value: purely how this one layout is art-directed): same
+        // rotations as before, and back's offset from front expressed as a
+        // fraction of the (unscaled) device size, so the "overlap and
+        // offset look" survives whatever scale the fit search below lands
+        // on. Order matters: back appended first (painted behind), front
         // second (painted on top), matching the approved prototype.
-        const comboWidthPct = 64;
+        const ROTATE_FRONT = -5;
+        const ROTATE_BACK = 7;
+        const OFFSET_X = 0.72; // back's left, past front's left, in device widths
+        const OFFSET_Y = 0.1; // back's top, past front's top, in device heights
+        const marginX = width * 0.04;
+        const marginBottom = height * 0.03;
+        const topAnchor = height * devicePct;
+
         const back = getJSON('back');
         const front = getJSON('front');
-        const scale = width * (comboWidthPct / 100) / deviceSpec.w;
-
         const backSlot = document.createElement('div');
         backSlot.className = 'phone-slot';
-        backSlot.style.left = width * 0.42 + 'px';
-        backSlot.style.top = height * devicePct + height * 0.059 + 'px';
-        backSlot.style.transform = `scale(${scale}) rotate(7deg)`;
         backSlot.appendChild(buildDeviceBox(back, device, deviceSpec));
-
         const frontSlot = document.createElement('div');
         frontSlot.className = 'phone-slot';
-        frontSlot.style.left = width * -0.04 + 'px';
-        frontSlot.style.top = height * devicePct + 'px';
-        frontSlot.style.transform = `scale(${scale}) rotate(-5deg)`;
         frontSlot.appendChild(buildDeviceBox(front, device, deviceSpec));
-
         devicesEl.appendChild(backSlot);
         devicesEl.appendChild(frontSlot);
+
+        function layoutAt(scale) {
+          const dw = deviceSpec.w * scale;
+          const dh = deviceSpec.h * scale;
+          frontSlot.style.left = marginX + 'px';
+          frontSlot.style.top = topAnchor + 'px';
+          frontSlot.style.transform = `scale(${scale}) rotate(${ROTATE_FRONT}deg)`;
+          backSlot.style.left = marginX + OFFSET_X * dw + 'px';
+          backSlot.style.top = topAnchor + OFFSET_Y * dh + 'px';
+          backSlot.style.transform = `scale(${scale}) rotate(${ROTATE_BACK}deg)`;
+        }
+
+        function unionRect() {
+          const f = frontSlot.getBoundingClientRect();
+          const b = backSlot.getBoundingClientRect();
+          return {
+            left: Math.min(f.left, b.left),
+            right: Math.max(f.right, b.right),
+            bottom: Math.max(f.bottom, b.bottom),
+          };
+        }
+
+        // Binary-search the largest scale where both phones' actual
+        // (rotated) bounding boxes stay fully inside the margins, measured
+        // live rather than derived from trigonometry, so this adapts to
+        // any device kind/canvas size without a project- or format-
+        // specific constant.
+        let lo = 0.02;
+        let hi = width / deviceSpec.w;
+        for (let i = 0; i < 24; i++) {
+          const mid = (lo + hi) / 2;
+          layoutAt(mid);
+          const r = unionRect();
+          const fits = r.left >= marginX - 0.5 && r.right <= width - marginX + 0.5 && r.bottom <= height - marginBottom + 0.5;
+          if (fits) lo = mid;
+          else hi = mid;
+        }
+        layoutAt(lo);
+
+        // Center the fitted pair horizontally within the margin zone.
+        const fitted = unionRect();
+        const available = width - 2 * marginX;
+        const shift = marginX + (available - (fitted.right - fitted.left)) / 2 - fitted.left;
+        frontSlot.style.left = parseFloat(frontSlot.style.left) + shift + 'px';
+        backSlot.style.left = parseFloat(backSlot.style.left) + shift + 'px';
       } else {
         const single = {
           screenSrc: get('screenSrc', ''),
