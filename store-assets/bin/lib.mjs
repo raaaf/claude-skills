@@ -6,3 +6,15 @@ import { createHash } from 'node:crypto';
 export function reviewedHash(headline, subline) {
   return createHash('sha256').update(headline + subline).digest('hex');
 }
+
+// Minimal `--key value` CLI parser shared by both bin scripts.
+export function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i].startsWith('--')) {
+      out[argv[i].slice(2)] = argv[i + 1];
+      i++;
+    }
+  }
+  return out;
+}

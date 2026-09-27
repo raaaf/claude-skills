@@ -14,21 +14,9 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { reviewedHash } from './lib.mjs';
+import { reviewedHash, parseArgs } from './lib.mjs';
 
 const SKILL_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith('--')) {
-      const key = argv[i].slice(2);
-      out[key] = argv[i + 1];
-      i++;
-    }
-  }
-  return out;
-}
 
 function fail(message) {
   console.error(`FAIL: ${message}`);

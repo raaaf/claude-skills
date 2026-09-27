@@ -12,18 +12,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { reviewedHash } from './lib.mjs';
-
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith('--')) {
-      out[argv[i].slice(2)] = argv[i + 1];
-      i++;
-    }
-  }
-  return out;
-}
+import { reviewedHash, parseArgs } from './lib.mjs';
 
 const LIMITS = {
   'ios-6.9': { maxCount: 10 },
