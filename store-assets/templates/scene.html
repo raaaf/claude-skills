@@ -7,12 +7,14 @@
   file itself never hardcodes a machine path or a project value (SKILL.md
   "Conventions").
 
-  Layout (2026-09-27 REVISE round 2, real device bezels; round 5 is the
+  Layout (2026-09-27 REVISE round 2, real device bezels; round 5/6 are the
   current vertical grid): a fixed three-band grid for every portrait scene
-  -- text zone 0-30% of the canvas height (headline + optional subline +
-  optional pills vertically centered inside it; the headline shrinks in
-  4px steps to a 40px floor if it overflows, but never grows past its
-  0.12/0.048 ceilings), an empty gap 30-40%, then the image zone 40-100%.
+  -- text zone 0-30% of the canvas height, but the headline/subline/pills
+  block itself centers inside the inner 7-30% (round 6's 7% top breathing
+  room: `#hd`'s own box IS that 7-30% range, so the headline shrinks in
+  4px steps to a 40px floor if it overflows THAT smaller box, never
+  growing past its 0.12/0.048 ceilings), an empty gap 30-40%, then the
+  image zone 40-100%.
   A single-device scene's top edge sits at exactly 40% and runs off the
   bottom edge. A `combo` scene instead binary-searches the largest scale
   (measured live via `getBoundingClientRect`, so it adapts to any device
@@ -60,12 +62,17 @@
         font-family: 'Inter Variable', system-ui, sans-serif;
         position: relative;
       }
+      /* Text zone is 0-30% of the height, but the block itself centers in
+         7-30% (round 6: 7% top breathing room) -- #hd's own box IS that
+         7-30% sub-range, so the existing shrink-to-fit (scrollHeight vs
+         clientHeight) is naturally bounded by it, no separate padding
+         needed. */
       #hd {
         position: absolute;
         left: 0;
         right: 0;
-        top: 0;
-        height: calc(var(--h) * 0.3);
+        top: calc(var(--h) * 0.07);
+        height: calc(var(--h) * 0.23);
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -158,6 +165,10 @@
         position: absolute;
       }
       body.landscape #hd {
+        /* play-feature is unaffected by the portrait 7-30% text zone
+           (round 6): reset back to the top-left-anchored box it always
+           used. */
+        top: 0;
         height: auto;
         align-items: flex-start;
         justify-content: flex-start;
