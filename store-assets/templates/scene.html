@@ -16,11 +16,13 @@
   growing past its 0.12/0.048 ceilings), an empty gap 30-40%, then the
   image zone 40-100%.
   A single-device scene's top edge sits at exactly 40% and runs off the
-  bottom edge. A `combo` scene instead binary-searches the largest scale
-  (measured live via `getBoundingClientRect`, so it adapts to any device
-  kind/canvas aspect) that keeps BOTH phones fully inside 40%-97% of the
-  height with a margin (>=4% width on the sides), then centers the fitted
-  pair both horizontally and vertically in that zone. Device frames are
+  bottom edge (unchanged since round 5). A `combo` scene instead binary-
+  searches the largest scale (measured live via `getBoundingClientRect`,
+  so it adapts to any device kind/canvas aspect) that keeps BOTH phones
+  fully inside 36%-97% of the height (round 7: raised from 40%, tighter
+  margins/offsets/rotations, for a noticeably larger pair) with a margin
+  (>=3% width on the sides), then centers the fitted pair both
+  horizontally and vertically in that zone. Device frames are
   real bezel PNGs + real status-bar capture overlays (store-specs.md
   "Devices"), not CSS-drawn approximations (superseded from round 1).
   play-feature (landscape) can also show one device on the right, sized
@@ -382,19 +384,21 @@
         }
       } else if (layout === 'combo') {
         // Fixed compositional constants for the two-phone hero (not a
-        // brand value: purely how this one layout is art-directed): same
-        // rotations as before, and back's offset from front expressed as a
-        // fraction of the (unscaled) device size, so the "overlap and
-        // offset look" survives whatever scale the fit search below lands
-        // on. Order matters: back appended first (painted behind), front
-        // second (painted on top), matching the approved prototype.
-        const ROTATE_FRONT = -5;
-        const ROTATE_BACK = 7;
-        const OFFSET_X = 0.72; // back's left, past front's left, in device widths
-        const OFFSET_Y = 0.1; // back's top, past front's top, in device heights
-        const marginX = width * 0.04;
-        // Image zone: 40%-97% of the height (text zone 0-30%, gap 30-40%).
-        const zoneTop = height * 0.4;
+        // brand value: purely how this one layout is art-directed), tuned
+        // in round 7 for a noticeably larger pair (less vertical spread,
+        // more overlap, tighter margins, taller start): back's offset from
+        // front is still expressed as a fraction of the (unscaled) device
+        // size, so the "overlap and offset look" survives whatever scale
+        // the fit search below lands on. Order matters: back appended
+        // first (painted behind), front second (painted on top), matching
+        // the approved prototype.
+        const ROTATE_FRONT = -4;
+        const ROTATE_BACK = 5;
+        const OFFSET_X = 0.5; // back's left, past front's left, in device widths
+        const OFFSET_Y = 0.05; // back's top, past front's top, in device heights
+        const marginX = width * 0.03;
+        // Image zone: 36%-97% of the height (text zone 0-30%, gap 30-36%).
+        const zoneTop = height * 0.36;
         const zoneBottom = height * 0.97;
 
         const back = getJSON('back');
@@ -447,7 +451,7 @@
         }
         layoutAt(lo);
 
-        // Center the fitted pair vertically within the 40%-97% zone too
+        // Center the fitted pair vertically within the 36%-97% zone too
         // (not just anchored at its top).
         const beforeVCenter = unionRect();
         const zoneHeight = zoneBottom - zoneTop;
