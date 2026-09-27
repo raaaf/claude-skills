@@ -1,0 +1,219 @@
+<!doctype html>
+<!--
+  Single scene canvas for store stills (Meilenstein A) and, once
+  templates/preview.html exists, a HyperFrames sub-composition (Meilenstein
+  B, data-composition-src="scene.html?..."). All brand values (fonts,
+  colors, logo, screen image, device pose, copy) arrive as query params from
+  bin/render.mjs, resolved to absolute file:// paths for anything that lives
+  in the target project -- this file itself never hardcodes a project value
+  (SKILL.md "Conventions": no brand values in the skill).
+
+  Query params:
+    format          ios-6.9 | play-phone | play-feature (selects width/height + layout branch)
+    width, height    canvas pixel size (must match `format`'s size in store-specs.md)
+    bg               background hex color
+    headlineFont     absolute file:// path to the headline @font-face source
+    headlineFamily   font-family name used in @font-face + headline element
+    sublineFont      absolute file:// path to the subline @font-face source
+    sublineFamily    font-family name used in @font-face + subline element
+    headlineColor    headline text color
+    sublineColor     subline text color
+    headline         headline copy
+    subline          subline copy
+    logoSrc          absolute file:// path to the logo asset
+    device           iphone | android (selects templates/devices/<device>.svg, skipped on play-feature)
+    screenSrc        absolute file:// path to the source screen PNG
+    rotateDeg        device rotation in degrees
+    xPct, yPct       device center, percent of canvas
+    scalePct         device scale relative to its natural viewport-fit size
+-->
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        overflow: hidden;
+      }
+      #canvas {
+        position: relative;
+        overflow: hidden;
+      }
+      #logo {
+        position: absolute;
+        top: 6%;
+        left: 50%;
+        transform: translateX(-50%);
+        height: 6%;
+      }
+      #headline {
+        position: absolute;
+        top: 16%;
+        left: 6%;
+        right: 6%;
+        text-align: center;
+        font-weight: 400;
+        line-height: 1.05;
+        /* Long headlines shrink down to a floor instead of overflowing
+           (SKILL.md Edge Cases: "Headline zu lang"); below that floor the
+           render script's pre-flight is expected to reject the copy. */
+        font-size: clamp(28px, 6.2vw, 72px);
+      }
+      #subline {
+        position: absolute;
+        top: 30%;
+        left: 10%;
+        right: 10%;
+        text-align: center;
+        font-size: clamp(14px, 2.4vw, 28px);
+        line-height: 1.4;
+      }
+      #device-wrap {
+        position: absolute;
+        transform-origin: center center;
+      }
+      #device-wrap img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #screen {
+        object-fit: cover;
+        object-position: top;
+        /* Matches the transparent viewport window declared in
+           templates/devices/iphone.svg / android.svg (x/y/w/h/radius noted
+           in each file's own comment), so the screen image lines up with
+           the frame's cutout instead of showing square corners under a
+           rounded window. */
+        clip-path: inset(2.3% round 4.8%);
+      }
+      body.landscape #device-wrap {
+        display: none;
+      }
+      body.landscape #headline {
+        top: 50%;
+        left: 6%;
+        right: auto;
+        width: 55%;
+        text-align: left;
+        transform: translateY(-65%);
+      }
+      body.landscape #subline {
+        top: 50%;
+        left: 6%;
+        right: auto;
+        width: 55%;
+        text-align: left;
+        transform: translateY(40%);
+      }
+      body.landscape #logo {
+        left: 6%;
+        top: 8%;
+        transform: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas">
+      <img id="logo" alt="" />
+      <h1 id="headline"></h1>
+      <p id="subline"></p>
+      <div id="device-wrap">
+        <img id="screen" alt="" />
+        <img id="frame" alt="" />
+      </div>
+    </div>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const get = (key, fallback) => params.get(key) ?? fallback;
+
+      const format = get('format', 'ios-6.9');
+      const width = Number(get('width', 1320));
+      const height = Number(get('height', 2868));
+      const isLandscape = format === 'play-feature';
+
+      const canvas = document.getElementById('canvas');
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      canvas.style.background = get('bg', '#04081f');
+      document.documentElement.style.width = width + 'px';
+      document.documentElement.style.height = height + 'px';
+      document.body.style.width = width + 'px';
+      document.body.style.height = height + 'px';
+      if (isLandscape) document.body.classList.add('landscape');
+
+      const headlineFamily = get('headlineFamily', 'Holdstone');
+      const sublineFamily = get('sublineFamily', 'Inter Variable');
+      const headlineFontUrl = get('headlineFont', '');
+      const sublineFontUrl = get('sublineFont', '');
+
+      const fontStyle = document.createElement('style');
+      fontStyle.textContent = `
+        @font-face {
+          font-family: "${headlineFamily}";
+          src: url("${headlineFontUrl}") format("woff2");
+          font-weight: 400;
+          font-style: normal;
+        }
+        @font-face {
+          font-family: "${sublineFamily}";
+          src: url("${sublineFontUrl}") format("woff2");
+          font-weight: 400 700;
+          font-style: normal;
+        }
+      `;
+      document.head.appendChild(fontStyle);
+
+      const logo = document.getElementById('logo');
+      logo.src = get('logoSrc', '');
+
+      const headlineEl = document.getElementById('headline');
+      headlineEl.textContent = get('headline', '');
+      headlineEl.style.fontFamily = `"${headlineFamily}", system-ui, sans-serif`;
+      headlineEl.style.color = get('headlineColor', '#ffffff');
+
+      const sublineEl = document.getElementById('subline');
+      sublineEl.textContent = get('subline', '');
+      sublineEl.style.fontFamily = `"${sublineFamily}", system-ui, sans-serif`;
+      sublineEl.style.color = get('sublineColor', '#c7cbe0');
+
+      if (!isLandscape) {
+        const device = get('device', 'iphone');
+        const screenEl = document.getElementById('screen');
+        const frameEl = document.getElementById('frame');
+        screenEl.src = get('screenSrc', '');
+        frameEl.src = `devices/${device}.svg`;
+
+        const deviceWrap = document.getElementById('device-wrap');
+        const rotateDeg = get('rotateDeg', '0');
+        const xPct = Number(get('xPct', 50));
+        const yPct = Number(get('yPct', 60));
+        const scalePct = Number(get('scalePct', 90));
+        const deviceWidth = width * (scalePct / 100) * 0.55;
+        const deviceHeight = (deviceWidth * 620) / 300;
+        deviceWrap.style.width = deviceWidth + 'px';
+        deviceWrap.style.height = deviceHeight + 'px';
+        deviceWrap.style.left = (width * (xPct / 100) - deviceWidth / 2) + 'px';
+        deviceWrap.style.top = (height * (yPct / 100) - deviceHeight / 2) + 'px';
+        deviceWrap.style.transform = `rotate(${rotateDeg}deg)`;
+      }
+
+      // Render readiness contract for bin/render.mjs and the HyperFrames
+      // spike: fonts must be the requested family, never a silent fallback
+      // (SKILL.md Edge Cases: "Font lädt nicht").
+      document.fonts.ready.then(() => {
+        const headlineLoaded = document.fonts.check(`16px "${headlineFamily}"`);
+        const sublineLoaded = document.fonts.check(`16px "${sublineFamily}"`);
+        document.body.dataset.ready = headlineLoaded && sublineLoaded ? 'true' : 'font-failed';
+      });
+    </script>
+  </body>
+</html>
