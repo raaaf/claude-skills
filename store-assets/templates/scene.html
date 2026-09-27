@@ -1,38 +1,39 @@
 <!doctype html>
 <!--
   Single scene canvas for store stills. All brand values (fonts, colors,
-  logo, screen image, copy) arrive as query params from bin/render.mjs,
-  resolved to absolute file:// paths for anything that lives in the target
-  project -- this file itself never hardcodes a project value (SKILL.md
-  "Conventions": no brand values in the skill).
+  logo, screen image, copy) and all device-asset paths (bezels, status-bar
+  overlays, sampled colors) arrive as query params from bin/render.mjs,
+  resolved against references/store-specs.md's "Devices" JSON there -- this
+  file itself never hardcodes a machine path or a project value (SKILL.md
+  "Conventions").
 
-  Layout: classic upright screenshot (headline, then subline, then an
-  upright device below, horizontally centered, running off the bottom
-  edge). Ported from the orchestrator's approved prototype (2026-09-27
-  REVISE round 1) after the user rejected the tilted-panorama look.
-
-  Device frames are intentionally minimal (a rounded-corner screen
-  container only, `.dev[data-device]` as the slot) per the same round's
-  follow-up: realistic bezels/status bars are rejected too and will be
-  replaced by real bezel-image overlays in a later round. Do not add
-  status-bar icons, buttons, notch/punch-hole art, or nav pills here.
+  Layout (2026-09-27 REVISE round 2, real device bezels): fixed text zone
+  (top 28% of the canvas height, headline + optional subline + optional
+  pills vertically centered inside it; the headline shrinks in 4px steps to
+  a 40px floor if it overflows), then a device (or two, `layout=combo`)
+  whose top edge is fixed at 30% of the canvas height, running off the
+  bottom edge. Device frames are real bezel PNGs + real status-bar capture
+  overlays (store-specs.md "Devices"), not CSS-drawn approximations
+  (superseded from the two earlier rounds).
 
   Query params:
-    format          ios-6.9 | play-phone | play-feature (selects width/height + layout branch)
-    width, height   canvas pixel size (must match `format`'s size in store-specs.md)
-    bg, fg          background / foreground (text) hex color for this scene
-    headlineFont    absolute file:// path to the headline @font-face source
-    headlineFamily  font-family name used in @font-face + headline element
-    sublineFont     absolute file:// path to the subline @font-face source
-    sublineFamily   font-family name used in @font-face + subline element
-    headline        headline copy
-    subline         subline copy (play-feature omits it, logo + headline only)
-    logoSrc         absolute file:// path to the logo asset
-    device          iphone | android | none (none on play-feature: no device shown)
-    screenSrc       absolute file:// path to the source screen PNG
-    cropTopPx       px to hide from the top of the screenshot (header/status bar),
-                    calibrated against a 1320px-wide canvas and scaled linearly for
-                    other canvas widths (references/config-schema.md "crop_top_px")
+    format, width, height     canvas selection (as before)
+    bg, fg                    this scene's background/foreground (also drives the
+                               radial+linear gradient background)
+    headlineFont/Family       headline @font-face
+    sublineFont/Family        subline @font-face
+    headline                  headline copy (required)
+    subline                   subline copy (optional, omitted entirely when empty)
+    pill1, pill2               optional badge copy (both omitted when empty)
+    layout                    single | combo (default single)
+    device                    iphone | android (device kind, shared by both phones in combo)
+    deviceSpec                JSON: {w,h,sx,sy,sw,sh,r,sb,widthPct} from store-specs.md "Devices"
+                               (w/h = bezel pixel size, sx/sy/sw/sh = screen rect, r = corner
+                               radius, sb = status-bar band height, widthPct = device width as a
+                               percent of the canvas)
+    screenSrc/cropTopPx/topColor/statusBarTheme/bezelSrc/statusBarSrc/maskSrc
+                               layout=single: this phone's resolved asset paths + sampled state
+    front / back              layout=combo: JSON blobs with the same 7 fields per phone
 -->
 <html lang="de">
   <head>
@@ -48,26 +49,27 @@
       body {
         overflow: hidden;
         font-family: 'Inter Variable', system-ui, sans-serif;
-      }
-      #canvas {
         position: relative;
-        width: 100%;
-        height: 100%;
+      }
+      #hd {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: calc(var(--h) * 0.28);
         overflow: hidden;
         display: flex;
         flex-direction: column;
         align-items: center;
-      }
-      #logo {
-        height: 6%;
-        margin-top: calc(var(--h) * 0.06);
+        justify-content: center;
+        padding-top: calc(var(--h) * 0.02);
       }
       #headline {
         font-weight: 400;
         line-height: 1.02;
         text-align: center;
         text-wrap: balance;
-        margin: calc(var(--h) * 0.03) 7% 0;
+        margin: 0 7%;
         font-size: calc(var(--w) * 0.1);
       }
       #subline {
@@ -75,87 +77,126 @@
         line-height: 1.3;
         text-align: center;
         text-wrap: balance;
-        opacity: 0.78;
+        opacity: 0.8;
         margin: calc(var(--w) * 0.033) 10% 0;
         font-size: calc(var(--w) * 0.041);
       }
-      /* Minimal device slot: a rounded-corner screen container only. No
-         bezel, status bar, notch, punch-hole, buttons, or nav pill (see
-         the file-level comment). `data-device` is the hook a later round
-         swaps for a real bezel-image overlay.
-
-         Positioned in normal flow (not absolute with a fixed top offset)
-         so it always follows the headline/subline regardless of how many
-         lines they wrap to -- a fixed percentage offset let a 3-line
-         headline push the subline down far enough that the device (opaque,
-         painted on top since it would otherwise need its own stacking
-         context) covered the subline entirely. #canvas's flex column
-         still centers it horizontally; the device's own aspect ratio
-         naturally runs it off the bottom edge (#canvas is overflow:hidden). */
-      #device {
-        width: var(--device-width);
-        margin-top: calc(var(--h) * 0.02);
+      .pills {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: calc(var(--w) * 0.015);
+        margin-top: calc(var(--w) * 0.03);
       }
-      #device .screen {
+      /* events' own atoms.status-badge :on-image variant (rounded-full,
+         border-white/30, bg-white/20, text-xs font-medium, backdrop-blur-sm),
+         scaled x3.17 for App-Store-screenshot resolution. */
+      .pill {
+        color: #fff;
+        font-weight: 500;
+        line-height: 1.33;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.2);
+        border: calc(var(--w) * 0.0024) solid rgba(255, 255, 255, 0.3);
+        backdrop-filter: blur(calc(var(--w) * 0.0096));
+        padding: calc(var(--w) * 0.0048) calc(var(--w) * 0.024);
+        font-size: calc(var(--w) * 0.0288);
+      }
+      /* Position + transform are always set inline by the script below (a
+         single-device slot centers via translateX(-50%), a combo slot uses
+         an explicit left/top instead); only transform-origin stays here,
+         since it differs by layout and never changes at render time. */
+      .phone-slot {
+        position: absolute;
+        top: calc(var(--h) * 0.3);
+        transform-origin: top center;
+        filter: drop-shadow(0 calc(var(--w) * 0.03) calc(var(--w) * 0.06) rgba(0, 0, 0, 0.35));
+      }
+      .combo .phone-slot {
+        transform-origin: top left;
+      }
+      .device-box {
         position: relative;
-        overflow: hidden;
-        background: #fff;
-        border-radius: 6%;
-        aspect-ratio: var(--device-ar);
       }
-      #device .screen img {
+      .device-box .bezel {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      .device-box .screen {
+        position: absolute;
+        overflow: hidden;
+      }
+      .device-box .screen img.shot {
         position: absolute;
         left: 0;
         width: 100%;
-        top: calc(var(--crop-scaled) * -1);
       }
-      #device[data-device='iphone'] {
-        --device-width: 76%;
-        --device-ar: 440 / 956;
+      .device-box .screen .band {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
       }
-      #device[data-device='android'] {
-        --device-width: 70%;
-        --device-ar: 1280 / 2856;
+      .device-box .screen img.statusbar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
       }
-      body.landscape #device {
+      .device-box .mask {
+        position: absolute;
+      }
+      body.landscape .phone-slot,
+      body.combo.landscape .phone-slot {
         display: none;
       }
-      body.landscape #canvas {
+      body.landscape #hd {
+        height: auto;
         align-items: flex-start;
+        justify-content: flex-start;
       }
       body.landscape #logo {
         margin: calc(var(--h) * 0.08) 0 0 6%;
+        /* Percent height would resolve against #hd's own height, which is
+           auto in landscape (unlike the portrait 28% text zone) and so
+           never resolves -- sized off --h directly instead. */
+        height: calc(var(--h) * 0.06);
       }
       body.landscape #headline {
-        margin: calc(var(--h) * 0.09) 0 0 6%;
+        margin: calc(var(--h) * 0.1) 0 0 6%;
         width: 70%;
         text-align: left;
-        /* play-feature's canvas is short and wide (1024x500), unlike the
-           portrait formats this font-size formula was tuned for: sizing off
-           --w here would overflow the 500px height, so landscape sizes off
-           --h instead, with a wider column so the headline wraps to fewer
-           lines. */
         font-size: calc(var(--h) * 0.16);
+      }
+      #logo {
+        display: none;
       }
     </style>
   </head>
   <body>
-    <div id="canvas">
+    <div id="hd">
       <img id="logo" alt="" />
       <h1 id="headline"></h1>
       <p id="subline"></p>
-      <div id="device">
-        <div class="screen"><img alt="" /></div>
-      </div>
+      <div class="pills" id="pills"></div>
     </div>
+    <div id="devices"></div>
     <script>
       const params = new URLSearchParams(location.search);
       const get = (key, fallback) => params.get(key) ?? fallback;
+      const getJSON = (key) => {
+        const raw = params.get(key);
+        return raw ? JSON.parse(raw) : null;
+      };
 
       const format = get('format', 'ios-6.9');
       const width = Number(get('width', 1320));
       const height = Number(get('height', 2868));
       const isLandscape = format === 'play-feature';
+      const layout = get('layout', 'single');
+      const bg = get('bg', '#04081f');
+      const fg = get('fg', '#ffffff');
 
       document.documentElement.style.setProperty('--w', width + 'px');
       document.documentElement.style.setProperty('--h', height + 'px');
@@ -163,71 +204,190 @@
       document.documentElement.style.height = height + 'px';
       document.body.style.width = width + 'px';
       document.body.style.height = height + 'px';
-      document.body.style.background = get('bg', '#04081f');
-      document.body.style.color = get('fg', '#ffffff');
+      document.body.style.color = fg;
+      document.body.style.background = isLandscape
+        ? bg
+        : `radial-gradient(85% 40% at 50% 60%, color-mix(in oklch, ${bg}, white 12%) 0%, transparent 70%), ` +
+          `linear-gradient(180deg, color-mix(in oklch, ${bg}, white 5%) 0%, ${bg} 50%, color-mix(in oklch, ${bg}, black 14%) 100%)`;
       if (isLandscape) document.body.classList.add('landscape');
+      if (layout === 'combo') document.body.classList.add('combo');
 
       const headlineFamily = get('headlineFamily', 'Holdstone');
       const sublineFamily = get('sublineFamily', 'Inter Variable');
-      const headlineFontUrl = get('headlineFont', '');
-      const sublineFontUrl = get('sublineFont', '');
-
       const fontStyle = document.createElement('style');
       fontStyle.textContent = `
-        @font-face {
-          font-family: "${headlineFamily}";
-          src: url("${headlineFontUrl}") format("woff2");
-          font-weight: 400;
-          font-style: normal;
-        }
-        @font-face {
-          font-family: "${sublineFamily}";
-          src: url("${sublineFontUrl}") format("woff2");
-          font-weight: 400 700;
-          font-style: normal;
-        }
+        @font-face { font-family: "${headlineFamily}"; src: url("${get('headlineFont', '')}") format("woff2"); font-weight: 400; font-style: normal; }
+        @font-face { font-family: "${sublineFamily}"; src: url("${get('sublineFont', '')}") format("woff2"); font-weight: 400 700; font-style: normal; }
       `;
       document.head.appendChild(fontStyle);
-
-      document.getElementById('logo').src = get('logoSrc', '');
 
       const headlineEl = document.getElementById('headline');
       headlineEl.textContent = get('headline', '');
       headlineEl.style.fontFamily = `"${headlineFamily}", system-ui, sans-serif`;
 
+      const subline = get('subline', '');
       const sublineEl = document.getElementById('subline');
-      if (isLandscape) {
-        sublineEl.remove();
-      } else {
-        sublineEl.textContent = get('subline', '');
+      if (subline) {
+        sublineEl.textContent = subline;
         sublineEl.style.fontFamily = `"${sublineFamily}", system-ui, sans-serif`;
+      } else {
+        sublineEl.remove();
+      }
+
+      const pill1 = get('pill1', '');
+      const pill2 = get('pill2', '');
+      const pillsEl = document.getElementById('pills');
+      if (pill1 || pill2) {
+        for (const text of [pill1, pill2]) {
+          if (!text) continue;
+          const span = document.createElement('span');
+          span.className = 'pill';
+          span.textContent = text;
+          pillsEl.appendChild(span);
+        }
+      } else {
+        pillsEl.remove();
       }
 
       if (isLandscape) {
-        document.getElementById('device').remove();
+        document.getElementById('logo').src = get('logoSrc', '');
+        document.getElementById('logo').style.display = 'block';
+        document.getElementById('devices').remove();
       } else {
-        const device = get('device', 'iphone');
-        const deviceEl = document.getElementById('device');
-        deviceEl.dataset.device = device;
-        deviceEl.querySelector('img').src = get('screenSrc', '');
+        // Builds one phone's DOM: bezel + screen (screenshot, sampled-color
+        // backfill strip, real status-bar overlay) + optional mask overlay
+        // (Android's corners+punch-hole). Stack order per store-specs.md
+        // "Devices": iPhone paints the screen first then the bezel on top
+        // (screen_over_bezel); Android paints the bezel first, the screen
+        // on top, then the mask on top of that.
+        function buildDeviceBox(spec, deviceKind, deviceSpec) {
+          const box = document.createElement('div');
+          box.className = 'device-box';
+          box.style.width = deviceSpec.w + 'px';
+          box.style.height = deviceSpec.h + 'px';
 
-        // Reference canvas width the crop_top_px config value is
-        // calibrated against (ios-6.9's 1320px); scales linearly for
-        // other canvas widths (play-phone's 1440px), per this file's
-        // header comment.
-        const cropTopPx = Number(get('cropTopPx', 0));
-        deviceEl.style.setProperty('--crop-scaled', `calc(${cropTopPx}px * (var(--w) / 1320px))`);
+          const bezel = document.createElement('img');
+          bezel.className = 'bezel';
+          bezel.src = spec.bezelSrc;
+          bezel.style.width = deviceSpec.w + 'px';
+
+          const screen = document.createElement('div');
+          screen.className = 'screen';
+          screen.style.left = deviceSpec.sx + 'px';
+          screen.style.top = deviceSpec.sy + 'px';
+          screen.style.width = deviceSpec.sw + 'px';
+          screen.style.height = deviceSpec.sh + 'px';
+          screen.style.borderRadius = deviceSpec.r + 'px';
+          screen.style.background = spec.topColor;
+
+          const shot = document.createElement('img');
+          shot.className = 'shot';
+          shot.src = spec.screenSrc;
+          shot.style.top = deviceSpec.sb - spec.cropTopPx + 'px';
+          screen.appendChild(shot);
+
+          const band = document.createElement('div');
+          band.className = 'band';
+          band.style.height = deviceSpec.sb + 'px';
+          band.style.background = spec.topColor;
+          screen.appendChild(band);
+
+          const statusBar = document.createElement('img');
+          statusBar.className = 'statusbar';
+          statusBar.src = spec.statusBarSrc;
+          screen.appendChild(statusBar);
+
+          const mask = spec.maskSrc
+            ? (() => {
+                const m = document.createElement('img');
+                m.className = 'mask';
+                m.src = spec.maskSrc;
+                m.style.left = deviceSpec.sx + 'px';
+                m.style.top = deviceSpec.sy + 'px';
+                m.style.width = deviceSpec.sw + 'px';
+                m.style.height = deviceSpec.sh + 'px';
+                return m;
+              })()
+            : null;
+
+          if (deviceSpec.screenOverBezel) {
+            box.appendChild(screen);
+            box.appendChild(bezel);
+          } else {
+            box.appendChild(bezel);
+            box.appendChild(screen);
+            if (mask) box.appendChild(mask);
+          }
+          return box;
+        }
+
+        const device = get('device', 'iphone');
+        const deviceSpec = getJSON('deviceSpec');
+        const devicesEl = document.getElementById('devices');
+
+        if (layout === 'combo') {
+          // Fixed compositional constants for the two-phone hero (not a
+          // brand value: purely how this one layout is art-directed).
+          // Order matters: back appended first (painted behind), front
+          // second (painted on top), matching the approved prototype.
+          const comboWidthPct = 64;
+          const back = getJSON('back');
+          const front = getJSON('front');
+          const scale = width * (comboWidthPct / 100) / deviceSpec.w;
+
+          const backSlot = document.createElement('div');
+          backSlot.className = 'phone-slot';
+          backSlot.style.setProperty('--device-scale', scale);
+          backSlot.style.left = width * 0.42 + 'px';
+          backSlot.style.top = height * 0.3 + height * 0.059 + 'px';
+          backSlot.style.transform = `scale(${scale}) rotate(7deg)`;
+          backSlot.appendChild(buildDeviceBox(back, device, deviceSpec));
+
+          const frontSlot = document.createElement('div');
+          frontSlot.className = 'phone-slot';
+          frontSlot.style.left = width * -0.04 + 'px';
+          frontSlot.style.top = height * 0.3 + 'px';
+          frontSlot.style.transform = `scale(${scale}) rotate(-5deg)`;
+          frontSlot.appendChild(buildDeviceBox(front, device, deviceSpec));
+
+          devicesEl.appendChild(backSlot);
+          devicesEl.appendChild(frontSlot);
+        } else {
+          const single = {
+            screenSrc: get('screenSrc', ''),
+            cropTopPx: Number(get('cropTopPx', 0)),
+            topColor: get('topColor', '#000000'),
+            bezelSrc: get('bezelSrc', ''),
+            statusBarSrc: get('statusBarSrc', ''),
+            maskSrc: get('maskSrc', '') || null,
+          };
+          const scale = (width * (deviceSpec.widthPct / 100)) / deviceSpec.w;
+          const slot = document.createElement('div');
+          slot.className = 'phone-slot';
+          slot.style.left = '50%';
+          slot.style.transform = `translateX(-50%) scale(${scale})`;
+          slot.appendChild(buildDeviceBox(single, device, deviceSpec));
+          devicesEl.appendChild(slot);
+        }
       }
 
       // Render readiness contract for bin/render.mjs: fonts must be the
       // requested family, never a silent fallback (SKILL.md Edge Cases:
-      // "Font lädt nicht"). play-feature never renders a subline (isLandscape
-      // removes #subline above), so the browser never fetches that font
-      // file and document.fonts.check would always report it unloaded --
-      // only checked when the subline is actually on the page.
+      // "Font lädt nicht"). play-feature never renders a subline, so the
+      // browser never fetches that font file and the check would always
+      // fail; only checked when the subline is actually on the page.
       document.fonts.ready.then(() => {
         const headlineLoaded = document.fonts.check(`16px "${headlineFamily}"`);
-        const sublineLoaded = isLandscape || document.fonts.check(`16px "${sublineFamily}"`);
+        const sublineLoaded = !subline || document.fonts.check(`16px "${sublineFamily}"`);
+
+        // Headline overflow: shrink in 4px steps down to a 40px floor.
+        const hd = document.getElementById('hd');
+        let f = parseFloat(getComputedStyle(headlineEl).fontSize);
+        while (hd.scrollHeight > hd.clientHeight && f > 40) {
+          f -= 4;
+          headlineEl.style.fontSize = f + 'px';
+        }
+
         document.body.dataset.ready = headlineLoaded && sublineLoaded ? 'true' : 'font-failed';
       });
     </script>
