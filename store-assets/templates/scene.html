@@ -7,25 +7,23 @@
   file itself never hardcodes a machine path or a project value (SKILL.md
   "Conventions").
 
-  Layout (2026-09-27 REVISE round 2, real device bezels; round 3 added the
-  compact text zone + the play-feature device; round 4 made the combo
-  layout fit fully on-canvas and dropped the compact headline enlargement):
-  fixed text zone (top 28% of the canvas height, headline + optional
-  subline + optional pills vertically centered inside it; the headline
-  shrinks in 4px steps to a 40px floor if it overflows), then a device (or
-  two, `layout=combo`) whose top edge is fixed at 30% of the canvas height
-  (26% when the text zone is compact, see `.compact-hd`). A single-device
-  scene runs off the bottom edge; a `combo` scene instead binary-searches
-  the largest scale (measured live via `getBoundingClientRect`, so it
-  adapts to any device kind/canvas aspect) that keeps BOTH phones fully
-  on-canvas with a margin (>=4% width on the sides, >=3% height at the
-  bottom). A scene with no subline and no pills gets an auto-height text
-  zone instead (`.compact-hd`), same headline size. Device frames are real
-  bezel PNGs + real status-bar capture overlays (store-specs.md "Devices"),
-  not CSS-drawn approximations (superseded from round 1). play-feature
-  (landscape) can also show one device on the right, sized off canvas
-  height instead of width (see the `front`/`deviceSpec` handling in the
-  `isLandscape` branch).
+  Layout (2026-09-27 REVISE round 2, real device bezels; round 5 is the
+  current vertical grid): a fixed three-band grid for every portrait scene
+  -- text zone 0-30% of the canvas height (headline + optional subline +
+  optional pills vertically centered inside it; the headline shrinks in
+  4px steps to a 40px floor if it overflows, but never grows past its
+  0.12/0.048 ceilings), an empty gap 30-40%, then the image zone 40-100%.
+  A single-device scene's top edge sits at exactly 40% and runs off the
+  bottom edge. A `combo` scene instead binary-searches the largest scale
+  (measured live via `getBoundingClientRect`, so it adapts to any device
+  kind/canvas aspect) that keeps BOTH phones fully inside 40%-97% of the
+  height with a margin (>=4% width on the sides), then centers the fitted
+  pair both horizontally and vertically in that zone. Device frames are
+  real bezel PNGs + real status-bar capture overlays (store-specs.md
+  "Devices"), not CSS-drawn approximations (superseded from round 1).
+  play-feature (landscape) can also show one device on the right, sized
+  off canvas height instead of width (see the `front`/`deviceSpec`
+  handling in the `isLandscape` branch, unaffected by the portrait grid).
 
   Query params:
     format, width, height     canvas selection (as before)
@@ -67,13 +65,12 @@
         left: 0;
         right: 0;
         top: 0;
-        height: calc(var(--h) * 0.28);
+        height: calc(var(--h) * 0.3);
         overflow: hidden;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding-top: calc(var(--h) * 0.02);
       }
       #headline {
         font-weight: 400;
@@ -81,7 +78,7 @@
         text-align: center;
         text-wrap: balance;
         margin: 0 7%;
-        font-size: calc(var(--w) * 0.1);
+        font-size: calc(var(--w) * 0.12);
       }
       #subline {
         font-weight: 500;
@@ -90,7 +87,7 @@
         text-wrap: balance;
         opacity: 0.8;
         margin: calc(var(--w) * 0.033) 10% 0;
-        font-size: calc(var(--w) * 0.041);
+        font-size: calc(var(--w) * 0.048);
       }
       .pills {
         display: flex;
@@ -116,12 +113,12 @@
       /* Position + transform are always set inline by the script below (a
          single-device slot centers via translateX(-50%), a combo slot uses
          an explicit left/top instead); only transform-origin stays here,
-         since it differs by layout and never changes at render time.
-         --device-top-pct: 0.30 normally, 0.26 when the text zone is
-         compact (no subline/pills, see .compact-hd below). */
+         since it differs by layout and never changes at render time. The
+         image zone starts at exactly 40% of the height (text zone 0-30%,
+         gap 30-40%, image zone 40-100%). */
       .phone-slot {
         position: absolute;
-        top: calc(var(--h) * var(--device-top-pct, 0.3));
+        top: calc(var(--h) * 0.4);
         transform-origin: top center;
         filter: drop-shadow(0 calc(var(--w) * 0.03) calc(var(--w) * 0.06) rgba(0, 0, 0, 0.35));
       }
@@ -159,17 +156,6 @@
       }
       .device-box .mask {
         position: absolute;
-      }
-      /* Compact text zone: when a scene has no subline and no pills (so
-         far only the headline-only hero combo), the fixed 28% zone leaves
-         too much empty space above the phones. Falls back to auto height
-         (fits just the headline) and lets the headline grow past its
-         normal 0.1 factor, up to 0.12 (both set via JS, never hardcoded to
-         a specific scene id -- see the "no subline && no pills" check
-         below). */
-      body.compact-hd #hd {
-        height: auto;
-        padding-bottom: calc(var(--h) * 0.02);
       }
       body.landscape #hd {
         height: auto;
@@ -269,15 +255,6 @@
       } else {
         pillsEl.remove();
       }
-
-      // Compact text zone (no events-specific values, only "does this scene
-      // have a subline or pills"): a headline-only scene starts the phones
-      // 4 percentage points higher, since the fixed 28%/30% pair was tuned
-      // for a headline+subline+optional-pills block.
-      const isCompact = !isLandscape && !subline && !hasPills;
-      if (isCompact) document.body.classList.add('compact-hd');
-      const devicePct = isCompact ? 0.26 : 0.3;
-      document.documentElement.style.setProperty('--device-top-pct', devicePct);
 
       // Builds one phone's DOM: bezel + screen (screenshot, sampled-color
       // backfill strip, real status-bar overlay) + optional mask overlay
@@ -385,8 +362,9 @@
         const OFFSET_X = 0.72; // back's left, past front's left, in device widths
         const OFFSET_Y = 0.1; // back's top, past front's top, in device heights
         const marginX = width * 0.04;
-        const marginBottom = height * 0.03;
-        const topAnchor = height * devicePct;
+        // Image zone: 40%-97% of the height (text zone 0-30%, gap 30-40%).
+        const zoneTop = height * 0.4;
+        const zoneBottom = height * 0.97;
 
         const back = getJSON('back');
         const front = getJSON('front');
@@ -403,10 +381,10 @@
           const dw = deviceSpec.w * scale;
           const dh = deviceSpec.h * scale;
           frontSlot.style.left = marginX + 'px';
-          frontSlot.style.top = topAnchor + 'px';
+          frontSlot.style.top = zoneTop + 'px';
           frontSlot.style.transform = `scale(${scale}) rotate(${ROTATE_FRONT}deg)`;
           backSlot.style.left = marginX + OFFSET_X * dw + 'px';
-          backSlot.style.top = topAnchor + OFFSET_Y * dh + 'px';
+          backSlot.style.top = zoneTop + OFFSET_Y * dh + 'px';
           backSlot.style.transform = `scale(${scale}) rotate(${ROTATE_BACK}deg)`;
         }
 
@@ -416,6 +394,7 @@
           return {
             left: Math.min(f.left, b.left),
             right: Math.max(f.right, b.right),
+            top: Math.min(f.top, b.top),
             bottom: Math.max(f.bottom, b.bottom),
           };
         }
@@ -431,11 +410,19 @@
           const mid = (lo + hi) / 2;
           layoutAt(mid);
           const r = unionRect();
-          const fits = r.left >= marginX - 0.5 && r.right <= width - marginX + 0.5 && r.bottom <= height - marginBottom + 0.5;
+          const fits = r.left >= marginX - 0.5 && r.right <= width - marginX + 0.5 && r.bottom <= zoneBottom + 0.5;
           if (fits) lo = mid;
           else hi = mid;
         }
         layoutAt(lo);
+
+        // Center the fitted pair vertically within the 40%-97% zone too
+        // (not just anchored at its top).
+        const beforeVCenter = unionRect();
+        const zoneHeight = zoneBottom - zoneTop;
+        const vShift = zoneTop + (zoneHeight - (beforeVCenter.bottom - beforeVCenter.top)) / 2 - beforeVCenter.top;
+        frontSlot.style.top = parseFloat(frontSlot.style.top) + vShift + 'px';
+        backSlot.style.top = parseFloat(backSlot.style.top) + vShift + 'px';
 
         // Center the fitted pair horizontally within the margin zone.
         const fitted = unionRect();
