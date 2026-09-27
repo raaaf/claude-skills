@@ -171,7 +171,7 @@ async function main() {
   const config = loadConfig(projectRoot);
   preflight(projectRoot, config);
 
-  const scenes = args.scene ? config.scenes.filter((s) => s.id === args.scene || s.id === `${args.scene}` || s.id.startsWith(args.scene)) : config.scenes;
+  const scenes = args.scene ? config.scenes.filter((s) => s.id === args.scene) : config.scenes;
   if (args.scene && scenes.length === 0) fail(`unknown scene: ${args.scene}`);
   const formats = args.format ? [args.format] : Object.keys(config.formats);
   const locales = args.locale ? [args.locale] : config.locales;
