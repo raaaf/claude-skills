@@ -18,11 +18,15 @@
   A single-device scene's top edge sits at exactly 40% and runs off the
   bottom edge (unchanged since round 5). A `combo` scene instead binary-
   searches the largest scale (measured live via `getBoundingClientRect`,
-  so it adapts to any device kind/canvas aspect) that keeps BOTH phones
-  fully inside 36%-97% of the height (round 7: raised from 40%, tighter
-  margins/offsets/rotations, for a noticeably larger pair) with a margin
-  (>=3% width on the sides), then centers the fitted pair both
-  horizontally and vertically in that zone. Device frames are
+  so it adapts to any device kind/canvas aspect) starting its top at 36%
+  (round 7), with a margin (>=5% width on the sides, round 8) -- as large
+  as that side margin allows. Round 8 dropped the full-visibility bottom
+  constraint (the pair may now run off the canvas bottom too), keeping
+  only a floor on the back phone's own visible height (clipped by the
+  canvas edge) of >=35% of its rendered width, so it never crops away to
+  almost nothing. The fitted pair is centered horizontally (not
+  vertically any more, nothing to center against once the bottom is
+  unconstrained). Device frames are
   real bezel PNGs + real status-bar capture overlays (store-specs.md
   "Devices"), not CSS-drawn approximations (superseded from round 1).
   play-feature (landscape) can also show one device on the right, sized
@@ -261,7 +265,8 @@
       }
 
       const headlineEl = document.getElementById('headline');
-      renderHyphenSafe(headlineEl, get('headline', ''));
+      const rawHeadline = get('headline', '');
+      renderHyphenSafe(headlineEl, rawHeadline);
       headlineEl.style.fontFamily = `"${headlineFamily}", system-ui, sans-serif`;
 
       const subline = get('subline', '');
@@ -396,10 +401,11 @@
         const ROTATE_BACK = 5;
         const OFFSET_X = 0.5; // back's left, past front's left, in device widths
         const OFFSET_Y = 0.05; // back's top, past front's top, in device heights
-        const marginX = width * 0.03;
-        // Image zone: 36%-97% of the height (text zone 0-30%, gap 30-36%).
+        // Round 8: dropped the full-visibility bottom constraint (the pair
+        // may now run off the canvas bottom like a single-device scene),
+        // widened the side margin, sized as large as that margin allows.
+        const marginX = width * 0.05;
         const zoneTop = height * 0.36;
-        const zoneBottom = height * 0.97;
 
         const back = getJSON('back');
         const front = getJSON('front');
@@ -421,6 +427,7 @@
           backSlot.style.left = marginX + OFFSET_X * dw + 'px';
           backSlot.style.top = zoneTop + OFFSET_Y * dh + 'px';
           backSlot.style.transform = `scale(${scale}) rotate(${ROTATE_BACK}deg)`;
+          return dw;
         }
 
         function unionRect() {
@@ -435,29 +442,27 @@
         }
 
         // Binary-search the largest scale where both phones' actual
-        // (rotated) bounding boxes stay fully inside the margins, measured
+        // (rotated) bounding boxes stay within the side margins, measured
         // live rather than derived from trigonometry, so this adapts to
         // any device kind/canvas size without a project- or format-
-        // specific constant.
+        // specific constant. No bottom-visibility constraint any more (the
+        // pair may run off the canvas bottom like a single-device scene);
+        // the only floor is the back phone's own visible height (clipped
+        // by the canvas edge) staying at least ~35% of its rendered width,
+        // so it never crops away to almost nothing.
         let lo = 0.02;
         let hi = width / deviceSpec.w;
         for (let i = 0; i < 24; i++) {
           const mid = (lo + hi) / 2;
-          layoutAt(mid);
+          const dw = layoutAt(mid);
           const r = unionRect();
-          const fits = r.left >= marginX - 0.5 && r.right <= width - marginX + 0.5 && r.bottom <= zoneBottom + 0.5;
+          const b = backSlot.getBoundingClientRect();
+          const backVisibleHeight = Math.min(b.bottom, height) - b.top;
+          const fits = r.left >= marginX - 0.5 && r.right <= width - marginX + 0.5 && backVisibleHeight >= 0.35 * dw;
           if (fits) lo = mid;
           else hi = mid;
         }
         layoutAt(lo);
-
-        // Center the fitted pair vertically within the 36%-97% zone too
-        // (not just anchored at its top).
-        const beforeVCenter = unionRect();
-        const zoneHeight = zoneBottom - zoneTop;
-        const vShift = zoneTop + (zoneHeight - (beforeVCenter.bottom - beforeVCenter.top)) / 2 - beforeVCenter.top;
-        frontSlot.style.top = parseFloat(frontSlot.style.top) + vShift + 'px';
-        backSlot.style.top = parseFloat(backSlot.style.top) + vShift + 'px';
 
         // Center the fitted pair horizontally within the margin zone.
         const fitted = unionRect();
@@ -491,6 +496,45 @@
       document.fonts.ready.then(() => {
         const headlineLoaded = document.fonts.check(`16px "${headlineFamily}"`);
         const sublineLoaded = !subline || document.fonts.check(`16px "${sublineFamily}"`);
+
+        // Typographic apostrophe: Holdstone renders the ASCII apostrophe (')
+        // as a detached, acute-like mark with a gap ("who ´s"). Swap to
+        // U+2019 in both headline and subline. Checked live via
+        // document.fonts.check (only reliable once fonts.ready has
+        // resolved, hence doing this here, not at the earlier render
+        // pass), never assumed: if the headline font itself lacks the
+        // U+2019 glyph, only that character renders in the subline font
+        // instead, inside its own span.
+        const hasApostrophe = document.fonts.check(`16px "${headlineFamily}"`, '’');
+        function appendApostropheSafe(container, text) {
+          if (hasApostrophe) {
+            container.appendChild(document.createTextNode(text));
+            return;
+          }
+          const bits = text.split('’');
+          bits.forEach((bit, i) => {
+            if (bit) container.appendChild(document.createTextNode(bit));
+            if (i < bits.length - 1) {
+              const span = document.createElement('span');
+              span.style.fontFamily = `"${sublineFamily}", system-ui, sans-serif`;
+              span.textContent = '’';
+              container.appendChild(span);
+            }
+          });
+        }
+        const normalizedHeadline = rawHeadline.replace(/'/g, '’');
+        headlineEl.textContent = '';
+        for (const part of normalizedHeadline.split(/(\s+)/)) {
+          if (part.includes('-') && part.trim() !== '') {
+            const span = document.createElement('span');
+            span.style.whiteSpace = 'nowrap';
+            appendApostropheSafe(span, part);
+            headlineEl.appendChild(span);
+          } else {
+            appendApostropheSafe(headlineEl, part);
+          }
+        }
+        if (subline) sublineEl.textContent = subline.replace(/'/g, '’');
 
         // Headline overflow: shrink in 4px steps down to a 40px floor, on
         // either the text zone overflowing vertically (hd) or a single
