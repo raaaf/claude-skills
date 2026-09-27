@@ -238,8 +238,28 @@
       `;
       document.head.appendChild(fontStyle);
 
+      // Headlines must never break at a hyphen ("WhatsApp-Chaos." -> "WhatsApp-"
+      // / "Chaos." across two lines). Wrapping the hyphenated word itself in a
+      // nowrap span keeps it on one line; U+2011 (non-breaking hyphen) is
+      // avoided since Holdstone may not have that glyph. Built via
+      // createElement/textContent, never innerHTML, so this is not an XSS
+      // vector.
+      function renderHyphenSafe(el, text) {
+        el.textContent = '';
+        for (const part of text.split(/(\s+)/)) {
+          if (part.includes('-') && part.trim() !== '') {
+            const span = document.createElement('span');
+            span.style.whiteSpace = 'nowrap';
+            span.textContent = part;
+            el.appendChild(span);
+          } else {
+            el.appendChild(document.createTextNode(part));
+          }
+        }
+      }
+
       const headlineEl = document.getElementById('headline');
-      headlineEl.textContent = get('headline', '');
+      renderHyphenSafe(headlineEl, get('headline', ''));
       headlineEl.style.fontFamily = `"${headlineFamily}", system-ui, sans-serif`;
 
       const subline = get('subline', '');
@@ -468,10 +488,13 @@
         const headlineLoaded = document.fonts.check(`16px "${headlineFamily}"`);
         const sublineLoaded = !subline || document.fonts.check(`16px "${sublineFamily}"`);
 
-        // Headline overflow: shrink in 4px steps down to a 40px floor.
+        // Headline overflow: shrink in 4px steps down to a 40px floor, on
+        // either the text zone overflowing vertically (hd) or a single
+        // line overflowing horizontally (headlineEl itself -- a nowrap
+        // hyphenated-word span can force this even when hd still fits).
         const hd = document.getElementById('hd');
         let f = parseFloat(getComputedStyle(headlineEl).fontSize);
-        while (hd.scrollHeight > hd.clientHeight && f > 40) {
+        while ((hd.scrollHeight > hd.clientHeight || headlineEl.scrollWidth > headlineEl.clientWidth) && f > 40) {
           f -= 4;
           headlineEl.style.fontSize = f + 'px';
         }

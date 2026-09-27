@@ -176,7 +176,7 @@ function preflight(projectRoot, config, devicesSpec) {
     for (const locale of config.locales) {
       const text = scene.text?.[locale];
       if (!text) continue;
-      const currentHash = reviewedHash(text.headline, text.subline || '');
+      const currentHash = reviewedHash(text.headline, text.subline);
       const effectivelyReviewed = text.reviewed === true && text.reviewed_hash === currentHash;
       if (!effectivelyReviewed) {
         console.error(`INFO: ${scene.id} ${locale} not reviewed (reviewed=${text.reviewed}, hash ${text.reviewed_hash === currentHash ? 'matches' : 'mismatch'})`);
