@@ -66,8 +66,13 @@ HyperFrames (video only, Meilenstein B): exact pinned version in
 Classic upright layout (headline, subline, device below, centered, running off the bottom edge),
 ported from the orchestrator's approved prototype after the tilted-panorama look was rejected
 (2026-09-27 REVISE round 1). Device choice follows the store format, not the scene:
-`ios-6.9` -> iPhone-shaped screen, `play-phone` -> Android-shaped screen, `play-feature` -> no
-device (`bin/render.mjs`'s `DEVICE_BY_FORMAT`).
+`ios-6.9` -> iPhone-shaped screen, `play-phone` -> Android-shaped screen, `play-feature` -> a single
+Pixel-framed device on the right (only when the hero scene is `layout: combo`) sized off canvas
+height instead of width (`bin/render.mjs`'s `DEVICE_BY_FORMAT`, round 3).
+
+A scene with no subline and no pills gets a compact, auto-height text zone and a larger headline
+ceiling instead of the fixed 28%/30% pair (`templates/scene.html`'s `.compact-hd`, round 3): driven
+entirely by "does this scene have a subline or pills", never a specific scene id.
 
 The device frame in `templates/scene.html` is deliberately minimal for now: a rounded-corner screen
 container (`#device[data-device]`) with the project's screen PNG inside, no bezel, status bar,

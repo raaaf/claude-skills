@@ -338,9 +338,26 @@ async function renderOne({ projectRoot, config, devicesSpec, scene, format, loca
   return { sceneUrl: sceneUrlFor(params) };
 }
 
-async function renderFeatureGraphic({ projectRoot, config, format, locale }) {
+async function renderFeatureGraphic({ projectRoot, config, devicesSpec, format, locale }) {
   const heroScene = config.scenes[0];
   const params = baseParams(projectRoot, config, format, heroScene, locale);
+  // Fills play-feature's otherwise-empty right half with the hero's own
+  // front phone (Pixel-framed, config-schema.md "CLI flags" neighbor
+  // section "Devices"); a project whose hero isn't a combo scene simply
+  // gets no device here (scene.html's isLandscape branch handles absence).
+  if (heroScene.layout === 'combo') {
+    const front = buildPhoneSpec({
+      projectRoot,
+      devicesSpec,
+      deviceKind: 'android',
+      part: heroScene.combo.front,
+      locale,
+      iosColor: null,
+    });
+    params.device = 'android';
+    params.deviceSpec = deviceSpecParam(devicesSpec, 'android');
+    params.front = JSON.stringify(front);
+  }
   return { sceneUrl: sceneUrlFor(params) };
 }
 
@@ -407,7 +424,7 @@ async function main() {
 
     if (formatId === 'play-feature') {
       for (const locale of locales) {
-        const { sceneUrl } = await renderFeatureGraphic({ projectRoot, config, format, locale });
+        const { sceneUrl } = await renderFeatureGraphic({ projectRoot, config, devicesSpec, format, locale });
         const out = await shootScene(sceneUrl, format, outDirFor(locale), 'feature-graphic', chromium);
         console.log(`WROTE ${out}`);
         written.push(out);

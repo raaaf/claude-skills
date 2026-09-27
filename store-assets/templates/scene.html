@@ -7,14 +7,20 @@
   file itself never hardcodes a machine path or a project value (SKILL.md
   "Conventions").
 
-  Layout (2026-09-27 REVISE round 2, real device bezels): fixed text zone
-  (top 28% of the canvas height, headline + optional subline + optional
-  pills vertically centered inside it; the headline shrinks in 4px steps to
-  a 40px floor if it overflows), then a device (or two, `layout=combo`)
-  whose top edge is fixed at 30% of the canvas height, running off the
-  bottom edge. Device frames are real bezel PNGs + real status-bar capture
-  overlays (store-specs.md "Devices"), not CSS-drawn approximations
-  (superseded from the two earlier rounds).
+  Layout (2026-09-27 REVISE round 2, real device bezels; round 3 added the
+  compact text zone + the play-feature device): fixed text zone (top 28% of
+  the canvas height, headline + optional subline + optional pills
+  vertically centered inside it; the headline shrinks in 4px steps to a
+  40px floor if it overflows), then a device (or two, `layout=combo`) whose
+  top edge is fixed at 30% of the canvas height (26% when the text zone is
+  compact, see `.compact-hd`), running off the bottom edge. A scene with no
+  subline and no pills gets an auto-height text zone instead (`.compact-hd`)
+  and a larger headline ceiling (0.12 instead of 0.1). Device frames are
+  real bezel PNGs + real status-bar capture overlays (store-specs.md
+  "Devices"), not CSS-drawn approximations (superseded from round 1).
+  play-feature (landscape) can also show one device on the right, sized off
+  canvas height instead of width (see the `front`/`deviceSpec` handling in
+  the `isLandscape` branch).
 
   Query params:
     format, width, height     canvas selection (as before)
@@ -105,10 +111,12 @@
       /* Position + transform are always set inline by the script below (a
          single-device slot centers via translateX(-50%), a combo slot uses
          an explicit left/top instead); only transform-origin stays here,
-         since it differs by layout and never changes at render time. */
+         since it differs by layout and never changes at render time.
+         --device-top-pct: 0.30 normally, 0.26 when the text zone is
+         compact (no subline/pills, see .compact-hd below). */
       .phone-slot {
         position: absolute;
-        top: calc(var(--h) * 0.3);
+        top: calc(var(--h) * var(--device-top-pct, 0.3));
         transform-origin: top center;
         filter: drop-shadow(0 calc(var(--w) * 0.03) calc(var(--w) * 0.06) rgba(0, 0, 0, 0.35));
       }
@@ -147,9 +155,19 @@
       .device-box .mask {
         position: absolute;
       }
-      body.landscape .phone-slot,
-      body.combo.landscape .phone-slot {
-        display: none;
+      /* Compact text zone: when a scene has no subline and no pills (so
+         far only the headline-only hero combo), the fixed 28% zone leaves
+         too much empty space above the phones. Falls back to auto height
+         (fits just the headline) and lets the headline grow past its
+         normal 0.1 factor, up to 0.12 (both set via JS, never hardcoded to
+         a specific scene id -- see the "no subline && no pills" check
+         below). */
+      body.compact-hd #hd {
+        height: auto;
+        padding-bottom: calc(var(--h) * 0.02);
+      }
+      body.compact-hd #headline {
+        font-size: calc(var(--w) * 0.12);
       }
       body.landscape #hd {
         height: auto;
@@ -236,8 +254,9 @@
 
       const pill1 = get('pill1', '');
       const pill2 = get('pill2', '');
+      const hasPills = Boolean(pill1 || pill2);
       const pillsEl = document.getElementById('pills');
-      if (pill1 || pill2) {
+      if (hasPills) {
         for (const text of [pill1, pill2]) {
           if (!text) continue;
           const span = document.createElement('span');
@@ -249,18 +268,22 @@
         pillsEl.remove();
       }
 
-      if (isLandscape) {
-        document.getElementById('logo').src = get('logoSrc', '');
-        document.getElementById('logo').style.display = 'block';
-        document.getElementById('devices').remove();
-      } else {
-        // Builds one phone's DOM: bezel + screen (screenshot, sampled-color
-        // backfill strip, real status-bar overlay) + optional mask overlay
-        // (Android's corners+punch-hole). Stack order per store-specs.md
-        // "Devices": iPhone paints the screen first then the bezel on top
-        // (screen_over_bezel); Android paints the bezel first, the screen
-        // on top, then the mask on top of that.
-        function buildDeviceBox(spec, deviceKind, deviceSpec) {
+      // Compact text zone (no events-specific values, only "does this scene
+      // have a subline or pills"): a headline-only scene starts the phones
+      // 4 percentage points higher, since the fixed 28%/30% pair was tuned
+      // for a headline+subline+optional-pills block.
+      const isCompact = !isLandscape && !subline && !hasPills;
+      if (isCompact) document.body.classList.add('compact-hd');
+      const devicePct = isCompact ? 0.26 : 0.3;
+      document.documentElement.style.setProperty('--device-top-pct', devicePct);
+
+      // Builds one phone's DOM: bezel + screen (screenshot, sampled-color
+      // backfill strip, real status-bar overlay) + optional mask overlay
+      // (Android's corners+punch-hole). Stack order per store-specs.md
+      // "Devices": iPhone paints the screen first then the bezel on top
+      // (screen_over_bezel); Android paints the bezel first, the screen
+      // on top, then the mask on top of that.
+      function buildDeviceBox(spec, deviceKind, deviceSpec) {
           const box = document.createElement('div');
           box.className = 'device-box';
           box.style.width = deviceSpec.w + 'px';
@@ -321,54 +344,74 @@
           return box;
         }
 
-        const device = get('device', 'iphone');
-        const deviceSpec = getJSON('deviceSpec');
-        const devicesEl = document.getElementById('devices');
+      const device = get('device', 'iphone');
+      const deviceSpec = getJSON('deviceSpec');
+      const devicesEl = document.getElementById('devices');
 
-        if (layout === 'combo') {
-          // Fixed compositional constants for the two-phone hero (not a
-          // brand value: purely how this one layout is art-directed).
-          // Order matters: back appended first (painted behind), front
-          // second (painted on top), matching the approved prototype.
-          const comboWidthPct = 64;
-          const back = getJSON('back');
-          const front = getJSON('front');
-          const scale = width * (comboWidthPct / 100) / deviceSpec.w;
-
-          const backSlot = document.createElement('div');
-          backSlot.className = 'phone-slot';
-          backSlot.style.setProperty('--device-scale', scale);
-          backSlot.style.left = width * 0.42 + 'px';
-          backSlot.style.top = height * 0.3 + height * 0.059 + 'px';
-          backSlot.style.transform = `scale(${scale}) rotate(7deg)`;
-          backSlot.appendChild(buildDeviceBox(back, device, deviceSpec));
-
-          const frontSlot = document.createElement('div');
-          frontSlot.className = 'phone-slot';
-          frontSlot.style.left = width * -0.04 + 'px';
-          frontSlot.style.top = height * 0.3 + 'px';
-          frontSlot.style.transform = `scale(${scale}) rotate(-5deg)`;
-          frontSlot.appendChild(buildDeviceBox(front, device, deviceSpec));
-
-          devicesEl.appendChild(backSlot);
-          devicesEl.appendChild(frontSlot);
-        } else {
-          const single = {
-            screenSrc: get('screenSrc', ''),
-            cropTopPx: Number(get('cropTopPx', 0)),
-            topColor: get('topColor', '#000000'),
-            bezelSrc: get('bezelSrc', ''),
-            statusBarSrc: get('statusBarSrc', ''),
-            maskSrc: get('maskSrc', '') || null,
-          };
-          const scale = (width * (deviceSpec.widthPct / 100)) / deviceSpec.w;
+      if (isLandscape) {
+        document.getElementById('logo').src = get('logoSrc', '');
+        document.getElementById('logo').style.display = 'block';
+        // play-feature's right half is otherwise empty: an optional single
+        // device (the hero's front phone, Pixel-framed) sized off canvas
+        // height, cropped off the bottom, tucked to the right edge. Only
+        // rendered when bin/render.mjs actually supplies one (a project
+        // without a combo hero simply gets no device here, same as before).
+        const front = getJSON('front');
+        if (front && deviceSpec) {
+          const scale = (height * 1.2) / deviceSpec.h;
           const slot = document.createElement('div');
           slot.className = 'phone-slot';
-          slot.style.left = '50%';
-          slot.style.transform = `translateX(-50%) scale(${scale})`;
-          slot.appendChild(buildDeviceBox(single, device, deviceSpec));
+          slot.style.right = 'calc(var(--w) * -0.08)';
+          slot.style.top = height * 0.18 + 'px';
+          slot.style.transformOrigin = 'top right';
+          slot.style.transform = `scale(${scale}) rotate(-6deg)`;
+          slot.appendChild(buildDeviceBox(front, device, deviceSpec));
           devicesEl.appendChild(slot);
+        } else {
+          devicesEl.remove();
         }
+      } else if (layout === 'combo') {
+        // Fixed compositional constants for the two-phone hero (not a
+        // brand value: purely how this one layout is art-directed).
+        // Order matters: back appended first (painted behind), front
+        // second (painted on top), matching the approved prototype.
+        const comboWidthPct = 64;
+        const back = getJSON('back');
+        const front = getJSON('front');
+        const scale = width * (comboWidthPct / 100) / deviceSpec.w;
+
+        const backSlot = document.createElement('div');
+        backSlot.className = 'phone-slot';
+        backSlot.style.left = width * 0.42 + 'px';
+        backSlot.style.top = height * devicePct + height * 0.059 + 'px';
+        backSlot.style.transform = `scale(${scale}) rotate(7deg)`;
+        backSlot.appendChild(buildDeviceBox(back, device, deviceSpec));
+
+        const frontSlot = document.createElement('div');
+        frontSlot.className = 'phone-slot';
+        frontSlot.style.left = width * -0.04 + 'px';
+        frontSlot.style.top = height * devicePct + 'px';
+        frontSlot.style.transform = `scale(${scale}) rotate(-5deg)`;
+        frontSlot.appendChild(buildDeviceBox(front, device, deviceSpec));
+
+        devicesEl.appendChild(backSlot);
+        devicesEl.appendChild(frontSlot);
+      } else {
+        const single = {
+          screenSrc: get('screenSrc', ''),
+          cropTopPx: Number(get('cropTopPx', 0)),
+          topColor: get('topColor', '#000000'),
+          bezelSrc: get('bezelSrc', ''),
+          statusBarSrc: get('statusBarSrc', ''),
+          maskSrc: get('maskSrc', '') || null,
+        };
+        const scale = (width * (deviceSpec.widthPct / 100)) / deviceSpec.w;
+        const slot = document.createElement('div');
+        slot.className = 'phone-slot';
+        slot.style.left = '50%';
+        slot.style.transform = `translateX(-50%) scale(${scale})`;
+        slot.appendChild(buildDeviceBox(single, device, deviceSpec));
+        devicesEl.appendChild(slot);
       }
 
       // Render readiness contract for bin/render.mjs: fonts must be the
