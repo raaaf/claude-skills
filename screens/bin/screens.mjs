@@ -8,8 +8,7 @@
 // Subcommands: plan, up, down, promote, marketing, index, trust, affected.
 // Each subcommand emits `KEY=value` lines and, from the second-to-last
 // point on, one final `SCREENS_RESULT=OK|SKIP (reason)|FAIL (reason)`-style
-// result line per the bin output contract (audit/bin/capture-screens.sh
-// header): environment gaps are SKIP, safety guard failures are FAIL, both
+// result line per the audit/bin output contract: environment gaps are SKIP, safety guard failures are FAIL, both
 // exit 0 so the calling skill can branch on the text instead of the exit
 // code. Every function below is exported so screens.test.mjs can call it
 // directly (in particular the Laravel/Bun DB guards, which take an
@@ -2706,7 +2705,8 @@ function cmdTrust(args, root = process.cwd()) {
 }
 
 // ---------------------------------------------------------------------
-// affected: used by /delegate Phase 3.5/5 (plan step 11, later stage)
+// affected: catalog ids touched by a set of files (no caller since
+// /delegate dropped screenshots on 2026-09-28)
 // ---------------------------------------------------------------------
 
 function affectedIds(manifest, config, files) {

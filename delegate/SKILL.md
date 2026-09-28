@@ -13,7 +13,7 @@ allowed-tools:
   - TodoWrite
   - AskUserQuestion
   - SendMessage
-  - SendUserFile
+  - ToolSearch
 ---
 
 # Delegate: Analysis (expensive) → Implementation (Sonnet) → Review (expensive)
@@ -48,7 +48,7 @@ orch_run_log --start --skill delegate
 
 ## Phase 1: Analysis (orchestrator, expensive)
 
-- Translate the task into a verifiable goal ("add validation" → "one test per invalid-input branch, then green"; "wire up UI" → "screenshot proof, no test"). Tests follow CLAUDE.md §6: required for bugfix repro and new branching logic, never for rendering, wiring, getters or mock-call checks. Zero new tests is a valid spec.
+- Translate the task into a verifiable goal ("add validation" → "one test per invalid-input branch, then green"; "wire up UI" → "live walkthrough, no test"). Tests follow CLAUDE.md §6: required for bugfix repro and new branching logic, never for rendering, wiring, getters or mock-call checks. Zero new tests is a valid spec.
 - Targeted codebase scan: read affected files, **grep every identifier to be changed repo-wide** (parallel implementations, wizard duplicates — never assume there's only one spot).
 - Identify conventions + an exemplar file (components instead of raw HTML, error pattern, test style).
 - Determine the repo's verification commands (test runner, linter, typecheck) — do NOT guess, read from package.json/composer.json/CI. Only diff-scoped tests, never the full suite.
@@ -76,72 +76,6 @@ Inline (no file), executor-ready — the executor does not know this session:
 **Done criteria (all):** {test command → exit 0; new tests only where a step names one, 0 is a valid count; lint/typecheck → exit 0; git status: only affected files}
 **STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
 ```
-
-## Phase 3.5: Before-screenshot (visual tasks only)
-
-Only when the mini-spec's affected files contain a frontend file (`FRONTEND_EXT_RE` in
-`audit/bin/lib-git-base.sh` is the repo's single definition of that) or the task names a screen,
-page or component. Everything else skips this phase silently.
-
-The before-image can only be taken here, before the executor touches anything. That is the whole
-reason this is its own phase and not part of the review.
-
-**Screens catalog first, when the repo has one.** Before resolving a target the old way, check for
-`.screens/config.json`:
-
-```bash
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-SCREENS_BIN="$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/screens/bin/screens.mjs"
-[ -f "$SCREENS_BIN" ] || SCREENS_BIN="$HOME/.claude/skills/screens/bin/screens.mjs"
-SCREENS_AFFECTED_IDS=""
-if [ -f ".screens/config.json" ] && [ -f "$SCREENS_BIN" ]; then
-  SCREENS_AFFECTED_IDS=$(node "$SCREENS_BIN" affected --files {mini-spec affected files, space-separated} \
-    | sed -n 's/^AFFECTED_ID //p')
-fi
-orch_state_save SCREENS_BIN SCREENS_AFFECTED_IDS
-```
-
-No `.screens/config.json`, or it returns no ids: fall through to the target order below, unchanged.
-One or more ids: run `node "$SCREENS_BIN" plan`, keep only the `PLAN_ENTRY <id> <status>` lines
-whose id is in `SCREENS_AFFECTED_IDS` and whose status is not `unchanged`, then capture just those
-through the same `up -> driver -> promote -> down` sequence `screens/SKILL.md` Phase 5 documents
-(scoped to the platform(s) those ids belong to, and on the driver step to just these ids via that
-platform's own per-entry filter, e.g. `--grep` on web) so "before" reflects HEAD. `promote` writes
-into the project's resolved central catalog (`config.output_dir`, else
-`~/Developer/screens/<project>/`, never `<project>/screenshots/` -- `screens/references/config-schema.md`
-"Output root"), so resolve that root first, then copy from it:
-
-```bash
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_state_load   # SCREENS_BIN from the block above
-SCREENS_OUTPUT_ROOT=$(node -e "import('$SCREENS_BIN').then((m) => { const c = m.readJson('.screens/config.json', {}); console.log(m.ensureProjectConfigured(process.cwd(), c).outputRoot); })")
-orch_state_save SCREENS_OUTPUT_ROOT
-```
-
-Copy the resulting catalog PNGs
-(`$SCREENS_OUTPUT_ROOT/<platform>/<device-class>/<area>/<view>/<state>__<role>__<theme>.png`) into
-`.claude/screenshots/before/` at the same relative path, then skip straight to Phase 4 (no
-`capture-screens.sh` target to resolve).
-
-Otherwise, resolve a target, in this order, and skip the phase when none resolves. Never guess a
-URL: a screenshot of a connection error looks like a result.
-
-1. A URL the user named in the task.
-2. `.claude/launch.json` in the repo: a configuration's `url`, else `http://localhost:<port>`.
-   Start the server first if nothing is serving; leave it running for Phase 5.
-3. iOS: a booted simulator, under Simulator.app or Xcode 27's Device Hub alike (the script checks via `simctl`; it skips when there is none). Physical devices are not captured.
-
-```bash
-for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
-SCREEN_NAME="{slug for the screen, e.g. settings}"; CAPTURE_TARGET="{--url http://localhost:PORT/path | --ios}"
-[ -n "$CAPTURE" ] && bash "$CAPTURE" --label before $CAPTURE_TARGET --name "$SCREEN_NAME"
-orch_state_save SCREEN_NAME CAPTURE_TARGET   # Phase 5 captures the same thing
-```
-
-Phase 5 reads `SCREEN_NAME` and `CAPTURE_TARGET` back from the state, so the after-image is of the
-same screen. A `CAPTURE_RESULT=SKIP` is not a failure and never blocks the task: say one line why,
-and continue without an after-image, rather than pretending a comparison exists.
 
 ## Phase 4: Dispatch the executor (Sonnet)
 
@@ -177,32 +111,6 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the target line of every new test (invert it, the test must go red; a happy-path test stays green while the new branch ships untested). A test that only asserts mock calls, mounts a component, or has no assertion = fail.
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 
-6. **After-screenshot.** When Phase 3.5's before set came from `/screens` (`SCREENS_AFFECTED_IDS`
-   saved): rerun the same ids through `plan -> up -> driver -> promote -> down` (same scoped
-   sequence as Phase 3.5), copy the catalog PNGs from `$SCREENS_OUTPUT_ROOT` (same resolved root
-   Phase 3.5 saved) into `.claude/screenshots/after/` at the same relative path, and for each
-   before/after pair say what changed visually in one or two sentences.
-   `promote`'s own `PROMOTE_ENTRY <id> <combo> new|changed|unchanged|tolerated|drift` lines are the
-   verdict (`screens/SKILL.md` Phase 8), not a raw sha256 compare: a combo reported `unchanged` OR
-   `tolerated` (the ImageMagick fuzz-tolerance match, same rendering-jitter tolerance `promote` itself
-   applies) is listed as "unchanged" in the report (Phase 6) instead of attached; `new`/`changed`/
-   `drift` attach. Otherwise, when Phase 3.5 captured a before-image via `capture-screens.sh`: rerun the
-   same command with `--label after` and the same `--name`, against the same target, and describe
-   the visual difference the same way; a pair of images with no reading of them is decoration. If
-   the before-image was skipped, do not capture an after-image either: a single picture invites a
-   comparison the run cannot make.
-
-   ```bash
-   for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-   orch_state_load   # SCREEN_NAME, CAPTURE_TARGET, SCREENS_BIN, SCREENS_AFFECTED_IDS, SCREENS_OUTPUT_ROOT from Phase 3.5
-   if [ -n "${SCREENS_AFFECTED_IDS:-}" ]; then
-     node "$SCREENS_BIN" plan   # PLAN_ENTRY lines for the same ids drive the same scoped up -> driver -> promote -> down as Phase 3.5, then copy from $SCREENS_OUTPUT_ROOT into .claude/screenshots/after/
-   else
-     CAPTURE=$(orch_helper capture-screens.sh) || CAPTURE=""
-     [ -n "$CAPTURE" ] && [ -n "${SCREEN_NAME:-}" ] && bash "$CAPTURE" --label after $CAPTURE_TARGET --name "$SCREEN_NAME"
-   fi
-   ```
-
 **Verdict:**
 
 | Verdict | Action |
@@ -219,7 +127,30 @@ orch_run_log --skill delegate --outcome "{APPROVE|BLOCK}" \
   --counts "revision_rounds={N}"
 ```
 
-## Phase 6: Result report
+## Phase 6: Live walkthrough (visual tasks only)
+
+Only for visual tasks (the mini-spec's affected files contain a frontend file, or the task names a
+screen, page or component) and only after the verdict is APPROVE. Non-visual tasks skip this phase
+silently, no note in the report.
+
+Load the needed tools via `ToolSearch` in one batch before starting: for a web project,
+`mcp__claude-in-chrome__*` (`tabs_context_mcp`, `tabs_create_mcp`, `navigate`, `computer`,
+`read_page`); for an iOS project, `mcp__Claude_Code_iOS_Simulator__control`.
+
+- **Web:** start the dev server via the project's own mechanism (`.claude/launch.json` or the
+  project's run command) if nothing is serving, and confirm the URL responds before opening a tab.
+- **iOS:** `attach` to the booted simulator, then navigate via `open_url`/`tap`.
+
+Step by step, one completed item at a time, with the user's approval before moving to the next:
+
+1. Open one tab (web) or navigate to the screen (iOS) for that item.
+2. Say in one sentence what changed and where to look.
+3. `AskUserQuestion`: "Passt" / "Passt nicht, Anmerkung".
+4. "Passt nicht" → record it as a rework item: SendMessage the concrete note to the executor as a
+   REVISE finding, re-run Phase 5's review on the fix, then resume the walkthrough at the next item.
+5. Only after the current item is answered, continue with the next.
+
+## Phase 7: Result report
 
 ```
 Delegate complete: {Title}
@@ -227,12 +158,8 @@ Verdict: APPROVE ({N} revision rounds)
 Changed: {files with 1-line what}
 Verified: {command → result, per done criterion}
 Executor NOTES: {if relevant}
-Visual: {what changed between before and after, or omit the line entirely}
+Visual: {live walkthrough outcome per item, or omit the line for non-visual tasks}
 Open: {nothing | deliberately deferred with reason}
 ```
-
-When before/after images exist, attach them with `SendUserFile` (before first, then after) so the
-user sees the change instead of reading a path. They live under `.claude/screenshots/`, which the
-script adds to `.gitignore`, so they never reach a commit.
 
 Tests red or criterion not achievable: say so honestly, never sugarcoat. Afterward normal rules apply: commit only on explicit request, /audit before push.

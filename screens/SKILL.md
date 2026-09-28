@@ -1,6 +1,6 @@
 ---
 name: screens
-description: "Builds and maintains a complete, current screenshot catalog of every view in every applicable state (data/viewport/theme/role) for a project, plus App-Store-ready marketing renders. First run discovers views via an agent and scaffolds a demo seeder + capture drivers; later runs are scripted and incremental (only new/changed views recapture). NOT for before/after capture of one change (that is /delegate, which reuses this catalog when `.screens/` exists). Use when the user runs /screens, wants a full visual inventory of the app, or needs App-Store screenshots."
+description: "Builds and maintains a complete, current screenshot catalog of every view in every applicable state (data/viewport/theme/role) for a project, plus App-Store-ready marketing renders. First run discovers views via an agent and scaffolds a demo seeder + capture drivers; later runs are scripted and incremental (only new/changed views recapture). NOT for before/after proof of one change (/delegate shows that live in Chrome or the iOS Simulator instead). Use when the user runs /screens, wants a full visual inventory of the app, or needs App-Store screenshots."
 when_to_use: "/screens, alle Screens aufnehmen, Screenshots aktualisieren, Screens-Katalog, Screenshot-Katalog, App-Store-Screenshots, App-Store-Screens erstellen"
 argument-hint: "[web|ios|android|macos] [--full]"
 model: inherit

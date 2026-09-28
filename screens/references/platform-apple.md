@@ -239,9 +239,9 @@ pre-authorized outside XCUITest (an MDM/TCC profile, or a `tccutil`/`TCC.db` gra
 
 ## Maintenance note (Xcode 27)
 
-Xcode 27 replaced Simulator.app with Device Hub; `audit/bin/capture-screens.sh:4-7` verified `xcrun
+Xcode 27 replaced Simulator.app with Device Hub; the since-removed `capture-screens.sh` verified `xcrun
 simctl` (list, boot, io screenshot) unchanged on 2026-09-16. This stage additionally verified
 `simctl create`, `simctl status_bar override`, and `simctl ui appearance` against the same Xcode 27
 toolchain (`xcrun simctl boot` does not raise Device Hub or any visible window -- confirmed with a
-booted-but-not-foregrounded device, matching the capture-screens.sh precedent). Re-verify after each
+booted-but-not-foregrounded device, matching that earlier check). Re-verify after each
 Xcode major, per the plan's Maintenance Notes.

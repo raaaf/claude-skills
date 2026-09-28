@@ -60,6 +60,11 @@
 #   orch_ship_value <key> [root]   prints `<key>:` from .claude/ship.md (test-command, deploy-command, health-check), else nothing (rc 1)
 #   orch_test_command_declared [root]   = orch_ship_value test-command
 #   orch_test_command [root]  declared value, else a manifest guess (composer/npm/swift/pytest), else nothing (rc 1)
+#   orch_unaudited_record   records the base a quick-fix /ship run's unpushed commits sit on (the
+#                           oldest one wins: a no-op once the file exists), so several quick fixes
+#                           collect into one /audit later
+#   orch_unaudited_base     prints the recorded base sha, else nothing (rc 1)
+#   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
@@ -288,6 +293,47 @@ orch_ship_value() {
   v=$(sed -n "s/^${key}:[[:space:]]*//p" "$root/.claude/ship.md" 2>/dev/null | head -1 | sed 's/[[:space:]]*$//')
   [ -n "$v" ] || return 1
   printf '%s' "$v"
+}
+
+# Where the collected-quick-fix base lives: under the git common dir (shared by
+# every worktree, same reasoning as audit_store_root in lib-git-base.sh), never
+# under /tmp (that's the marker/state family, keyed to cwd, cleared per run).
+orch__unaudited_path() {
+  local common
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  printf '%s/claude-unaudited-base' "$common"
+}
+
+# Records the base a quick-fix /ship run's unpushed commits sit on: @{u} when
+# the branch has an upstream, else the merge-base with the default branch
+# (same derivation lib-git-base.sh's resolve_base_ref uses). Only writes when
+# the file does not exist yet, so the OLDEST base wins and several quick fixes
+# in a row collect into one /audit later instead of each overwriting the last.
+orch_unaudited_record() {
+  local f base db
+  f=$(orch__unaudited_path) || return 1
+  [ -f "$f" ] && return 0
+  base=$(git rev-parse --verify '@{u}' 2>/dev/null) || {
+    local lib="${AUDIT_BIN:-$HOME/.claude/skills/audit/bin}/lib-git-base.sh"
+    # shellcheck disable=SC1090
+    [ -f "$lib" ] && . "$lib"
+    command -v resolve_default_branch >/dev/null 2>&1 || return 1
+    db=$(resolve_default_branch)
+    base=$(resolve_base_ref "$db")
+  }
+  [ -n "$base" ] || return 1
+  printf '%s\n' "$base" > "$f"
+}
+
+orch_unaudited_base() {
+  local f; f=$(orch__unaudited_path) || return 1
+  [ -f "$f" ] || return 1
+  head -1 "$f"
+}
+
+orch_unaudited_clear() {
+  local f; f=$(orch__unaudited_path) || return 0
+  rm -f "$f"
 }
 
 orch_test_command_declared() { orch_ship_value test-command "${1:-}"; }

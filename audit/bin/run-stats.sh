@@ -106,15 +106,16 @@ case "$COMMON" in */.git) ROOT="${COMMON%/.git}" ;; esac
 # here because it is not the literal "passed" (learning 2026-08-28: 17 gated
 # runs, all "passed", while the gate had in fact blocked-and-rerun several
 # times without leaving a trace in the ledger).
-# Entries with no .gate logged at all (empty string) are not counted as
-# evidence either way. The minimum exists because the 08-26 calibration saw
+# Entries with no .gate logged at all (empty string), and /ship's "skipped"
+# (quick-fix mode chosen before the gate ran), are not counted as evidence
+# either way: the gate never evaluated anything in those runs. The minimum exists because the 08-26 calibration saw
 # this fire on 'ship' after exactly 2 gated runs, where "never blocked" is not
 # an observation about the gate, only about the sample size.
 for sk in $GATE_SKILLS; do
   if [ -n "$SKILL_FILTER" ] && [ "$SKILL_FILTER" != "$sk" ]; then
     continue
   fi
-  GATED=$(printf '%s' "$ALL_JSON" | jq -c --arg sk "$sk" '[.[] | select(.skill == $sk) | select((.gate // "") != "")]')
+  GATED=$(printf '%s' "$ALL_JSON" | jq -c --arg sk "$sk" '[.[] | select(.skill == $sk) | select((.gate // "") != "" and .gate != "skipped")]')
   N_GATED=$(printf '%s' "$GATED" | jq 'length')
   [ "$N_GATED" -ge "$GATE_MIN_RUNS" ] || continue
   ALL_PASSED=$(printf '%s' "$GATED" | jq '[.[].gate] | all(. == "passed")')

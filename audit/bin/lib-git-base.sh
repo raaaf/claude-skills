@@ -150,7 +150,7 @@ hash_of() {
   fi
 }
 
-# Shared with cache-write.sh, patterns-store.sh and capture-screens.sh: add
+# Shared with cache-write.sh and patterns-store.sh: add
 # rel_path to repo_root/.gitignore, but only when it would actually change
 # something. Skips a no-op mutation on a tracked file (a .gitignore entry
 # cannot un-track it) and a redundant append when a broader rule already

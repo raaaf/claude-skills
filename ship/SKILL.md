@@ -24,7 +24,8 @@ allowed-tools:
 # Ship
 
 Docs -> Commit -> Audit -> Tests -> Push -> Deploy -> Verify. In that order. No skipping.
-(The test phase runs only when the project sets `test-command:` in `.claude/ship.md`.)
+(The test phase runs only when the project sets `test-command:` in `.claude/ship.md`. The audit
+phase is skipped only when the user picks the quick-fix mode in Phase 0.5.)
 
 ## Phase 0: Pre-flight
 
@@ -179,9 +180,20 @@ done
 type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run log and helpers unavailable (skill continues)"
 # Run-ledger start marker — this is the true beginning of the run, before commit/audit/test/push/deploy.
 orch_run_log --start --skill ship
+UB=$(orch_unaudited_base) && echo "UNAUDITED_COUNT=$(git rev-list --count "$UB"..HEAD 2>/dev/null)"   # collected quick-fix commits (references/audit-collection.md)
 ```
 
 Every later "run the log call" below means, in a block that starts with the lib source line and `orch_state_load`: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`. Every `SHIP_*=` assignment this file names happens inside a sourced block that ends with `orch_state_save <that name>`; without that, every block read `n/a` (fresh shell per block) and the ledger recorded a gate that never fired.
+
+## Phase 0.5: Audit Mode
+
+Ask once, before anything is committed, so the user knows up front whether this run takes minutes
+or includes a full audit. AskUserQuestion (header "Audit"):
+- "Mit Audit (Recommended)" → Phase 2 runs as written (a fresh marker from an earlier `/audit` is still accepted there); mention `UNAUDITED_COUNT` pending commits when printed above. Nothing to save.
+- "Schneller Fix, ohne Audit" → `SHIP_GATE=skipped` in a sourced block ending with `orch_state_save SHIP_GATE`. Phase 2 is skipped. The secret scan in Phase 1 and the test gate in Phase 2b still run.
+
+`skipped` is a deliberate up-front choice and is logged as such; it is not `bypassed` (which stays
+reserved for declining the audit after the gate fired).
 
 ## Phase 0.8: Docs Sync
 
@@ -298,6 +310,11 @@ If commit fails (hook rejection, empty): run the log call (`outcome=commit_faile
 
 ## Phase 2: Audit Gate
 
+If Phase 0.5 set `SHIP_GATE=skipped`: print `Audit skipped (quick-fix mode chosen in Phase 0.5).`
+and go straight to Phase 2b. Do not run the block below, it would overwrite the saved value.
+Phase 3's `git push` then triggers the push-guard hook's permission prompt (no fresh marker); that
+prompt is expected in this mode.
+
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 MARKER="/tmp/claude-audit-passed-$(orch_hash_passed)"   # passed-family hash (no trailing newline), lib-orchestrator.sh
@@ -356,8 +373,9 @@ bypass.
 
 ## Phase 3: Push
 
+Quick-fix mode records the unaudited base before pushing, so commits stay findable for a later `/audit` (`references/audit-collection.md`):
 ```bash
-git push
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done; orch_state_load; [ "$SHIP_GATE" = "skipped" ] && orch_unaudited_record; git push   # fresh shell per block; SHIP_GATE
 ```
 
 If push fails:
@@ -431,6 +449,14 @@ else
 fi
 ```
 
+## Phase 5.5: Audit Collection
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done; orch_state_load; [ "$SHIP_GATE" = "skipped" ] && COLLECTED_BASE=$(orch_unaudited_base) && echo "COLLECTED_COUNT=$(git rev-list --count "$COLLECTED_BASE"..HEAD 2>/dev/null)"   # fresh shell per block; SHIP_GATE
+```
+Only in quick-fix mode, AskUserQuestion (header "Audit") when `$SHIP_GATE` is `skipped` (detail: `references/audit-collection.md`):
+- "Sammeln, später auditieren (Recommended)" → keep the base; Summary reports the collected count.
+- "Jetzt nachträglich auditieren" → invoke `/audit` with `AUDIT_BASE_REF=$COLLECTED_BASE`; its fixes need their own `/ship`.
+
 ## Phase 6: Failure Handling
 
 If `CI_STATUS` is not `success` for a `ci` deploy: run the log call (`outcome=deploy_failed`), report the run URL, stop.
@@ -465,6 +491,7 @@ Shipped.
 
 Docs:     {n files updated, listed / "none needed"}
 Commit:   {short SHA} {message}
+Audit:    {passed / passed after rerun / skipped (quick fix) / skipped, collected (N commits pending) / audited retroactively / bypassed}
 Push:     origin/{branch}
 Deploy:   {command or "CI/CD triggered" or "skipped by user"}
 Health:   {OK / FAILED / not configured}

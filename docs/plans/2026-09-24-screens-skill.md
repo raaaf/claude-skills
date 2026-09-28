@@ -1,5 +1,8 @@
 # /screens: Screenshot Catalog of Every View in Every State
 
+> **Historical note (2026-09-28):** `audit/bin/capture-screens.sh` and `/delegate`'s before/after
+> screenshot phases referenced below were removed; `/delegate` now shows changes live instead.
+
 > **Executor instruction:** Follow step by step, check each verify
 > criterion before moving on. If a STOP condition occurs: stop and
 > report, do not improvise.

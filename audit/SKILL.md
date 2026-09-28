@@ -44,6 +44,18 @@ type orch_resolve_audit_root >/dev/null 2>&1 || { echo "Abgebrochen — lib-orch
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
 orch_run_log --start --skill audit
 orch_verify_agents || { echo "Abgebrochen — fehlende Agent-Dateien."; exit 1; }
+# Quick-fix collection (ship/references/audit-collection.md): a /ship run in quick-fix mode may
+# have recorded the base its unaudited commits sit on. Consume it here, before BASE_REF resolves,
+# unless the caller already forced its own AUDIT_BASE_REF (headless/eval harness).
+if [ -z "${AUDIT_BASE_REF:-}" ] && UNAUDITED_BASE=$(orch_unaudited_base); then
+  if git merge-base --is-ancestor "$UNAUDITED_BASE" HEAD 2>/dev/null; then
+    export AUDIT_BASE_REF="$UNAUDITED_BASE"
+    echo "Including $(git rev-list --count "$UNAUDITED_BASE"..HEAD) collected quick-fix commit(s) since $(git rev-parse --short "$UNAUDITED_BASE")"
+  else
+    orch_unaudited_clear
+    echo "Collected quick-fix base $UNAUDITED_BASE is no longer an ancestor of HEAD (rebased away); cleared."
+  fi
+fi
 SCOPE_OUT="$(bash "$AUDIT_BIN/collect-scope.sh")"
 BASE_REF=$(printf '%s\n' "$SCOPE_OUT" | sed -n 's/^BASE_REF=//p')
 ALLE_DATEIEN=$(printf '%s\n' "$SCOPE_OUT" | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p;}')
@@ -414,6 +426,9 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 # orchestrator substitutes the {N_...} placeholders with the counts it derived from the find.js
 # JSON before running this block, same convention as the COUNTS line above.
 orch_marker_write "{N_SELECTED}" "{N_SKIPPED}" "{N_INCOMPLETE}" "{N_DEGRADED}"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
+# The fresh marker's own tree binding now certifies this range; the quick-fix collection file
+# (ship/references/audit-collection.md) has nothing left to add, whether or not it was used above.
+orch_unaudited_clear
 ```
 
 Release the in-progress marker, unconditionally (the block above only runs when the gate passed):
