@@ -16,6 +16,7 @@ When a diff touches wizard steps, config files, or the DB schema, the surroundin
 | Schema / migration (column, table, enum, index) | `CLAUDE.md` (schema notes, CSV/export column contracts), `FEATURE_AUDIT.md` (field inventory), seeders/factories that reference the column |
 | Route or page added/removed | `docs/manual-test-plan.md` (affected flows), sitemap/footer navigation, feature tests that enumerate routes |
 | Tests added/removed (incl. by fix agents mid-audit) | Every numeric "N Tests" claim in `README.md`/`CLAUDE.md` — `bin/check-test-count-drift.sh` flags candidates; confirm against the actual test-run output, not the source count |
+| Any run, no trigger needed | Compare every numeric "N Tests" claim with the suite count of this run's own full test run. The claim drifts whenever any earlier change added a test without touching the doc, so a diff-based trigger misses it (3x in one project, 2026-09-29) |
 
 ## Rules
 

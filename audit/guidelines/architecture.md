@@ -450,3 +450,7 @@ Adding a field to a model, DTO or catalog record is not done when the model comp
 - **No `env()` outside `config/*.php`** (Laravel) and no direct environment reads outside the config layer in other stacks: config caching makes `env()` return null at runtime, and scattered reads make the value set unauditable. Read from `config()`.
 - **External API clients are centralized:** one client class per provider with base URL, headers, timeout, retry policy and endpoint/model names from config; call sites never build HTTP requests or headers themselves.
 - **Notifications and other best-effort side effects are isolated from the user action:** wrap `Notification::send`/mail/push calls inside a service in `try/catch` + `report($e)` so a provider outage cannot abort a save, a checkout or a signup. A user action that fails because a notification failed is a finding (2026-06-11).
+
+## XXVI. The Third Provider Integration Extracts the Shared Parts
+
+When a diff adds another external provider next to two or more existing ones of the same kind (fulfillment, payment, shipping), check whether its webhook controller, idempotency recording, auth/signature guard and test fixture helpers repeat what the siblings already do. Two copies are tolerable (Section I), the third is the moment to extract a shared base, trait or test helper, before the new copy ships. Recurring 2x in one project (2026-09-25, 2026-09-29). Confidence: third near-verbatim copy in the diff -> Important.
