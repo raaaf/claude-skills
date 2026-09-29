@@ -214,6 +214,22 @@ function hasOwnedChange(result) {
     result.fix.files.length === 1 && result.fix.files[0] === result.file;
 }
 
+// A report whose `files`/`diff_summary` look like leftover placeholder text ("test.php", "test",
+// "file.php", "example", ...) rather than the real assignment is a malformed report, not an
+// ordinary not-owned multi-file edit: the two look identical to hasOwnedChange but need different
+// orchestrator attention (learning-log 2026, second occurrence of a malformed report obscuring an
+// otherwise-correct fix). Flag it distinctly in the log instead of letting it fall silently into
+// the same `uncovered` bucket as a genuine scope violation.
+const PLACEHOLDER_RE = /^(test|file|example|foo|placeholder)(\.\w+)?$/i;
+function looksLikeMalformedReport(result) {
+  if (!result.fix) return false;
+  const files = Array.isArray(result.fix.files) ? result.fix.files : [];
+  const summary = typeof result.fix.diff_summary === 'string' ? result.fix.diff_summary.trim() : '';
+  const hasPlaceholderFile = files.some((f) => PLACEHOLDER_RE.test(String(f).split('/').pop()));
+  const hasPlaceholderSummary = PLACEHOLDER_RE.test(summary);
+  return hasPlaceholderFile || hasPlaceholderSummary;
+}
+
 // Every finding id in a file's assignment must resolve to exactly one outcome: FIXED, DISCARDED
 // with a non-blank reason, or it counts as unresolved (a fixer that returned FAILED, or omitted
 // the id entirely, or returned DISCARDED with no reason). Severity plays no part here on purpose
@@ -276,6 +292,13 @@ for (const result of fixResults) {
       classified.discarded.length === result.findings.length;
     result.status = (verifiedComplete || noChangeAllDiscarded) && classified.unresolved.length === 0 ? 'complete' : 'incomplete';
     if (result.status === 'incomplete') {
+      if (!verifiedComplete && !noChangeAllDiscarded && looksLikeMalformedReport(result)) {
+        // Placeholder-looking files/diff_summary ("test.php", "test", ...) mean the report itself
+        // is suspect, not necessarily that the fix is missing or out of scope: a distinct log line
+        // tells the orchestrator to read the fixer's actual tool-call history before treating this
+        // the same as an ordinary not-owned or unresolved finding.
+        log(`fix.js: MALFORMED_REPORT ${result.file}, files/diff_summary look like placeholder text, review before treating as uncovered`);
+      }
       uncovered.push(`fix:${result.file}`);
       for (const id of classified.unresolved) uncovered.push(`outcome:${id}`);
     }

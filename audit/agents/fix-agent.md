@@ -312,6 +312,16 @@ Cache key fixes must keep the setter AND the clear path consistent:
    ```
    Every set key needs a matching clear path and vice versa.
 
+## Special case: new Eloquent scope combining with where/whereIn chains
+
+When introducing a new Eloquent scope method whose body combines with an existing `where`/`whereIn`
+chain at the call site, wrap any `orWhere` inside it in a closure by default
+(`->where(fn ($q) => $q->orWhere(...))`), not a bare `->orWhere(...)`. A bare `orWhere` breaks out
+of the surrounding query's boolean grouping and silently widens or narrows unrelated conditions
+added later in the chain. Before writing the new scope, check whether a sibling scope in the same
+model already solves the same combining problem (e.g. a `quotes()`-style scope) and mirror its
+pattern instead of inventing a new one.
+
 ## Special case: Copying component classes onto raw elements
 
 If a fix transfers utility classes from an existing component onto a raw element, MANDATORY: read the source component in full before adopting classes. Classes often carry companion markup:
