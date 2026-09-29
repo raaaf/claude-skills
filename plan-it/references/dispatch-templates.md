@@ -162,6 +162,9 @@ Agent(
     - Preview/mockup resolutions: when a round was decided by picking a preview or mockup, diff the details it implies against every earlier separate answer. A chosen mockup silently overrides answers it contradicts.
     - CLAUDE.md invariants: does the plan violate a rule from the global or project CLAUDE.md (model choice per task type, e.g. opus for complex security analysis; guideline scoping to nested CLAUDE.md files)? Name the rule.
     - Non-functional requirements checked: logging strategy, telemetry, accessibility, simulator vs production differences?
+    - Foreign repos: if the plan points at another repo (a shared package, a separate service, an
+      imported theme-hub-style project), open its test suite and data model there, not just the repo
+      being planned in — a mismatch on the far side lands on the executor otherwise.
 
     At the end: an overall verdict in ONE sentence.
     If changes are recommended: at most 3 concrete suggestions.",

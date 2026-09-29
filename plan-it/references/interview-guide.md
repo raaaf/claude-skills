@@ -66,6 +66,15 @@ Do both {A} and {B} stay around, or is one of them going away?
 → My assessment: {based on cutover plans, migration commands, deprecation markers in the codebase}
 ```
 
+## Number-Reduction Check
+
+When an AskUserQuestion would reduce a count ("four roles down to one", "three channels down to one"),
+check first whether the count itself is a symptom of something else (e.g. duplicate definitions that
+need reconciling) or the thing the plan is actually deciding. If it's a symptom, the question offers a
+false premise the user has no way to challenge, and the answer they give inherits that premise, not
+the underlying issue. Evidence: 2026-08-10, "reduce to one role" was accepted, and the challenge round
+then showed the four filled-surface cases were real and irreducible, not a naming accident.
+
 ## Mandatory Questions (Red Flags)
 
 Two questions get skipped or deferred over and over, and both cost a whole extra round later. Ask them in round 1 or 2, never later.
