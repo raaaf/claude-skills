@@ -15,6 +15,8 @@ allowed-tools:
   - Edit
   - TodoWrite
   - AskUserQuestion
+  - ToolSearch
+  - mcp__ccd_view__show_pane
 ---
 
 # /plan-it — Iterative Plan Builder
@@ -223,7 +225,7 @@ Filename: `{YYYY-MM-DD}-{slug}.md`. Plan format template in `references/plan-tem
 
 ### Iteration
 
-1. Show plan v1 to the user
+1. Show plan v1 to the user before asking anything. The AskUserQuestion dialog covers the chat, so a plan that exists only on disk is unreadable at question time. Open the written file: in the Claude desktop app call `mcp__ccd_view__show_pane` with `pane: "file"` and the plan's absolute path (load it via ToolSearch if deferred); if that tool is absent or reports no open window, run `open "<plan path>"` (macOS default Markdown viewer). Repeat after every revision so the user always reads the current version.
 2. Feedback via AskUserQuestion: "Is the direction right? What's missing or off?"
 3. Incorporate → v2
 4. Repeat until the user is satisfied
