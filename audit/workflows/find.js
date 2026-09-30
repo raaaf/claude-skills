@@ -210,6 +210,14 @@ function leadBudgetClause(agentType) {
     `cat/sed/grep chains.`;
 }
 
+// Effort cap for security-auditor dispatches. Its frontmatter says effort max, which stays for
+// standalone security audits. Measured 2026-09-30 after it went medium -> max on 2026-09-26:
+// in this pipeline, context per call doubled (101k -> 192k), calls/day rose 1.8x, and the three
+// security-auditor dimensions reached 48% of find cost. Other specialists inherit frontmatter.
+function specialistEffort(agentType) {
+  return agentType === 'security-auditor' ? { effort: 'high' } : {};
+}
+
 // HUNK SCOPE: on a LARGE/HUGE diff (audit/bin/diff-size-gate.sh, wired in SKILL.md Phase 1/2),
 // the orchestrator passes hunkScope:true + baseRef so specialists stop reviewing whole files.
 // Evidence for this (learning-log 2026-09-25, events repo): three audits in a row reported
@@ -613,7 +621,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
       `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause + leadBudgetClause(agentType) + hunkClause +
       (ctx.projectGuidelines ? `\nPROJECT_GUIDELINES (the audited repo's .claude/audit-guidelines.md, precedence over MATCHED_GUIDELINES):\n${ctx.projectGuidelines}` : ''),
-      { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
+      { agentType, model: 'sonnet', ...specialistEffort(agentType), schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
     if (warnIfNull(logFn, result, `${dimension}: specialist for chunk ${i} returned null`)) return null;
     return result;

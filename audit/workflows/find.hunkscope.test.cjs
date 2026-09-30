@@ -119,3 +119,18 @@ test('hunkScope on: the verifier prompt carries the clause so it can refute an o
   assert.ok(seenVerifierPrompt.includes('HUNK SCOPE'));
   assert.ok(seenVerifierPrompt.includes('REFUTE any CONFIRMED finding that is out of scope'));
 });
+
+// Effort cap for security-auditor inside /audit (2026-09-30): the agent's frontmatter says
+// effort max for standalone security audits; in the find pipeline that doubled context per call
+// (101k -> 192k) and made security/privacy/payments 48% of find cost. find.js passes effort
+// 'high' for those dispatches only; other specialists keep their frontmatter effort.
+test('security-auditor specialists run at effort high, other specialists inherit', async () => {
+  const args = baseArgs({ dimensions: ['code_quality', 'security', 'payments'] });
+  const { prompts } = await runWorkflow(args);
+  const audit = prompts.filter((p) => p.options.phase === 'Audit');
+  const sec = audit.filter((p) => p.options.agentType === 'security-auditor');
+  const other = audit.filter((p) => p.options.agentType !== 'security-auditor');
+  assert.ok(sec.length >= 2 && other.length >= 1);
+  for (const p of sec) assert.equal(p.options.effort, 'high');
+  for (const p of other) assert.equal(p.options.effort, undefined);
+});
