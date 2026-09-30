@@ -80,3 +80,28 @@ test('this test fails if the always-chunked exception is removed', () => {
   const chunks = chunkFilesForDimension('security', files20, 'SMALL');
   assert.notEqual(chunks.length, 1, 'security collapsed to one chunk on a SMALL diff');
 });
+
+// leadBudgetClause: the specialist prompt's lead budget applies to the security-auditor
+// dimensions only (2026-09-30: 79 USD in 18 security agents following leads outside the chunk).
+function loadLeadBudgetClause() {
+  const fnSrc = sliceBetween('function leadBudgetClause(agentType) {', '\n}');
+  return new Function(`${fnSrc}\nreturn leadBudgetClause;`)();
+}
+
+test('lead budget clause appears for security, privacy, payments and not for copy', () => {
+  const clause = loadLeadBudgetClause();
+  const table = sliceBetween('const DIMENSION_TABLE = [', '\n];');
+  const agentOf = new Function(`${table}\nreturn (id) => DIMENSION_TABLE.find((d) => d.id === id).agent;`)();
+  for (const dim of ['security', 'privacy', 'payments']) {
+    const text = clause(agentOf(dim));
+    assert.match(text, /at most 20 further tool calls/, dim);
+    assert.match(text, /No WebFetch, WebSearch or curl/, dim);
+    assert.match(text, /reproduction scripts/, dim);
+  }
+  assert.equal(clause(agentOf('copy')), '');
+  assert.equal(clause(agentOf('performance')), '');
+});
+
+test('specialist prompt wires the lead budget after the coverage contract', () => {
+  assert.ok(src.includes('coverageClause + leadBudgetClause(agentType) + hunkClause'));
+});

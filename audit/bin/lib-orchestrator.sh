@@ -67,6 +67,7 @@
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
+#   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
 #   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
 #
 # There are two hash conventions, deliberately two functions with two names:
@@ -373,6 +374,17 @@ orch_payments_guidelines() {
   if printf '%s\n' "$matches" | grep -q '^payments\.md'; then printf '%s' "$matches"
   else printf '%s\npayments.md\tmandatory\tscoped' "$matches"
   fi
+}
+
+# Payments trigger: changed paths that sit in the Stripe surface, test files excluded.
+# 2026-09-30 (events): tests/Pest.php, a test helper, is in STRIPE_FILES; touching it alone
+# started the payments dimension (12 agents, 41 USD, 35 findings, all in unchanged code).
+# Test paths: tests/ test/ spec/ __tests__/ segments, *Test.php, *.test.*, *.spec.*.
+orch_payments_touched() {
+  local changed="$1" stripe="$2"
+  comm -12 \
+    <(printf '%s\n' "$changed" | grep -Ev '(^|/)(tests?|spec|__tests__)/|Test\.php$|\.(test|spec)\.' | sort -u) \
+    <(printf '%s\n' "$stripe" | sort -u)
 }
 
 # Merges the payments scout floor (computed over STRIPE_FILES, not the shared

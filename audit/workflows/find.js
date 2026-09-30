@@ -198,6 +198,18 @@ const ROOT_HEADER = `REPO_ROOT=${args.repoRoot}\n` +
   'Read absolute instruction-document paths exactly as supplied, including documents outside REPO_ROOT. ' +
   'Do not use the current working directory, it may be a different repository.\n\n';
 
+// Lead budget for the security-auditor dimensions (security, privacy, payments). Measured
+// 2026-09-30 (events audit): 18 security specialists cost 79 USD, avg 61 API calls, max 168,
+// peak context ~350k tokens, mostly following leads outside the chunk; payments fetched ~2 MB
+// Stripe doc pages via curl. The COVERAGE CONTRACT (assigned files read in full) stays unbudgeted.
+function leadBudgetClause(agentType) {
+  if (agentType !== 'security-auditor') return '';
+  return `\nLEAD BUDGET: once the assigned files are read, make at most 20 further tool calls to ` +
+    `follow leads outside the assignment. No WebFetch, WebSearch or curl. Do not write or run ` +
+    `reproduction scripts; the verifier stage confirms findings. Prefer Grep and Read over Bash ` +
+    `cat/sed/grep chains.`;
+}
+
 // HUNK SCOPE: on a LARGE/HUGE diff (audit/bin/diff-size-gate.sh, wired in SKILL.md Phase 1/2),
 // the orchestrator passes hunkScope:true + baseRef so specialists stop reviewing whole files.
 // Evidence for this (learning-log 2026-09-25, events repo): three audits in a row reported
@@ -586,7 +598,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     const assigned = c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files;
     const coverageClause =
       `\nCOVERAGE CONTRACT for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
-      `Read every one of these files in full. There is no tool-call budget on this pass; a partial ` +
+      `Read every one of these files in full. There is no tool-call budget for reading the assigned files; a partial ` +
       `read is exactly what status "incomplete" exists to report. coverage.files must list exactly ` +
       `the assigned paths you read in full, spelled as given here (no ./ or absolute prefix) and ` +
       `nothing else: not guideline files, not files you opened while following a lead. Could not ` +
@@ -599,7 +611,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
       `for DIMENSION=${dimension}.\nCHUNK_INDEX=${i}\n${briefing}\n` +
       `GUIDELINES_DIR=${ctx.guidelinesDir}\nMATCHED_GUIDELINES=${ctx.guidelines}\n` +
-      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause + hunkClause +
+      `SCOPE=${ctx.scope}` + (dimContext ? `\n${dimContext}` : '') + coverageClause + leadBudgetClause(agentType) + hunkClause +
       (ctx.projectGuidelines ? `\nPROJECT_GUIDELINES (the audited repo's .claude/audit-guidelines.md, precedence over MATCHED_GUIDELINES):\n${ctx.projectGuidelines}` : ''),
       { agentType, model: 'sonnet', schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );

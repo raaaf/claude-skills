@@ -125,7 +125,10 @@ computed against `STRIPE_FILES`, the precomputed Stripe surface `detect-stripe.s
 never by grepping the diff text for "stripe": half of a payments checklist is about an *absent*
 guard (a webhook route with no signature check, a client secret logged instead of masked), and an
 absence never shows up as a line in a diff — a diff-text grep would silently miss exactly the class
-of defect this dimension exists to catch.
+of defect this dimension exists to catch. Test files (`tests/`, `spec/`, `__tests__/`, `*Test.php`,
+`*.test.*`, `*.spec.*`) are excluded from the changed set before intersecting: on 2026-09-30
+`tests/Pest.php` sat in `STRIPE_FILES`, a diff touching only it started payments (12 agents, 41 USD,
+35 findings, all in unchanged code).
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
@@ -134,7 +137,7 @@ AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; all 13 ids 
 [ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
 AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else fixes every finding incl. Minor
 if [ "${STRIPE:-no}" = "yes" ]; then
-  STRIPE_TOUCHED=$(comm -12 <(printf '%s\n' "$ALLE_DATEIEN" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
+  STRIPE_TOUCHED=$(orch_payments_touched "$ALLE_DATEIEN" "$STRIPE_FILES")   # test paths excluded (lib): a test helper in STRIPE_FILES alone must not start payments
   if [ -n "$STRIPE_TOUCHED" ]; then
     AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:+$AUDIT_DIMENSIONS,}payments"   # no leading comma on an empty selection; the SAME variable Phase 2 splits for find.js; a separate SELECTED_DIMENSIONS was appended here until 2026-09-16 and never reached the dispatch
     GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")   # payments.md always applies once the dimension runs (lib)
@@ -321,6 +324,8 @@ it sees that signature, so a run that slipped past the lock at least names itsel
 Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" $TEST_COMMAND` → `BASELINE_FAILURES`.
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
+
+**LARGE or HUGE diff: no single-file fix wave.** When `DIFF_SIZE_RESULT` is `LARGE` or `HUGE`, do not call `fix.js` over the whole set. The orchestrator groups the `CONFIRMED`/`UNCERTAIN` findings into rounds of at most ~15 findings over coherent, disjoint file groups (a finding that spans several files stays whole in one group), dispatches one `spec-executor` per group (sequential when groups share files, parallel otherwise; tests only through `test-lock.sh` on the affected files), and runs the unit/feature suite after each round before starting the next. `SMALL` and `OK` diffs keep the `fix.js` call above unchanged. The marker and gate rules in Phase 4 do not change: the same conditions decide whether the marker is written. Reason (2026-09-30, events repo, 126-file refactor diff): `fix.js` fixed per file, produced 170 fixes but 189 failing tests and 14 regressions (removed public Livewire props, cross-file findings applied by half, 78 FAILED because the fix spanned several files), and the whole wave had to be reverted.
 
 Every `fixes[]` entry names exactly ONE file. When a fix needs its own test file too, send the test as a second entry (or a second `fix.js` call), never as a hint inside the first: `fix.js`'s ownership check (`hasOwnedChange`) treats a fixer that touched two files as not-owned, skips the fix-verifier and returns `incomplete` for a fix that was fine (2026-09-20, the orchestrator had to verify by hand).
 

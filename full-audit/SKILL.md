@@ -74,7 +74,7 @@ if [ "$STRIPE" = "yes" ]; then
       if git cat-file -e "${PRIOR_HEAD}^{commit}" 2>/dev/null; then
         CHANGED_SINCE=$(git diff --name-only "$PRIOR_HEAD"..HEAD 2>/dev/null)
         # (b) diff since payments_head intersects the Stripe surface
-        STRIPE_TOUCHED_SINCE=$(comm -12 <(printf '%s\n' "$CHANGED_SINCE" | sort -u) <(printf '%s\n' "$STRIPE_FILES" | sort -u))
+        STRIPE_TOUCHED_SINCE=$(orch_payments_touched "$CHANGED_SINCE" "$STRIPE_FILES")   # test paths excluded (lib)
         # (c) the Stripe dependency version changed in the lockfile diff
         DEP_TOUCHED_SINCE=$(git diff "$PRIOR_HEAD"..HEAD -- composer.lock package-lock.json 2>/dev/null | grep -iE '^\+.*stripe' || true)
         # (d) the golive dashboard answers are missing
@@ -179,6 +179,12 @@ Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with three substitutions:
   plus: when `payments` ran, add `payments_head=$(git rev-parse HEAD)` to the `--counts` argument,
   same as `audit/SKILL.md` Phase 4 — this is the value the Phase 0 re-run decision reads back on
   the next run.
+- Fix dispatch: the "LARGE or HUGE diff: no single-file fix wave" rule in `audit/SKILL.md` Phase 3
+  applies here keyed on the finding set, since `DIFF_SIZE_RESULT` is never set: when more than ~40
+  findings are selected to fix, or any finding spans multiple files, do not call `fix.js` over the whole set;
+  group into rounds of at most ~15 findings over disjoint file groups and dispatch one
+  `spec-executor` per group with the suite run after each round, exactly as described there
+  (2026-09-30: a single-file wave over a 126-file diff gave 189 failing tests and was reverted).
 - `audit/SKILL.md`'s Phase 2 block also computes `HUNK_SCOPE` from `$DIFF_SIZE_RESULT` (`case
   "$DIFF_SIZE_RESULT" in SMALL|"") HUNK_SCOPE=false ;; *) HUNK_SCOPE=true ;; esac`), reused
   verbatim here even though `/full-audit`'s Phase 0 never runs `diff-size-gate.sh` and so never
