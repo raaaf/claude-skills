@@ -59,7 +59,7 @@ def analyze(path):
         return None
 
     turns = []
-    seen_ids = set()
+    seen_ids = {}
     tool_names = {}
     pending = []  # (turn_index_at_call, group, approx_char_size)
 
@@ -71,9 +71,14 @@ def analyze(path):
                     tool_names[c['id']] = c['name']
             usage = message.get('usage')
             msg_id = message.get('id')
-            if usage and msg_id not in seen_ids:
-                seen_ids.add(msg_id)
-                turns.append(usage)
+            if usage and msg_id in seen_ids:
+                # A streamed message is logged once per content block; only the later lines
+                # carry the final output count (the first undercounts ~11x, 2026-09-30).
+                first = seen_ids[msg_id]
+                first['output_tokens'] = max(first.get('output_tokens', 0), usage.get('output_tokens', 0))
+            elif usage:
+                seen_ids[msg_id] = dict(usage)
+                turns.append(seen_ids[msg_id])
         elif entry.get('type') == 'user':
             content = message.get('content')
             for c in content if isinstance(content, list) else []:
