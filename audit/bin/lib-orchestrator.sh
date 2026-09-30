@@ -65,6 +65,8 @@
 #                           collect into one /audit later
 #   orch_unaudited_base     prints the recorded base sha, else nothing (rc 1)
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
+#   orch_audited_record <files> <dims>   after a PASSED audit: stores path, blob sha and dims per file in the worktree's claude-audited-blobs
+#   orch_audited_filter <files> <dims>   prints the files NOT already certified by a passed audit (same blob sha, dims a superset), input order kept
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
@@ -335,6 +337,69 @@ orch_unaudited_base() {
 orch_unaudited_clear() {
   local f; f=$(orch__unaudited_path) || return 0
   rm -f "$f"
+}
+
+# Content-hash memory of what a PASSED audit certified (2026-09-30: 37% of audit-find cost of
+# 09-27..09-30 went to runs where over half the files had been audited before; the shop/printify
+# worktree ran 13 audits in 24 h). Keyed on the blob sha of the working-tree file, so commits,
+# amends and rebases do not matter. Per worktree (git-dir, not the common dir): another
+# worktree's working tree is a different content state.
+orch__audited_path() {
+  local d
+  d=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null) || return 1
+  printf '%s/claude-audited-blobs' "$d"
+}
+
+# Lines are path<TAB>blob-sha<TAB>dims. A re-record replaces the path's line; a listed path
+# that no longer exists loses its line; every other line stays.
+orch_audited_record() {
+  local files="$1" dims="$2" f tmp p sha sorted line
+  f=$(orch__audited_path) || return 1
+  sorted=$(printf '%s' "$dims" | tr ',' '\n' | grep . | sort -u | paste -sd, -)
+  tmp=$(mktemp) || return 1
+  if [ -f "$f" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      p=${line%%$'\t'*}
+      printf '%s\n' "$files" | grep -Fxq -- "$p" || printf '%s\n' "$line"
+    done < "$f" > "$tmp"
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] && [ -f "$p" ] || continue
+    sha=$(git hash-object -- "$p" 2>/dev/null) || continue
+    printf '%s\t%s\t%s\n' "$p" "$sha" "$sorted" >> "$tmp"
+  done <<EOF
+$files
+EOF
+  mv "$tmp" "$f"
+}
+
+# Prints the files that still need an audit. Covered needs all three: a record line, an equal
+# blob sha, recorded dims a superset of the requested ones. Anything else prints the file.
+orch_audited_filter() {
+  local files="$1" dims="$2" f p sha rec recsha recdims d ok
+  f=$(orch__audited_path 2>/dev/null) || f=""
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    ok=0
+    if [ -n "$f" ] && [ -f "$f" ] && [ -f "$p" ]; then
+      sha=$(git hash-object -- "$p" 2>/dev/null) || sha=""
+      rec=$(awk -F'\t' -v p="$p" '$1 == p { l = $0 } END { print l }' "$f")
+      if [ -n "$sha" ] && [ -n "$rec" ]; then
+        recsha=$(printf '%s' "$rec" | cut -f2)
+        recdims=$(printf '%s' "$rec" | cut -f3)
+        if [ "$recsha" = "$sha" ]; then
+          ok=1
+          for d in $(printf '%s' "$dims" | tr ',' ' '); do
+            case ",$recdims," in *",$d,"*) ;; *) ok=0 ;; esac
+          done
+        fi
+      fi
+    fi
+    [ "$ok" = 1 ] || printf '%s\n' "$p"
+  done <<EOF
+$files
+EOF
 }
 
 orch_test_command_declared() { orch_ship_value test-command "${1:-}"; }

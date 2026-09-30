@@ -136,6 +136,10 @@ orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from P
 AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
 [ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
 AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else fixes every finding incl. Minor
+ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js, and /full-audit never runs this block
+ALLE_DATEIEN=$(orch_audited_filter "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS")   # drops files byte-identical to what a passed audit certified with a covering dimension set (lib); runs BEFORE the payments trigger, which then sees the filtered set
+AUDITED_SKIP=$(( $(printf '%s\n' "$ALLE_DATEIEN_FULL" | grep -c .) - $(printf '%s\n' "$ALLE_DATEIEN" | grep -c .) ))
+echo "AUDITED_SKIP: $AUDITED_SKIP file(s) unchanged since last passed audit"
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(orch_payments_touched "$ALLE_DATEIEN" "$STRIPE_FILES")   # test paths excluded (lib): a test helper in STRIPE_FILES alone must not start payments
   if [ -n "$STRIPE_TOUCHED" ]; then
@@ -146,8 +150,24 @@ if [ "${STRIPE:-no}" = "yes" ]; then
   fi
 fi
 echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS AUDIT_FIX_SCOPE=$AUDIT_FIX_SCOPE"
-orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES   # Phase 2 and Phase 4 load these; a hand-substituted copy in Phase 4 was the previous mechanism
+orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES ALLE_DATEIEN ALLE_DATEIEN_FULL AUDITED_SKIP   # Phase 2 and Phase 4 load these; a hand-substituted copy in Phase 4 was the previous mechanism; ALLE_DATEIEN is now the filtered set
 ```
+
+**Already-audited files are skipped (2026-09-30).** `orch_audited_filter` drops every file whose
+working-tree content is byte-identical (git blob sha) to what an earlier PASSED audit in this
+worktree certified, provided that audit's dimension set covers the current selection. Commits,
+amends and rebases do not matter, only content does. Reason: re-running `/audit` on one branch
+re-reviewed every file each time; 37% of audit-find cost from 09-27 to 09-30 went to runs where more
+than half the files had been audited before (shop/printify worktree: 13 audits in 24 h, cumulative
+scope 6, 21, 24, 27, 47, 71 files; events: 347 files, then 357 files with 97% already audited).
+`ALLE_DATEIEN_FULL` keeps the whole list; `ALLE_DATEIEN` is the filtered set every later phase
+uses. `DIFF_SIZE_RESULT` stays the Phase 1 value over the whole diff: `diff-size-gate.sh` takes no
+file list, so it cannot be recomputed on the filtered set cheaply. The record is written only in
+Phase 4 on the marker path. `/full-audit` never filters or records.
+
+**Empty filtered set:** when `ALLE_DATEIEN` is empty, everything was already certified: run neither
+`find.js` (Phase 2) nor `fix.js` (Phase 3), print `AUDITED_SKIP` and treat the run as a pass with
+zero findings (Phase 4 marker paragraph).
 
 `guidelines/payments.md` carries an `applies_to` path regex, so a diff that only touches a generic
 file in the payment surface (`bootstrap/app.php`, a middleware file) may not match it and
@@ -411,6 +431,8 @@ orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocke
   refusal, so the next such run stops at the gate instead of shipping.
 - `degradedDimensions` is empty.
 
+**Empty filtered set (Phase 1.5, every file already certified):** no `find.js` result exists, so the conditions above hold vacuously: the pre-check secret scan and the test gate still apply as usual, and the block below runs with `{N_SELECTED}` = the number of selected dimensions and `{N_SKIPPED}`, `{N_INCOMPLETE}`, `{N_DEGRADED}` all `0`. No other path may pass zero counts without a `find.js` result.
+
 Coverage gates the marker because a run where dimensions did not finish is not a pre-push gate: a
 real run selected all 14 dimensions and set the marker while 5 of them were `skipped` or
 `incomplete`, which is exactly what this rule exists to stop. A partial dimension selection (Phase
@@ -425,12 +447,13 @@ on exactly the state it exists to catch.
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_state_load   # ALLE_DATEIEN (filtered) and AUDIT_DIMENSIONS for the audited-blob record below
 # Counts from the Phase 2 find.js result: how many dimensions were selected, and how many came
 # back skipped / incomplete / degraded. They are mandatory, and the helper refuses on its own if
 # they do not hold, so the gate no longer depends on this prose being read correctly. The
 # orchestrator substitutes the {N_...} placeholders with the counts it derived from the find.js
 # JSON before running this block, same convention as the COUNTS line above.
-orch_marker_write "{N_SELECTED}" "{N_SKIPPED}" "{N_INCOMPLETE}" "{N_DEGRADED}"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit
+orch_marker_write "{N_SELECTED}" "{N_SKIPPED}" "{N_INCOMPLETE}" "{N_DEGRADED}" && orch_audited_record "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit; only when it succeeded, the post-fix content hashes of the audited files are recorded (Phase 1.5 filter reads them next run)
 # The fresh marker's own tree binding now certifies this range; the quick-fix collection file
 # (ship/references/audit-collection.md) has nothing left to add, whether or not it was used above.
 orch_unaudited_clear

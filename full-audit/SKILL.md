@@ -137,7 +137,9 @@ orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES
 
 ## Phase 2-5: same as `audit/SKILL.md`, with `SCOPE=repo`, no marker
 
-Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with three substitutions:
+Run Phases 2 through 5 of `audit/SKILL.md` unchanged, with four substitutions:
+
+- The already-audited filter (`orch_audited_filter`, `ALLE_DATEIEN_FULL`, `AUDITED_SKIP`, the empty-set pass) and the record (`orch_audited_record` in Phase 4) do NOT apply: `/full-audit` scopes the whole repo, never filters it, and writes no record (it writes no marker either).
 
 - `find.js` args: `scope: "repo"`, `files` the Phase 0 scope walk above (not a diff), and `floorFiles`
   built the same way as `audit/SKILL.md` Phase 2: the orchestrator never reads scope-file content at

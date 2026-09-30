@@ -19,7 +19,7 @@ live in the root `CLAUDE.md`; this file only holds what is specific to this pipe
 `orch_url_host`/`orch_host_public`, `orch_verify_agents`, `orch_parse_stripe`, `orch_run_log`,
 `orch_ship_value`, `orch_test_command_declared`, `orch_test_command`, `orch_frontend_ext_re`,
 `orch_payments_guidelines`, `orch_payments_floor`, `orch_patterns_from_file`,
-`orch_unaudited_record`/`orch_unaudited_base`/`orch_unaudited_clear`.
+`orch_unaudited_record`/`orch_unaudited_base`/`orch_unaudited_clear`, `orch_audited_record`/`orch_audited_filter`.
 `orch_progress_claim` clears state so a run starts empty.
 
 | Command | Purpose |
@@ -40,6 +40,7 @@ live in the root `CLAUDE.md`; this file only holds what is specific to this pipe
 | `bash audit/bin/run-stats.sh` | Reports run-ledger anomalies as `RUNSTAT <key>: <detail>` lines plus `RUNSTATS_RESULT=OK\|ANOMALIES (N)\|SKIP (reason)`; read by the learning phase (see Gotchas) |
 | `bash audit/bin/check-token-contrast.sh [root] [--tokens FILE] [--all]` | Deterministic WCAG contrast check for SwiftUI design tokens: surface/background token used as a foreground (`TOKEN_CONTRAST_HIT ... surface token used as foreground`, any ratio) or a used foreground/background token pair under 3:1 (`... ratio=x.y`); emits `TOKEN_CONTRAST_RESULT=OK\|HITS (N)\|SKIP (reason)` |
 | `node --test audit/workflows/` (full) \| `node --test audit/workflows/<name>.test.mjs` (filtered) | Run the `find.js`/`fix.js` Workflow-pipeline test suite (hunk scope, chunking, telemetry, verifier gate, fix outcomes, run-cost) |
+| `bash audit/bin/orch-audited.test.sh` | Pins `orch_audited_record`/`orch_audited_filter` (skip files whose blob sha and dimension set a passed audit already certified); full and single-file variant are the same script |
 | `bash audit/bin/<name>.test.sh` | Filtered per-script tests for `audit/bin/*.sh` (e.g. `suggest-dimensions.test.sh`, `diff-size-gate.test.sh`); no single wrapper runs all of them at once |
 
 ## Adding a 2026 best-practice section to an existing guideline
