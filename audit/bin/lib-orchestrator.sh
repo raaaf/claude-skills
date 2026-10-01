@@ -525,7 +525,12 @@ orch_payments_floor() {
 # BEFORE orch_marker_write: the marker certifies the tracked tree.
 # Line: key<TAB>dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description. The key is
 # file|normalize-suppression("[dimension] description"), so reworded repeats of one finding collapse.
-ORCH_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# zsh (the Bash tool's shell) has no BASH_SOURCE; ${(%):-%x} is its sourced-file path. Without this the
+# dir resolved to the cwd and every lib-git-base.sh source failed (orch-zsh-source.test.sh).
+if [ -n "${BASH_SOURCE[0]:-}" ]; then ORCH__SRC="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then eval 'ORCH__SRC=${(%):-%x}'
+else ORCH__SRC="$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; fi
+ORCH_LIB_DIR=$(cd "$(dirname "$ORCH__SRC")" && pwd)
 orch__backlog_root() { orch__backlog_libs; audit_store_root; }
 orch__backlog_libs() { command -v gitignore_ensure >/dev/null 2>&1 || . "$ORCH_LIB_DIR/lib-git-base.sh"; }   # called in the main shell too: a source inside $(...) is lost
 orch__backlog_path() { local r; r=$(orch__backlog_root) || return 1; printf '%s/.claude/audits/minor-backlog.tsv' "$r"; }
