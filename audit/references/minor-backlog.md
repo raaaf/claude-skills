@@ -60,7 +60,11 @@ Preconditions, before any agent dispatch:
 ### Step a: visual pass
 
 1. Files = `orch_visual_pass_files` (lib): changed since the sha in `.claude/audits/visual-pass-head` (tracked,
-   one line); a missing or unknown file means the last 7 days (`git log --since`). No files: skip step a.
+   one line); a missing or unknown file means the last day (`git log --since='1 day ago'`). At most `${AUDIT_VISUAL_PASS_CAP:-40}`
+   files per night (the most recently changed); `orch_visual_pass_overflow` is the rest. `visual-pass-head` still advances,
+   and the PR body states `N Dateien wegen Limit nicht optisch geprüft` (never silent). No files: skip step a.
+   Why 1 day and 40: the first dry run with a 7-day fallback listed 949 files in one repo and 268, 96, 93, 88 in
+   others (12 repos), which would exhaust the usage limit on night one.
 2. `find.js` over those files with dimensions `typography,ui_design,animation`, hunk scope per the normal size
    rules (Phase 1 `diff-size-gate.sh` thresholds).
 3. Critical/Important findings join the fix wave of step b; Minors go to the backlog (`minor-split.mjs` rules
@@ -80,3 +84,26 @@ Preconditions, before any agent dispatch:
    (`chore: nightly audit, N fixes`; backlog-only: `chore: clear N minor backlog items`), push the branch,
    one `gh pr create` listing each item as `[dimension] file:line: description` with its outcome. Never push to
    the default branch; no push marker.
+
+## Nightly run across repos
+
+Decided 2026-10-01. One scheduled run on the user's Mac walks every audited repo and runs the nightly audit
+above where there is work.
+
+- `bin/nightly-repos.sh [root...]` lists candidates (git repos up to depth 4 under `$HOME/Developer` and
+  `$HOME/Local Sites` with `.claude/audits/` and a GitHub `origin`, worktrees deduped by git common dir) as
+  `path<TAB>status<TAB>detail`: `ready` (backlog desc), `skip-dirty` (default branch has unpushed local
+  commits), `skip-open-pr` (open `chore/nightly-audit-*` / `chore/minor-backlog-*` PR), `skip-no-gh`, `nothing`.
+  Backlog and visual files are read from `origin/<default>` after a quiet fetch, never the working tree.
+  Above the cap the detail reads `visual_files=M (cap 40)` and the morning report line adds the unchecked count.
+- `bin/nightly-run.sh [--dry-run] [root...]` runs the `ready` repos strictly one after another: detached
+  temporary worktree from `origin/<default>` under `$TMPDIR` (the main checkout is never touched),
+  `claude -p "Nachtlauf" --permission-mode acceptEdits` inside it, 45 min cap (`NIGHTLY_TIMEOUT_SECS`
+  overrides), then worktree removal and prune. `--dry-run` only prints the plan.
+- Report: `$HOME/.local/state/claude/nightly/YYYY-MM-DD.md`, one line per repo (PR URL, failure reason,
+  timeout, or the skip status and detail); printed at the end of the run.
+- Push exception: `hooks/block-unsafe-push.sh` lets a marker-less push through only for one plain
+  `git [-C dir] push [-u] [remote] [refspec...]` whose every target resolves to a `chore/nightly-audit-*` or
+  `chore/minor-backlog-*` branch. Chained commands, quotes, substitutions, `--force`/`-f`/`+refspec`,
+  `--all`/`--tags`/`--mirror`/`--delete`, unknown options, a default-branch target and an unresolvable current
+  branch keep the old "ask". Pinned by `hooks/block-unsafe-push.test.sh`.

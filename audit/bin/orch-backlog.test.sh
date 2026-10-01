@@ -95,11 +95,27 @@ expect "$(orch_expand_dimensions typography,copy)" 'typography,copy' 'explicit l
 rm -rf .claude/audits/visual-pass-head
 git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm base --date='2020-01-01T00:00:00' >/dev/null
 GIT_COMMITTER_DATE='2020-01-01T00:00:00' git -c user.name=t -c user.email=t@t commit -q --amend --no-edit --date='2020-01-01T00:00:00'
+printf 'd\n' > src/d.js
+git add -A >/dev/null
+T3=$(( $(date +%s) - 3*86400 ))
+GIT_COMMITTER_DATE="$T3 +0000" git -c user.name=t -c user.email=t@t commit -qm threedays --date="$T3 +0000" >/dev/null
 OLD=$(git rev-parse HEAD)
 printf 'c\n' > src/c.js
 git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm recent >/dev/null
-expect "$(orch_visual_pass_files)" 'src/c.js' 'missing head file: only files changed in the last 7 days'
+expect "$(orch_visual_pass_files)" 'src/c.js' 'missing head file: only the file from today, the 3-day-old commit is outside the 1-day window'
 printf '%s\n' "$OLD" > .claude/audits/visual-pass-head
 expect "$(orch_visual_pass_files)" 'src/c.js' 'existing sha: files changed since it'
 git rev-parse HEAD > .claude/audits/visual-pass-head
 expect "$(orch_visual_pass_files)" '' 'head at HEAD: nothing to do'
+
+# cap: the most recently changed files win, the remainder is counted
+rm -f .claude/audits/visual-pass-head
+n=1; for f in e1 e2 e3; do
+  printf '%s\n' "$f" > "src/$f.js"; git add -A >/dev/null
+  TS=$(( $(date +%s) - (4-n)*3600 ))
+  GIT_COMMITTER_DATE="$TS +0000" git -c user.name=t -c user.email=t@t commit -qm "$f" --date="$TS +0000" >/dev/null
+  n=$((n+1))
+done
+expect "$(AUDIT_VISUAL_PASS_CAP=2 orch_visual_pass_files | sort | tr '\n' ' ')" 'src/c.js src/e3.js ' 'cap 2 keeps the two newest files'
+expect "$(AUDIT_VISUAL_PASS_CAP=2 orch_visual_pass_overflow)" '2' 'overflow counts the files above the cap'
+expect "$(orch_visual_pass_overflow)" '0' 'default cap 40: no overflow'

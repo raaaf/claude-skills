@@ -75,7 +75,8 @@
 #   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
 #   orch_backlog_count               prints the number of stored entries (0 when none)
 #   orch_expand_dimensions <value>   `all` -> the gate set (all dimensions except typography, ui_design, animation), `all+visual` -> all 13, anything else unchanged
-#   orch_visual_pass_files   nightly visual pass scope: files changed (still existing, .claude/audits/ dropped) since the sha in .claude/audits/visual-pass-head, else in the last 7 days
+#   orch_visual_pass_files [ref]   nightly visual pass scope (content of ref, e.g. origin/main, when given): files changed (still existing, .claude/audits/ dropped) since the sha in .claude/audits/visual-pass-head, else in the last day, capped at AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files
+#   orch_visual_pass_overflow [ref]   number of files above the cap (reported as unchecked, never silent)
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
@@ -629,17 +630,45 @@ orch_expand_dimensions() {
 }
 
 # Scope of the nightly visual pass (run from the default branch checkout). The tracked file holds one
-# commit sha; a missing, empty or unknown sha falls back to the last 7 days of history.
-orch_visual_pass_files() {
-  local sha p; sha=$(head -1 .claude/audits/visual-pass-head 2>/dev/null || true)
+# commit sha; a missing, empty or unknown sha falls back to the last day of history (decided 2026-10-01:
+# a 7-day fallback listed 949 files in one repo, 12 repos would exhaust the usage limit on night one).
+# Optional $1 = a ref (e.g. origin/main): the sha file and the file existence are then read from that ref's
+# content instead of HEAD and the working tree (nightly-repos.sh, which must not depend on a checkout).
+# orch_visual_pass_all_files prints the uncapped scope; orch_visual_pass_files caps it to the
+# AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files; orch_visual_pass_overflow prints the rest.
+orch_visual_pass_all_files() {
+  local ref="${1:-}" sha p
+  if [ -n "$ref" ]; then sha=$(git show "$ref:.claude/audits/visual-pass-head" 2>/dev/null | head -1 || true)
+  else sha=$(head -1 .claude/audits/visual-pass-head 2>/dev/null || true); fi
   {
     if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then
-      git diff --name-only "$sha" HEAD
+      git diff --name-only "$sha" "${ref:-HEAD}" --
     else
-      git log --since='7 days ago' --name-only --pretty=format: HEAD
+      git log --since='1 day ago' --name-only --pretty=format: "${ref:-HEAD}" --
     fi
-  } | sed '/^$/d; /^\.claude\/audits\//d' | sort -u | while IFS= read -r p; do [ -f "$p" ] && printf '%s\n' "$p"; done
+  } | sed '/^$/d; /^\.claude\/audits\//d' | sort -u | while IFS= read -r p; do
+    if [ -n "$ref" ]; then git cat-file -e "$ref:$p" 2>/dev/null && printf '%s\n' "$p"
+    else [ -f "$p" ] && printf '%s\n' "$p"; fi
+  done
   return 0
+}
+
+orch_visual_pass_files() {
+  local ref="${1:-}" cap="${AUDIT_VISUAL_PASS_CAP:-40}" all n p
+  all=$(orch_visual_pass_all_files "$ref")
+  n=$(printf '%s' "$all" | grep -c . || true)
+  if [ "${n:-0}" -le "$cap" ]; then [ -z "$all" ] || printf '%s\n' "$all"; return 0; fi
+  # Over the cap: newest commit first, ties by path.
+  printf '%s\n' "$all" | while IFS= read -r p; do
+    printf '%s\t%s\n' "$(git log -1 --format=%ct "${ref:-HEAD}" -- "$p")" "$p"
+  done | sort -t "$(printf '\t')" -k1,1nr -k2,2 | head -n "$cap" | cut -f2
+  return 0
+}
+
+orch_visual_pass_overflow() {
+  local cap="${AUDIT_VISUAL_PASS_CAP:-40}" n
+  n=$(orch_visual_pass_all_files "${1:-}" | grep -c . || true)
+  if [ "${n:-0}" -gt "$cap" ]; then printf '%s\n' "$((n - cap))"; else printf '0\n'; fi
 }
 
 # Recurrence and dismissal feed, from a FILE the orchestrator wrote with the
