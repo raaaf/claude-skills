@@ -604,8 +604,21 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     // reported the files it had wandered into instead of the ones it was given.
     // Both made hasCompleteCoverage fail and the dimension `incomplete`.
     const assigned = c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files;
-    const coverageClause =
-      `\nCOVERAGE CONTRACT for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
+    // Under hunkScope a finding must sit in a changed hunk (hunkScopeClause), so a whole-file read
+    // is mostly context that can never yield a finding. Measured 2026-10-01 on three HUGE runs:
+    // specialists at 120-200k context per call (docs_sync median 202k), mostly assigned-file reads.
+    // payments keeps the whole-file contract: its scope is the full STRIPE_FILES surface.
+    const hunkCoverage = ctx.hunkScope && dimension !== 'payments';
+    const coverageClause = hunkCoverage
+      ? `\nCOVERAGE CONTRACT (hunk scope) for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
+      `For every assigned file, run the git diff from HUNK SCOPE below and review every changed hunk: Read ` +
+      `each hunk's line range plus its 15 lines of context with offset/limit, so every cited line comes ` +
+      `from a Read. A file that is new in the diff is one hunk: read it in full. Read other parts of a file ` +
+      `only where a hunk depends on them (a changed call into unchanged code, a renamed symbol). There is ` +
+      `no tool-call budget for these reads. coverage.files must list exactly the assigned paths whose ` +
+      `hunks you reviewed completely, spelled as given here (no ./ or absolute prefix) and nothing else. ` +
+      `Could not review one? Leave it out and set status "incomplete".`
+      : `\nCOVERAGE CONTRACT for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
       `Read every one of these files in full. There is no tool-call budget for reading the assigned files; a partial ` +
       `read is exactly what status "incomplete" exists to report. coverage.files must list exactly ` +
       `the assigned paths you read in full, spelled as given here (no ./ or absolute prefix) and ` +

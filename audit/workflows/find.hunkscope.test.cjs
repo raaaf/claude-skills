@@ -134,3 +134,21 @@ test('security-auditor specialists run at effort high, other specialists inherit
   for (const p of sec) assert.equal(p.options.effort, 'high');
   for (const p of other) assert.equal(p.options.effort, undefined);
 });
+
+// Hunk-scoped coverage (2026-10-01): under hunkScope, findings are limited to changed hunks, yet the
+// coverage contract still demanded every assigned file be read in full. In the three HUGE runs of
+// 2026-10-01 that put specialists at 120-200k context per call (docs_sync median 202k). Under
+// hunkScope the contract is the changed hunks; payments keeps the full-file contract (whole
+// STRIPE_FILES surface by design), and without hunkScope nothing changes.
+test('hunkScope on: specialists cover changed hunks, not whole files; payments and off stay whole-file', async () => {
+  const on = await runWorkflow(baseArgs({ hunkScope: true, baseRef: 'origin/main' }));
+  const cq = on.prompts.find((p) => p.options.phase === 'Audit' && p.prompt.includes('DIMENSION=code_quality'));
+  const pay = on.prompts.find((p) => p.options.phase === 'Audit' && p.prompt.includes('DIMENSION=payments'));
+  assert.ok(cq.prompt.includes('COVERAGE CONTRACT (hunk scope)'));
+  assert.ok(!cq.prompt.includes('Read every one of these files in full'));
+  assert.ok(pay.prompt.includes('Read every one of these files in full'));
+  const off = await runWorkflow(baseArgs({}));
+  const cqOff = off.prompts.find((p) => p.options.phase === 'Audit' && p.prompt.includes('DIMENSION=code_quality'));
+  assert.ok(cqOff.prompt.includes('Read every one of these files in full'));
+  assert.ok(!cqOff.prompt.includes('COVERAGE CONTRACT (hunk scope)'));
+});
