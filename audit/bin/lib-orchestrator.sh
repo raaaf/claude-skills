@@ -74,6 +74,8 @@
 #   orch_backlog_remove <keys>       removes the entries with those keys (newline list), drops missing files; prints BACKLOG_REMOVED=n
 #   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
 #   orch_backlog_count               prints the number of stored entries (0 when none)
+#   orch_expand_dimensions <value>   `all` -> the gate set (all dimensions except typography, ui_design, animation), `all+visual` -> all 13, anything else unchanged
+#   orch_visual_pass_files   nightly visual pass scope: files changed (still existing, .claude/audits/ dropped) since the sha in .claude/audits/visual-pass-head, else in the last 7 days
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
@@ -613,6 +615,31 @@ orch_backlog_oldest() {
 orch_backlog_count() {
   local f; f=$(orch__backlog_path 2>/dev/null) || { echo 0; return 0; }
   [ -f "$f" ] && grep -c . "$f" || echo 0
+}
+
+# typography, ui_design and animation left the pre-push gate for the nightly routine on 2026-10-01
+# (0 Critical, cosmetic Importants over 122 audit logs); an explicit list still selects them.
+orch_expand_dimensions() {
+  local gate="architecture,security,performance,code_quality,seo,a11y,ux,docs_sync,copy,privacy"
+  case "${1-}" in
+    all) printf '%s\n' "$gate" ;;
+    all+visual) printf '%s\n' "architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy" ;;
+    *) printf '%s\n' "${1-}" ;;
+  esac
+}
+
+# Scope of the nightly visual pass (run from the default branch checkout). The tracked file holds one
+# commit sha; a missing, empty or unknown sha falls back to the last 7 days of history.
+orch_visual_pass_files() {
+  local sha p; sha=$(head -1 .claude/audits/visual-pass-head 2>/dev/null || true)
+  {
+    if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then
+      git diff --name-only "$sha" HEAD
+    else
+      git log --since='7 days ago' --name-only --pretty=format: HEAD
+    fi
+  } | sed '/^$/d; /^\.claude\/audits\//d' | sort -u | while IFS= read -r p; do [ -f "$p" ] && printf '%s\n' "$p"; done
+  return 0
 }
 
 # Recurrence and dismissal feed, from a FILE the orchestrator wrote with the

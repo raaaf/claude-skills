@@ -17,9 +17,10 @@ while IFS= read -r path; do
   [ -n "$path" ] && paths+=("$path")
 done < <(sed '/^[[:space:]]*$/d' | sort -u)
 
-all="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"
+# Gate set: typography, ui_design and animation run in the nightly routine (decided 2026-10-01), so they are not suggested.
+all="architecture,security,performance,code_quality,seo,a11y,ux,docs_sync,copy,privacy"
 backend="architecture,security,performance,code_quality,docs_sync,privacy"
-frontend="security,code_quality,seo,a11y,typography,ui_design,ux,animation,copy"
+frontend="security,code_quality,seo,a11y,ux,copy"
 
 if [ "${#paths[@]}" -eq 0 ]; then
   printf 'Recommended dimensions: %s\nReason: no changed paths were provided; use the full audit set.\n' "$all"

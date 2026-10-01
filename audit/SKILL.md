@@ -1,7 +1,7 @@
 ---
 name: audit
-description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every Critical/Important finding is fixed or discarded with a reason, a Minor rides along only with a fix to its own file, every other Minor goes to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
-when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog"
+description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration; the pre-push default skips typography, UI and animation, they run in the nightly routine), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every Critical/Important finding is fixed or discarded with a reason, a Minor rides along only with a fix to its own file, every other Minor goes to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog, Nachtlauf, nightly audit"
 model: inherit
 effort: high
 allowed-tools:
@@ -98,7 +98,7 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 
 ## Phase 1.5: Start question (dimensions)
 
-**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, `AUDIT_DIMENSIONS` takes its default (all dimensions). This guarantees a headless run never hangs on a question.
+**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, `AUDIT_DIMENSIONS` takes its default (the gate set: all dimensions except `typography`, `ui_design`, `animation`, which run in the nightly routine; `all+visual` adds them). This guarantees a headless run never hangs on a question.
 
 Otherwise, before the question, display the advisory recommendation from changed paths:
 
@@ -115,9 +115,9 @@ exactly one `AskUserQuestion` round, one question, presets from
 default, the user may choose any existing preset or Custom, and the suggestion never sets or edits
 `AUDIT_DIMENSIONS`. Do not run it for headless runs where either audit environment variable is set.
 
-- **Dimensions:** Everything (default) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration).
+- **Dimensions:** Everything (default, the gate set: all but `typography`, `ui_design`, `animation`) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration; ticking the three visual ones is how an interactive run includes them).
 
-Result: `AUDIT_DIMENSIONS` (comma list). A partial selection never writes the push marker (same rule as before), and the log names the dimensions not checked.
+Result: `AUDIT_DIMENSIONS` (comma list). A selection narrower than the gate set never writes the push marker (same rule as before; the gate set itself is not partial), and the log names the dimensions not checked.
 
 **`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when `STRIPE=yes` (Phase 1) AND the non-test changed set intersects the precomputed `STRIPE_FILES` (never a grep of the diff text). Why, with evidence: `references/dimension-selection.md`.
 
@@ -128,8 +128,8 @@ Run every `orch_backlog_add` and `orch_backlog_remove` BEFORE the block below, b
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from Phase 1
-AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
-[ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; the 10 gate-set ids when the answer was Everything}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
+AUDIT_DIMENSIONS=$(orch_expand_dimensions "$AUDIT_DIMENSIONS")   # headless spellings: `all` = gate set (typography, ui_design, animation run nightly, 2026-10-01), `all+visual` = all 13 (lib); find.js accepts dimension ids only
 AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else runs the fix wave (Critical/Important, plus Minors per minor-split.mjs; with none the Minors are still backlogged)
 ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js, and /full-audit never runs this block
 ALLE_DATEIEN=$(orch_audited_filter "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS")   # drops files byte-identical to what a passed audit certified with a covering dimension set (lib); runs BEFORE the payments trigger, which then sees the filtered set
@@ -467,10 +467,12 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 orch_progress_release
 ```
 
-## Minor backlog sweep (on request)
+## Minor backlog sweep and nightly audit (on request)
 
 "Minor-Backlog abarbeiten", "Minors abarbeiten" or "clear the minor backlog": skip find, run only the
-fix wave over the backlog, write no marker. Procedure in `references/minor-backlog.md`.
+fix wave over the backlog, write no marker. "Nachtlauf" or "nightly audit": the combined headless run, a
+visual pass (typography, ui_design, animation over the files changed since the last pass) plus the
+backlog sweep in one PR. Procedures in `references/minor-backlog.md`.
 
 ## Phase 5: Learning
 

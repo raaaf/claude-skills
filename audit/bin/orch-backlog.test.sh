@@ -84,3 +84,22 @@ orch_backlog_add "$IN" >/dev/null
 expect "$(cut -f1 "$STORE" | LC_ALL=C sort -c && echo sorted)" 'sorted' 'store is sorted by key'
 expect "$(orch_backlog_oldest 3 | cut -f6 | tr '\n' ',')" 'alpha thing,beta thing,gamma thing,' 'oldest 3 by first_seen then key'
 expect "$(orch_backlog_oldest 0)" '' 'oldest 0 prints nothing'
+
+# nightly visual pass: dimension spellings and the files-since-head helper
+G="architecture,security,performance,code_quality,seo,a11y,ux,docs_sync,copy,privacy"
+expect "$(orch_expand_dimensions all)" "$G" 'all = gate set'
+expect "$(orch_expand_dimensions all+visual | tr ',' '\n' | grep -cE '^(typography|ui_design|animation)$')" '3' 'all+visual includes the three visual dimensions'
+expect "$(orch_expand_dimensions all | tr ',' '\n' | grep -cE '^(typography|ui_design|animation)$' || true)" '0' 'all excludes the three visual dimensions'
+expect "$(orch_expand_dimensions typography,copy)" 'typography,copy' 'explicit list passes through'
+
+rm -rf .claude/audits/visual-pass-head
+git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm base --date='2020-01-01T00:00:00' >/dev/null
+GIT_COMMITTER_DATE='2020-01-01T00:00:00' git -c user.name=t -c user.email=t@t commit -q --amend --no-edit --date='2020-01-01T00:00:00'
+OLD=$(git rev-parse HEAD)
+printf 'c\n' > src/c.js
+git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm recent >/dev/null
+expect "$(orch_visual_pass_files)" 'src/c.js' 'missing head file: only files changed in the last 7 days'
+printf '%s\n' "$OLD" > .claude/audits/visual-pass-head
+expect "$(orch_visual_pass_files)" 'src/c.js' 'existing sha: files changed since it'
+git rev-parse HEAD > .claude/audits/visual-pass-head
+expect "$(orch_visual_pass_files)" '' 'head at HEAD: nothing to do'

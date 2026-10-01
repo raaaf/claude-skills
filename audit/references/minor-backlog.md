@@ -38,16 +38,45 @@ Trigger: the user explicitly asks (or the nightly cloud routine runs it headless
 5. Write a short log (Result, Fixed, Discarded, `### Backlog (Minor)`), print `MINOR_BACKLOG: N open`,
    write NO push marker: a sweep certifies nothing about the diff.
 
-## Headless sweep (nightly routine)
+## Nightly audit (headless routine)
 
-Same sweep, run by a daily Claude Code cloud routine per repo. Only the user or that routine triggers it.
+Run by a daily Claude Code cloud routine per repo. Only the user or that routine triggers it. Triggers:
+"Nachtlauf" / "nightly audit" run both steps below; the backlog-only phrases from "Sweep" run step b alone
+(branch `chore/minor-backlog-YYYY-MM-DD`, as before).
 
-1. `orch_backlog_count` is 0: print `MINOR_BACKLOG: 0 open` and stop before any agent dispatch.
-2. Open PRs from an earlier `chore/minor-backlog-*` branch (`gh pr list --state open`, head ref prefix): stop and
-   report instead of opening a second one (no stacking).
-3. Limit `N = ${AUDIT_MINOR_SWEEP_LIMIT:-15}`. Take `orch_backlog_oldest N` (oldest first_seen, then key), group by file.
-4. Fix wave over them as `UNCERTAIN` (step 3 of the sweep above), affected tests through `bin/test-lock.sh`.
-5. `orch_backlog_remove` the `FIXED`/`DISCARDED` keys; `FAILED` stay.
-6. Branch `chore/minor-backlog-YYYY-MM-DD` from the current default branch, commit code plus the updated tsv
-   (`chore: clear N minor backlog items`), push the branch, `gh pr create` listing each item as
-   `[dimension] file:line: description` with its outcome. Never push to the default branch; no push marker.
+Why a visual pass (decided 2026-10-01): `typography`, `ui_design` and `animation` left the pre-push default.
+Over 122 audit logs they found 0 Critical and mostly cosmetic Importants (straight vs typographic quotes, raw
+padding literals, long views; reduced-motion gaps are also covered by `a11y`, which stays in the gate), about
+11% of audit-find cost per push. `copy` and `seo` stayed: copy found destructive dialogs confirmed with "Ja" and
+missing delete confirmations, seo found PIN-protected pages leaking title/description/image into og: meta.
+
+Preconditions, before any agent dispatch:
+
+- Open PRs from an earlier `chore/nightly-audit-*` or `chore/minor-backlog-*` branch (`gh pr list --state open`,
+  head ref prefix): stop and report instead of opening a second one (no stacking).
+- Step a has no files (`orch_visual_pass_files` empty) AND `orch_backlog_count` is 0: print
+  `MINOR_BACKLOG: 0 open` and stop.
+
+### Step a: visual pass
+
+1. Files = `orch_visual_pass_files` (lib): changed since the sha in `.claude/audits/visual-pass-head` (tracked,
+   one line); a missing or unknown file means the last 7 days (`git log --since`). No files: skip step a.
+2. `find.js` over those files with dimensions `typography,ui_design,animation`, hunk scope per the normal size
+   rules (Phase 1 `diff-size-gate.sh` thresholds).
+3. Critical/Important findings join the fix wave of step b; Minors go to the backlog (`minor-split.mjs` rules
+   unchanged).
+4. Write the new head sha (`git rev-parse HEAD`) to `.claude/audits/visual-pass-head` after the run, so it is
+   committed with the PR.
+
+### Step b: Minor backlog sweep
+
+1. Limit `N = ${AUDIT_MINOR_SWEEP_LIMIT:-15}`. Take `orch_backlog_oldest N` (oldest first_seen, then key), group by file.
+   Backlog empty and step a found nothing to fix: no fix dispatch.
+2. One fix wave over step a's Critical/Important findings plus these entries as `UNCERTAIN` (step 3 of the
+   sweep above), affected tests through `bin/test-lock.sh`.
+3. `orch_backlog_remove` the `FIXED`/`DISCARDED` keys; `FAILED` stay.
+4. Branch `chore/nightly-audit-YYYY-MM-DD` (backlog-only run: `chore/minor-backlog-YYYY-MM-DD`) from the current
+   default branch, commit code plus the updated tsv and `visual-pass-head`
+   (`chore: nightly audit, N fixes`; backlog-only: `chore: clear N minor backlog items`), push the branch,
+   one `gh pr create` listing each item as `[dimension] file:line: description` with its outcome. Never push to
+   the default branch; no push marker.
