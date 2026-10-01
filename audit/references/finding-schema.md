@@ -53,6 +53,31 @@ Steps 4-7 are built on:
 `tag: 'context'` is only used at `SCOPE=diff`: up to 5 directly imported/calling files per
 diff file, never a Floor file (Floor files are always `tag: 'floor'`).
 
+### Grouped file scout (`scout-files.md`, "Grouped mode")
+
+One call for several dimensions that share an agent type and `SCOPE_FILES`; `files` per dimension
+has exactly the shape above (`SCOUT_FILES_GROUP_SCHEMA` in `find.js`).
+
+```js
+{
+  type: 'object',
+  properties: {
+    dimensions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          dimension: { type: 'string' },
+          files: { /* same array as the file scout's files */ }
+        },
+        required: ['dimension', 'files']
+      }
+    }
+  },
+  required: ['dimensions']
+}
+```
+
 ## Scout output — cluster scout (`scout-clusters.md`, architecture/docs_sync/security)
 
 ```js

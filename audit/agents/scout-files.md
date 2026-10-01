@@ -1,6 +1,6 @@
 # Scout: File Scout
 
-Dispatched once per dimension in `find.js` (except `architecture` and `docs_sync`, which use only
+Dispatched once per dimension in `find.js` (or once per group, see Grouped mode) (except `architecture` and `docs_sync`, which use only
 `scout-clusters.md`; `security` gets both scouts, merged in Stage 2). `agentType: 'Explore'`,
 `model: 'sonnet'`, `schema: SCOUT_FILES_SCHEMA` (`references/finding-schema.md`).
 
@@ -49,3 +49,16 @@ specialist but never produce their own findings — only findings the diff itsel
 ## Output
 
 Reply with the scout-files schema: `files[{path, tag, reason}]`.
+
+## Grouped mode
+
+`find.js` sends one combined call for the selected dimensions that share an agent type and the
+same `SCOPE_FILES` (`payments` with its own `dimensionFiles` never joins a group).
+
+- Input: one `SCOPE_FILES`, plus `DIMENSIONS=[{dimension, doc, FLOOR_FILES}]`: each entry names the
+  dimension, the path of its module (its "Look for" block) and its own `FLOOR_FILES`.
+- Task: for every entry, apply the rules above independently, including the per-file concrete-trigger
+  rule and the floor rule against that entry's `FLOOR_FILES`. A trigger seen for one dimension is no
+  trigger for another; the same file may appear under several dimensions on its own reasons.
+- Output: `dimensions[{dimension, files[{path, tag, reason}]}]`, one entry per input dimension. A
+  dimension that is missing or null falls back to its own single scout in `find.js`.

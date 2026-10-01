@@ -50,6 +50,26 @@ const SCOUT_FILES_SCHEMA = {
   required: ['files']
 };
 
+// Grouped file scout (same-agentType dimensions sharing SCOPE_FILES): one entry per dimension,
+// each slice shaped like SCOUT_FILES_SCHEMA's reply.
+const SCOUT_FILES_GROUP_SCHEMA = {
+  type: 'object',
+  properties: {
+    dimensions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          dimension: { type: 'string' },
+          files: SCOUT_FILES_SCHEMA.properties.files
+        },
+        required: ['dimension', 'files']
+      }
+    }
+  },
+  required: ['dimensions']
+};
+
 const SCOUT_CLUSTERS_SCHEMA = {
   type: 'object',
   properties: {
@@ -460,8 +480,9 @@ function scopeFilesFor(ctx, dimension) {
   return (ctx.dimensionFiles && ctx.dimensionFiles[dimension]) || ctx.files;
 }
 
-async function runFileScout(ctx, dimension, agentFn, logFn) {
-  const promptDoc = `${ctx.promptDir}/scout-files.md`;
+// Per-dimension scout inputs; computed once per dimension (it logs), shared by the single
+// and the grouped path.
+function prepareFileScout(ctx, dimension, logFn) {
   const scopeFiles = scopeFilesFor(ctx, dimension);
   const floorFiles = computeFloorFiles(dimension, scopeFiles, ctx.floorFiles, logFn);
   if (!floorFiles.length && !dimensionHasFloorSignal(dimension, scopeFiles)) {
@@ -470,6 +491,20 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
   const floorFilesBriefing = floorFiles.length
     ? JSON.stringify(floorFiles)
     : '(none for this dimension; select under the concrete-trigger rule and stay within MAX_SCOUT_FILES)';
+  return { scopeFiles, floorFiles, floorFilesBriefing };
+}
+
+async function runFileScout(ctx, dimension, agentFn, logFn, prepared) {
+  const group = ctx.scoutGroups && ctx.scoutGroups[dimension];
+  if (group && !prepared) {
+    const grouped = await runGroupScout(ctx, group, agentFn, logFn);
+    const slice = grouped.slices[dimension];
+    if (slice) return finishFileScout(dimension, slice, grouped.prep[dimension].floorFiles, logFn);
+    logFn(`${dimension}: group scout missing, single scout fallback`);
+    return runFileScout(ctx, dimension, agentFn, logFn, grouped.prep[dimension]);
+  }
+  const { scopeFiles, floorFiles, floorFilesBriefing } = prepared || prepareFileScout(ctx, dimension, logFn);
+  const promptDoc = `${ctx.promptDir}/scout-files.md`;
   const result = await agentFn(
     ROOT_HEADER +
     `Read ${promptDoc} and execute the file-scout task for DIMENSION=${dimension}.\n` +
@@ -477,6 +512,61 @@ async function runFileScout(ctx, dimension, agentFn, logFn) {
     `SCOPE=${ctx.scope}`,
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_FILES_SCHEMA, phase: 'Scout' }
   );
+  return finishFileScout(dimension, result, floorFiles, logFn);
+}
+
+// One shared Explore call per group (memoized on the group, so every member dimension's
+// pipeline awaits the same promise). Returns per-dimension slices; a null call or a dimension
+// missing from the reply yields no slice and that dimension falls back to its single scout.
+function runGroupScout(ctx, group, agentFn, logFn) {
+  if (!group.promise) {
+    group.promise = (async () => {
+      const prep = Object.fromEntries(group.dimensions.map((d) => [d, prepareFileScout(ctx, d, logFn)]));
+      const briefing = group.dimensions.map((d) => ({
+        dimension: d, doc: ctx.dimensionDoc[d], FLOOR_FILES: prep[d].floorFiles
+      }));
+      const result = await agentFn(
+        ROOT_HEADER +
+        `Read ${ctx.promptDir}/scout-files.md (section "Grouped mode") and execute the file-scout task for every dimension in DIMENSIONS.\n` +
+        `SCOPE_FILES=${JSON.stringify(prep[group.dimensions[0]].scopeFiles)}\nDIMENSIONS=${JSON.stringify(briefing)}\n` +
+        `SCOPE=${ctx.scope}`,
+        { agentType: 'Explore', model: 'sonnet', schema: SCOUT_FILES_GROUP_SCHEMA, phase: 'Scout' }
+      );
+      const slices = {};
+      for (const entry of (result && Array.isArray(result.dimensions)) ? result.dimensions : []) {
+        if (entry && group.dimensions.includes(entry.dimension) && Array.isArray(entry.files)) {
+          slices[entry.dimension] = { files: entry.files };
+        }
+      }
+      return { prep, slices };
+    })();
+  }
+  return group.promise;
+}
+
+// Dimensions sharing an agent type AND the same SCOPE_FILES array share one file scout.
+// Single-member groups are omitted: they keep the plain single scout.
+function planScoutGroups(ctx, dimensions) {
+  const groups = [];
+  for (const d of dimensions) {
+    if (CLUSTER_ONLY_DIMENSIONS.includes(d)) continue;
+    const scopeFiles = scopeFilesFor(ctx, d);
+    let group = groups.find((g) => g.agentType === AGENT_TYPE_BY_DIMENSION[d] && g.scopeFiles === scopeFiles);
+    if (!group) {
+      group = { agentType: AGENT_TYPE_BY_DIMENSION[d], scopeFiles, dimensions: [], promise: null };
+      groups.push(group);
+    }
+    group.dimensions.push(d);
+  }
+  const byDimension = {};
+  for (const g of groups) {
+    if (g.dimensions.length > 1) for (const d of g.dimensions) byDimension[d] = g;
+  }
+  return byDimension;
+}
+
+// Post-processing shared by the single and the grouped scout: floor re-add, cap, incomplete flag.
+function finishFileScout(dimension, result, floorFiles, logFn) {
   if (warnIfNull(logFn, result, `${dimension}: file scout returned null, using floor files only`)) {
     return { failed: true, files: floorFiles.map((path) => ({ path, tag: 'floor', reason: 'scout unavailable' })) };
   }
@@ -1015,6 +1105,11 @@ const ctx = {
   )
 };
 
+// Group the file scouts: one call per set of selected dimensions with the same agent type and
+// SCOPE_FILES (measured 2026-10-01 over 1,642 audit agents: every agent starts at ~27k context,
+// 40% of the scouts' weighted cost is startup). payments (dimensionFiles) never joins a group.
+ctx.scoutGroups = planScoutGroups(ctx, pipelineDimensions);
+
 // Descending by (approximate) file count so large dimensions start first
 // (Konzurrenz-Rechnung, Schritt 4): the workflow tool caps at 16 concurrent
 // agents, so starting big dimensions first avoids them running alone at the
@@ -1032,7 +1127,7 @@ const ctx = {
 // computed", not "computed, no match".
 const dimMeta = pipelineDimensions.map((d) => {
   const scopeFiles = scopeFilesFor(ctx, d);
-  const floorCount = computeFloorFiles(d, scopeFiles, ctx.floorFiles, null).length;   // ordering only, no log: runFileScout computes and logs the same floor once
+  const floorCount = computeFloorFiles(d, scopeFiles, ctx.floorFiles, null).length;   // ordering only, no log: prepareFileScout computes and logs the same floor once
   const floorComputed = Object.prototype.hasOwnProperty.call(floorFiles, d);
   const degraded = scopeFiles.length > 0 && !floorComputed;
   if (degraded) {
