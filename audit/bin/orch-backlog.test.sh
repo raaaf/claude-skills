@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Pins the Minor backlog store (2026-10-01): dedupe by semantic key, missing files dropped on every
-# write, lookup by file, removal by key, count, one-line sanitized descriptions, gitignore entry.
+# write, lookup by file, removal by key, count, one-line sanitized descriptions, tracked store (no .gitignore line, union merge attribute), sorted output, oldest-n.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -64,4 +64,23 @@ expect "$(orch_backlog_count)" '0' 'removing every key empties the store'
 printf 'copy\tsrc/a.js\t1\t2026-10-01\tgitignore probe\n' > "$IN"
 orch_backlog_add "$IN" >/dev/null
 expect "$(orch_backlog_for_files $'src/a.js\nsrc/other.js' | wc -l | tr -d ' ')" '1' 'lookup takes a multi-line file list'
-expect "$(git check-ignore -q .claude/audits/minor-backlog.tsv && echo ignored)" 'ignored' 'store is gitignored'
+expect "$(git check-ignore -q .claude/audits/minor-backlog.tsv && echo ignored || echo tracked)" 'tracked' 'store is not gitignored'
+expect "$([ -f .gitignore ] && grep -c 'minor-backlog' .gitignore || echo 0)" '0' 'no .gitignore line written'
+orch_backlog_add "$IN" >/dev/null
+expect "$(grep -cxF '.claude/audits/minor-backlog.tsv merge=union' .gitattributes)" '1' '.gitattributes union line written once'
+
+# a legacy ignore line is removed, other lines stay
+printf 'node_modules\n.claude/audits/minor-backlog.tsv\ndist\n' > .gitignore
+orch_backlog_add "$IN" >/dev/null
+expect "$(tr '\n' ',' < .gitignore)" 'node_modules,dist,' 'legacy ignore line removed, others kept'
+
+# sorted by key, oldest-n by first_seen then key
+rm -f "$STORE"
+printf 'ux\tsrc/a.js\t1\t2026-10-03\tzeta thing\n' > "$IN"
+printf 'ux\tsrc/a.js\t2\t2026-10-01\talpha thing\n' >> "$IN"
+printf 'ux\tsrc/a.js\t3\t2026-10-01\tbeta thing\n' >> "$IN"
+printf 'ux\tsrc/a.js\t4\t2026-10-02\tgamma thing\n' >> "$IN"
+orch_backlog_add "$IN" >/dev/null
+expect "$(cut -f1 "$STORE" | LC_ALL=C sort -c && echo sorted)" 'sorted' 'store is sorted by key'
+expect "$(orch_backlog_oldest 3 | cut -f6 | tr '\n' ',')" 'alpha thing,beta thing,gamma thing,' 'oldest 3 by first_seen then key'
+expect "$(orch_backlog_oldest 0)" '' 'oldest 0 prints nothing'

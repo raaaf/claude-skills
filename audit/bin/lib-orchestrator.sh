@@ -67,11 +67,12 @@
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
 #   orch_audited_record <files> <dims>   after a PASSED audit: stores path, blob sha and dims per file in the worktree's claude-audited-blobs
 #   orch_audited_filter <files> <dims>   prints the files NOT already certified by a passed audit (same blob sha, dims a superset), input order kept
-#   orch_backlog_add <tsv>   Minor backlog (.claude/audits/minor-backlog.tsv, gitignored like patterns.json): appends the
+#   orch_backlog_add <tsv>   Minor backlog (.claude/audits/minor-backlog.tsv, TRACKED, merge=union in .gitattributes): appends the
 #                           5-column entries dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description from a FILE, key computed
 #                           here, deduped by key, entries whose file no longer exists dropped; prints BACKLOG_ADDED=n
 #   orch_backlog_for_files <files>   prints the stored 6-column entries (key first) whose file is in the newline list
 #   orch_backlog_remove <keys>       removes the entries with those keys (newline list), drops missing files; prints BACKLOG_REMOVED=n
+#   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
 #   orch_backlog_count               prints the number of stored entries (0 when none)
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
@@ -515,8 +516,10 @@ orch_payments_floor() {
 }
 
 # Minor backlog (decided 2026-10-01): Minors that did not ride along with a Critical/Important fix
-# of their own file wait here and join that file's fixes (as UNCERTAIN) in a later wave. Same store
-# root as patterns.json (audit_store_root: the main checkout, every worktree shares one file).
+# of their own file wait here and join that file's fixes (as UNCERTAIN) in a later wave. Store root:
+# audit_store_root (the main checkout). The file is TRACKED (a nightly routine clears it in PRs), kept
+# sorted by key so diffs stay stable; .gitattributes marks it merge=union. Every write must happen
+# BEFORE orch_marker_write: the marker certifies the tracked tree.
 # Line: key<TAB>dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description. The key is
 # file|normalize-suppression("[dimension] description"), so reworded repeats of one finding collapse.
 ORCH_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -536,7 +539,7 @@ orch__backlog_commit() {
     [ -f "$r/$file" ] && printf '%s\n' "$line"
   done < "$tmp" > "$out"
   rm -f "$tmp"
-  if [ -s "$out" ]; then mkdir -p "$(dirname "$f")" && mv "$out" "$f"; else rm -f "$out" "$f"; fi
+  if [ -s "$out" ]; then mkdir -p "$(dirname "$f")" && LC_ALL=C sort -t "$(printf '\t')" -k1,1 "$out" > "$f" && rm -f "$out"; else rm -f "$out" "$f"; fi
   return 0
 }
 
@@ -568,7 +571,20 @@ orch_backlog_add() {
   done < "$in"
   orch__backlog_commit "$tmp" || return 1
   echo "BACKLOG_ADDED=$n"
-  gitignore_ensure "$r" '.claude/audits/minor-backlog.tsv'   # same courtesy as patterns.json
+  orch__backlog_repo_setup "$r"
+}
+
+# The store is tracked: drop the exact .gitignore line older versions added, make sure .gitattributes
+# carries the union-merge line (appended once, file created when missing). Symlinked files are not touched.
+orch__backlog_repo_setup() {
+  local r="$1" rel='.claude/audits/minor-backlog.tsv' t
+  if [ -f "$r/.gitignore" ] && [ ! -L "$r/.gitignore" ] && grep -qxF "$rel" "$r/.gitignore"; then
+    t=$(mktemp) || return 0
+    grep -vxF "$rel" "$r/.gitignore" > "$t" || true
+    cat "$t" > "$r/.gitignore"; rm -f "$t"
+  fi
+  [ -L "$r/.gitattributes" ] && return 0
+  grep -qxF "$rel merge=union" "$r/.gitattributes" 2>/dev/null || printf '%s merge=union\n' "$rel" >> "$r/.gitattributes"
 }
 
 orch_backlog_for_files() {
@@ -586,6 +602,12 @@ orch_backlog_remove() {
   before=$(grep -c . "$f"); after=$(grep -c . "$tmp" || true)
   orch__backlog_commit "$tmp" || return 1
   echo "BACKLOG_REMOVED=$((before - after))"
+}
+
+orch_backlog_oldest() {
+  local f; f=$(orch__backlog_path) || return 0
+  [ -f "$f" ] || return 0
+  LC_ALL=C sort -t "$(printf '\t')" -k5,5 -k1,1 "$f" | awk -v n="${1:-0}" 'NR <= n'
 }
 
 orch_backlog_count() {
