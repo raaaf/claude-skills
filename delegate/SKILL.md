@@ -163,3 +163,15 @@ Open: {nothing | deliberately deferred with reason}
 ```
 
 Tests red or criterion not achievable: say so honestly, never sugarcoat. Afterward normal rules apply: commit only on explicit request, /audit before push.
+
+**Unaudited-size check (after the report, APPROVE only).** Audit small and often: the most expensive audits of 2026-09-28..10-01 ran over 300+ file branch diffs that no audit had ever passed (zeit 385 files, events 347), broke at the session limit and needed ~17 fix rounds, while a `SMALL` diff (<=28 files) gets one specialist per dimension. Count the branch files a passed audit has not certified yet:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root >/dev/null 2>&1 || exit 0   # not an auditable repo: no line
+SCOPE_FILES=$(bash "$AUDIT_BIN/collect-scope.sh" 2>/dev/null | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p;}')
+UNAUDITED=$(orch_audited_filter "$SCOPE_FILES" "architecture,security,performance,code_quality,a11y,docs_sync" | grep -c .)
+echo "UNAUDITED_FILES=$UNAUDITED"
+```
+
+`UNAUDITED_FILES` >= 20 (margin under the 28-file `SMALL` limit, so the audit still runs in its cheapest mode): add one last line to the report, `Unauditiert: {N} Dateien seit dem letzten bestandenen Audit. Jetzt /audit starten, solange der Diff klein ist?`, and start `/audit` when the user says yes. Below 20: no line. Never start `/audit` without that yes.
