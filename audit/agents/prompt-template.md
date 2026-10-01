@@ -72,7 +72,8 @@ line in any deviation finding; isolated unusual values are not sufficient eviden
   lines above the defect.
 - **A denied file/tool is a blocker, reported as-is** — never guessed at or worked around.
 - **Tag every finding with YOUR dimension, the one named in `DIMENSION=` in this briefing, and
-  report nothing outside it.** Something you notice that belongs to another dimension is that
+  report nothing outside it** (one exception: a `PRIVACY FOLD` line in the briefing lets a
+  `security` specialist also tag findings `privacy`, see `agents/13-privacy.md`). Something you notice that belongs to another dimension is that
   dimension's specialist's job; it has the guidelines for it and you do not. Measured 2026-09-11: a
   run scoped to `ux` alone, whose own log listed `security` under "Dimensions NOT checked", still
   carried two `[Minor][security]` findings written by the ux specialist. In a full run that produces

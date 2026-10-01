@@ -36,8 +36,9 @@ On `prose`:
 
 - **one round**, not three. A second round exists to catch what a fix broke, and a prose fix that
   breaks something is caught by the same round's verification.
-- **Minors are fixed here too (decided 2026-09-25).** What bounds the loop is the other three
-  constraints on this list, not withholding a fix: one round, floor dimensions only, and the
+- **Minors follow the normal split (decided 2026-10-01, `minor-backlog.md`).** A Minor rides along
+  only with a Critical/Important fix to its own file; the rest goes to the backlog. What bounds the
+  loop is the other three constraints on this list: one round, floor dimensions only, and the
   marker certifying the post-fix tree, so the fixes this run makes need no second audit before the
   push they gate.
 - **floor dimensions only.** No orchestrator additions "to be safe". If the floor derives only

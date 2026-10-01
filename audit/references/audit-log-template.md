@@ -34,6 +34,10 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, writ
 ## Fixed Issues
 - [Critical|Important|Minor][Dimension] file:line: what was fixed
 
+### Backlog (Minor)
+- Added this run: {N} | Removed this run (FIXED or DISCARDED ride-alongs): {N} | Total open: {N}
+- (list of added Minors: `- [Minor][Dimension] file:line: description`; write the section even when all counts are 0)
+
 ## Discarded
 - [Dimension] file:line: reason (refuted, or discard: conflict with {id})
 - [Severity][Dimension] file:line: discarded by fixer: {reason}

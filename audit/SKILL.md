@@ -1,7 +1,7 @@
 ---
 name: audit
-description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every finding, including Minor, is fixed or discarded with a reason. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
-when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing"
+description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every Critical/Important finding is fixed or discarded with a reason, a Minor rides along only with a fix to its own file, every other Minor goes to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog"
 model: inherit
 effort: high
 allowed-tools:
@@ -119,23 +119,16 @@ default, the user may choose any existing preset or Custom, and the suggestion n
 
 Result: `AUDIT_DIMENSIONS` (comma list). A partial selection never writes the push marker (same rule as before), and the log names the dimensions not checked.
 
-**`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when BOTH hold:
-`STRIPE=yes` (from Phase 1) AND the changed-file set intersects `STRIPE_FILES`. The intersection is
-computed against `STRIPE_FILES`, the precomputed Stripe surface `detect-stripe.sh` already found,
-never by grepping the diff text for "stripe": half of a payments checklist is about an *absent*
-guard (a webhook route with no signature check, a client secret logged instead of masked), and an
-absence never shows up as a line in a diff — a diff-text grep would silently miss exactly the class
-of defect this dimension exists to catch. Test files (`tests/`, `spec/`, `__tests__/`, `*Test.php`,
-`*.test.*`, `*.spec.*`) are excluded from the changed set before intersecting: on 2026-09-30
-`tests/Pest.php` sat in `STRIPE_FILES`, a diff touching only it started payments (12 agents, 41 USD,
-35 findings, all in unchanged code).
+**`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when `STRIPE=yes` (Phase 1) AND the non-test changed set intersects the precomputed `STRIPE_FILES` (never a grep of the diff text). Why, with evidence: `references/dimension-selection.md`.
+
+**`seo` (SUBTRACTIVE gate, 2026-10-01):** dropped unless the repo has an SEO surface AND the diff touches a frontend or routes file (`orch_seo_relevant`, never on `PLATFORM=native`); 4% of audit-find cost for 12 Important and 0 Critical in 12 days. **`privacy`** stays selectable, but with `security` selected `find.js` folds it into the security specialists (reported as `status: 'folded'`, not skipped; findings carry id prefix `privacy-` and tag `privacy`).
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from Phase 1
 AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; all 13 ids when the answer was All}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
 [ "$AUDIT_DIMENSIONS" = all ] && AUDIT_DIMENSIONS="architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy"   # the headless spelling; find.js accepts dimension ids only
-AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else fixes every finding incl. Minor
+AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else runs the fix wave (Critical/Important, plus Minors per minor-split.mjs; with none the Minors are still backlogged)
 ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js, and /full-audit never runs this block
 ALLE_DATEIEN=$(orch_audited_filter "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS")   # drops files byte-identical to what a passed audit certified with a covering dimension set (lib); runs BEFORE the payments trigger, which then sees the filtered set
 AUDITED_SKIP=$(( $(printf '%s\n' "$ALLE_DATEIEN_FULL" | grep -c .) - $(printf '%s\n' "$ALLE_DATEIEN" | grep -c .) ))
@@ -149,21 +142,16 @@ if [ "${STRIPE:-no}" = "yes" ]; then
     echo "payments: skipped, diff did not touch the payment surface"
   fi
 fi
+case ",$AUDIT_DIMENSIONS," in *,seo,*)   # subtractive: seo only where SEO can matter (lib, after the audited-blob filter)
+  if [ "$(orch_seo_relevant "$ALLE_DATEIEN" "$(git rev-parse --show-toplevel)" 2>"${TMPDIR:-/tmp}/seo-reason.$$")" = no ]; then
+    AUDIT_DIMENSIONS=$(printf '%s' "$AUDIT_DIMENSIONS" | tr ',' '\n' | grep -vx seo | paste -sd, -)
+    echo "SEO_SKIP: $(head -1 "${TMPDIR:-/tmp}/seo-reason.$$")"
+  fi; rm -f "${TMPDIR:-/tmp}/seo-reason.$$";; esac
 echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS AUDIT_FIX_SCOPE=$AUDIT_FIX_SCOPE"
 orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES ALLE_DATEIEN ALLE_DATEIEN_FULL AUDITED_SKIP   # Phase 2 and Phase 4 load these; a hand-substituted copy in Phase 4 was the previous mechanism; ALLE_DATEIEN is now the filtered set
 ```
 
-**Already-audited files are skipped (2026-09-30).** `orch_audited_filter` drops every file whose
-working-tree content is byte-identical (git blob sha) to what an earlier PASSED audit in this
-worktree certified, provided that audit's dimension set covers the current selection. Commits,
-amends and rebases do not matter, only content does. Reason: re-running `/audit` on one branch
-re-reviewed every file each time; 37% of audit-find cost from 09-27 to 09-30 went to runs where more
-than half the files had been audited before (shop/printify worktree: 13 audits in 24 h, cumulative
-scope 6, 21, 24, 27, 47, 71 files; events: 347 files, then 357 files with 97% already audited).
-`ALLE_DATEIEN_FULL` keeps the whole list; `ALLE_DATEIEN` is the filtered set every later phase
-uses. `DIFF_SIZE_RESULT` stays the Phase 1 value over the whole diff: `diff-size-gate.sh` takes no
-file list, so it cannot be recomputed on the filtered set cheaply. The record is written only in
-Phase 4 on the marker path. `/full-audit` never filters or records.
+**Already-audited files are skipped (2026-09-30).** `orch_audited_filter` drops files byte-identical (git blob sha) to what an earlier PASSED audit certified; `ALLE_DATEIEN_FULL` keeps the whole list, `ALLE_DATEIEN` is the filtered set every later phase uses. Rules and evidence: `references/dimension-selection.md`.
 
 **Empty filtered set:** when `ALLE_DATEIEN` is empty, everything was already certified: run neither
 `find.js` (Phase 2) nor `fix.js` (Phase 3), print `AUDITED_SKIP` and treat the run as a pass with
@@ -283,6 +271,7 @@ orch_progress_touch
 ```
 
 Then read the returned JSON: `{dimensions: {[dim]: {status, files, chunks, findings, verdicts, uncovered, telemetry}}, skipped, degradedDimensions}`.
+`dimensions.privacy` may be `{status: 'folded', into: 'security'}` (privacy fold): count it as selected, never as skipped or incomplete; a `security` finding whose id starts with `privacy-` is logged and counted as `[privacy]`.
 For each dimension, copy its returned status and telemetry into `## Pipeline Telemetry` in the audit
 log: dimension wall time and elapsed milliseconds plus dispatch count for scout, specialist,
 verifier, and refuter. Dispatches count agent work items submitted to `parallel`, not hidden provider
@@ -310,7 +299,17 @@ neither: 192 audit logs on disk had produced 36 store entries, so `patterns.json
 never been fed by the loop, and every retro reasoned about recurrence from a counter that did not
 move. Phase 5 Step 0.5 still checks the count and back-fills, but that is the repair, not the path.
 
-**Decide per finding:** `REFUTED` is discarded before any file is touched, with the verifier's reason. `CONFIRMED` and `UNCERTAIN`, at every severity including Minor, all go to `fix.js` unless `AUDIT_FIX_SCOPE=none` (find & log only). The orchestrator does no severity-based triage; that decision now belongs entirely to the fix agent per finding (`agents/fix-agent.md`'s FIXED/DISCARDED/FAILED contract). An `UNCERTAIN` finding carries `verdict: "UNCERTAIN"` in its `fixes[]` entry so the fixer re-checks it against the code before deciding. Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion. When a dimension returns `incomplete` twice in a row, re-run it once more with `files` narrowed to the files its scout reported plus its floor files (2026-09-24: privacy stayed incomplete over the full diff twice and completed on a 5-file re-run); if it is still incomplete after that, it stays under `## Not completed` and blocks the marker.
+**Decide per finding:** `REFUTED` is discarded before any file is touched, with the verifier's reason. Of the rest (`CONFIRMED` and `UNCERTAIN`), every Critical and Important goes to `fix.js` unless `AUDIT_FIX_SCOPE=none` (find & log only). Minors are split deterministically (decided 2026-10-01: a zeit audit had 249 raw findings, 224 of them Minor, and fixing all meant ~17 spec-executor rounds): a Minor rides along only when every file it names already receives a Critical/Important fix in this wave; every other Minor goes to the backlog (`.claude/audits/minor-backlog.tsv`, gitignored like `patterns.json`), also with `AUDIT_FIX_SCOPE=none`. Backlog entries whose file receives a fix in this wave join that file's `fixes[]` entry as `verdict: "UNCERTAIN"`; the fixer re-checks them against current code, and entries that come back `FIXED` or `DISCARDED` leave the backlog. Write the split input to a file (Write tool; finding text never goes on a command line):
+
+```bash
+for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
+orch_state_load   # carries AUDIT_FIX_SCOPE from Phase 1.5
+# SPLIT_IN = {"findings": [non-REFUTED findings: id, severity, files:[{path,lines}], ...], "backlog": [entries from: orch_backlog_for_files "$(every file named by a Critical/Important finding)", as {key,dimension,file,line,first_seen,description}]}
+node "$AUDIT_BIN/minor-split.mjs" < {SPLIT_IN file} > {SPLIT_OUT file}   # {fix, ridealongBacklog, toBacklog}
+```
+
+`fix` plus `ridealongBacklog` (as `UNCERTAIN`) form the `fixes[]`, grouped by file; with `AUDIT_FIX_SCOPE=none` nothing is fixed and every Minor in `fix` is backlogged too. Write `toBacklog` as 5-column rows `dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description` to a file (single-line description, max 50 words, never a secret value: same rule as the log) and hand it over with `orch_backlog_add {file}` after the fix wave (the lib computes the key and drops missing files); after the wave `orch_backlog_remove` the keys of every ride-along entry that came back `FIXED` or `DISCARDED`. The orchestrator does no other severity-based triage; the fix agent decides per finding (`agents/fix-agent.md`'s FIXED/DISCARDED/FAILED contract). Two findings that contradict each other: decide which one loses, mark it `discard: conflict with {id}` in the log. A dimension with `status: incomplete` gets its own `## Not completed` log section, naming the last reached stage; the other dimensions still ran to completion. When a dimension returns `incomplete` twice in a row, re-run it once more with `files` narrowed to the files its scout reported plus its floor files (2026-09-24: privacy stayed incomplete over the full diff twice and completed on a 5-file re-run); if it is still incomplete after that, it stays under `## Not completed` and blocks the marker.
 
 ## Phase 3: Fix
 
@@ -345,7 +344,7 @@ Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" 
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
 
-**LARGE or HUGE diff: no single-file fix wave.** When `DIFF_SIZE_RESULT` is `LARGE` or `HUGE`, do not call `fix.js` over the whole set. The orchestrator groups the `CONFIRMED`/`UNCERTAIN` findings into rounds of at most ~15 findings over coherent, disjoint file groups (a finding that spans several files stays whole in one group), dispatches one `spec-executor` per group (sequential when groups share files, parallel otherwise; tests only through `test-lock.sh` on the affected files), and runs the unit/feature suite after each round before starting the next. `SMALL` and `OK` diffs keep the `fix.js` call above unchanged. The marker and gate rules in Phase 4 do not change: the same conditions decide whether the marker is written. Reason (2026-09-30, events repo, 126-file refactor diff): `fix.js` fixed per file, produced 170 fixes but 189 failing tests and 14 regressions (removed public Livewire props, cross-file findings applied by half, 78 FAILED because the fix spanned several files), and the whole wave had to be reverted.
+**LARGE or HUGE diff: no single-file fix wave.** When `DIFF_SIZE_RESULT` is `LARGE` or `HUGE`, do not call `fix.js` over the whole set. The orchestrator groups the Critical/Important findings into rounds of at most ~15 of them (ride-along Minors and `UNCERTAIN` backlog entries join the group of their file and do not count toward the 15) over coherent, disjoint file groups (a finding that spans several files stays whole in one group), dispatches one `spec-executor` per group (sequential when groups share files, parallel otherwise; tests only through `test-lock.sh` on the affected files), and runs the unit/feature suite after each round before starting the next. `SMALL` and `OK` diffs keep the `fix.js` call above unchanged. The marker and gate rules in Phase 4 do not change: the same conditions decide whether the marker is written. Reason (2026-09-30, events repo, 126-file refactor diff): `fix.js` fixed per file, produced 170 fixes but 189 failing tests and 14 regressions (removed public Livewire props, cross-file findings applied by half, 78 FAILED because the fix spanned several files), and the whole wave had to be reverted.
 
 Every `fixes[]` entry names exactly ONE file. When a fix needs its own test file too, send the test as a second entry (or a second `fix.js` call), never as a hint inside the first: `fix.js`'s ownership check (`hasOwnedChange`) treats a fixer that touched two files as not-owned, skips the fix-verifier and returns `incomplete` for a fix that was fine (2026-09-20, the orchestrator had to verify by hand).
 
@@ -372,7 +371,7 @@ Re-run `pre-checks.sh`, `check-silencing.sh` and `check-test-count-drift.sh` now
 
 **Re-check the audited range before the marker.** Run `git log --oneline {BASE_REF}..HEAD` and compare it with the commit list the scope was computed from. A commit that landed after scoping (another session committing into the same tree) is unaudited: either re-run `find.js` over its files or name it under `## Notes` and do not write the marker. 2026-09-24: a foreign commit landed 50 minutes after scoping and was deployed unaudited.
 
-Finalize `LOGFILE` from `references/audit-log-template.md`: Result, Findings per dimension, Fixes, Discarded (with reason), Unverified, Not completed, Open Points. Include the mechanical checks from Phase 1 and a chat display of the finished log (markdown block).
+Finalize `LOGFILE` from `references/audit-log-template.md`: Result, Findings per dimension, Fixes, Discarded (with reason), Unverified, Not completed, Open Points, `### Backlog (Minor)` (added this run / removed this run / total; the count comes from `orch_backlog_count` after the last `orch_backlog_add`/`orch_backlog_remove`). Include the mechanical checks from Phase 1 and a chat display of the finished log (markdown block).
 
 Every finding line, in every section listed above, MUST be exactly `- [Severity][Dimension]
 file:line: description` on one physical line, e.g. `- [Critical][payments] app/Jobs/Charge.php:27:
@@ -466,6 +465,11 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 orch_progress_release
 ```
 
+## Minor backlog sweep (on request)
+
+"Minor-Backlog abarbeiten", "Minors abarbeiten" or "clear the minor backlog": skip find, run only the
+fix wave over the backlog, write no marker. Procedure in `references/minor-backlog.md`.
+
 ## Phase 5: Learning
 
 Skipped when `CLAUDE_EFFORT=low`. Otherwise read `references/learning-phase.md`: dispatch the learning agent (`run_in_background: false`), parse its output, write learning-log/trends/suppressions.
@@ -478,4 +482,7 @@ Skipped when `CLAUDE_EFFORT=low`. Otherwise read `references/learning-phase.md`:
 
 ```
 Audit: {C} Critical, {I} Important offen | Push {frei|blockiert|nicht zutreffend}
+MINOR_BACKLOG: {N} open
 ```
+
+`N` is `orch_backlog_count` (source the lib first, as in every block).

@@ -27,7 +27,8 @@ Secrets, injection, OWASP Top 10, dependencies. Read `guidelines/security.md` an
   variable before flagging plaintext storage — a hashed-earlier write can look plaintext at the
   write line.
 - **Consent questions belong to `privacy` (13), not here.** Do not dismiss a consent-gate question
-  as "documented" — hand it to the privacy dimension instead of silently accepting it.
+  as "documented" — hand it to the privacy dimension instead of silently accepting it. When the
+  briefing carries a `PRIVACY FOLD` line, you are that privacy pass: report it yourself, tagged `privacy`.
 
 **Defect classes calibrated against real findings (2026-09-05/2026-08-27 audits):**
 - **CSP directive gaps:** a `Content-Security-Policy` missing `base-uri`, `object-src`, or

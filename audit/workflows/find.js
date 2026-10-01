@@ -237,6 +237,16 @@ function hunkScopeClause(ctx, forRole) {
     : `\n${rule} Do not add an out-of-scope issue to findings; instead count it in outOfScope.`;
 }
 
+// Briefing line that makes the security specialist cover the privacy module too (privacy fold,
+// see `foldPrivacy` below). Appended to any caller-supplied security context.
+function withPrivacyFold(dimensionContext, privacyDoc) {
+  const clause = `PRIVACY FOLD: also read ${privacyDoc} and apply it to the same assigned files. ` +
+    'Tag a finding `privacy` (id prefixed `privacy-`) when it belongs to that module and `security` ' +
+    '(id prefixed `security-`) otherwise; this overrides the single-dimension tagging rule. ' +
+    'Do not report the same defect under both.';
+  return { ...dimensionContext, security: [dimensionContext.security, clause].filter(Boolean).join('\n') };
+}
+
 // One row per dimension: prompt-file number and slug, and the agent type that
 // audits it. Three hand-kept maps over the same ids (agent type, file number,
 // file slug) had to agree by discipline until 2026-09-16; they are derived from
@@ -935,7 +945,18 @@ if (args.dimensions !== undefined && (!Array.isArray(args.dimensions) ||
 }
 const dimensions = (args.dimensions && args.dimensions.length ? args.dimensions : ALL_DIMENSIONS);
 
-const floorFiles = args.floorFiles || {};
+// PRIVACY FOLD (2026-10-01): privacy used its own scout, specialists and verifier although it is the
+// same agent type as security and reads the same files (7% of audit-find cost, 1 Critical + 29
+// Important in 12 days, 122 logs). When both are selected, the security specialist also reads the
+// privacy module and tags findings `security` or `privacy`; privacy alone still runs its own pipeline.
+const foldPrivacy = dimensions.includes('security') && dimensions.includes('privacy');
+const pipelineDimensions = foldPrivacy ? dimensions.filter((d) => d !== 'privacy') : dimensions;
+
+const rawFloorFiles = args.floorFiles || {};
+// The folded privacy floor joins security's floor (union), so its signal files reach security's scout.
+const floorFiles = foldPrivacy
+  ? { ...rawFloorFiles, security: [...new Set([...(rawFloorFiles.security || []), ...(rawFloorFiles.privacy || [])])] }
+  : rawFloorFiles;
 const dimensionFiles = args.dimensionFiles || {};
 // Hard guard against the exact misuse dimensionFiles is not for: routing every dimension
 // through dimensionFiles to skip the shared scope entirely. That silently starves every
@@ -971,12 +992,13 @@ if (args.hunkScope && (typeof args.baseRef !== 'string' || args.baseRef === ''))
   throw new Error('args.baseRef must be a non-empty string when args.hunkScope is true.');
 }
 
+const privacyDocPath = (args.dimensionDoc && args.dimensionDoc.privacy) || `${args.promptDir}/${dimensionFileName('privacy')}`;
 const ctx = {
   repoRoot: args.repoRoot,
   scope: args.scope,
   files: args.files || [],
   dimensionFiles,
-  dimensionContext: args.dimensionContext || {},
+  dimensionContext: foldPrivacy ? withPrivacyFold(args.dimensionContext || {}, privacyDocPath) : (args.dimensionContext || {}),
   sizeResult: args.sizeResult || '',
   hunkScope: !!args.hunkScope,
   baseRef: args.baseRef || '',
@@ -1008,7 +1030,7 @@ const ctx = {
 // the guard above). compute-floor.mjs always emits a key, possibly empty,
 // for every requested dimension it was given, so key absence means "never
 // computed", not "computed, no match".
-const dimMeta = dimensions.map((d) => {
+const dimMeta = pipelineDimensions.map((d) => {
   const scopeFiles = scopeFilesFor(ctx, d);
   const floorCount = computeFloorFiles(d, scopeFiles, ctx.floorFiles, null).length;   // ordering only, no log: runFileScout computes and logs the same floor once
   const floorComputed = Object.prototype.hasOwnProperty.call(floorFiles, d);
@@ -1020,10 +1042,19 @@ const dimMeta = dimensions.map((d) => {
 });
 const floorCountByDim = Object.fromEntries(dimMeta.map(({ d, floorCount }) => [d, floorCount]));
 const degradedDimensions = dimMeta.filter(({ degraded }) => degraded).map(({ d }) => d);
-const ordered = [...dimensions].sort((a, b) => floorCountByDim[b] - floorCountByDim[a]);
+const ordered = [...pipelineDimensions].sort((a, b) => floorCountByDim[b] - floorCountByDim[a]);
 
 const results = {};
 const skipped = [];
+// A folded privacy is reported as its own status, never `skipped` or `incomplete`: security's
+// result carries its findings (tagged privacy by id prefix) and its coverage gate.
+if (foldPrivacy) {
+  log('privacy: folded into the security specialists (same agent type, one pipeline)');
+  results.privacy = {
+    status: 'folded', into: 'security', files: [], chunks: 0, findings: [], verdicts: [],
+    uncovered: [], unverified: [], unrefuted: [], telemetry: emptyTelemetry()
+  };
+}
 
 const dimensionResults = await parallel(ordered.map((dim) => async () => {
   const startedAt = workflowNow();

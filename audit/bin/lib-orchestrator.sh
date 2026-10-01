@@ -67,9 +67,17 @@
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
 #   orch_audited_record <files> <dims>   after a PASSED audit: stores path, blob sha and dims per file in the worktree's claude-audited-blobs
 #   orch_audited_filter <files> <dims>   prints the files NOT already certified by a passed audit (same blob sha, dims a superset), input order kept
+#   orch_backlog_add <tsv>   Minor backlog (.claude/audits/minor-backlog.tsv, gitignored like patterns.json): appends the
+#                           5-column entries dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description from a FILE, key computed
+#                           here, deduped by key, entries whose file no longer exists dropped; prints BACKLOG_ADDED=n
+#   orch_backlog_for_files <files>   prints the stored 6-column entries (key first) whose file is in the newline list
+#   orch_backlog_remove <keys>       removes the entries with those keys (newline list), drops missing files; prints BACKLOG_REMOVED=n
+#   orch_backlog_count               prints the number of stored entries (0 when none)
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
+#   orch_seo_surface <root>             prints yes|no (+ reason on stderr): does the repo have an SEO surface (sitemap, meta/og/JSON-LD/per-page title)
+#   orch_seo_relevant <changed> <root>  prints yes|no (+ reason on stderr): SEO surface AND a frontend/routes file in the diff, never PLATFORM=native
 #   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
 #
 # There are two hash conventions, deliberately two functions with two names:
@@ -452,6 +460,44 @@ orch_payments_touched() {
     <(printf '%s\n' "$stripe" | sort -u)
 }
 
+# SEO gate (decided 2026-10-01, 122 audit logs): seo cost 4% of audit-find cost for 12 Important and
+# 0 Critical in 12 days (worst cost per finding), mostly on logged-in apps. It runs only where SEO can
+# matter: an SEO surface exists in the repo AND the diff touches a frontend or routes file.
+# Surface = a sitemap (path or route) or views emitting meta description / og: / twitter: / JSON-LD /
+# a per-page <title>. public/robots.txt alone is no signal (Laravel ships one by default).
+# Cheap: one find (vendor dirs pruned, 4000-file cap) and two greps that stop at the first hit.
+orch_seo_surface() {
+  local root="$1" files hit
+  orch__backlog_libs
+  files=$(find "$root" \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
+    \( -iname '*sitemap*' -o -name '*.php' -o -name '*.html' -o -name '*.htm' -o -name '*.vue' -o -name '*.svelte' \
+    -o -name '*.astro' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.ts' -o -name '*.js' -o -name '*.erb' \
+    -o -name '*.twig' -o -name '*.njk' -o -name '*.hbs' -o -name '*.ejs' -o -name '*.liquid' -o -name '*.py' -o -name '*.rb' \) \
+    -print 2>/dev/null | grep -Ev "$VENDOR_DIR_RE" | head -4000) || true
+  hit=$(printf '%s\n' "$files" | grep -i 'sitemap' | head -1) || true
+  if [ -n "$hit" ]; then echo "SEO surface: sitemap file $hit" >&2; echo yes; return 0; fi
+  hit=$(printf '%s\n' "$files" | grep -E '(^|/)(routes?|urls?)[^/]*\.(php|js|ts|py|rb)$|(^|/)routes?/' | tr '\n' '\0' | xargs -0 grep -il 'sitemap' 2>/dev/null | head -1) || true
+  if [ -n "$hit" ]; then echo "SEO surface: sitemap route in $hit" >&2; echo yes; return 0; fi
+  hit=$(printf '%s\n' "$files" | grep -Ev '\.(ts|js|py|rb)$' | tr '\n' '\0' | xargs -0 grep -lE \
+    "name=[\"']description|property=[\"']og:|name=[\"']twitter:|application/ld\+json|<title[^>]*>[^<]*(@yield|@section|\{\{|\{%|<\?|\\\$title|\\\$slot)" 2>/dev/null | head -1) || true
+  if [ -n "$hit" ]; then echo "SEO surface: meta/title markup in $hit" >&2; echo yes; return 0; fi
+  echo "no SEO surface (no sitemap, no meta description/og/twitter/JSON-LD/per-page title in views)" >&2
+  echo no
+}
+
+orch_seo_relevant() {
+  local changed="$1" root="$2" re surface
+  if [ "${PLATFORM:-}" = native ]; then echo "SEO skipped: PLATFORM=native" >&2; echo no; return 0; fi
+  surface=$(orch_seo_surface "$root") || true
+  [ "$surface" = yes ] || { echo no; return 0; }
+  re=$(orch_frontend_ext_re)
+  if printf '%s\n' "$changed" | grep -Eq "$re|(^|/)routes?/|(^|/)(routes?|urls?)[^/]*\.(php|js|ts|py|rb)$"; then
+    echo "SEO surface present and diff touches a frontend or routes file" >&2; echo yes
+  else
+    echo "SEO surface present, but the diff touches no frontend or routes file" >&2; echo no
+  fi
+}
+
 # Merges the payments scout floor (computed over STRIPE_FILES, not the shared
 # scope) into the FLOOR_FILES JSON. Usage:
 #   FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")
@@ -466,6 +512,85 @@ orch_payments_floor() {
   fi
   pay=$(printf '%s\n' "$stripe_files" | node "${AUDIT_BIN:?}/compute-floor.mjs" "$root" "payments") || { printf '%s' "$floor"; return 0; }
   jq -s '.[0] * .[1]' <(printf '%s' "$floor") <(printf '%s' "$pay")
+}
+
+# Minor backlog (decided 2026-10-01): Minors that did not ride along with a Critical/Important fix
+# of their own file wait here and join that file's fixes (as UNCERTAIN) in a later wave. Same store
+# root as patterns.json (audit_store_root: the main checkout, every worktree shares one file).
+# Line: key<TAB>dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description. The key is
+# file|normalize-suppression("[dimension] description"), so reworded repeats of one finding collapse.
+ORCH_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+orch__backlog_root() { orch__backlog_libs; audit_store_root; }
+orch__backlog_libs() { command -v gitignore_ensure >/dev/null 2>&1 || . "$ORCH_LIB_DIR/lib-git-base.sh"; }   # called in the main shell too: a source inside $(...) is lost
+orch__backlog_path() { local r; r=$(orch__backlog_root) || return 1; printf '%s/.claude/audits/minor-backlog.tsv' "$r"; }
+
+# Moves $1 over the store after dropping every entry whose file is gone; an empty result removes the store.
+orch__backlog_commit() {
+  local tmp="$1" f r out line file
+  f=$(orch__backlog_path) || return 1
+  r=$(orch__backlog_root) || return 1
+  out=$(mktemp) || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    file=$(printf '%s' "$line" | cut -f3)
+    [ -f "$r/$file" ] && printf '%s\n' "$line"
+  done < "$tmp" > "$out"
+  rm -f "$tmp"
+  if [ -s "$out" ]; then mkdir -p "$(dirname "$f")" && mv "$out" "$f"; else rm -f "$out" "$f"; fi
+  return 0
+}
+
+# One line, tabs and newlines to spaces, at most 50 words (a finding text is audited-repo content: no secret values).
+orch__backlog_clean() { tr '\t\r\n' '   ' | awk '{ n = (NF > 50 ? 50 : NF); s = ""; for (i = 1; i <= n; i++) s = s (i > 1 ? " " : "") $i; print s }'; }
+
+orch_backlog_add() {
+  local in="$1" f r tmp line dim file ln seen desc key n=0
+  [ -f "$in" ] || { echo "orch_backlog_add: no such file: $in" >&2; return 1; }
+  orch__backlog_libs
+  f=$(orch__backlog_path) || return 1
+  r=$(orch__backlog_root) || return 1
+  tmp=$(mktemp) || return 1
+  [ -f "$f" ] && cat "$f" > "$tmp"
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    dim=$(printf '%s' "$line" | cut -f1 | orch__backlog_clean)
+    file=$(printf '%s' "$line" | cut -f2 | orch__backlog_clean)
+    ln=$(printf '%s' "$line" | cut -f3 | orch__backlog_clean)
+    seen=$(printf '%s' "$line" | cut -f4 | orch__backlog_clean)
+    desc=$(printf '%s' "$line" | cut -f5- | orch__backlog_clean)
+    [ -n "$dim" ] && [ -n "$file" ] && [ -n "$desc" ] || continue
+    [ -f "$r/$file" ] || continue
+    [ -n "$seen" ] || seen=$(date +%F)
+    key="$file|$(printf '[%s] %s' "$dim" "$(printf '%s' "$desc" | sed -E 's/[[:punct:]]+$//')" | bash "$ORCH_LIB_DIR/normalize-suppression.sh")"
+    awk -F'\t' -v k="$key" '$1 == k { found = 1 } END { exit !found }' "$tmp" && continue
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$dim" "$file" "$ln" "$seen" "$desc" >> "$tmp"
+    n=$((n+1))
+  done < "$in"
+  orch__backlog_commit "$tmp" || return 1
+  echo "BACKLOG_ADDED=$n"
+  gitignore_ensure "$r" '.claude/audits/minor-backlog.tsv'   # same courtesy as patterns.json
+}
+
+orch_backlog_for_files() {
+  local f; f=$(orch__backlog_path) || return 0
+  [ -f "$f" ] || return 0
+  ORCH_LIST="$1" awk -F'\t' 'BEGIN { n = split(ENVIRON["ORCH_LIST"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 } $3 in want' "$f"
+}
+
+orch_backlog_remove() {
+  local f tmp before after
+  f=$(orch__backlog_path) || return 0
+  [ -f "$f" ] || { echo "BACKLOG_REMOVED=0"; return 0; }
+  tmp=$(mktemp) || return 1
+  ORCH_LIST="$1" awk -F'\t' 'BEGIN { n = split(ENVIRON["ORCH_LIST"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") drop[a[i]] = 1 } !($1 in drop)' "$f" > "$tmp"
+  before=$(grep -c . "$f"); after=$(grep -c . "$tmp" || true)
+  orch__backlog_commit "$tmp" || return 1
+  echo "BACKLOG_REMOVED=$((before - after))"
+}
+
+orch_backlog_count() {
+  local f; f=$(orch__backlog_path 2>/dev/null) || { echo 0; return 0; }
+  [ -f "$f" ] && grep -c . "$f" || echo 0
 }
 
 # Recurrence and dismissal feed, from a FILE the orchestrator wrote with the
