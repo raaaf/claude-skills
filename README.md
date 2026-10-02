@@ -9,7 +9,7 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 | Command | What it does |
 |---|---|
 | `/audit` | Audits your uncommitted and unpushed changes before a push. 13 dimensions, verified findings, one fix wave, then the push is unlocked. |
-| `/plan-it` | Interviews you, writes an executor-grade plan, challenges it from five perspectives. `execute` runs it in a worktree and reviews the result. |
+| `/plan-it` | Interviews you, writes an executor-grade plan that ends in a /delegate-ready spec, challenges it (architecture and risk always; product, design, simplicity when the plan calls for them). `execute` runs it in a worktree and reviews the result. |
 | `/delegate` | Default way to implement: the session model writes a mini-spec, Sonnet builds it, the session model reviews the diff. |
 | `/ship` | Docs sync, commit, audit gate, push, deploy, verify. |
 | `/screens` | Builds and maintains a complete screenshot catalog of every view in every state, plus App-Store marketing renders. Incremental after the first run. |

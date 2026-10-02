@@ -48,6 +48,7 @@ orch_run_log --start --skill delegate
 
 ## Phase 1: Analysis (orchestrator, expensive)
 
+- **Plan file given?** When the user points at a plan file (`docs/plans/...`), use its `## Delegate spec` section as the Phase 3 mini-spec: check it against the live code (drift check from the plan's Meta), skip Phase 2 unless the check trips, and go to Phase 4. Do not re-specify.
 - Translate the task into a verifiable goal ("add validation" → "one test per invalid-input branch, then green"; "wire up UI" → "live walkthrough, no test"). Tests follow CLAUDE.md §6: required for bugfix repro and new branching logic, never for rendering, wiring, getters or mock-call checks. Zero new tests is a valid spec.
 - Targeted codebase scan: read affected files, **grep every identifier to be changed repo-wide** (parallel implementations, wizard duplicates — never assume there's only one spot).
 - Identify conventions + an exemplar file (components instead of raw HTML, error pattern, test style).
@@ -61,7 +62,7 @@ If multiple interpretations exist or an assumption would tip the outcome: **AskU
 
 ## Phase 3: Write the mini-spec
 
-Inline (no file), executor-ready — the executor does not know this session:
+Inline (no file; when a plan's `## Delegate spec` exists, reuse it verbatim, see Phase 1), executor-ready — the executor does not know this session:
 
 ```markdown
 ## Task: {Title}

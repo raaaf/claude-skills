@@ -15,6 +15,10 @@ You additionally receive:
 
 Use this context to assess whether the plan fits the existing architecture, reuses existing patterns, and doesn't introduce unnecessary complexity or duplication.
 
+## Drift / Facts Check
+
+You have no Bash. The orchestrator ran the git drift/facts check before dispatch and pastes its output into your briefing (`DRIFT_OUTPUT`). Use it as the git ground truth; verify the rest by Read/Grep. If it is missing from the briefing, say "drift check not provided" instead of reporting "no drift".
+
 ## Your Core Questions
 
 - Is the technical approach solid or are there obvious weaknesses?

@@ -2,7 +2,7 @@
 
 Templates for Phase 2 (plan file).
 
-Content: plan format (executor-grade, with drift check/STOP/done criteria) · round heuristic
+Content: plan format (executor-grade, with drift check/STOP/done criteria, challenge-result block, Delegate spec) · round heuristic
 
 ## Plan Format (Phase 2)
 
@@ -25,6 +25,7 @@ File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
 ## Meta
 - Planned at: commit `{git rev-parse --short HEAD}`, {DATE}
+- Challengers: {ran: names + why; skipped: names + why}. Drift check: {ran by the orchestrator | manual-only}
 - Status: {omit or leave as "Spec" while planning; set to "Implemented"/past tense only after the implementation commit has actually landed, never in the same session that writes the code, so the line never claims a status the codebase does not yet have (3rd confirmed occurrence of this doc going stale immediately)}
 
 ## Problem
@@ -93,7 +94,32 @@ Stop and report (do not improvise) when:
 
 ## Open Questions
 - {If any remain — otherwise omit}
+
+## Challenge Result
+- **Accepted:** {concern}: {what changed in the plan}
+- **Rejected:** {concern}: {reason, e.g. contradicts user decision}
+- **Deferred:** {concern}: revisit when {condition}
+- **Zur Diskussion:** {simplicity cuts and other scope cuts, with the hook; decided by the user, never auto-applied}
+
+## Delegate spec
+{MANDATORY, last section of the plan body. Exactly /delegate's mini-spec format, self-contained, so
+/delegate can execute it without re-specifying. The plan body above this heading stays at about 1,500
+words; longer material goes into an `## Appendix` after this section, or is cut.}
+
+## Task: {Title}
+**Goal:** {how success is recognized, measurable}
+**Context:** {current state with file:line; conventions with exemplar file}
+**Affected files:** {final list, each with line range(s) and symbol}
+**Out of Scope:** {files that will NOT be touched, with reason}
+**Steps:**
+1. {concrete, file + what} → verify: {command → expected result}
+2. ... → verify: ...
+**Done criteria (all):** {commands with expected result; git status: only affected files}
+**STOP conditions:** {current state deviates; verify fails twice; fix needs an out-of-scope file; core assumption wrong}
 ```
+
+The Delegate spec condenses the Solution, Done Criteria and STOP sections above into the mini-spec;
+if it grows beyond a screen, the plan body is carrying too much detail.
 
 **Optional sections** (only when they add value):
 - Data flow diagram (ASCII or Mermaid)

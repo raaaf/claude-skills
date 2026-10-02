@@ -4,15 +4,15 @@ Bash logic and prompt templates for Phase 2.5 (codebase context), Phase 3 (chall
 
 ## Contents
 - Phase 2.5 — Gather codebase context (framework detection, source dirs)
-- Phase 3 — Dispatch plan challengers (5 parallel reviewers)
+- Phase 3 — Dispatch plan challengers (selected reviewers in parallel)
 - Phase 3.5 — Parse evaluation (consensus score, change proposals)
 
 ## Phase 2.5: Gather Codebase Context
 
 Precondition: the Bash tool must be available for the automated checks below and for the drift
-checks the architecture and risk agents run. When it is not (denied, sandboxed away), do not proceed
-silently: the agents verify by reading only, and the plan records "drift checks manual-only" as
-a limitation.
+checks the orchestrator runs on the challengers' behalf (challengers have no Bash). When it is not
+(denied, sandboxed away), do not proceed silently: the agents verify by reading only, and the plan
+records "drift checks manual-only" as a limitation.
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
@@ -55,6 +55,21 @@ SOURCE_DIRS="${SOURCE_DIRS_ARR[*]}"
 find "${SOURCE_DIRS_ARR[@]}" -maxdepth 2 -type d 2>/dev/null | head -50
 ```
 
+Run the drift/facts check (orchestrator only). `PLANNED_AT_SHA` is the plan's Meta commit; for a
+new plan without one, use `HEAD` and report the uncommitted state only:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")   # fresh shell per block
+PLANNED_AT_SHA="${PLANNED_AT_SHA:-HEAD}"   # set to the plan's Meta commit when it has one
+{
+  echo "## git status --short"; git -C "$PROJECT_ROOT" status --short
+  echo "## git diff --stat (uncommitted)"; git -C "$PROJECT_ROOT" diff --stat
+  echo "## git diff --stat $PLANNED_AT_SHA..HEAD"; git -C "$PROJECT_ROOT" diff --stat "$PLANNED_AT_SHA..HEAD"
+} 2>&1 | head -80
+```
+
+`DRIFT_OUTPUT` is this output, or `all empty` when all three sections are empty for in-scope paths.
+
 Determine ZENTRALE_PATTERNS:
 - Read CLAUDE.md and extract architecture conventions (if present)
 - If no CLAUDE.md: analyze the directory structure for patterns (services, repositories, traits, mixins, composables)
@@ -62,7 +77,7 @@ Determine ZENTRALE_PATTERNS:
 
 ## Phase 3: Challenge Dispatch
 
-Subagents in parallel, only the dimensions included in `CHALLENGE_DIMS` (Phase 0.5) (low=3, medium=4, high/xhigh=5).
+Subagents in parallel, only the challengers selected in SKILL.md Phase 3 (architecture and risk always; design, product, simplicity by the selection rule).
 
 **Dispatch them with `run_in_background: false`.** Subagents background by
 default, and a background subagent returns its result as a completion notification in a *later*
@@ -75,20 +90,23 @@ notified before consolidating; never consolidate a partial set.
 
 `{PROJECT_GUIDELINES}` comes from Phase 0.7 (`.claude/plan-guidelines.md`); if empty, omit the block.
 
-**Product, Design, Simplicity** receive the plan + project guidelines:
+**Product, Design, Simplicity** receive the plan + project guidelines + the drift output:
 ```
 Agent(
   prompt: "Read agents/challenge-{dimension}.md and review this plan:
     {PLAN_INHALT}
 
     PROJECT GUIDELINES (take precedence over generic best practices):
-    {PROJECT_GUIDELINES}",
+    {PROJECT_GUIDELINES}
+
+    DRIFT / FACTS CHECK (run by the orchestrator, you have no Bash):
+    {DRIFT_OUTPUT}",
   subagent_type: plan-challenger,
   run_in_background: false
 )
 ```
 
-**Architecture, Risk** additionally receive the codebase context and the drift-check rule:
+**Architecture, Risk** additionally receive the codebase context:
 ```
 Agent(
   prompt: "Read agents/challenge-{dimension}.md and review this plan:
@@ -103,22 +121,22 @@ Agent(
     FRAMEWORK: {FRAMEWORK}
 
     DRIFT CHECK: compare the plan's claims against the WORKING TREE, not only
-    committed history. Run `git status --short` and `git diff --stat` (uncommitted)
-    in addition to `git diff --stat {PLANNED_AT_SHA}..HEAD`. Report 'no drift'
-    only when all three are empty for in-scope paths.
-    If you have no Bash, use this output the orchestrator ran for you:
+    committed history. The orchestrator already ran `git status --short`, `git diff --stat`
+    (uncommitted) and `git diff --stat {PLANNED_AT_SHA}..HEAD`; use this output, do not
+    try to run git yourself. Report 'no drift' only when all three sections are empty
+    for in-scope paths:
     {DRIFT_OUTPUT}",
   subagent_type: plan-challenger,
   run_in_background: false
 )
 ```
 
-`{DRIFT_OUTPUT}`: before dispatch, the orchestrator runs the three drift commands itself and pastes
-their output (or `all empty`). The `plan-challenger` agent type has no Bash (seen 2026-09-26: both
-architecture and risk reported drift checks as manual-only), so without this the check silently
-degrades to reading cited lines. Record which way it ran in the plan's meta section.
+`{DRIFT_OUTPUT}`: the orchestrator runs the three drift commands itself in Phase 2.5 and pastes
+their output (or `all empty`) into every challenger briefing. The `plan-challenger` agent type has no
+Bash (seen 2026-09-26: both architecture and risk reported drift checks as manual-only), so the
+orchestrator is the only place the check can run. Record in the plan's Meta section that it ran.
 
-| Agent | File | Perspective |
+| Agent | File | Perspective (runs: see SKILL.md Phase 3) |
 |---|---|---|
 | Product | `agents/challenge-product.md` | CEO/founder — does this actually solve the problem? |
 | Architecture | `agents/challenge-architecture.md` | Senior engineer — technically sound? |

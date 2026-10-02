@@ -1,6 +1,6 @@
 ---
 name: plan-it
-description: "Iterative planning sparring partner for features, refactors, and implementation ideas. Interviews user with targeted questions (each with a recommended answer), writes a structured plan to docs/plans/, then challenges it from 5 perspectives (product, architecture, design, risk, simplicity) via parallel subagents. Use when the user runs /plan-it, says 'plan a feature', 'think through an implementation', 'before I build', or wants design/scope review before coding. NOT for code review or post-implementation audit — use /audit or /improve instead."
+description: "Iterative planning sparring partner for features, refactors, and implementation ideas. Scans the codebase, interviews the user with targeted questions (each with a recommended answer), writes a structured plan to docs/plans/ that ends in a /delegate-ready spec, then challenges it via parallel subagents (architecture and risk always; product, design, simplicity when the plan calls for them). Use when the user runs /plan-it, says 'plan a feature', 'think through an implementation', 'before I build', or wants design/scope review before coding. NOT for code review or post-implementation audit — use /audit instead."
 when_to_use: "/plan-it, lass uns das erst durchdenken, wie gehen wir das an, feature durchplanen bevor ich baue, konzept vor dem coden, plan bevor ich loslege, plan a feature, think through an implementation, before I build, planning before coding, implementation plan, feature plan"
 argument-hint: "[idea or path to existing plan]"
 model: inherit
@@ -37,22 +37,22 @@ Tone + examples in `references/interview-guide.md`.
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"   # matches the frontmatter effort, which is what this variable receives at runtime
 case "$CLAUDE_EFFORT" in
   low)
-    CHALLENGE_DIMS="product,architecture,risk"  # 3 of 5
+    CHALLENGE_POOL="architecture,risk"   # only the two always-on challengers
     SKIP_EVALUATION=1
     SKIP_CODEBASE_SCAN=1   # Phase 1 step B skipped
     ;;
   medium)
-    CHALLENGE_DIMS="product,architecture,risk,simplicity"  # 4 of 5
+    CHALLENGE_POOL="architecture,risk,product,design,simplicity"   # Phase 3 picks from this pool
     SKIP_EVALUATION=1
     SKIP_CODEBASE_SCAN=0
     ;;
   high|xhigh|*)
-    CHALLENGE_DIMS="product,architecture,risk,simplicity,design"  # voll
+    CHALLENGE_POOL="architecture,risk,product,design,simplicity"   # Phase 3 picks from this pool
     SKIP_EVALUATION=0
     SKIP_CODEBASE_SCAN=0
     ;;
 esac
-echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run)"
+echo "Effort=$CLAUDE_EFFORT | Pool=$CHALLENGE_POOL | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run)"
 
 # Run-ledger start marker (see audit/bin/run-log.sh header) — before any real
 # work. Each SKILL.md Bash block is a fresh shell, so every block that calls an
@@ -65,11 +65,11 @@ type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run lo
 orch_run_log --start --skill plan-it
 ```
 
-| Level | Challenges | Codebase Scan | Evaluation |
+| Level | Challenge pool | Codebase Scan | Evaluation |
 |---|---|---|---|
-| low | 3 (product, arch, risk) | skip | skip |
-| medium | 4 (+ simplicity) | run | skip |
-| high / xhigh (default) | 5 (all) | run | run |
+| low | architecture, risk only | skip | skip |
+| medium | all 5, selected per plan (Phase 3) | run | skip |
+| high / xhigh (default) | all 5, selected per plan (Phase 3) | run | run |
 
 ---
 
@@ -84,7 +84,7 @@ if [ -f "$PROJECT_GUIDELINES_FILE" ]; then
 fi
 ```
 
-Pass `PROJECT_GUIDELINES` through to all challenge agents (see Phase 3). Example content: "Phase 1 always with a migration plan", "Always incorporate risk concerns around corporate data protection", "Tech stack is Laravel 11 + Livewire 3 — keep architecture concerns scoped to that stack".
+Pass `PROJECT_GUIDELINES` through to every challenge agent that runs (see Phase 3). Example content: "Phase 1 always with a migration plan", "Always incorporate risk concerns around corporate data protection", "Tech stack is Laravel 11 + Livewire 3 — keep architecture concerns scoped to that stack".
 
 ---
 
@@ -109,15 +109,16 @@ Before we compare — what's the actual goal?
 → My take: {likely goal based on context}
 ```
 
-> `Evidence:` notes in this skill and in `references/interview-guide.md` cite counts from the retired
-> plan-it learning retro (removed 2026-10-02) over per-project plan logs that were gitignored in each
+> `Evidence:` notes in this skill and in `references/interview-guide.md` cite counts from a retired
+> plan-it retro (removed 2026-10-02) over per-project plan logs that were gitignored in each
 > project. They are not reproducible from this repo, which is why a grep here finds nothing behind them.
 
 **Framing symptom check:** when the user's question is a surface or label question (naming, wording, which brand, which label), first check whether a feature gap sits behind it before answering the surface question. Evidence: 4 of 8 plans had a hidden real goal.
 
 ### Step B: Codebase Scan (MANDATORY for every plan, skip if `SKIP_CODEBASE_SCAN=1`)
 
-Before asking the first clarifying question, **scan the codebase**. Many questions answer themselves this way.
+Before asking the **first** clarifying question, **scan the codebase**. Many questions answer themselves
+this way: with the scan done first, 15 of 15 zeit plans needed only 1-2 interview rounds.
 
 Scan table per topic and output format in `references/interview-guide.md`. Short version: show the user 3-8 bullet points as a facts map BEFORE asking questions.
 
@@ -151,10 +152,11 @@ Every idea is a tree of decisions that depend on each other. One answer opens ne
 | Technical | Which systems are affected? Constraints? Can existing patterns be reused? |
 
 **Rules:**
-- Max 3 questions per round via AskUserQuestion, only questions on the same level of the decision tree
+- Max 3 questions per round via AskUserQuestion, each with a recommended default; max 3 rounds in total. Only questions on the same level of the decision tree
+- Skip every question the facts map already answers
 - If an answer opens a new branch: immediately continue asking there
 - If the codebase can answer a question: don't ask, look it up, present it as a fact
-- Don't stop too early. Keep asking until every branch is resolved
+- Don't stop too early: keep asking until every branch is resolved, within the 3-round cap (leftovers go to Open Questions, see below)
 - Phrase things naturally
 - For open "think this through" requests without a spec: after each framing round ask explicitly whether the current framing is the anchor or still moving. Prevents endless drift. Evidence: 5 of 11 plans pivoted.
 
@@ -174,12 +176,12 @@ edge cases, out of scope, STOP conditions. Name the section that is still empty 
 When none is empty, stop asking and write the plan, even if further questions are imaginable.
 
 **No-progress rule (the reason to stop anyway).** If a round of questions changed neither the facts
-map nor the set of open branches, do not open a fourth round on the same level. Say what is still
+map nor the set of open branches, do not open another round on the same level. Say what is still
 unresolved, state the assumption you would proceed on, and ask the user to confirm or correct that
-one assumption. Three rounds that move nothing mean the question is wrong, not that the answer is
+one assumption. Rounds that move nothing mean the question is wrong, not that the answer is
 missing, and each further round costs the user a turn for nothing.
 
-Either rule firing ends Phase 1. An unresolved branch does not block the plan: it goes into the
+Either rule firing, or the third round ending, ends Phase 1. An unresolved branch does not block the plan: it goes into the
 plan's `## Open Questions` section with the assumption you chose, where the challenge panel can
 attack it, which is cheaper than another interview round.
 
@@ -196,6 +198,11 @@ mkdir -p "$PLAN_DIR"
 ```
 
 Filename: `{YYYY-MM-DD}-{slug}.md`. Plan format template in `references/plan-templates.md`.
+
+**Length cap.** The plan body (everything before the `## Delegate spec` section) stays at about 1,500
+words. Longer material goes into an `## Appendix` after the Delegate spec, or is cut. Every plan ends
+with the `## Delegate spec` section in /delegate's mini-spec format (template in
+`references/plan-templates.md`), so /delegate can execute the plan without re-specifying it.
 
 ### Iteration
 
@@ -214,17 +221,36 @@ When the user says "go": Phase 2.5.
 
 ## Phase 2.5: Gather Codebase Context
 
-Before challenging: gather context for the architecture and risk agents. Bash logic (framework detection, SOURCE_DIRS, directory structure) in `references/dispatch-templates.md` Phase 2.5.
+Before challenging: gather context for the architecture and risk agents, and run the git drift/facts
+check yourself (the challengers have no Bash). Bash logic (framework detection, SOURCE_DIRS, directory
+structure, drift commands) in `references/dispatch-templates.md` Phase 2.5.
 
-Result: `FRAMEWORK`, `SOURCE_DIRS`, `DATEISTRUKTUR`, `ZENTRALE_PATTERNS`.
+Result: `FRAMEWORK`, `SOURCE_DIRS`, `DATEISTRUKTUR`, `ZENTRALE_PATTERNS`, `DRIFT_OUTPUT`. `DRIFT_OUTPUT`
+goes into every challenger briefing in Phase 3.
 
 ---
 
 ## Phase 3: Challenge
 
-TodoWrite: `Challenge plan — {N} dimensions` (in_progress), where `{N}` = number of dimensions in `CHALLENGE_DIMS` from Phase 0.5.
+### Select the challengers
 
-Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. Each reads the plan and challenges it from its perspective. Also pass `PROJECT_GUIDELINES` (from Phase 0.7) — agents should weight project-specific guidance higher than generic best practices. Dispatch templates in `references/dispatch-templates.md` Phase 3.
+Architecture and risk always run (they produce most plan changes). The other three run only when their
+condition holds, judged from the plan and the Phase 1 interview:
+
+| Challenger | Runs when |
+|---|---|
+| Architecture | always |
+| Risk | always |
+| Design | the plan touches UI/UX surfaces (views, components, flows, copy users see) |
+| Product | the feature is new to users, or its scope was not decided by the user |
+| Simplicity | the scope is still open: the interview recorded no explicit user scope decision |
+
+Intersect the result with `CHALLENGE_POOL` from Phase 0.5. Record in the plan's Meta section which
+challengers ran and why, and which were skipped and why (one line each).
+
+TodoWrite: `Challenge plan — {N} dimensions` (in_progress), where `{N}` = number of selected challengers.
+
+Dispatch the selected subagents in parallel. Each reads the plan and challenges it from its perspective. Also pass `PROJECT_GUIDELINES` (from Phase 0.7) — agents should weight project-specific guidance higher than generic best practices — and the `DRIFT_OUTPUT` from Phase 2.5. Dispatch templates in `references/dispatch-templates.md` Phase 3.
 
 | Agent | File | Perspective | Model |
 |---|---|---|---|
@@ -236,7 +262,7 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
 
 ### Consolidation — Dedupe as a Visible Step (MANDATORY)
 
-1. Collect all concerns (raw list from all 5 agents)
+1. Collect all concerns (raw list from the agents that ran)
 2. Explicitly deduplicate — same/closely related concerns from 2+ dimensions → one, noting the convergence. Convergent concerns are a strong quality signal.
 3. Make the dedup phase's output format visible:
    ```
@@ -248,7 +274,8 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
    lies outside the plan's scope. Report one line per concern (incorporated / dropped + reason).
    Convergent concerns are never dropped.
    **Exception, scope cuts:** a concern that says "drop X" or "defer X to a later phase" is NOT
-   applied silently, even when convergent. List it under "For discussion" (the `FOR DISCUSSION` marker the simplicity agent uses) with the hook the agents
+   applied silently, even when convergent. Simplicity's cuts are always labelled "zur Diskussion"
+   (the `FOR DISCUSSION` marker) and never applied automatically. List them with the hook the agents
    gave, and let the user decide. Users have overruled convergent cut/defer recommendations three
    plans in a row; applying them unasked costs a round.
 
@@ -261,7 +288,10 @@ Dispatch subagents in parallel — only the ones included in `CHALLENGE_DIMS`. E
 
 When incorporating a "provider too expensive/risky" concern: explicitly look for a permission-free/cost-free alternative first, before merely simplifying or deferring the provider.
 
-Merge in the incorporated concerns. Note accepted concerns as a comment in the plan. Save the plan file.
+Merge in the incorporated concerns, then record every concern in the plan's challenge-result block
+(template in `references/plan-templates.md`) as accepted, rejected, or deferred. A deferred concern
+carries a revisit condition ("revisit when ..."). Re-check the 1,500-word body cap and that the
+Delegate spec still matches the final steps. Save the plan file.
 
 TodoWrite: `Challenge plan — {N} dimensions` (completed), same `{N}` as at Phase 3 start
 
@@ -283,11 +313,13 @@ Output:
 ```
 Plan done: docs/plans/{date}-{slug}.md
 
-{N} concerns from the 5-dimension check:
-- {X} incorporated
-- {Y} accepted
+{N} concerns from the {M} challengers that ran ({names}):
+- {X} accepted (incorporated)
+- {Y} rejected
+- {Z} deferred (revisit condition recorded)
 
 Evaluation: {overall verdict}
+Next: /delegate docs/plans/{date}-{slug}.md
 ```
 
 ---
@@ -297,7 +329,7 @@ Evaluation: {overall verdict}
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_run_log --skill plan-it --outcome plan_written \
-  --counts "challenges={N}"
+  --counts "challenges={M}"   # M = number of challengers that ran
 ```
 
 ## Phase 5: Execute & Reconcile (Invocation Variants)
