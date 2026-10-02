@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Pins the nightly exception of block-unsafe-push.sh (2026-10-01): a marker-less push is allowed only for
-# chore/nightly-audit-* and chore/minor-backlog-* branches; every other shape still asks.
+# chore/nightly-audit-*, chore/minor-backlog-* and chore/backlog-* branches; every other shape still asks.
 set -euo pipefail
 HOOK="$(cd "$(dirname "$0")" && pwd)/${HOOK_UNDER_TEST:-block-unsafe-push.sh}"
 TMP=$(mktemp -d)
@@ -23,6 +23,8 @@ check() {
 
 check allow 'git push -u origin chore/nightly-audit-2026-10-02'
 check allow 'git push origin chore/minor-backlog-2026-10-02'
+check allow 'git push -u origin chore/backlog-copy-invoicing-de-2026-10-02'
+check ask 'git push -u origin chore/backlogs-x'
 check allow 'git push'
 check allow 'git push origin HEAD'
 check ask 'git push --force -u origin chore/nightly-audit-2026-10-02'

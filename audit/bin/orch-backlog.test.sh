@@ -159,3 +159,39 @@ expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/b1.js src/b2.js ' 'large s
 expect "$(orch_visual_pass_overflow)" '1' 'large single commit: capped files are reported'
 expect "$(orch_visual_pass_head)" "$BIG" 'large single commit: head moves to it, the next commit is left for the next night'
 unset AUDIT_VISUAL_PASS_CAP
+
+# triage groups (2026-10-02): optional 7th column, 6-column rows are untriaged
+rm -f "$STORE" .audit/visual-pass-head .claude/audits/visual-pass-head; rm -rf .claude/audits
+printf 'copy\tsrc/a.js\t1\t2026-10-03\tlabel one\n' > "$IN"
+printf 'a11y\tsrc/c.js\t1\t2026-10-01\tlabel two\n' >> "$IN"
+printf 'copy\tsrc/e1.js\t1\t2026-10-02\tlabel three\n' >> "$IN"
+orch_backlog_add "$IN" >/dev/null
+expect "$(orch_backlog_untriaged | wc -l | tr -d ' ')" '3' '6-column rows read as untriaged'
+K1=$(orch_backlog_for_files 'src/a.js' | cut -f1)
+K2=$(orch_backlog_for_files 'src/c.js' | cut -f1)
+K3=$(orch_backlog_for_files 'src/e1.js' | cut -f1)
+orch_backlog_set_group "$(printf '%s\tCopy Invoicing_DE\n%s\tcopy-invoicing-de\n%s\ta11y-modals\n' "$K1" "$K3" "$K2")"
+expect "$(orch_backlog_untriaged)" '' 'set_group: nothing untriaged afterwards'
+expect "$(orch_backlog_for_files 'src/a.js' | cut -f7)" 'copy-invoicing-de' 'set_group adds the 7th column (slug sanitized)'
+expect "$(orch_backlog_for_files 'src/a.js' | cut -f1-6)" "$(printf '%s\tcopy\tsrc/a.js\t1\t2026-10-03\tlabel one' "$K1")" 'set_group leaves columns 1-6 untouched'
+expect "$(orch_backlog_groups | tr '\t' '|' | tr '\n' ' ')" 'a11y-modals|1|2026-10-01|a11y copy-invoicing-de|2|2026-10-02|copy ' 'groups: group, count, oldest first_seen, dimensions'
+expect "$(orch_backlog_group_entries copy-invoicing-de | cut -f3 | tr '\n' ' ')" 'src/a.js src/e1.js ' 'group entries: only that group'
+expect "$(orch_backlog_group_entries nope)" '' 'group entries: unknown group is empty'
+printf 'copy\tsrc/a.js\t7\t2026-10-09\tlabel one\n' > "$IN"
+orch_backlog_add "$IN" >/dev/null
+expect "$(orch_backlog_for_files 'src/a.js' | cut -f7)" 'copy-invoicing-de' 're-add keeps the group'
+printf 'ux\tsrc/a.js\t1\t2026-10-09\tfresh finding\n' > "$IN"
+orch_backlog_add "$IN" >/dev/null
+expect "$(orch_backlog_untriaged | cut -f6)" 'fresh finding' 'a new row after triage is untriaged, grouped rows stay grouped'
+orch_backlog_remove "$K1" >/dev/null
+expect "$(orch_backlog_groups | cut -f1,2 | tr '\t' ':' | tr '\n' ' ')" 'a11y-modals:1 copy-invoicing-de:1 ' 'remove works on 7-column rows'
+
+# stale pre-filter: file gone or cited line beyond the file length
+rm -f "$STORE"
+printf 'copy\tsrc/a.js\t1\t2026-10-01\tin range\n' > "$IN"
+printf 'copy\tsrc/a.js\t5\t2026-10-01\tbeyond the end\n' >> "$IN"
+printf 'copy\tsrc/c.js\t1\t2026-10-01\tfile will vanish\n' >> "$IN"
+orch_backlog_add "$IN" >/dev/null
+rm src/c.js
+expect "$(orch_backlog_stale | wc -l | tr -d ' ')" '2' 'stale: beyond-the-end line and vanished file, in-range line kept'
+expect "$(orch_backlog_stale | grep -c 'beyond' || true)" '1' 'stale: the beyond-the-end key is named'

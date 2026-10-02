@@ -72,6 +72,12 @@
 #   orch_backlog_remove <keys>       removes the entries with those keys (newline list), drops missing files; prints BACKLOG_REMOVED=n
 #   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
 #   orch_backlog_count               prints the number of stored entries (0 when none)
+#   Optional 7th column `group` (slug, triage result): rows with 6 columns are "untriaged". All functions above accept both shapes.
+#   orch_backlog_untriaged           prints the stored rows without a group
+#   orch_backlog_set_group <pairs>   newline list of key<TAB>group; rewrites only the 7th column of those rows (slug lowercased, [a-z0-9-] only)
+#   orch_backlog_groups              prints group<TAB>count<TAB>oldest first_seen<TAB>dimensions (comma list), ordered by oldest first_seen then group
+#   orch_backlog_group_entries <g>   prints the stored rows of one group
+#   orch_backlog_stale               prints the keys whose file no longer exists or whose cited line is beyond the file length
 #   orch_expand_dimensions <value>   `all` -> the gate set (security, privacy, architecture), `all+nightly` (alias `all+visual`) -> all 13, anything else unchanged
 #   orch_visual_pass_files [ref]   nightly quality pass scope (content of ref, e.g. origin/main, when given): walks the commits after the sha in .audit/visual-pass-head (legacy .claude/audits/ fallback; else the last day) oldest first and takes whole commits' still-existing files (.audit/ and .claude/audits/ dropped) until the next commit would exceed AUDIT_VISUAL_PASS_CAP (default 40); a single commit above the cap is taken alone, capped
 #   orch_visual_pass_head [ref]    the sha to write to .audit/visual-pass-head after the pass: the last fully included commit, so the remainder is picked up the next night
@@ -696,6 +702,51 @@ orch_backlog_oldest() {
 orch_backlog_count() {
   local f; f=$(orch__backlog_read_path 2>/dev/null) || { echo 0; return 0; }
   if [ -f "$f" ]; then grep -c . "$f" || true; else echo 0; fi
+}
+
+# Triage (decided 2026-10-02): a row's optional 7th column is its group slug; no group = untriaged.
+orch_backlog_untriaged() {
+  local f; f=$(orch__backlog_read_path) || return 0
+  [ -f "$f" ] || return 0
+  awk -F'\t' '$7 == ""' "$f"
+}
+
+orch_backlog_set_group() {
+  local f tmp; f=$(orch__backlog_read_path) || return 0
+  [ -f "$f" ] || return 0
+  tmp=$(mktemp) || return 1
+  ORCH_LIST="$1" awk -F'\t' 'BEGIN { OFS = "\t"; n = split(ENVIRON["ORCH_LIST"], a, "\n")
+      for (i = 1; i <= n; i++) { split(a[i], kv, "\t"); g = tolower(kv[2]); gsub(/[^a-z0-9-]+/, "-", g); gsub(/^-+|-+$/, "", g); if (kv[1] != "" && g != "") grp[kv[1]] = g } }
+    { if ($1 in grp) print $1, $2, $3, $4, $5, $6, grp[$1]; else print }' "$f" > "$tmp"
+  orch__backlog_commit "$tmp"
+}
+
+orch_backlog_groups() {
+  local f; f=$(orch__backlog_read_path) || return 0
+  [ -f "$f" ] || return 0
+  awk -F'\t' '$7 != "" { g = $7; c[g]++; if (!(g in o) || $5 < o[g]) o[g] = $5
+      if (index("," d[g] ",", "," $2 ",") == 0) d[g] = d[g] (d[g] == "" ? "" : ",") $2 }
+    END { for (g in c) printf "%s\t%d\t%s\t%s\n", g, c[g], o[g], d[g] }' "$f" | LC_ALL=C sort -t "$(printf '\t')" -k3,3 -k1,1
+}
+
+orch_backlog_group_entries() {
+  local f; f=$(orch__backlog_read_path) || return 0
+  [ -f "$f" ] || return 0
+  ORCH_GROUP="${1-}" awk -F'\t' '$7 != "" && $7 == ENVIRON["ORCH_GROUP"]' "$f"
+}
+
+orch_backlog_stale() {
+  local f r key file ln len; f=$(orch__backlog_read_path) || return 0
+  [ -f "$f" ] || return 0
+  r=$(orch__backlog_root) || return 0
+  while IFS="$(printf '\t')" read -r key _ file ln _ || [ -n "$key" ]; do
+    [ -n "$key" ] || continue
+    if [ ! -f "$r/$file" ]; then printf '%s\n' "$key"; continue; fi
+    ln=${ln%%[!0-9]*}
+    [ -n "$ln" ] || continue
+    len=$(awk 'END { print NR }' "$r/$file")
+    [ "$ln" -le "$len" ] || printf '%s\n' "$key"
+  done < "$f"
 }
 
 # Pre-push gate (decided 2026-10-02): security, privacy and architecture are the own dimensions of the gate

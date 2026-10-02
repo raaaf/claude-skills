@@ -2,7 +2,7 @@
 #
 # Nightly driver (2026-10-01): walks every candidate repo from nightly-repos.sh sequentially. For each
 # `ready` repo it creates a detached temporary worktree from origin/<default>, runs a headless
-# headless `claude -p` (lib-headless.sh: narrow allow list, NIGHTLY_DONE sentinel, up to 3 resumes) inside it (45 min cap per attempt), removes the worktree, and records one report line.
+# headless `claude -p` (lib-headless.sh: narrow allow list, NIGHTLY_DONE sentinel, up to 3 resumes) inside it (3 h cap per attempt (NIGHTLY_TIMEOUT_SECS)), removes the worktree, and records one report line.
 # Skipped repos are reported with their status and detail. Report: $HOME/.local/state/claude/nightly/YYYY-MM-DD.md
 # Usage: nightly-run.sh [--dry-run] [root...]   (--dry-run: list what would run, no worktree, no claude)
 set -uo pipefail
@@ -11,14 +11,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DRY=0
 if [ "${1:-}" = "--dry-run" ]; then DRY=1; shift; fi
 
-TIMEOUT_SECS="${NIGHTLY_TIMEOUT_SECS:-2700}"
+TIMEOUT_SECS="${NIGHTLY_TIMEOUT_SECS:-10800}"   # per attempt; one repo runs triage plus one fix wave and PR per backlog group, sequentially
 DATE=$(date +%F)
 TMPBASE="${TMPDIR:-/tmp}"; TMPBASE="${TMPBASE%/}"
 WORK=$(mktemp -d "$TMPBASE/nightly-run.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 . "$SCRIPT_DIR/lib-headless.sh"
-PROMPT="Nachtlauf. Gib bei jedem fehlgeschlagenen Schritt (z.B. dem Start von fix.js) den vollständigen Fehlertext aus, unter der Überschrift FEHLER. Gib als allerletzte Zeile NIGHTLY_DONE aus, erst nachdem jeder gestartete Workflow beendet und das Log geschrieben ist."
+PROMPT="Nachtlauf. Gib bei jedem fehlgeschlagenen Schritt (z.B. dem Start von fix.js) den vollständigen Fehlertext aus, unter der Überschrift FEHLER. Gib vor der letzten Zeile die Triage-Zeile TRIAGE: kept=K dropped=D groups=G aus (Backlog-Triage laut references/minor-backlog.md). Gib als allerletzte Zeile NIGHTLY_DONE aus, erst nachdem jeder gestartete Workflow beendet und das Log geschrieben ist."
 
 LIST=$(bash "$SCRIPT_DIR/nightly-repos.sh" "$@")
 
@@ -32,12 +32,11 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
+# All PRs of tonight's run (space separated): the quality-pass PR, a backlog-only PR and one PR per backlog group.
 pr_url() {
-  local b url
-  for b in "chore/nightly-audit-$DATE" "chore/minor-backlog-$DATE"; do
-    url=$(cd "$1" && gh pr list --head "$b" --state all --json url --jq '.[0].url // empty' 2>/dev/null || true)
-    [ -n "$url" ] && { printf '%s' "$url"; return 0; }
-  done
+  local urls
+  urls=$(cd "$1" && gh pr list --state all --limit 100 --json url,headRefName --jq ".[] | select(.headRefName == \"chore/nightly-audit-$DATE\" or .headRefName == \"chore/minor-backlog-$DATE\" or ((.headRefName | startswith(\"chore/backlog-\")) and (.headRefName | endswith(\"-$DATE\")))) | .url" 2>/dev/null | tr '\n' ' ' | sed 's/ $//' || true)
+  [ -n "$urls" ] && { printf '%s' "$urls"; return 0; }
   return 1
 }
 
@@ -69,7 +68,9 @@ while IFS="$(printf '\t')" read -r repo status detail; do
   cp "$out" "$full" 2>/dev/null || true
   last=$(grep -v '^[[:space:]]*$' "$out" 2>/dev/null | tail -1 | cut -c1-200)
   notes=""
-  [ "${HEADLESS_RESUMES:-0}" -gt 0 ] && notes=", ${HEADLESS_RESUMES} resume(s)"
+  triage=$(grep -o 'TRIAGE: kept=[0-9]* dropped=[0-9]* groups=[0-9]*' "$out" 2>/dev/null | tail -1 || true)
+  [ -n "$triage" ] && notes=", $triage"
+  [ "${HEADLESS_RESUMES:-0}" -gt 0 ] && notes="$notes, ${HEADLESS_RESUMES} resume(s)"
   notes="$notes, details $full"
   if [ "$rc" = 124 ]; then
     printf -- '- %s: timeout after %ss%s%s\n' "$name" "$TIMEOUT_SECS" "${url:+, PR $url}" "$notes" >> "$REPORT"

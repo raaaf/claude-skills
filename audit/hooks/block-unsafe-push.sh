@@ -146,7 +146,7 @@ fi
 cwd=$(echo "$input" | jq -r '.cwd')
 
 # Nightly exception (2026-10-01): the headless nightly run (references/minor-backlog.md) pushes only
-# `chore/nightly-audit-*` / `chore/minor-backlog-*` branches, and an "ask" stalls a headless session.
+# `chore/nightly-audit-*` / `chore/minor-backlog-*` / `chore/backlog-*` branches, and an "ask" stalls a headless session.
 # Allow without a marker ONLY for one plain command of the shape `git [-C dir] push [-u] [remote]
 # [refspec...]` where every pushed ref resolves to such a branch. Anything else (chained commands,
 # quotes, substitutions, force/all/tags/mirror/delete, unknown options, a default-branch target, an
@@ -181,7 +181,7 @@ nightly_push_ok() {
       dst="$b"
     fi
     dst="${dst#refs/heads/}"
-    case "$dst" in chore/nightly-audit-*|chore/minor-backlog-*) ;; *) return 1 ;; esac
+    case "$dst" in chore/nightly-audit-*|chore/minor-backlog-*|chore/backlog-*) ;; *) return 1 ;; esac
     case "$dst" in *[!A-Za-z0-9._/-]*|*..*) return 1 ;; esac
     [ "$dst" = "main" ] || [ "$dst" = "master" ] || [ "$dst" = "$default" ] && return 1
   done

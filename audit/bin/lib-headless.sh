@@ -33,7 +33,7 @@ audit_headless_allowed_tools() {
   list="$list,Bash(git ls-files*),Bash(git merge-base*),Bash(git branch*),Bash(git symbolic-ref*)"
   list="$list,Bash(git add*),Bash(git commit*)"             # stage and commit the nightly fixes
   list="$list,Bash(git checkout -b chore/*),Bash(git switch -c chore/*)"   # create the chore/ branch
-  list="$list,Bash(git push -u origin chore/nightly-audit-*),Bash(git push -u origin chore/minor-backlog-*)"  # the push-hook exception
+  list="$list,Bash(git push -u origin chore/nightly-audit-*),Bash(git push -u origin chore/minor-backlog-*),Bash(git push -u origin chore/backlog-*)"  # the push-hook exception
   list="$list,Bash(gh pr list*),Bash(gh pr create*)"        # open-PR check, PR creation
   list="$list,Workflow,Skill,Agent,Read,Edit,Write,Grep,Glob"
   printf '%s' "$list"
