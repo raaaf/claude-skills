@@ -242,6 +242,10 @@ path = request.file('avatar').storeAs(
 )
 ```
 
+**Upload and permission gates decide on server-derived values, never on client-supplied ones.** Derive the type from the file extension and server-side sniffing (`finfo`/`mime_content_type` on the stored bytes), never from `$file['type']` or the request's `Content-Type`: the client controls both, so a gate shaped `if ($file['type'] === 'image/svg+xml') { requireAdmin(); sanitize(); }` is skipped by sending any other type with a `.svg` name. A gate that only fires for the type it expects is a bypass for every other spelling.
+
+**When one gate gets a new check, grep its sibling gates for parity.** A port, scheme, host or role rule added to one upload filter, URL validator or capability check must be applied to every sibling that guards the same resource (other upload hooks, the `upload_mimes` allowlist, the REST route next to the form handler); a fix in one and not the others is the usual way the original hole survives.
+
 **Never serve uploaded files directly from a public directory.** Use a route with authorization that streams the file:
 
 ```
