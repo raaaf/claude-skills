@@ -2,7 +2,7 @@
 #
 # Nightly driver (2026-10-01): walks every candidate repo from nightly-repos.sh sequentially. For each
 # `ready` repo it creates a detached temporary worktree from origin/<default>, runs a headless
-# `claude -p "Nachtlauf"` inside it (45 min cap), removes the worktree, and records one report line.
+# headless `claude -p` (lib-headless.sh: narrow allow list, NIGHTLY_DONE sentinel, up to 3 resumes) inside it (45 min cap per attempt), removes the worktree, and records one report line.
 # Skipped repos are reported with their status and detail. Report: $HOME/.local/state/claude/nightly/YYYY-MM-DD.md
 # Usage: nightly-run.sh [--dry-run] [root...]   (--dry-run: list what would run, no worktree, no claude)
 set -uo pipefail
@@ -17,6 +17,9 @@ TMPBASE="${TMPDIR:-/tmp}"; TMPBASE="${TMPBASE%/}"
 WORK=$(mktemp -d "$TMPBASE/nightly-run.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
+. "$SCRIPT_DIR/lib-headless.sh"
+PROMPT="Nachtlauf. Gib bei jedem fehlgeschlagenen Schritt (z.B. dem Start von fix.js) den vollständigen Fehlertext aus, unter der Überschrift FEHLER. Gib als allerletzte Zeile NIGHTLY_DONE aus, erst nachdem jeder gestartete Workflow beendet und das Log geschrieben ist."
+
 LIST=$(bash "$SCRIPT_DIR/nightly-repos.sh" "$@")
 
 if [ "$DRY" = 1 ]; then
@@ -25,26 +28,9 @@ if [ "$DRY" = 1 ]; then
     if [ "$status" = ready ]; then printf 'WOULD RUN  %s (%s)\n' "$repo" "$detail"
     else printf 'SKIP       %s: %s (%s)\n' "$repo" "$status" "$detail"; fi
   done
+  printf 'COMMAND    %s\n' "$(audit_headless_cmdline "$PROMPT")"
   exit 0
 fi
-
-# run_claude <worktree> <outfile>: 0 = finished ok, 124 = timed out, else the claude exit code
-run_claude() {
-  local pid waited=0 rc
-  ( cd "$1" && exec claude -p "Nachtlauf" --permission-mode acceptEdits ) > "$2" 2>&1 < /dev/null &
-  pid=$!
-  while kill -0 "$pid" 2>/dev/null; do
-    if [ "$waited" -ge "$TIMEOUT_SECS" ]; then
-      pkill -TERM -P "$pid" 2>/dev/null; kill -TERM "$pid" 2>/dev/null
-      sleep 2; pkill -KILL -P "$pid" 2>/dev/null; kill -KILL "$pid" 2>/dev/null
-      wait "$pid" 2>/dev/null
-      return 124
-    fi
-    sleep 5; waited=$((waited + 5))
-  done
-  wait "$pid"; rc=$?
-  return "$rc"
-}
 
 pr_url() {
   local b url
@@ -77,17 +63,24 @@ while IFS="$(printf '\t')" read -r repo status detail; do
     *"visual_files="*"(cap "*)
       detail="$detail, Qualitätslauf über dem Limit: der Rest folgt in den nächsten Nächten" ;;
   esac
-  run_claude "$wt" "$out"; rc=$?
+  audit_headless_run "$wt" "$PROMPT" NIGHTLY_DONE "$out" "$TIMEOUT_SECS"; rc=$?
   url=$(pr_url "$wt" || true)
+  full="$REPORT_DIR/$DATE-$name.txt"   # full session text incl. any FEHLER section
+  cp "$out" "$full" 2>/dev/null || true
   last=$(grep -v '^[[:space:]]*$' "$out" 2>/dev/null | tail -1 | cut -c1-200)
+  notes=""
+  [ "${HEADLESS_RESUMES:-0}" -gt 0 ] && notes=", ${HEADLESS_RESUMES} resume(s)"
+  notes="$notes, details $full"
   if [ "$rc" = 124 ]; then
-    printf -- '- %s: timeout after %ss%s\n' "$name" "$TIMEOUT_SECS" "${url:+, PR $url}" >> "$REPORT"
+    printf -- '- %s: timeout after %ss%s%s\n' "$name" "$TIMEOUT_SECS" "${url:+, PR $url}" "$notes" >> "$REPORT"
+  elif [ "$rc" = 3 ]; then
+    printf -- '- %s: failed (no NIGHTLY_DONE after %s resumes)%s%s: %s\n' "$name" "${HEADLESS_RESUMES:-0}" "${url:+, PR $url}" "$notes" "$last" >> "$REPORT"
   elif [ "$rc" != 0 ]; then
-    printf -- '- %s: failed (exit %s): %s\n' "$name" "$rc" "$last" >> "$REPORT"
+    printf -- '- %s: failed (exit %s)%s: %s\n' "$name" "$rc" "$notes" "$last" >> "$REPORT"
   elif [ -n "$url" ]; then
-    printf -- '- %s: PR %s (%s)\n' "$name" "$url" "$detail" >> "$REPORT"
+    printf -- '- %s: PR %s (%s)%s\n' "$name" "$url" "$detail" "$notes" >> "$REPORT"
   else
-    printf -- '- %s: no PR (%s): %s\n' "$name" "$detail" "$last" >> "$REPORT"
+    printf -- '- %s: no PR (%s)%s: %s\n' "$name" "$detail" "$notes" "$last" >> "$REPORT"
   fi
   git -C "$repo" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
   git -C "$repo" worktree prune >/dev/null 2>&1 || true

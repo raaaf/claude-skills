@@ -119,8 +119,10 @@ are reported; every other repo is dropped. Their Minors stay in their backlog un
   `visual_files=M` counts the pending files since the head; above the cap the detail reads `visual_files=M (cap 40)` and the morning report line says the rest follows on the next nights (catch-up over several nights, no file skipped).
 - `bin/nightly-run.sh [--dry-run] [root...]` runs the `ready` repos strictly one after another: detached
   temporary worktree from `origin/<default>` under `$TMPDIR` (the main checkout is never touched),
-  `claude -p "Nachtlauf" --permission-mode acceptEdits` inside it, 45 min cap (`NIGHTLY_TIMEOUT_SECS`
-  overrides), then worktree removal and prune. `--dry-run` only prints the plan.
+  a headless `claude -p` (via `bin/lib-headless.sh`: `--permission-mode acceptEdits`, `--output-format json`, explicit
+  `--allowedTools` list, prompt ends with a `NIGHTLY_DONE` sentinel; a missing sentinel resumes the session with
+  `--resume <session_id>`, at most 3 times, else the report line says failed) inside it, 45 min cap per attempt
+  (`NIGHTLY_TIMEOUT_SECS` overrides), full session text incl. fix.js errors in `YYYY-MM-DD-<repo>.txt`, then worktree removal and prune. `--dry-run` only prints the plan.
 - Headless fallback (2026-10-02): in the first run `fix.js` could not be started and the session fell back to
   single `audit-fix-agents` (the orchestrator checks their diffs). Cause not determinable: `find.js` ran through
   the same `Workflow` tool, `Workflow` is in the skill's `allowed-tools`, `claude --help` lists no Workflow flag or

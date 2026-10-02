@@ -10,7 +10,7 @@
 #
 # What it does: a detached worktree at <base> inside the output directory, <base>..<head> applied
 # as an UNCOMMITTED diff (so the audit scope is the pending change, as before a push), then
-# `claude -p "/audit"` with AUDIT_DIMENSIONS=all, AUDIT_FIX_SCOPE=none (find and log only),
+# a headless `claude -p "/audit ..."` (bin/lib-headless.sh: narrow allow list, AUDIT_DONE sentinel, up to 3 resumes) with AUDIT_DIMENSIONS=all, AUDIT_FIX_SCOPE=none (find and log only),
 # AUDIT_BASE_REF=<base> and AUDIT_SKIP_LEARNING_CHECK=1 (skips Phase 0, the open issues/PR
 # lookup, which must not look at the real repo). The audit log is copied next to claude.out.
 #
@@ -40,9 +40,11 @@ git -C "$REPO" diff --binary "$BASE" "$HEAD" >"$OUT/case.patch"
 echo "changed: $(cd "$WT" && git status --short | wc -l)" >>"$OUT/setup.log"
 
 START=$(date +%s)
-( cd "$WT" && AUDIT_DIMENSIONS=all AUDIT_FIX_SCOPE=none AUDIT_BASE_REF="$BASE" AUDIT_SKIP_LEARNING_CHECK=1 \
-    claude -p "/audit" --permission-mode acceptEdits ) >"$OUT/claude.out" 2>&1
-echo "rc=$? seconds=$(( $(date +%s) - START ))" >>"$OUT/setup.log"
+. "$(cd "$(dirname "$0")" && pwd)/../bin/lib-headless.sh"
+export AUDIT_DIMENSIONS=all AUDIT_FIX_SCOPE=none AUDIT_BASE_REF="$BASE" AUDIT_SKIP_LEARNING_CHECK=1
+audit_headless_run "$WT" "/audit Gib als allerletzte Zeile AUDIT_DONE aus, erst nachdem jeder gestartete Workflow beendet und das Log geschrieben ist." \
+  AUDIT_DONE "$OUT/claude.out" 0
+echo "rc=$? resumes=$HEADLESS_RESUMES seconds=$(( $(date +%s) - START ))" >>"$OUT/setup.log"
 
 # Audit logs are named YYYY-MM-DD_HHMMSS-<branch>.md (audit-log-template.md).
 cp "$WT"/.claude/audits/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*.md "$OUT/" 2>/dev/null
