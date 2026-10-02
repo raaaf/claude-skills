@@ -95,7 +95,9 @@ const FINDINGS_SCHEMA = {
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['complete', 'incomplete'] },
-        files: { type: 'array', items: { type: 'string' } }
+        files: { type: 'array', items: { type: 'string' } },
+        // Optional: why the coverage is incomplete (surfaced in the "not covered" log line).
+        reason: { type: 'string' }
       },
       required: ['status', 'files']
     },

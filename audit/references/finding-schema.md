@@ -147,7 +147,8 @@ has exactly the shape above (`SCOUT_FILES_GROUP_SCHEMA` in `find.js`).
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['complete', 'incomplete'] },
-        files: { type: 'array', items: { type: 'string' } }
+        files: { type: 'array', items: { type: 'string' } },
+        reason: { type: 'string' }
       },
       required: ['status', 'files']
     }

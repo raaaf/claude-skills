@@ -84,7 +84,9 @@ line in any deviation finding; isolated unusual values are not sufficient eviden
 
 ## Structured coverage contract
 
-Return `coverage` as `{ "status": "complete" | "incomplete", "files": ["reviewed/path"] }`.
+Return `coverage` as `{ "status": "complete" | "incomplete", "files": ["reviewed/path"], "reason": "why incomplete" }`
+(`reason` is optional, one sentence, only with `incomplete`: which assigned path was not reviewed and why;
+the orchestrator logs it).
 List only assigned paths actually reviewed completely. The assignment is `FILES` or every
 `CLUSTER.files[].path`. Use `complete` only when every assigned path was reviewed; any denied,
 unread, or partially reviewed path requires `incomplete`, even when `findings` is empty.

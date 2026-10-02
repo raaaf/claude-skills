@@ -140,7 +140,9 @@ const FINDINGS_SCHEMA = {
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['complete', 'incomplete'] },
-        files: { type: 'array', items: { type: 'string' } }
+        files: { type: 'array', items: { type: 'string' } },
+        // Optional: why the coverage is incomplete (surfaced in the "not covered" log line).
+        reason: { type: 'string' }
       },
       required: ['status', 'files']
     },
@@ -271,6 +273,57 @@ function hunkRangesFor(ctx, paths) {
   const out = {};
   for (const p of paths || []) out[p] = ctx.hunks[p] || 'whole';
   return out;
+}
+
+// Cluster scouts and specialists sometimes carry absolute paths (/abs/repo/src/x.php) while the
+// other side is repo-relative, which made hasCompleteCoverage mark one file both missing and extra
+// (moenius run). Every path in a chunk or a coverage reply is compared in the repo-relative form.
+// Local to find.js on purpose: hasCompleteCoverage stays byte-identical to fix.js's copy.
+function toRepoRelative(path) {
+  if (typeof path !== 'string') return path;
+  const root = String(args.repoRoot || '').replace(/\/+$/, '');
+  const rel = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+  return rel.replace(/^\.\//, '');
+}
+
+function withRelativeCoverage(result) {
+  const cov = result && result.coverage;
+  if (!cov || !Array.isArray(cov.files)) return result;
+  return { ...result, coverage: { ...cov, files: cov.files.map(toRepoRelative) } };
+}
+
+// Large-file split (2026-10-02): in three consecutive runs the cluster dimensions never covered a
+// ~4000-line file whose hunks were spread over the whole file (src/Acf/FieldDefinitions.php) and came
+// back incomplete each time: one specialist cannot read that many ranges next to its other files.
+// Under hunkScope (never on SMALL, never payments) a file whose precomputed ranges number at least
+// HEAVY_FILE_RANGES, or cover more than HEAVY_FILE_LINES lines (ranges are already widened by 15 lines
+// of context), gets a chunk of its own, so one specialist handles just that file's hunks.
+const HEAVY_FILE_RANGES = 10;
+const HEAVY_FILE_LINES = 800;
+
+function isHeavyFile(ctx, path) {
+  const ranges = ctx.hunks && ctx.hunks[path];
+  if (!Array.isArray(ranges)) return false;
+  const lines = ranges.reduce((sum, r) => sum + (r[1] - r[0] + 1), 0);
+  return ranges.length >= HEAVY_FILE_RANGES || lines > HEAVY_FILE_LINES;
+}
+
+function splitHeavyFiles(ctx, dimension, chunks) {
+  if (!ctx.hunkScope || !ctx.hunks || ctx.sizeResult === 'SMALL' || dimension === 'payments') return chunks;
+  const out = [];
+  const own = [];
+  for (const c of chunks) {
+    const paths = c.kind === 'cluster' ? c.cluster.files.map((file) => file.path) : c.files;
+    const heavy = paths.filter((p) => isHeavyFile(ctx, p));
+    if (heavy.length === 0 || (c.kind === 'files' && heavy.length === paths.length && paths.length === 1)) { out.push(c); continue; }
+    const rest = c.kind === 'cluster'
+      ? { ...c, cluster: { ...c.cluster, files: c.cluster.files.filter((file) => !heavy.includes(file.path)) } }
+      : { ...c, files: c.files.filter((p) => !heavy.includes(p)) };
+    const restSize = c.kind === 'cluster' ? rest.cluster.files.length : rest.files.length;
+    if (restSize > 0) out.push(rest);
+    own.push(...heavy.filter((p) => !own.some((o) => o.files[0] === p)).map((p) => ({ kind: 'files', files: [p] })));
+  }
+  return out.concat(own);
 }
 
 // Briefing line that makes the security specialist cover the privacy module too (privacy fold,
@@ -623,7 +676,10 @@ async function runClusterScout(ctx, dimension, agentFn, logFn) {
     { agentType: 'Explore', model: 'sonnet', schema: SCOUT_CLUSTERS_SCHEMA, phase: 'Scout' }
   );
   if (warnIfNull(logFn, result, `${dimension}: cluster scout returned null`)) return { failed: true, clusters: [] };
-  return { clusters: result.clusters };
+  const clusters = (result.clusters || []).map((cluster) => cluster && Array.isArray(cluster.files)
+    ? { ...cluster, files: cluster.files.map((file) => file && typeof file.path === 'string' ? { ...file, path: toRepoRelative(file.path) } : file) }
+    : cluster);
+  return { clusters };
 }
 
 async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
@@ -664,7 +720,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   }
 
   // Stage 2: chunking (code, not an agent).
-  const filePaths = files.map((f) => f.path);
+  const filePaths = files.map((f) => toRepoRelative(f.path));
   // A cluster naming fewer than 2 files is not a cluster (scout-clusters.md
   // "at least two files"); drop it rather than dispatching a specialist that
   // sees a single file with no comparison to make.
@@ -699,6 +755,9 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
   } else {
     chunks = fileChunks;
   }
+  const unsplit = chunks.length;
+  chunks = splitHeavyFiles(ctx, dimension, chunks);
+  if (chunks.length !== unsplit) logFn(`${dimension}: heavy-file split, ${unsplit} -> ${chunks.length} chunk(s)`);
   logFn(`${dimension}: scout ${filePaths.length || clusters.length} unit(s), ${chunks.length} chunk(s)`);
   if (chunks.length > 15) {
     logFn(`${dimension}: ${chunks.length} chunks, above the 15-chunk expectation`);
@@ -738,13 +797,13 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       `only where a hunk depends on them (a changed call into unchanged code, a renamed symbol). There is ` +
       `no tool-call budget for these reads. coverage.files must list exactly the assigned paths whose ` +
       `hunks you reviewed completely, spelled as given here (no ./ or absolute prefix) and nothing else. ` +
-      `Could not review one? Leave it out and set status "incomplete".`
+      `Could not review one? Leave it out, set status "incomplete" and put the cause in coverage.reason.`
       : `\nCOVERAGE CONTRACT for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
       `Read every one of these files in full. There is no tool-call budget for reading the assigned files; a partial ` +
       `read is exactly what status "incomplete" exists to report. coverage.files must list exactly ` +
       `the assigned paths you read in full, spelled as given here (no ./ or absolute prefix) and ` +
       `nothing else: not guideline files, not files you opened while following a lead. Could not ` +
-      `read one in full? Leave it out and set status "incomplete".`;
+      `read one in full? Leave it out, set status "incomplete" and put the cause in coverage.reason.`;
     // payments' scope is the FULL STRIPE_FILES surface by design (dimensionFiles, Phase 1.5),
     // not the diff's changed hunks, so it never gets the hunk-scope clause.
     const hunkClause = dimension === 'payments' ? '' : hunkScopeClause(ctx, 'specialist', assigned);
@@ -758,7 +817,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       { agentType, model: 'sonnet', ...specialistEffort(agentType), schema: FINDINGS_SCHEMA, phase: 'Audit' }
     );
     if (warnIfNull(logFn, result, `${dimension}: specialist for chunk ${i} returned null`)) return null;
-    return result;
+    return withRelativeCoverage(result);
   })));
   const specialists = specialistResults.filter(Boolean);
   logFn(`${dimension}: ${specialists.length}/${chunks.length} specialists done`);
@@ -778,7 +837,8 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       const missing = assigned.filter((path) => !reported.includes(path));
       logFn(`${dimension}: chunk ${i} not covered (status=${cov ? cov.status : 'none'}` +
         (extra.length ? `, extra=${extra.join(',')}` : '') +
-        (missing.length ? `, missing=${missing.join(',')}` : '') + ')');
+        (missing.length ? `, missing=${missing.join(',')}` : '') +
+        (cov && cov.reason ? `, reason=${cov.reason}` : '') + ')');
     }
   });
 
