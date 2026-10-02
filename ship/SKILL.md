@@ -188,7 +188,7 @@ Every later "run the log call" below means, in a block that starts with the lib 
 ## Phase 0.5: Audit Mode
 
 Ask once, before anything is committed, so the user knows up front whether this run takes minutes
-or includes a full audit. AskUserQuestion (header "Audit"):
+or includes the audit gate. AskUserQuestion (header "Audit"):
 - "Mit Audit (Recommended)" → Phase 2 runs as written (a fresh marker from an earlier `/audit` is still accepted there); mention `UNAUDITED_COUNT` pending commits when printed above. Nothing to save.
 - "Schneller Fix, ohne Audit" → `SHIP_GATE=skipped` in a sourced block ending with `orch_state_save SHIP_GATE`. Phase 2 is skipped. The secret scan in Phase 1 and the test gate in Phase 2b still run.
 
@@ -283,8 +283,8 @@ Show the generated message. AskUserQuestion:
 
 Stage all tracked modified files (not untracked):
 ```bash
-git add -u
-# Plus any already-staged files
+git add -u   # already-staged files stay staged
+for f in .audit/minor-backlog.tsv .audit/visual-pass-head; do [ -f "$f" ] && git add -- "$f"; done   # /audit state files (prose); -u misses them while untracked
 ```
 
 Check the staged diff for sensitive files AND for secret-shaped content. The filename grep alone is
