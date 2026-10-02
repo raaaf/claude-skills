@@ -4,6 +4,9 @@
 // to the per-repo backlog (rule decided 2026-10-01; 249 raw findings of one zeit audit were 224
 // Minor, and fixing every one meant ~17 spec-executor rounds).
 //
+//   0. Floor (2026-10-02): a finding of dimension security, privacy or payments is never Minor; it is
+//      raised to Important first (acceptance test: a policy bypass and a missing dispute backfill ended
+//      as Minor in the backlog instead of blocking). A REFUTED finding is dropped here as a safety net.
 //   1. Critical and Important always go to the fix wave.
 //   2. A Minor rides along only when EVERY file it names already receives a Critical/Important
 //      fix in this wave (fix.js groups per file, so the same fixer handles it at little cost).
@@ -14,7 +17,7 @@
 //      handled by rules 1-3. It is returned under `duplicates` so the orchestrator can log it.
 //
 // Usage: node minor-split.mjs < input.json
-//   input:  { "findings": [{id, severity, files: [{path, lines}], duplicateOf?, ...}],   (non-REFUTED only)
+//   input:  { "findings": [{id, severity, dimension, files: [{path, lines}], duplicateOf?, ...}],   (non-REFUTED only)
 //             "backlog":  [{key, dimension, file, line, first_seen, description}] }
 //   output: { "fix": [...findings], "ridealongBacklog": [...entries], "toBacklog": [...Minors],
 //             "duplicates": [...findings with duplicateOf] }
@@ -22,7 +25,12 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export function split({ findings: all = [], backlog = [] } = {}) {
+const SENSITIVE_DIMENSIONS = new Set(['security', 'privacy', 'payments']);
+const raiseSensitive = (f) =>
+  f.severity === 'Minor' && SENSITIVE_DIMENSIONS.has(f.dimension) ? { ...f, severity: 'Important' } : f;
+
+export function split({ findings: raw = [], backlog = [] } = {}) {
+  const all = raw.filter((f) => f.verdict !== 'REFUTED').map(raiseSensitive);
   const duplicates = all.filter((f) => f.duplicateOf);
   const findings = all.filter((f) => !f.duplicateOf);
   const paths = (f) => (Array.isArray(f.files) ? f.files.map((x) => x.path) : []);

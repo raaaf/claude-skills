@@ -64,6 +64,27 @@ test('a finding with duplicateOf goes to neither fix nor backlog and does not ma
   assert.deepEqual(r.ridealongBacklog, []);
 });
 
+const d = (dimension, severity, verdict, ...paths) => ({ ...f(`${dimension}-1`, severity, ...paths), dimension, verdict });
+
+test('a CONFIRMED security Minor and an UNCERTAIN payments Minor are fixed as Important, never backlogged', () => {
+  const r = split({ findings: [d('security', 'Minor', 'CONFIRMED', 'a.js'), d('payments', 'Minor', 'UNCERTAIN', 'b.js')] });
+  assert.deepEqual(ids(r.fix), ['security-1', 'payments-1']);
+  assert.deepEqual(r.fix.map((x) => x.severity), ['Important', 'Important']);
+  assert.deepEqual(r.toBacklog, []);
+});
+
+test('a REFUTED privacy finding stays discarded', () => {
+  const r = split({ findings: [d('privacy', 'Minor', 'REFUTED', 'p.js')] });
+  assert.deepEqual(r.fix, []);
+  assert.deepEqual(r.toBacklog, []);
+});
+
+test('a code_quality Minor keeps its severity and goes to the backlog', () => {
+  const r = split({ findings: [d('code_quality', 'Minor', 'CONFIRMED', 'c.js')] });
+  assert.deepEqual(r.fix, []);
+  assert.deepEqual(ids(r.toBacklog), ['code_quality-1']);
+});
+
 test('the CLI prints JSON when invoked through a symlink (import.meta.url is the realpath)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'minor-split-'));
   try {

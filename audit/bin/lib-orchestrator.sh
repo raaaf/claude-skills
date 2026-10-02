@@ -79,7 +79,7 @@
 #   orch_visual_pass_overflow [ref]   files of a single oversized commit above the cap (reported as unchecked, never silent); 0 otherwise
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
-#   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
+#   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES, generic wiring dropped unless the path names a payment concern (payments trigger)
 #   orch_sensitive_paths <changed>   prints the non-test changed paths on an auth/payment/privacy surface (reserved for a future /security-review, not dispatched today)
 #   orch_review_worktree_create <base_ref> [files]   temporary detached worktree at base_ref with the audit scope (base_ref..working tree, untracked files as intent-to-add) applied as UNCOMMITTED changes; prints its path (for the built-in /code-review)
 #   orch_review_worktree_remove <path>   removes that worktree (also after a failed review)
@@ -458,10 +458,19 @@ orch_payments_guidelines() {
 # 2026-09-30 (events): tests/Pest.php, a test helper, is in STRIPE_FILES; touching it alone
 # started the payments dimension (12 agents, 41 USD, 35 findings, all in unchanged code).
 # Test paths: tests/ test/ spec/ __tests__/ segments, *Test.php, *.test.*, *.spec.*.
+# 2026-10-02 (acceptance test, 7-file diff): routes/console.php sits in STRIPE_FILES, so payments ran,
+# scanned the whole Stripe surface and reported only pre-existing code. Generic wiring (routes/, config/,
+# bootstrap/, app/Console/Kernel.php, app/Providers/, lang files, views) is dropped too, UNLESS the path
+# itself names a payment concern (stripe|payment|checkout|billing|invoice|refund|dispute|webhook|cashier|
+# subscription|ticket).
+ORCH_WIRING_RE='(^|/)(routes|config|bootstrap|lang)/|^app/Console/Kernel\.php$|(^|/)app/Providers/|(^|/)resources/(views|lang)/'
+ORCH_PAYMENT_PATH_RE='stripe|payment|checkout|billing|invoice|refund|dispute|webhook|cashier|subscription|ticket'
 orch_payments_touched() {
-  local changed="$1" stripe="$2"
+  local changed="$1" stripe="$2" nontest
+  nontest=$(printf '%s\n' "$changed" | grep -Ev '(^|/)(tests?|spec|__tests__)/|Test\.php$|\.(test|spec)\.' || true)
   comm -12 \
-    <(printf '%s\n' "$changed" | grep -Ev '(^|/)(tests?|spec|__tests__)/|Test\.php$|\.(test|spec)\.' | sort -u) \
+    <({ printf '%s\n' "$nontest" | grep -Ev "$ORCH_WIRING_RE" || true
+        printf '%s\n' "$nontest" | grep -E "$ORCH_WIRING_RE" | grep -Ei "$ORCH_PAYMENT_PATH_RE" || true; } | sed '/^$/d' | sort -u) \
     <(printf '%s\n' "$stripe" | sort -u)
 }
 

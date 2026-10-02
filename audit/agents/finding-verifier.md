@@ -44,7 +44,7 @@ any unavailable/skipped verification as an incident; an absent verdict never cou
      absence, dead code, unreachable branches, "has no effect" need this trace.)
    - Does `DECIDED_TRADEOFFS` document this as a deliberate decision? Then it is refuted as a
      finding (code drift from the decision is a different, docs_sync finding).
-   - Is the severity plausible, or was it inflated? A finding without an acute exploit or data-loss
+   - Is the severity plausible, or was it inflated? You may refute or raise severity; for security/privacy/payments a surviving finding is at least `Important`. A finding without an acute exploit or data-loss
      path is at most `Important`.
    - **A comment is a claim, not evidence.** A code comment that asserts a behaviour ("handled
      upstream", "never null here", "already validated") does not refute a finding by itself; trace
