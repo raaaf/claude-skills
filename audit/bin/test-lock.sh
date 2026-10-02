@@ -4,7 +4,12 @@
 # corrupt each other's fixtures — this is a semaphore, not a convention.
 #
 # Usage: test-lock.sh <command...>
+#        test-lock.sh --cmd "<command string>"
 #   bash "$AUDIT_BIN/test-lock.sh" php artisan test --compact tests/Unit/FooTest.php
+#   bash "$AUDIT_BIN/test-lock.sh" --cmd "$TEST_COMMAND"
+# `--cmd` is for a command held in a variable: zsh (the Bash tool's shell) does not
+# word-split `$TEST_COMMAND`, so the string is handed over whole and run via `bash -c`.
+# The lock key still sees its `-destination` id.
 #
 # Portable mkdir spinlock (flock is not available on stock macOS). Lock is
 # per-repo, TTL 15 min against stale locks from killed runs.
@@ -46,17 +51,32 @@ HASH=$(printf '%s' "$REPO_ROOT" | { md5 2>/dev/null || md5sum | cut -d' ' -f1; }
 # product crash and cost a session two wasted re-runs on 2026-09-19. Two runs
 # against DIFFERENT simulators are genuinely independent and should not
 # serialize, so the destination id joins the key when there is one.
+dest_key_of() {
+  case "$1" in
+    *id=*) printf '%s' "$1" | grep -oE 'id=[^,"'"'"' ]+' | head -1 | cut -c4- ;;
+    *) printf '%s' "$1" | tr -c 'A-Za-z0-9' '-' ;;
+  esac
+}
+
+CMD_STRING=""
+if [ "${1:-}" = "--cmd" ]; then
+  [ $# -eq 2 ] || { echo "usage: test-lock.sh --cmd \"<command string>\"" >&2; exit 64; }
+  CMD_STRING=$2
+  set -- bash -c "$CMD_STRING"
+fi
+
 DEST_KEY=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "-destination" ]; then
-    case "$arg" in
-      *id=*) DEST_KEY=$(printf '%s' "$arg" | sed -n 's/.*id=\([^,]*\).*/\1/p') ;;
-      *) DEST_KEY=$(printf '%s' "$arg" | tr -c 'A-Za-z0-9' '-') ;;
-    esac
-  fi
-  prev="$arg"
-done
+if [ -n "$CMD_STRING" ]; then
+  case "$CMD_STRING" in
+    *-destination*) DEST_KEY=$(dest_key_of "$(printf '%s' "${CMD_STRING#*-destination}" | cut -c1-120)") ;;
+  esac
+else
+  prev=""
+  for arg in "$@"; do
+    [ "$prev" = "-destination" ] && DEST_KEY=$(dest_key_of "$arg")
+    prev="$arg"
+  done
+fi
 [ -n "$DEST_KEY" ] && DEST_KEY="-$(printf '%s' "$DEST_KEY" | tr -c 'A-Za-z0-9' '-')"
 
 GIT_COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)

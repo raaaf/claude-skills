@@ -344,7 +344,7 @@ product crash. That cost a session three wasted re-runs and one wrong diagnosis 
 the lock sitting unused in this very directory. `test-lock.sh` now prints `TEST_LOCK_COLLISION` when
 it sees that signature, so a run that slipped past the lock at least names itself.
 
-Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" $TEST_COMMAND` → `BASELINE_FAILURES`.
+Otherwise measure the test-suite baseline once: `bash "$AUDIT_BIN/test-lock.sh" --cmd "$TEST_COMMAND"` → `BASELINE_FAILURES` (`--cmd`, not a bare `$TEST_COMMAND`: the Bash tool runs zsh, which does not word-split it).
 
 Start the fix workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/fix.js", args: { repoRoot: PROJECT_ROOT, fixes: [...findings selected to fix, grouped by file...], testCommand: TEST_COMMAND, baselineFailures: BASELINE_FAILURES, budget: 25, auditBin: AUDIT_BIN } })`. Record this second `runId` in the log stub too.
 

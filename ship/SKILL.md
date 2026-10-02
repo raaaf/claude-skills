@@ -346,7 +346,7 @@ Never silently skip the audit. The bypass must be an explicit user choice. Each 
 
 Only when `test-command:` is set in `.claude/ship.md`. Skip silently otherwise (`SHIP_TESTS=not_configured`).
 
-Whatever you run, run it through `bash "$AUDIT_BIN/test-lock.sh" <command...>`, and that holds for
+Whatever you run, run it through `bash "$AUDIT_BIN/test-lock.sh" <command...>` (a command held in a variable: `--cmd "$TEST_COMMAND"`, since zsh does not word-split it), and that holds for
 any test command you assemble yourself when the repo declares none. The lock keys on the repo plus
 the `-destination` id, so two `xcodebuild test` runs against one simulator serialize instead of
 killing each other with "Early unexpected exit ... signal kill", a failure that reads like a product
