@@ -1,6 +1,6 @@
 # Surface Taxonomy
 
-Used by design-audit Phase 1.5 (surface coverage): the mapping agent matches the project's routes and views against this list, then reports which surfaces exist and which are missing but expected. Taxonomy after checklist.design (surface names only; all descriptions are our own words).
+Used by /screens (surface coverage): the discovery agent matches the project's routes and views against this list, then reports which surfaces exist and which are missing but expected. Taxonomy after checklist.design (surface names only; all descriptions are our own words).
 
 ## TOC
 

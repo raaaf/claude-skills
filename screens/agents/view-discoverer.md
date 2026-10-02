@@ -1,7 +1,7 @@
 # Subagent: View Discoverer
 
 - **subagent_type:** `screens-view-discoverer`
-- **model:** see `agents/screens-view-discoverer.md` frontmatter (single source, same convention as `design-audit/agents/surface-mapper.md`)
+- **model:** see `agents/screens-view-discoverer.md` frontmatter (single source)
 - **maxTurns:** see `agents/screens-view-discoverer.md` frontmatter
 
 ## Purpose
@@ -21,7 +21,7 @@ MODE={full|delta}
 PLATFORM={web|ios|android|macos}
 PROJECT_ROOT={absolute path}
 FRAMEWORK={from detect-framework.sh: laravel|nextjs|nuxt|django|ios|android|react-native|flutter|...}
-SURFACE_TAXONOMY={absolute path to design-audit/references/surface-taxonomy.md}
+SURFACE_TAXONOMY={absolute path to screens/references/surface-taxonomy.md}
 DELTA_FILES={newline-separated changed route/view files since state.commit; delta mode only}
 ```
 
@@ -41,7 +41,7 @@ DELTA_FILES={newline-separated changed route/view files since state.commit; delt
 4. Cross-check against `SURFACE_TAXONOMY`'s "Expectation rules" section for surfaces the project's
    domain expects but the route/view scan missed (404, empty states, cancel flows). Only report a
    MISSING surface when the domain clearly calls for it; uncertain entries are omitted, never
-   guessed (same rule as `design-audit/agents/surface-mapper.md`).
+   guessed (never guess a surface).
 5. In delta mode: read only `DELTA_FILES` and propose manifest additions/removals; never re-propose
    an entry that already exists in the current manifest (hand-edited entries are never overwritten,
    per the plan's "Incremental rule").

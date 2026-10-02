@@ -6,7 +6,7 @@
 #   PLATFORM=<web|native|cross>
 #
 # Usage: bash detect-framework.sh [PROJECT_ROOT]
-# Shared by /audit and /full-audit.
+# Used by /audit.
 #
 # ============================================================================
 # CONSUMPTION CONTRACT -- READ BEFORE WRITING A NEW CONSUMER
@@ -31,7 +31,7 @@
 # directory") that gives no hint SOURCE_DIRS is the actual casualty. This is
 # the exact shape of the Critical bug fixed earlier the same day, when an
 # unquoted SOURCE_DIRS left every multi-directory framework with an empty
-# scope and /full-audit silently audited the wrong file set.
+# scope and the audit silently audited the wrong file set.
 #
 # CORRECT consumption -- capture the output as text, extract each value by
 # key, THEN reconstruct the array with its own targeted eval:
@@ -41,8 +41,7 @@
 #   PLATFORM=$(printf '%s\n' "$FW_OUT" | sed -n 's/^PLATFORM=//p')
 #   eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"     # array context, not a blanket eval
 #
-# All in-repo consumers (audit/SKILL.md, full-audit/references/
-# scope-context-batching.md, design-audit/SKILL.md) already use this pattern.
+# The in-repo consumer (audit/SKILL.md) already uses this pattern.
 # The risk this block guards against is the NEXT consumer, written from
 # memory or an old example, that reaches for the blanket form again.
 # ============================================================================
@@ -106,9 +105,8 @@ else
   # No known framework marker matched. Prefer conventional source directory
   # names, but only the ones that actually exist -- a hard-coded "src/ lib/
   # app/" produces an empty SOURCE_DIRS on a repo like this one (top level is
-  # audit/, full-audit/, plan-it/, ...), which zeroes out the `find` in
-  # scope-context-batching.md and now trips its scope-plausibility abort
-  # instead of the old silent "audited nothing" bug.
+  # audit/, plan-it/, ...), which zeroes out the `find` in
+  # the scope walk instead of the old silent "audited nothing" bug.
   CANDIDATES="src lib app source cmd pkg internal api server client packages"
   SOURCE_DIRS_LIST=()
   for d in $CANDIDATES; do
@@ -184,12 +182,8 @@ echo "FRAMEWORK=$FRAMEWORK"
 # attacker-controlled directory name in an audited repo can only ever
 # reconstruct as inert text, never as something that executes. Known
 # consumers:
-#   - full-audit/references/scope-context-batching.md -- extracts the line,
-#     then `eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"` (correct)
 #   - audit/SKILL.md Phase 1 -- extracts FRAMEWORK/SOURCE_DIRS/PLATFORM the
 #     same way, re-echoes them clean for the orchestrator to read as text
-#   - design-audit/SKILL.md Phase 1 -- reads FRAMEWORK/PLATFORM raw from
-#     stdout (fine, single-token values); does not consume SOURCE_DIRS
 SOURCE_DIRS=""
 for d in "${SOURCE_DIRS_LIST[@]}"; do
   q=$(printf '%q' "$d")

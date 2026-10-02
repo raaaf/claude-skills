@@ -52,8 +52,6 @@ selection.
 - Classified file lists: `---FILES---`, `---FRONTEND---`, `---TRANSLATIONS---`
 - Deduplicated unified diff: `---DIFF---`
 
-**Project-level `scope-extensions:` override — does not apply here.** `.claude/audit-guidelines.md` may declare a `scope-extensions:` line (see CLAUDE.md "Project-specific overrides" / Gotchas) to add extensions to `/full-audit`'s fixed-glob tree scan. `/audit`'s scope above is diff-based instead — `collect-scope.sh` lists every changed file regardless of extension — so a changed `SKILL.md`, `agents/*.md` or any other Markdown file is already in `ALLE_DATEIEN` today, with or without the override. The line only has an effect for `/full-audit`.
-
 ## Output of detect-framework.sh
 
 Provides: `FRAMEWORK`, `SOURCE_DIRS`, `PLATFORM` (three lines, exactly `FRAMEWORK=`, `SOURCE_DIRS=`, `PLATFORM=`, in that order). `SOURCE_DIRS` is a list of directories, each `%q`-quoted individually and joined by plain (unescaped) spaces — a `%q` escape only ever protects a space that is actually inside a directory name, so the separators between directories stay real spaces. Consume it by capturing the script's stdout as text (never one blanket `eval "$(...)"` over all three lines — the `SOURCE_DIRS` line's unescaped separators make it multiple shell words, not a single assignment), extracting the value after `SOURCE_DIRS=`, then reconstructing the array with `eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"`. That targeted `eval` is required (not optional) — it is what turns the `%q` escaping back into real array elements. The safety against an attacker-controlled directory name in an audited repo comes ENTIRELY from `detect-framework.sh`'s per-element `printf %q`: an unescaped `$(...)` inside an `eval "arr=(...)"` executes like anywhere else in `eval`, and `%q` is what turns it into a literal word (verified 2026-09-16).
@@ -124,14 +122,13 @@ alternative is an audit that ignores the owner's documented decisions. Raised as
 
 Phase 1 runs the scripts below. Each prints a result code; the orchestrator converts it into findings
 by this table. The scope rule is the same everywhere: a hit on a file **inside the diff** becomes a
-finding, a hit outside the diff is printed as a hint and nothing more (this is `/audit`, not
-`/full-audit`).
+finding, a hit outside the diff is printed as a hint and nothing more (this is `/audit`, a diff audit).
 
 | Script | Result code | Becomes |
 |---|---|---|
 | `check-outdated.sh` (only when a manifest/lockfile is in the diff) | `DEP_SECURITY_RESULT=VULNS` | one **Critical** `[Security]` per reported line. A vulnerable dependency blocks the push like any Critical. |
 | | `DEP_OUTDATED_RESULT=OUTDATED` | one **Minor** `[Dependencies]` per reported line. New version available, not a blocker. |
-| | `DEP_SECURITY_RESULT=TIMEOUT` | **no automatic finding, never treated as clean.** The vulnerability check did not complete within the network timeout. Log a gap note (`Dependency security: skipped, network check timed out`), same class as the full-audit test-runner/build-preflight gap notes, so a repeat accumulates toward an aged-gap escalation instead of silently passing as clean. |
+| | `DEP_SECURITY_RESULT=TIMEOUT` | **no automatic finding, never treated as clean.** The vulnerability check did not complete within the network timeout. Log a gap note (`Dependency security: skipped, network check timed out`), same class as the test-runner/build-preflight gap notes, so a repeat accumulates toward an aged-gap escalation instead of silently passing as clean. |
 | | `DEP_OUTDATED_RESULT=TIMEOUT` | same handling as above, lower stakes: gap note `Dependency updates: skipped, network check timed out`. |
 | | `SKIP`/`CLEAN`/`CURRENT` | nothing |
 | `check-i18n-keys.sh` | `I18N_RESULT=MISSING` | one **Important** `[i18n]` per `MISSING {locale}: {key}` line, when the affected keys/files are in the diff |

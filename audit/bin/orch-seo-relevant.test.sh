@@ -43,5 +43,5 @@ mk; echo '<meta name="description" content="x">' > "$R/resources/views/layout.bl
 PLATFORM=native expect "$VIEW" no 'PLATFORM=native never'
 
 mk; echo '<meta name="description" content="x">' > "$R/resources/views/layout.blade.php"
-[[ "$(orch_seo_surface "$R" 2>/dev/null)" == yes ]] || { echo 'FAIL surface alone (full-audit scope)' >&2; exit 1; }
+[[ "$(orch_seo_surface "$R" 2>/dev/null)" == yes ]] || { echo 'FAIL surface alone' >&2; exit 1; }
 echo 'PASS surface alone'

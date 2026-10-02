@@ -26,14 +26,12 @@ skill-name/
 Key invariants:
 
 - **Orchestrator writes, subagents return.** Subagents cannot write under `.claude/` (hardcoded permission protection, also under `bypassPermissions`; a subagent-side `mode: bypassPermissions` still failed the write). Learning, suppression, log files: structured output → parsed by orchestrator → written by orchestrator.
-- **Single source of truth.** `/full-audit` references `../audit/agents/` instead of duplicating. Same for `guidelines/`. Edit once.
-- **Frontmatter `model: inherit`** on the orchestrator skills (audit, full-audit, design-audit, plan-it) since 2026-09-03: they run on the session model, the same reasoning `/delegate` documented earlier. `ship` pins `model: sonnet`. Never pinned versions; pin only on Bedrock/Vertex/Foundry.
+- **Frontmatter `model: inherit`** on the orchestrator skills (audit, plan-it) since 2026-09-03: they run on the session model, the same reasoning `/delegate` documented earlier. `ship` pins `model: sonnet`. Never pinned versions; pin only on Bedrock/Vertex/Foundry.
 - **Per-dimension pipeline and platform support detail:** `audit/CLAUDE.md`.
 
 ## Commands
 
-Cross-cutting commands only. Per-skill commands (audit/bin/*.sh, screens CLI,
-validate-locations.sh, ...) live in that skill's nested `CLAUDE.md` (see Wegweiser).
+Cross-cutting commands only. Per-skill commands (audit/bin/*.sh, screens CLI, ...) live in that skill's nested `CLAUDE.md` (see Wegweiser).
 
 | Command | Purpose |
 |---|---|
@@ -44,8 +42,8 @@ validate-locations.sh, ...) live in that skill's nested `CLAUDE.md` (see Wegweis
 | `. audit/bin/lib-orchestrator.sh` | Orchestrator prologue every skill sources; values cross Bash blocks only via `orch_state_save`/`orch_state_load`. bash 3.2. Function list: `audit/CLAUDE.md` |
 | `bash audit/bin/check-fresh-shell.sh [root]` | Finds Bash blocks calling `orch_*` without sourcing the lib, or reading an unset state variable. Detail: `audit/CLAUDE.md` |
 | `bash audit/bin/check-docs-claims.sh [root]` | Mechanical doc-drift check: CLAUDE.md/README.md/`*/SKILL.md` claims verified against disk |
-| `bash audit/bin/run-log.sh --start --skill <name>` \| `... --outcome <str> [...]` | Appends one terminal-outcome JSON line to `$HOME/.local/state/claude/skill-runs.jsonl`. Used by `/audit`, `/full-audit`, `/plan-it`, `/design-audit`, `/delegate`, `/ship` |
-| `bash audit/bin/run-stats.sh` | Reports run-ledger anomalies; read by `/full-audit`'s and `/ship`'s learning phase |
+| `bash audit/bin/run-log.sh --start --skill <name>` \| `... --outcome <str> [...]` | Appends one terminal-outcome JSON line to `$HOME/.local/state/claude/skill-runs.jsonl`. Used by `/audit`, `/plan-it`, `/delegate`, `/ship` |
+| `bash audit/bin/run-stats.sh` | Reports run-ledger anomalies; read by `/audit`'s and `/ship`'s learning phase |
 
 Test commands (full-suite + filtered variant), incl. `audit/workflows/` and `audit/bin/*.sh`: `audit/CLAUDE.md`.
 
@@ -68,7 +66,7 @@ The real Claude Code subagent definitions (YAML frontmatter, `name` = the `subag
 per dispatched worker type, symlinked to `~/.claude/agents` (so an edit is live immediately; never
 put a non-agent `.md` file there, every `*.md` loads as an agent). Roster: `audit-fix-agent`,
 `audit-fix-verifier`, `audit-learning-agent`, `plan-challenger`, `plan-learning-agent`,
-`spec-executor`, `design-surface-mapper`, `design-reference-verdict`, `screens-view-discoverer`
+`spec-executor`, `screens-view-discoverer`
 (points at `screens/agents/view-discoverer.md`), plus generic `code-reviewer`, `security-auditor`,
 `performance-auditor`, `ui-ux-reviewer`, `test-writer`. Each definition only points at the worker
 spec inside the skill (`audit/agents/fix-agent.md` etc.); the procedure stays in the skill. The
@@ -81,8 +79,6 @@ subagents, see Conventions).
 | Skill | Model | Purpose |
 |---|---|---|
 | `/audit` | inherit (session model) | Pre-push diff audit, per-dimension Workflow pipeline (13 dimensions, plus `payments` on a Stripe repo); one start question replaces the old argument form, every finding incl. Minor is fixed or discarded with a reason |
-| `/full-audit` | inherit (session model) | Full codebase audit, same pipeline with `SCOPE=repo`, no push marker |
-| `/design-audit` | inherit (session model) | 100% visual dissection of the whole frontend: defects + gated elevation opportunities, report first, then fixes every reported item automatically except suspected prompt-injection notes |
 | `/ship` | sonnet | Docs sync + commit + audit gate + test gate + push + deploy + verify |
 | `/plan-it` | inherit (session model) | Iterative plan builder, parallel challenges |
 | `/delegate` | inherits session model (see `delegate/CLAUDE.md`) | Default implementation flow: the expensive model analyzes and reviews, Sonnet implements |
@@ -91,15 +87,15 @@ subagents, see Conventions).
 
 ## Effort levels
 
-Set on skill frontmatter or via `CLAUDE_EFFORT`; per-skill detail (audit/full-audit fix-scope
-behavior and issue policy, plan-it's challenge/eval table, design-audit's elevation table) lives in
+Set on skill frontmatter or via `CLAUDE_EFFORT`; per-skill detail (audit fix-scope
+behavior and issue policy, plan-it's challenge/eval table) lives in
 that skill's nested `CLAUDE.md` (see Wegweiser).
 
 ## Project-specific overrides
 
 Projects can override globals by adding files to their own `.claude/`:
 
-- `.claude/audit-guidelines.md` — read in `audit` Phase 1, precedence over global `guidelines/*.md`. May declare `perf-measure: <cmd>` or `scope-extensions: <ext> [<ext> ...]` (this repo's own file sets `scope-extensions: md`)
+- `.claude/audit-guidelines.md` — read in `audit` Phase 1, precedence over global `guidelines/*.md`. May declare `perf-measure: <cmd>`
 - `.claude/plan-guidelines.md` — read in `plan-it` Phase 0.7, threaded to all challenge agents
 - `.claude/ship.md` — `/ship`'s per-project config: `deploy-command:`, `test-command:` (also read by `/audit` Phase 3), `health-check:`; a repo-supplied command surface (see Gotchas)
 - `.claude/stripe-golive.md` — Stripe repo only: go-live points answerable only in the Stripe dashboard, templated by the `payments` dimension
@@ -118,7 +114,7 @@ Cross-cutting only. Per-skill gotchas live in that skill's nested `CLAUDE.md` (s
 - **`disable-model-invocation` is no longer set on any skill.** Every skill is model-invocable, since the destructive steps have their own gates (PreToolUse push guard, worktree-git guard, fix-verifier stage).
 - **Hooks are the one place `${CLAUDE_SKILL_DIR}` does NOT exist.** A hook receives exactly `CLAUDE_PROJECT_DIR`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`; `CLAUDE_PROJECT_DIR` is the *audited* project, not the skill. A skill hook must probe its own install location and **fail open** (`exit 0`) on a missing install. `${CLAUDE_SKILL_DIR}` (used outside hooks, e.g. `audit/SKILL.md`) is the non-hook equivalent that DOES expand to the skill's own directory.
 - **Four sites run a repo-supplied command string, only the deploy one asks first.** `audit/SKILL.md`'s `TEST_COMMAND`, `.screens/config.json`'s start/stop/seed/migrate fields (hash-checked, `screens.mjs trust` asks once on change), `perf-measure.sh`'s `perf-measure:` command, and `ship/SKILL.md`'s `test-command:`/`deploy-command:` all execute repo-supplied config. Only `deploy-command:` gets an `AskUserQuestion` on every run, since it is irreversible and production-facing.
-- **The run ledger (`$HOME/.local/state/claude/skill-runs.jsonl`) records how a run went, deliberately outside any repo and outside `~/.claude`** (the Bash sandbox denies writes to the latter). `run-log.sh` appends one line per terminal outcome from `/audit`, `/full-audit`, `/plan-it`, `/design-audit`, `/delegate`, `/ship`; `run-stats.sh` surfaces `RUNSTAT` anomalies in the audit log. Two calibrated conditions remain (`gate-never-blocked`, `ledger-stale`); three were deleted after 45 real runs showed they never fired. Do not re-add a deleted condition without new evidence.
+- **The run ledger (`$HOME/.local/state/claude/skill-runs.jsonl`) records how a run went, deliberately outside any repo and outside `~/.claude`** (the Bash sandbox denies writes to the latter). `run-log.sh` appends one line per terminal outcome from `/audit`, `/plan-it`, `/delegate`, `/ship`; `run-stats.sh` surfaces `RUNSTAT` anomalies in the audit log. Two calibrated conditions remain (`gate-never-blocked`, `ledger-stale`); three were deleted after 45 real runs showed they never fired. Do not re-add a deleted condition without new evidence.
 
 ## Adding a new skill
 
@@ -139,8 +135,6 @@ there is read; everything else stays here.
 | File | Covers |
 |---|---|
 | `audit/CLAUDE.md` | `/audit` pipeline detail, `audit/bin/*.sh` commands, effort/issue policy, self-audit context |
-| `full-audit/CLAUDE.md` | `scope-extensions:` escape hatch, run-scoped marker |
-| `design-audit/CLAUDE.md` | Effort table, `validate-locations.sh`, marker/hook detail |
 | `plan-it/CLAUDE.md` | Effort table, learning phase, plan template contract |
 | `ship/CLAUDE.md` | Docs-sync-before-commit phase |
 | `delegate/CLAUDE.md` | model-inherit rationale |

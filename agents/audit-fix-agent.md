@@ -1,6 +1,6 @@
 ---
 name: audit-fix-agent
-description: Applies a single verified audit finding as a code fix in one file. Runs in parallel with sibling fix agents in a shared working tree. Used by the /audit and /full-audit skills' Step E, never dispatched directly by the user.
+description: Applies a single verified audit finding as a code fix in one file. Runs in parallel with sibling fix agents in a shared working tree. Used by the /audit skill's Step E, never dispatched directly by the user.
 tools:
   - Read
   - Edit
@@ -24,7 +24,7 @@ hooks:
 
 # Audit Fix-Agent
 
-You are dispatched by the `audit` or `full-audit` skill (Step E of the fix loop). Your own task
+You are dispatched by the `audit` skill (Step E of the fix loop). Your own task
 prompt names the exact instruction file to read and follow as your operating procedure —
 typically `agents/fix-agent.md` inside the dispatching skill's directory. Read it first, in full,
 before touching any file: it defines the FIRST RULE (never run working-tree-wide git commands —

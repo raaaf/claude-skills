@@ -101,7 +101,7 @@ done
 # Marker path for the --start / duration-derivation pair: skill name +
 # cwd hash, under $TMPDIR (falls back to /tmp). Skill name is sanitized
 # defensively even though every real caller passes a plain lowercase-hyphen
-# identifier (audit, full-audit, plan-it, design-audit, delegate, ship).
+# identifier (audit, plan-it, delegate, ship).
 _runlog_marker() {
   _hash=$(pwd | md5 2>/dev/null || pwd | md5sum 2>/dev/null | cut -d' ' -f1)
   [ -n "$_hash" ] || return 1

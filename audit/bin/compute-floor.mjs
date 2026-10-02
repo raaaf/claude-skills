@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// compute-floor.mjs — content-based scout floor for the /audit and /full-audit
+// compute-floor.mjs — content-based scout floor for the /audit
 // find pipeline (audit/workflows/find.js).
 //
 // find.js runs inside the Workflow tool with no filesystem access, so it

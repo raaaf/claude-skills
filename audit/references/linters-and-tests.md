@@ -43,8 +43,6 @@ Tool not installed (`command -v` fails)? → skip with a note, do NOT install vi
 
 **One simulator, one `xcodebuild test` at a time.** Never start a second `xcodebuild test` run on a simulator while another run is still using it. Overlapping runs kill each other's UI tests with "Test crashed with signal kill", which looks like a real failure. Use a dedicated simulator per concurrent run, or run sequentially. (2026-09-06: two full gates had to be repeated because of this.)
 
-For `/full-audit`, all linters/formatters run globally instead of file-scoped.
-
 On static analysis errors: fix manually, re-run. Repeat until clean.
 
 ## Test Runner
@@ -90,6 +88,3 @@ No affected tests found? → skip the test step, note in the audit log: `Tests: 
 
 On failures: fix, re-run (only the affected tests, not the full suite). Repeat until green or clearly not auto-fixable. Add unfixable failures as **Critical**.
 
-### /full-audit: Full Suite
-
-For `/full-audit`, the complete test suite always runs (`composer test` / `npm test` / `pytest` / etc.). There, completeness matters more than runtime.

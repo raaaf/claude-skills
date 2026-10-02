@@ -1,12 +1,12 @@
 export const meta = {
   name: 'audit-find',
-  description: 'Per-dimension find pipeline for /audit and /full-audit: scout, chunk, specialists, verify.',
+  description: 'Per-dimension find pipeline for /audit: scout, chunk, specialists, verify.',
   phases: [{ title: 'Scout' }, { title: 'Audit' }, { title: 'Verify' }]
 };
 
 // audit/workflows/find.js
 //
-// Per-dimension find pipeline for /audit and /full-audit. Plain JavaScript, no
+// Per-dimension find pipeline for /audit. Plain JavaScript, no
 // TypeScript, no npm dependency, no Date.now(), no Math.random() (Konventionen,
 // CLAUDE.md). Dispatched via the Workflow tool: `Workflow({ scriptPath: 'audit/workflows/find.js',
 // args, resumeFromRunId })`.

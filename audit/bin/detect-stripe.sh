@@ -2,7 +2,7 @@
 #
 # Detect whether a repo implements a Stripe integration itself, classify HOW
 # (cashier/sdk/client/hosted/http), and emit the payment-surface file list.
-# Consumed by /audit and /full-audit to gate the payments audit dimension.
+# Consumed by /audit to gate the payments audit dimension.
 #
 # Usage: bash detect-stripe.sh [PROJECT_ROOT]
 # Default PROJECT_ROOT: git toplevel, falling back to pwd.

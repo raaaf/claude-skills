@@ -1260,10 +1260,8 @@ score_fixture_run() {
   # i.e. every genuine audit-log basename starts with a full
   # YYYY-MM-DD_HHMMSS timestamp followed by a hyphen. Nothing else that lives
   # under .claude/audits/ matches that shape: learning-log.md
-  # (audit/agents/learning-agent.md) and full-audit-state.md
-  # (full-audit/SKILL.md) are fixed names, suppressions.json/patterns.json/
-  # cache.json aren't .md at all, and full-audit-batches/*.txt sits one
-  # directory deeper than the -maxdepth 1 *.md glob ever reaches. `ls -t`
+  # (audit/agents/learning-agent.md) is a fixed name, suppressions.json/
+  # patterns.json/cache.json aren't .md at all. `ls -t`
   # (mtime order) instead picked whichever .md file was written LAST — when
   # the learning phase ran after the audit log (it always does), that was
   # learning-log.md, which of course lists no findings, silently turning a

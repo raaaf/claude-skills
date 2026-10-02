@@ -8,7 +8,7 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, writ
 
 ## Scope
 - Dimensions: N/13: {list} | Fix scope: {all|none}
-- Changed files: list (or "SCOPE=repo" for /full-audit)
+- Changed files: list
 - HEAD at audit time: {git rev-parse HEAD}
 - runId (find): {runId} | runId (fix): {runId}
 
@@ -65,8 +65,7 @@ agent is noise, most of a wave is a prompt defect. Write the number even when it
 
 ## Mandatory Field: Findings Fixed
 
-The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EVERY audit log,
-including `/full-audit`. Trend computation in the learning log reads this line. Write `0`
+The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EVERY audit log. Trend computation in the learning log reads this line. Write `0`
 explicitly rather than leaving a category out. **Recompute, never hand-tally:** derive every
 found/fixed number by counting the itemized finding bullets in the log itself, immediately before
 writing the summary.
@@ -128,5 +127,5 @@ description, and the verifier's `reason`. Omit the heading entirely when nothing
 ## Follow-Up Audit Logic
 
 On the next `/audit` run: if commits show up between `{letzter-audit-HEAD}..HEAD` that are **not**
-contained in the diff of `origin/$DEFAULT_BRANCH...HEAD` (pushed in the meantime), recommend
-`/full-audit`: `/audit` no longer sees pushed commits.
+contained in the diff of `origin/$DEFAULT_BRANCH...HEAD` (pushed in the meantime), note in the
+log that `/audit` no longer sees pushed commits.

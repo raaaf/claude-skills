@@ -9,13 +9,13 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 | Command | What it does |
 |---|---|
 | `/audit` | Audits your uncommitted and unpushed changes before a push. 13 dimensions, verified findings, one fix wave, then the push is unlocked. |
-| `/full-audit` | The same pipeline over a whole codebase. No push gate. |
-| `/design-audit` | Visual pass over the entire frontend: typography, color, spacing, motion, visual accessibility. Reports first, then fixes every defect and elevation automatically. |
 | `/plan-it` | Interviews you, writes an executor-grade plan, challenges it from five perspectives. `execute` runs it in a worktree and reviews the result. |
 | `/delegate` | Default way to implement: the session model writes a mini-spec, Sonnet builds it, the session model reviews the diff. |
 | `/ship` | Docs sync, commit, audit gate, push, deploy, verify. |
 | `/screens` | Builds and maintains a complete screenshot catalog of every view in every state, plus App-Store marketing renders. Incremental after the first run. |
 | `/store-assets` | Renders App Store / Play Store screenshot stills from a project's own app screens and a project-local config: real device bezels, a fixed headline/device grid, a two-phone hero composition. |
+
+Archived skills: /full-audit and /design-audit were removed on 2026-10-02; restore with `git checkout archive/pre-slim-2026-10-02 -- full-audit design-audit`.
 
 ## How an audit runs
 
@@ -37,11 +37,11 @@ for s in */; do [ -f "$s/SKILL.md" ] && ln -sfn "$PWD/${s%/}" ~/.claude/skills/"
 ln -sfn "$PWD/agents" ~/.claude/agents
 ```
 
-Symlinks, not copies: an edit in the clone is live in the next session. `audit`, `full-audit` and `design-audit` share `audit/agents/`, install them together. Needs Claude Code 2.1.218 or newer, `git` and `jq`. No other dependencies.
+Symlinks, not copies: an edit in the clone is live in the next session. Needs Claude Code 2.1.218 or newer, `git` and `jq`. No other dependencies.
 
 ## Configure per project
 
-- `.claude/audit-guidelines.md`: project rules the audit workers read first. Optional lines `perf-measure: <command that prints PERF_METRIC=<number>>` for measured performance fixes and `scope-extensions: md` to widen the full-audit scope.
+- `.claude/audit-guidelines.md`: project rules the audit workers read first. Optional lines `perf-measure: <command that prints PERF_METRIC=<number>>` for measured performance fixes.
 - `.claude/plan-guidelines.md`: rules every plan challenger gets.
 - `AUDIT_DIMENSIONS=security,a11y` and `AUDIT_FIX_SCOPE=none|all` skip the start question, for CI or headless runs. `none` means find and log only; any other value fixes every finding incl. Minor.
 

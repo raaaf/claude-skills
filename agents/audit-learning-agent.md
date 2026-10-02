@@ -1,6 +1,6 @@
 ---
 name: audit-learning-agent
-description: Analyzes past audit logs, detects patterns, and returns a structured retro for the orchestrator to write. Read-only, never writes to .claude/ itself. Used by the /audit and /full-audit skills.
+description: Analyzes past audit logs, detects patterns, and returns a structured retro for the orchestrator to write. Read-only, never writes to .claude/ itself. Used by the /audit skill.
 tools:
   - Read
   - Grep

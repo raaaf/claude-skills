@@ -89,7 +89,7 @@ CLI/WordPress-Local projects).
 Otherwise, dispatch `screens-view-discoverer` (`subagent_type: screens-view-discoverer`, `model:
 sonnet`, `run_in_background: false`; worker spec `screens/agents/view-discoverer.md`) once per
 configured/detected platform, `MODE=full`. Input per the worker spec's Input contract:
-`PLATFORM`, `PROJECT_ROOT`, `FRAMEWORK`, `SURFACE_TAXONOMY` (`design-audit/references/surface-taxonomy.md`
+`PLATFORM`, `PROJECT_ROOT`, `FRAMEWORK`, `SURFACE_TAXONOMY` (`screens/references/surface-taxonomy.md`
 next to this skill).
 
 From the returned `MANIFEST_ENTRY`/`CONFIG_DRAFT`/`DEMO_DATA_BRIEF`/`MARKETING_HERO` lines, write

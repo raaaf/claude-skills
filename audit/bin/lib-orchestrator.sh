@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Shared library: the orchestrator prologue every skill used to paste.
-# Sourced by the bash blocks in audit/, full-audit/, design-audit/, delegate/,
+# Sourced by the bash blocks in audit/, delegate/,
 # ship/ and plan-it/ SKILL.md. Before 2026-09-16 each of them carried its own
 # copy of helper resolution, cwd hashing, the in-progress marker, the Stripe
 # parse and the agent-roster guard, with variations; three audit runs named
@@ -16,8 +16,7 @@
 #   for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done
 #
 # audit/SKILL.md, which owns this bin/, lists "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh"
-# first; every other skill uses the line above verbatim (full-audit carried a third,
-# CLAUDE_PROJECT_DIR-derived candidate until 2026-09-16; that variable exists only in hooks). The
+# first; every other skill uses the line above verbatim. The
 # guard after the line names the first function the block needs (`type orch_run_log` in
 # delegate/ship/plan-it, `type orch_resolve_audit_root` in the three audit skills); the
 # difference is intentional, not drift. A block that only sets shell variables from a
@@ -431,8 +430,7 @@ orch_test_command() {
 }
 
 # "Which files are frontend?" has exactly one definition, FRONTEND_EXT_RE in
-# lib-git-base.sh (CLAUDE.md Gotchas). design-audit carried its own regex until
-# 2026-09-16 and the two had drifted (styl, tailwind.config vs xml, storyboard).
+# lib-git-base.sh (CLAUDE.md Gotchas).
 # Prints the shared pattern; the literal fallback mirrors collect-scope.sh.
 orch_frontend_ext_re() {
   local lib="${AUDIT_BIN:-$HOME/.claude/skills/audit/bin}/lib-git-base.sh"
@@ -444,8 +442,7 @@ orch_frontend_ext_re() {
 # payments.md always applies once the payments dimension runs (the detector has
 # already established a Stripe integration), but its applies_to path regex may
 # not match a generic file in the surface, so match-guidelines.sh can omit it.
-# Prints GUIDELINE_MATCHES with the line appended when missing. Was pasted in
-# audit and full-audit until 2026-09-16.
+# Prints GUIDELINE_MATCHES with the line appended when missing..
 orch_payments_guidelines() {
   local matches="$1"
   if printf '%s\n' "$matches" | grep -q '^payments\.md'; then printf '%s' "$matches"
@@ -506,7 +503,7 @@ orch_seo_relevant() {
 # scope) into the FLOOR_FILES JSON. Usage:
 #   FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")
 # No payments in the selection, or no jq: prints the input unchanged (a NOTE on
-# stderr for the jq case). Was pasted in audit and full-audit until 2026-09-16.
+# stderr for the jq case).
 orch_payments_floor() {
   local dims="$1" stripe_files="$2" root="$3" floor="$4" pay
   case ",$dims," in *,payments,*) ;; *) printf '%s' "$floor"; return 0;; esac
@@ -699,7 +696,7 @@ orch_visual_pass_overflow() {
 # Write tool, one pattern per line. A pattern is derived from a finding, i.e.
 # from audited-repo content, and must never be spliced into a command line:
 # `patterns-store.sh recur {pattern}` written out by an orchestrator was a
-# Critical on 2026-09-16 (same class as the validate-locations.sh case). Here
+# Critical on 2026-09-16 (same class of bug). Here
 # each line reaches the script as one quoted argv element, never parsed by a
 # shell. Usage: orch_patterns_from_file recur|dismissed <file>
 orch_patterns_from_file() {

@@ -1,6 +1,6 @@
 export const meta = {
   name: 'audit-fix',
-  description: 'Fix pipeline for /audit and /full-audit: fixer per file, fix-verifier per group, regression pass.',
+  description: 'Fix pipeline for /audit: fixer per file, fix-verifier per group, regression pass.',
   phases: [{ title: 'Fix' }, { title: 'Verify' }, { title: 'Regress' }]
 };
 

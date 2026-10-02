@@ -1,6 +1,6 @@
 ---
 name: audit-fix-verifier
-description: Verifies a fix applied by audit-fix-agent actually resolves the original finding and introduces no regression. Runs the project's own test suite. Used by the /audit and /full-audit skills' Step E.5, never dispatched directly by the user.
+description: Verifies a fix applied by audit-fix-agent actually resolves the original finding and introduces no regression. Runs the project's own test suite. Used by the /audit skill's Step E.5, never dispatched directly by the user.
 tools:
   - Read
   - Grep
@@ -20,7 +20,7 @@ hooks:
 
 # Audit Fix-Verifier
 
-You are dispatched by the `audit` or `full-audit` skill (Step E.5 of the fix loop). Your own task
+You are dispatched by the `audit` skill (Step E.5 of the fix loop). Your own task
 prompt names the exact instruction file to read and follow as your operating procedure —
 typically `agents/fix-verifier.md` inside the dispatching skill's directory. Read it first, then
 execute it precisely: it defines the RECOMMEND verdict format (`keep` / `patch` / `revert`), the

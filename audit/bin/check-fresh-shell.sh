@@ -23,9 +23,7 @@
 #
 # Scanned: every */SKILL.md and every */references/*.md (a reference's block runs as a
 # fresh shell exactly like the orchestrator's). The set of saved names is collected
-# across ALL scanned files first, because the state dir is shared per cwd and one
-# skill runs another's blocks (/full-audit runs /audit's Phases 2-5, and its own scope
-# walk lives in references/scope.md).
+# across ALL scanned files first, because the state dir is shared per cwd.
 #
 # Usage: bash check-fresh-shell.sh [root]
 # Output: `FRESH_SHELL_HIT <file>:<line> <detail>` per offending block, then exactly

@@ -58,9 +58,6 @@ in a public repo.
 It does not lower severity. A Critical in prose is still a Critical and still blocks the push. What
 changes is how hard the audit looks for Minor findings, not what it does with a real one.
 
-It does not apply to `/full-audit`. That skill audits an entire codebase on purpose and has its own
-batching and effort model.
-
 ## The judgment the gate cannot make for you
 
 The gate is mechanical and looks only at file types. It cannot tell that a one-line change to a

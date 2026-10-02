@@ -93,7 +93,7 @@ The executor runs in the background (the default) and its report arrives as a co
 
 Preamble core (long form in the reference; substitute `{WORKDIR}`/`{COMMIT_RULE}` for the working-tree case — the executor does NOT commit here): step by step, confirm every verify, only affected files, do not explore beyond the mini-spec's listed files except to grep an identifier's usages, respect STOP conditions instead of improvising, if 40 tool calls pass without a verify criterion turning green stop and report what blocks, check every report claim against a real tool result, same-diff duplication self-check at block level before reporting (identical guard/resolver/logic blocks in two places of the executor's own diff → extract, even inside otherwise different method bodies — the audit-side check cannot catch executor duplicates early), exact report format (`STATUS / STEPS / STOPPED BECAUSE / FILES CHANGED / NOTES`).
 
-Resolve the reference (same candidate logic as full-audit → audit):
+Resolve the reference (same candidate logic as audit):
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/plan-it" "$HOME/.claude/skills/plan-it"; do

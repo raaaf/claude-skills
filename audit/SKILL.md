@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration; the pre-push default skips typography, UI and animation, they run in the nightly routine), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every Critical/Important finding is fixed or discarded with a reason, a Minor rides along only with a fix to its own file, every other Minor goes to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked. NOT for whole-codebase audits — use /full-audit instead."
+description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration; the pre-push default skips typography, UI and animation, they run in the nightly routine), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every Critical/Important finding is fixed or discarded with a reason, a Minor rides along only with a fix to its own file, every other Minor goes to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked."
 when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog, Nachtlauf, nightly audit"
 model: inherit
 effort: high
@@ -131,7 +131,7 @@ orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from P
 AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; the 10 gate-set ids when the answer was Everything}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
 AUDIT_DIMENSIONS=$(orch_expand_dimensions "$AUDIT_DIMENSIONS")   # headless spellings: `all` = gate set (typography, ui_design, animation run nightly, 2026-10-01), `all+visual` = all 13 (lib); find.js accepts dimension ids only
 AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else runs the fix wave (Critical/Important, plus Minors per minor-split.mjs; with none the Minors are still backlogged)
-ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js, and /full-audit never runs this block
+ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js
 ALLE_DATEIEN=$(orch_audited_filter "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS")   # drops files byte-identical to what a passed audit certified with a covering dimension set (lib); runs BEFORE the payments trigger, which then sees the filtered set
 AUDITED_SKIP=$(( $(printf '%s\n' "$ALLE_DATEIEN_FULL" | grep -c .) - $(printf '%s\n' "$ALLE_DATEIEN" | grep -c .) ))
 echo "AUDITED_SKIP: $AUDITED_SKIP file(s) unchanged since last passed audit"
@@ -211,7 +211,7 @@ orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT f
 FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
 FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
 printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
-case "$DIFF_SIZE_RESULT" in SMALL|"") HUNK_SCOPE=false ;; *) HUNK_SCOPE=true ;; esac   # from Phase 1's diff-size-gate.sh; every result above SMALL scopes to changed hunks; empty (full-audit never runs diff-size-gate.sh) stays false; used by the Workflow call below
+case "$DIFF_SIZE_RESULT" in SMALL|"") HUNK_SCOPE=false ;; *) HUNK_SCOPE=true ;; esac   # from Phase 1's diff-size-gate.sh; every result above SMALL scopes to changed hunks; empty stays false; used by the Workflow call below
 echo "HUNK_SCOPE=$HUNK_SCOPE"
 
 ```
