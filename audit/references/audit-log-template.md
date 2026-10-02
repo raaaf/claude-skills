@@ -84,6 +84,8 @@ this exact shape to score recall; any other shape (numbered lists, bold-bullet h
 description on the next line, tables) makes the finding unparseable, which scores as zero recall
 for that finding regardless of how correct or well-argued it was.
 
+A duplicate (`duplicateOf` from `find.js`) keeps this shape and ends its description with `(duplicate of <dim>/<id>)`.
+
 ## Mandatory Tagging Convention
 
 Every finding line carries both tags: severity (`[Critical]`/`[Important]`/`[Minor]`) and

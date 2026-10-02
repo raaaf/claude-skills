@@ -1068,6 +1068,104 @@ function dedupeFindings(findings, dimension, logFn) {
   return survivors;
 }
 
+// BEGIN cross-dimension duplicate marking (2026-10-02)
+// dedupeFindings only merges within one dimension and keys on file + first line, so a root cause
+// reported by three architecture chunks with different first lines, or by security and
+// architecture, survived as several findings and cost a fixer slot each (one real run: the
+// isAllowedFormActionUrl port check three times, the tenant gap twice, the raw newsletter button
+// twice). After all dimensions finished, every non-REFUTED finding is compared: shared repo-relative
+// file, cited line ranges overlapping or at most DUPLICATE_LINE_GAP apart, and Jaccard similarity of
+// the issue plus impact word sets >= DUPLICATE_SIMILARITY. Nothing is deleted or rewritten: all but
+// one member of a group get `duplicateOf: {dimension, id}`. Measured on that run: the three clusters
+// scored 0.39/0.49 (port check), 0.38 (tenant gap), 0.38 (button); the base-uri finding against the
+// tenant-gap finding scored 0.05 although both cite src/Security.php lines 447-461 and 66-87,455-458.
+// Issue text alone gave 0.33 for the tenant gap, so impact text is part of the token set.
+const DUPLICATE_LINE_GAP = 20;
+const DUPLICATE_SIMILARITY = 0.35;
+const DUPLICATE_DIMENSION_ORDER = ['security', 'privacy', 'payments', 'architecture', 'code_quality', 'performance',
+  'a11y', 'ux', 'ui_design', 'typography', 'animation', 'seo', 'copy', 'docs_sync'];
+const DUPLICATE_STOPWORDS = new Set(('that this with from have which there their they them than then when what where will would ' +
+  'could should about because into also only does been being were your such these those other more most same both each over ' +
+  'under while without within').split(' '));
+
+function duplicateTokens(finding) {
+  const text = `${finding.issue || ''} ${finding.impact || ''}`.toLowerCase();
+  const words = (text.match(/[a-z0-9_]+/g) || []).filter((w) => w.length >= 4 && !DUPLICATE_STOPWORDS.has(w));
+  return new Set(words.map((w) => (w.length > 4 && w.endsWith('s') ? w.slice(0, -1) : w)));
+}
+
+function duplicateLineRanges(lines) {
+  return Array.from(String(lines || '').matchAll(/(\d+)(?:\s*-\s*(\d+))?/g), (m) => {
+    const a = parseInt(m[1], 10);
+    const b = m[2] ? parseInt(m[2], 10) : a;
+    return [Math.min(a, b), Math.max(a, b)];
+  });
+}
+
+function duplicateLocationsNear(a, b) {
+  return a.files.some((x) => b.files.some((y) => x.path === y.path &&
+    x.ranges.some(([s1, e1]) => y.ranges.some(([s2, e2]) => s1 <= e2 + DUPLICATE_LINE_GAP && s2 <= e1 + DUPLICATE_LINE_GAP))));
+}
+
+function duplicateSimilarity(a, b) {
+  let shared = 0;
+  for (const w of a) if (b.has(w)) shared++;
+  const union = a.size + b.size - shared;
+  return union === 0 ? 0 : shared / union;
+}
+
+function markCrossDuplicates(results) {
+  const orderOf = (dimension) => {
+    const i = DUPLICATE_DIMENSION_ORDER.indexOf(dimension);
+    return i === -1 ? DUPLICATE_DIMENSION_ORDER.length : i;
+  };
+  const nodes = [];
+  for (const dimension of Object.keys(results).sort((x, y) => orderOf(x) - orderOf(y) || (x < y ? -1 : 1))) {
+    const r = results[dimension];
+    if (!r || !Array.isArray(r.findings)) continue;
+    const verdictById = new Map((r.verdicts || []).map((v) => [v.id, v]));
+    for (const finding of r.findings) {
+      const verdict = verdictById.get(finding.id);
+      if (verdict && verdict.verdict === 'REFUTED') continue;
+      nodes.push({
+        dimension, finding,
+        severity: SEVERITY_RANK[(verdict && verdict.severity) || finding.severity] || 0,
+        files: (finding.files || []).map((f) => ({ path: toRepoRelative(f.path), ranges: duplicateLineRanges(f.lines) })),
+        tokens: duplicateTokens(finding)
+      });
+    }
+  }
+  const parent = nodes.map((_, i) => i);
+  const root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      if (duplicateLocationsNear(nodes[i], nodes[j]) && duplicateSimilarity(nodes[i].tokens, nodes[j].tokens) >= DUPLICATE_SIMILARITY) {
+        parent[root(j)] = root(i);
+      }
+    }
+  }
+  const groups = new Map();
+  nodes.forEach((node, i) => {
+    const key = root(i);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(node);
+  });
+  const ref = (n) => ({ dimension: n.dimension, id: n.finding.id });
+  const duplicates = [];
+  // nodes are already in dimension order, so a stable sort by severity then id keeps the tie-breaks.
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    members.sort((a, b) => b.severity - a.severity || orderOf(a.dimension) - orderOf(b.dimension) ||
+      (a.finding.id < b.finding.id ? -1 : a.finding.id > b.finding.id ? 1 : 0));
+    const [keep, ...dropped] = members;
+    for (const d of dropped) d.finding.duplicateOf = ref(keep);
+    duplicates.push({ keep: ref(keep), dropped: dropped.map(ref) });
+  }
+  const position = (r) => `${String(orderOf(r.dimension)).padStart(3, '0')}|${r.id}`;
+  return duplicates.sort((a, b) => (position(a.keep) < position(b.keep) ? -1 : 1));
+}
+// END cross-dimension duplicate marking
+
 function dimensionFileName(dim) {
   const row = DIMENSION_TABLE.find((d) => d.id === dim);
   if (!row) throw new Error(`unknown dimension id: ${dim}`);
@@ -1255,9 +1353,15 @@ for (const [index, entry] of dimensionResults.entries()) {
   if (r.status === 'skipped') skipped.push(dim);
 }
 
+const duplicates = markCrossDuplicates(results);
+for (const d of duplicates) {
+  log(`duplicates: ${d.dropped.map((x) => `${x.dimension}/${x.id}`).join(', ')} duplicate of ${d.keep.dimension}/${d.keep.id}`);
+}
+
 return {
   status: Object.values(results).some((r) => r.status === 'incomplete') ? 'incomplete' : 'complete',
   dimensions: results,
   skipped,
-  degradedDimensions
+  degradedDimensions,
+  duplicates
 };

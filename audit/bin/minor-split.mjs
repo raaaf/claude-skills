@@ -10,16 +10,21 @@
 //   3. Every other Minor goes to the backlog.
 //   4. A backlog entry whose file receives a fix in this wave is added to that file's fixes
 //      (the orchestrator marks it verdict "UNCERTAIN": the fixer re-checks it against the code).
+//   5. A finding carrying `duplicateOf` (set by find.js) goes to neither list: its keeper is
+//      handled by rules 1-3. It is returned under `duplicates` so the orchestrator can log it.
 //
 // Usage: node minor-split.mjs < input.json
-//   input:  { "findings": [{id, severity, files: [{path, lines}], ...}],   (non-REFUTED only)
+//   input:  { "findings": [{id, severity, files: [{path, lines}], duplicateOf?, ...}],   (non-REFUTED only)
 //             "backlog":  [{key, dimension, file, line, first_seen, description}] }
-//   output: { "fix": [...findings], "ridealongBacklog": [...entries], "toBacklog": [...Minors] }
+//   output: { "fix": [...findings], "ridealongBacklog": [...entries], "toBacklog": [...Minors],
+//             "duplicates": [...findings with duplicateOf] }
 
 import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export function split({ findings = [], backlog = [] } = {}) {
+export function split({ findings: all = [], backlog = [] } = {}) {
+  const duplicates = all.filter((f) => f.duplicateOf);
+  const findings = all.filter((f) => !f.duplicateOf);
   const paths = (f) => (Array.isArray(f.files) ? f.files.map((x) => x.path) : []);
   const major = findings.filter((f) => f.severity !== 'Minor');
   const fixFiles = new Set(major.flatMap(paths));
@@ -31,7 +36,7 @@ export function split({ findings = [], backlog = [] } = {}) {
   const fix = [...major, ...minors.filter(ridesAlong)];
   const toBacklog = minors.filter((f) => !ridesAlong(f));
   const ridealongBacklog = backlog.filter((e) => fixFiles.has(e.file));
-  return { fix, ridealongBacklog, toBacklog };
+  return { fix, ridealongBacklog, toBacklog, duplicates };
 }
 
 // import.meta.url is the realpath, argv[1] keeps a symlink (~/.claude/skills/audit), so resolve it.

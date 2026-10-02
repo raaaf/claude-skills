@@ -53,13 +53,24 @@ test('a Minor alone never makes its file a fix file for backlog entries', () => 
   assert.deepEqual(ids(r.toBacklog), ['m']);
 });
 
+test('a finding with duplicateOf goes to neither fix nor backlog and does not make its file a fix file', () => {
+  const dup = { ...f('d', 'Important', 'y.js'), duplicateOf: { dimension: 'security', id: 'a' } };
+  const dupMinor = { ...f('dm', 'Minor', 'z.js'), duplicateOf: { dimension: 'security', id: 'a' } };
+  const r = split({ findings: [f('a', 'Important', 'x.js'), dup, dupMinor, f('m', 'Minor', 'y.js')],
+    backlog: [{ key: 'k1', file: 'y.js' }] });
+  assert.deepEqual(ids(r.fix), ['a']);
+  assert.deepEqual(ids(r.toBacklog), ['m']);
+  assert.deepEqual(ids(r.duplicates), ['d', 'dm']);
+  assert.deepEqual(r.ridealongBacklog, []);
+});
+
 test('the CLI prints JSON when invoked through a symlink (import.meta.url is the realpath)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'minor-split-'));
   try {
     const link = join(dir, 'minor-split-link.mjs');
     symlinkSync(fileURLToPath(new URL('./minor-split.mjs', import.meta.url)), link);
     const out = execFileSync('node', [link], { input: '{"findings":[],"backlog":[]}' }).toString();
-    assert.deepEqual(JSON.parse(out), { fix: [], ridealongBacklog: [], toBacklog: [] });
+    assert.deepEqual(JSON.parse(out), { fix: [], ridealongBacklog: [], toBacklog: [], duplicates: [] });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
