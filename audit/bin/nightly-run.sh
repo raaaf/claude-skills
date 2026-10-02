@@ -75,9 +75,7 @@ while IFS="$(printf '\t')" read -r repo status detail; do
   out="$WORK/$name.out"
   case "$detail" in
     *"visual_files="*"(cap "*)
-      vtotal=${detail#*visual_files=}; vtotal=${vtotal%% *}
-      vcap=${detail#*"(cap "}; vcap=${vcap%%)*}
-      detail="$detail, $((vtotal - vcap)) Dateien wegen Limit nicht optisch geprüft" ;;
+      detail="$detail, Qualitätslauf über dem Limit: der Rest folgt in den nächsten Nächten" ;;
   esac
   run_claude "$wt" "$out"; rc=$?
   url=$(pr_url "$wt" || true)

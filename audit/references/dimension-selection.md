@@ -18,7 +18,7 @@ scope resolution live in `audit/SKILL.md` Phase 1.5, not in this file.
 **Skip via ENV:** a set `AUDIT_DIMENSIONS` (comma list of dimension ids, or `all`) or `AUDIT_FIX_SCOPE`
 (`none|all`; unset or any other value normalizes to `all`) skips the question. The Phase 1.5 block
 in the orchestrator (`audit/SKILL.md`) applies them with `${NAME:-answer}`
-and expands the spelling through `orch_expand_dimensions`: `all` is the gate set (the 13 minus `typography`, `ui_design`, `animation`), `all+visual` is all 13; `payments` is added by the block's own `STRIPE=yes` gate, never by
+and expands the spelling through `orch_expand_dimensions`: `all` is the gate set (`security`, `privacy`, `architecture`), `all+nightly` is all 13 (`all+visual` stays an accepted alias); `payments` is added by the block's own `STRIPE=yes` gate, never by
 the env value itself.
 
 **Otherwise via `AskUserQuestion`, one round, one question:**
@@ -27,7 +27,7 @@ Dimension preset:
 
 | Option | Dimensions |
 |---|---|
-| Everything (default, the gate set) | architecture, security, performance, code_quality, seo, a11y, ux, docs_sync, copy, privacy, payments (only when `STRIPE=yes`) |
+| Everything (default, the gate set) | security, privacy, architecture, payments (only when `STRIPE=yes` and the diff touches its surface) |
 | Backend only | architecture, security, performance, code_quality, docs_sync, privacy, payments (only when `STRIPE=yes`) |
 | Frontend only | seo, a11y, typography, ui_design, ux, animation, copy |
 | Custom | multi-select across all 13 dimensions; `payments` joins the list only when `STRIPE=yes` |
@@ -37,7 +37,7 @@ their own file; all other Minors go to the backlog (`minor-backlog.md`). `AUDIT_
 (headless "find and log only") fixes nothing. There is no fix-scope question and nothing preselects it from the effort
 level.
 
-**Visual dimensions out of the gate (decided 2026-10-01).** `typography`, `ui_design` and `animation` are not in the default; they run in the nightly routine (`minor-backlog.md`, "Nightly audit"). Evidence: 122 audit logs, 0 Critical and mostly cosmetic Importants (straight vs typographic quotes, raw padding literals, long views; reduced-motion gaps are also covered by `a11y`), about 11% of audit-find cost per push. Still selectable via Custom, Frontend only, an explicit `AUDIT_DIMENSIONS` list or `all+visual`. The gate set is not a "partial selection" for the marker rule; `copy` and `seo` stay in it (copy found destructive dialogs confirmed with "Ja", seo found PIN-protected pages leaking into og: meta). The Everything option stays a 4-option question; the interactive way to add the three is Custom.
+**Gate reduced to three dimensions (decided 2026-10-02).** The pre-push gate runs `security`, `privacy` and `architecture` (plus `payments` automatically), the built-in `/code-review high` on every code diff (`builtin-reviews.md`). `performance`, `code_quality`, `a11y`, `ux`, `copy`, `seo`, `docs_sync`, `typography`, `ui_design` and `animation` run in the nightly run (`minor-backlog.md`). Evidence: on a blind benchmark of 5 historical diffs with 6 known audit Criticals the built-in review found all 3 security Criticals and 1 of 2 architecture Criticals, missed the privacy one (OSM tiles without consent) and one policy bypass, and found 2 serious issues the audit never reported; the dimensions cost about 40% of weekly usage. Earlier evidence for the first three nightly dimensions (2026-10-01, 122 audit logs): 0 Critical, mostly cosmetic Importants, about 11% of audit-find cost per push; `copy` found destructive dialogs confirmed with "Ja" and `seo` found PIN-protected pages leaking into og: meta, and both now get their coverage nightly. All of them stay selectable via Custom, Frontend only, an explicit `AUDIT_DIMENSIONS` list or `all+nightly`. The gate set is not a "partial selection" for the marker rule; a selection that omits a gate dimension is.
 
 **Validation:** `SELECTED_DIMENSIONS` must contain at least 1 valid dimension out of the 13, plus
 `payments` when `STRIPE=yes` (14 valid values in that case). Discard invalid values.

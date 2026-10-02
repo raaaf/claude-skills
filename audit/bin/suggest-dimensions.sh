@@ -17,10 +17,11 @@ while IFS= read -r path; do
   [ -n "$path" ] && paths+=("$path")
 done < <(sed '/^[[:space:]]*$/d' | sort -u)
 
-# Gate set: typography, ui_design and animation run in the nightly routine (decided 2026-10-01), so they are not suggested.
-all="architecture,security,performance,code_quality,seo,a11y,ux,docs_sync,copy,privacy"
-backend="architecture,security,performance,code_quality,docs_sync,privacy"
-frontend="security,code_quality,seo,a11y,ux,copy"
+# Gate set (decided 2026-10-02): security, privacy, architecture. Everything else runs in the nightly run
+# (typography, ui_design, animation since 2026-10-01), so none of it is suggested for a push.
+all="security,privacy,architecture"
+backend="security,privacy,architecture"
+frontend="security,privacy"
 
 if [ "${#paths[@]}" -eq 0 ]; then
   printf 'Recommended dimensions: %s\nReason: no changed paths were provided; use the full audit set.\n' "$all"
@@ -48,9 +49,9 @@ for path in "${paths[@]}"; do
 done
 
 if [ "$all_docs" -eq 1 ]; then
-  printf 'Recommended dimensions: docs_sync,copy\nReason: all changed paths are prose or documentation files.\n'
+  printf 'Recommended dimensions: none\nReason: all changed paths are prose or documentation files; the prose gate runs deterministic checks only, no LLM dimension.\n'
 elif [ "$all_frontend" -eq 1 ]; then
-  printf 'Recommended dimensions: %s\nReason: all changed paths match frontend file types; security and code_quality remain included.\n' "$frontend"
+  printf 'Recommended dimensions: %s\nReason: all changed paths match frontend file types; security and privacy stay in the gate.\n' "$frontend"
 elif [ "$all_backend" -eq 1 ]; then
   printf 'Recommended dimensions: %s\nReason: all changed paths are under recognized backend path prefixes.\n' "$backend"
 else

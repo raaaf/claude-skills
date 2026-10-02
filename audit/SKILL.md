@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Pre-push code audit. Runs a per-dimension Workflow pipeline (13 dimensions: architecture, security, performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy, privacy; plus a conditional 14th, payments, on repos with a Stripe integration; the pre-push default skips typography, UI and animation, they run in the nightly routine), plus deterministic secret/lockfile/i18n/CI-hardening pre-checks, one fix wave with peer-review verification, then allows git push. One start question (dimensions) replaces the old argument form; every Critical/Important finding is fixed or discarded with a reason, a Minor rides along only with a fix to its own file, every other Minor goes to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked."
+description: "Pre-push code audit. Pre-push gate: the dimensions security, privacy and architecture (plus payments on a Stripe repo) run through a per-dimension Workflow pipeline, next to the built-in /code-review high on every code diff (reviewed in a temporary worktree); its findings go through one refute-first verifier. The other ten dimensions (13 in total: performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy) run in the nightly run. Also deterministic secret/lockfile/i18n/CI pre-checks and one fix wave with peer-review verification, then allows git push; a prose-only diff gets deterministic checks only. One start question (dimensions); every Critical/Important finding is fixed or discarded with a reason, other Minors go to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked."
 when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog, Nachtlauf, nightly audit"
 model: inherit
 effort: high
@@ -84,23 +84,24 @@ PROJECT_GUIDELINES=""
 [ -f "$PROJECT_GUIDELINES_FILE" ] && PROJECT_GUIDELINES=$(cat "$PROJECT_GUIDELINES_FILE")
 DIFF_SIZE_OUT="$(bash "$AUDIT_BIN/diff-size-gate.sh")"; printf '%s\n' "$DIFF_SIZE_OUT"
 DIFF_SIZE_RESULT=$(printf '%s\n' "$DIFF_SIZE_OUT" | sed -n 's/^DIFF_SIZE_RESULT=//p')
+DIFF_CLASS=$(printf '%s\n' "$ALLE_DATEIEN" | bash "$AUDIT_BIN/classify-diff.sh" --paths | sed -n 's/^DIFF_CLASS=//p'); echo "DIFF_CLASS=$DIFF_CLASS"   # prose = no LLM dimension, no code-review (Phase 1.5)
 eval "$(bash "$AUDIT_BIN/perf-measure.sh" --detect)"
 GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/guidelines" 2>/dev/null)
 
 # In-progress marker: run-scoped (claim now, touch after find.js, touch after fix.js, release at Phase 4).
 orch_progress_claim   # progress-family hash (pwd WITH newline); touched after each Notification, released in Phase 4
-orch_state_save ALLE_DATEIEN BASE_REF FRAMEWORK SOURCE_DIRS PLATFORM PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_GUIDELINES GUIDELINE_MATCHES DIFF_SIZE_RESULT   # later blocks read these back with orch_state_load (fresh shell per block, lib header); after the claim, which clears the state
+orch_state_save ALLE_DATEIEN BASE_REF FRAMEWORK SOURCE_DIRS PLATFORM PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_GUIDELINES GUIDELINE_MATCHES DIFF_SIZE_RESULT DIFF_CLASS   # later blocks read these back with orch_state_load (fresh shell per block, lib header); after the claim, which clears the state
 ```
 
-Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`SUPPRESSIONS`/`PROJECT_CONTEXT`/`DECIDED_TRADEOFFS`: `references/scope-and-pre-checks.md`. Prose gate (`DIFF_CLASS=prose`, from `bin/classify-diff.sh`) limits the dimension preselection to `docs_sync`+`copy` and the fix-scope preselection to "find only": `references/prose-gate.md`.
+Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATEIEN`/`SUPPRESSIONS`/`PROJECT_CONTEXT`/`DECIDED_TRADEOFFS`: `references/scope-and-pre-checks.md`. Prose gate (`DIFF_CLASS=prose`, from `bin/classify-diff.sh`): deterministic checks only, no LLM dimension, no code-review: `references/prose-gate.md`.
 
 **WIP/stale-snapshot scope check:** does the working tree contain files that clearly do NOT belong to the current task? Ask via `AskUserQuestion`: only the session/task changes vs. the entire working tree.
 
 ## Phase 1.5: Start question (dimensions)
 
-**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, `AUDIT_DIMENSIONS` takes its default (the gate set: all dimensions except `typography`, `ui_design`, `animation`, which run in the nightly routine; `all+visual` adds them). This guarantees a headless run never hangs on a question.
+**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, `AUDIT_DIMENSIONS` takes its default (the gate set: `security`, `privacy`, `architecture`; the other ten dimensions run in the nightly run, `all+nightly` selects all 13). This guarantees a headless run never hangs on a question.
 
-Otherwise, before the question, display the advisory recommendation from changed paths:
+A `DIFF_CLASS=prose` diff (Phase 1) skips the question: nothing is selectable. Otherwise, before the question, display the advisory recommendation from changed paths:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
@@ -115,9 +116,9 @@ exactly one `AskUserQuestion` round, one question, presets from
 default, the user may choose any existing preset or Custom, and the suggestion never sets or edits
 `AUDIT_DIMENSIONS`. Do not run it for headless runs where either audit environment variable is set.
 
-- **Dimensions:** Everything (default, the gate set: all but `typography`, `ui_design`, `animation`) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration; ticking the three visual ones is how an interactive run includes them).
+- **Dimensions:** Everything (default, the gate set: security, privacy, architecture) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration; ticking nightly dimensions is how an interactive run includes them).
 
-Result: `AUDIT_DIMENSIONS` (comma list). A selection narrower than the gate set never writes the push marker (same rule as before; the gate set itself is not partial), and the log names the dimensions not checked.
+Result: `AUDIT_DIMENSIONS` (comma list). A selection that omits a gate dimension never writes the push marker (the gate set itself is not partial), and the log names the dimensions not checked.
 
 **`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when `STRIPE=yes` (Phase 1) AND the non-test changed set intersects the precomputed `STRIPE_FILES` (never a grep of the diff text). Why, with evidence: `references/dimension-selection.md`.
 
@@ -128,13 +129,14 @@ Run every `orch_backlog_add` and `orch_backlog_remove` BEFORE the block below, b
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from Phase 1
-AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; the 10 gate-set ids when the answer was Everything}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
-AUDIT_DIMENSIONS=$(orch_expand_dimensions "$AUDIT_DIMENSIONS")   # headless spellings: `all` = gate set (typography, ui_design, animation run nightly, 2026-10-01), `all+visual` = all 13 (lib); find.js accepts dimension ids only
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; the 3 gate-set ids when the answer was Everything}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
+AUDIT_DIMENSIONS=$(orch_expand_dimensions "$AUDIT_DIMENSIONS")   # headless spellings: `all` = gate set (security, privacy, architecture; the rest runs nightly, 2026-10-02), `all+nightly` = all 13, `all+visual` alias (lib); find.js accepts dimension ids only
 AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else runs the fix wave (Critical/Important, plus Minors per minor-split.mjs; with none the Minors are still backlogged)
 ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js
 ALLE_DATEIEN=$(orch_audited_filter "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS")   # drops files byte-identical to what a passed audit certified with a covering dimension set (lib); runs BEFORE the payments trigger, which then sees the filtered set
 AUDITED_SKIP=$(( $(printf '%s\n' "$ALLE_DATEIEN_FULL" | grep -c .) - $(printf '%s\n' "$ALLE_DATEIEN" | grep -c .) ))
 echo "AUDITED_SKIP: $AUDITED_SKIP file(s) unchanged since last passed audit"
+[ "${DIFF_CLASS:-code}" = prose ] && { ALLE_DATEIEN=""; echo "PROSE_GATE: prose diff, deterministic checks only"; }   # empties the scope: the empty-set rule below applies, no find.js, no reviews, nothing recorded as audited
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(orch_payments_touched "$ALLE_DATEIEN" "$STRIPE_FILES")   # test paths excluded (lib): a test helper in STRIPE_FILES alone must not start payments
   if [ -n "$STRIPE_TOUCHED" ]; then
@@ -155,7 +157,7 @@ orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES ALLE_DATEIEN 
 
 **Already-audited files are skipped (2026-09-30).** `orch_audited_filter` drops files byte-identical (git blob sha) to what an earlier PASSED audit certified; `ALLE_DATEIEN_FULL` keeps the whole list, `ALLE_DATEIEN` is the filtered set every later phase uses. Rules and evidence: `references/dimension-selection.md`.
 
-**Empty filtered set:** when `ALLE_DATEIEN` is empty, everything was already certified: run neither
+**Empty filtered set** (or a prose diff, emptied above): when `ALLE_DATEIEN` is empty, everything was already certified or only prose changed: run neither
 `find.js` (Phase 2) nor `fix.js` (Phase 3), print `AUDITED_SKIP` and treat the run as a pass with
 zero findings (Phase 4 marker paragraph).
 
@@ -250,22 +252,13 @@ come from the cluster scout, never from file chunking. One call, one `runId`, `p
 
 `HUNKS` is computed by the orchestrator right before the call: `HUNKS=$(printf '%s\n' "$ALLE_DATEIEN" | xargs bash "$AUDIT_BIN/hunk-ranges.sh" "$BASE_REF")`, a JSON object `{ "<path>": [[start,end],...] | "whole" }` (changed lines of the new file plus 15 lines of context, merged). The specialists and verifiers only have Read/Grep/Glob and cannot run `git diff`, so `find.js` puts each file's ranges into their briefing instead of telling them to diff. Parse it into an object for `args.hunks`; a large one counts toward the 40 KB size estimate above and goes through the same scratchpad-copy mechanism. Without `hunks` `find.js` keeps the old "run git diff" text.
 
-**Why `hunkScope`:** on 2026-09-25 (events repo) three audits in a row reported mostly Important
-findings in untouched, pre-existing code of files the diff merely touched, turning every release
-into an open-ended refactor. On any diff above `SMALL`, `hunkScope` makes every specialist (and the
-verifier, so it can refute one that slips through) diff each assigned file against `BASE_REF` and
-report a finding only if it falls inside a changed hunk (plus 15 lines of context) or the change
-makes pre-existing code wrong. `find.js` excludes `payments` from this by itself: its scope is
-deliberately the whole `STRIPE_FILES` surface, not the diff's hunks.
+**Why `hunkScope`:** specialists and the verifier report only inside changed hunks (plus 15 lines of context) on any diff above `SMALL`; `payments` is excluded. Incident and rationale: `references/find-notes.md`.
 
+**Built-in review (gate, decided 2026-10-02):** in the same assistant message as the `Workflow` call, dispatch one `general-purpose` sonnet subagent that runs the built-in `/code-review high` inside a temporary review worktree holding the audit scope as an uncommitted diff (`orch_review_worktree_create`, removed afterwards with `orch_review_worktree_remove`). Dispatch, target form, and how its findings pass the finding-verifier as one batch: `references/builtin-reviews.md`. It runs only when `find.js` runs. `/security-review` is not in the gate (same file).
 
 **Immediately after the tool returns a `runId`** (before waiting for the completion Notification), write the log stub to `LOGFILE` with the Write tool: `## Scope` (base HEAD, changed files, dimensions), `runId`, empty `## Findings`/`## Fixes` sections. This makes the run resumable across a session limit: `Workflow({ scriptPath, resumeFromRunId: runId })` replays completed agents from cache.
 
-**A resumed run is not idempotent; merge its verdicts, do not trust them as a drop-in replacement.** On 2026-09-16 (raaaf/neues-feedback) a usage-limit interruption at 76/88 agents and a resume on the same diff produced a materially different verdict set (0 Critical/23 Important before, 1 Critical/30 Important after), and one finding id (`a11y-0-1`) was reused by both passes for two different findings and had to be re-added by hand. `resumeFromRunId` replays completed agents from cache but re-runs whatever had not finished, including verifiers, so the pre-interruption and post-resume passes can legitimately disagree on the same code. When a run returns after a resume:
-
-- Union the two verdict sets **by finding content** (dimension + file + line + a normalized description), never by `id` — ids are assigned per pass and are not stable across a resume.
-- Before merging, check for id collisions between the two passes (same id, different finding content). A collision means the log stub or an earlier manual edit already used that id for the pre-interruption finding; give the post-resume finding a new id rather than overwriting the entry silently.
-- Where the two passes disagree on the same underlying finding (e.g. severity, or CONFIRMED vs REFUTED), keep the post-resume verdict — it saw more context (whatever became available after the interruption) — but note the disagreement under `## Notes` so the learning phase can see it, not just the winning verdict.
+**A resumed run is not idempotent:** merge its verdicts by finding content, never by `id`, and note disagreements under `## Notes`: `references/find-notes.md`.
 
 Once the Notification arrives, touch the in-progress marker (staleness 45 min):
 
@@ -303,7 +296,7 @@ neither: 192 audit logs on disk had produced 36 store entries, so `patterns.json
 never been fed by the loop, and every retro reasoned about recurrence from a counter that did not
 move. Phase 5 Step 0.5 still checks the count and back-fills, but that is the repair, not the path.
 
-**Decide per finding:** `REFUTED` is discarded before any file is touched, with the verifier's reason. Of the rest (`CONFIRMED` and `UNCERTAIN`), every Critical and Important goes to `fix.js` unless `AUDIT_FIX_SCOPE=none` (find & log only). Minors are split deterministically (decided 2026-10-01: a zeit audit had 249 raw findings, 224 of them Minor, and fixing all meant ~17 spec-executor rounds): a Minor rides along only when every file it names already receives a Critical/Important fix in this wave; every other Minor goes to the backlog (`.claude/audits/minor-backlog.tsv`, a tracked file with `merge=union` in `.gitattributes`, kept sorted by key), also with `AUDIT_FIX_SCOPE=none`. Backlog entries whose file receives a fix in this wave join that file's `fixes[]` entry as `verdict: "UNCERTAIN"`; the fixer re-checks them against current code, and entries that come back `FIXED` or `DISCARDED` leave the backlog. Write the split input to a file (Write tool; finding text never goes on a command line):
+**Decide per finding:** the verified `/code-review` findings (`references/builtin-reviews.md`) join the `find.js` findings here, logged as `[code_quality]`. `REFUTED` is discarded before any file is touched, with the verifier's reason. Of the rest (`CONFIRMED` and `UNCERTAIN`), every Critical and Important goes to `fix.js` unless `AUDIT_FIX_SCOPE=none` (find & log only). Minors are split deterministically (decided 2026-10-01: a zeit audit had 249 raw findings, 224 of them Minor, and fixing all meant ~17 spec-executor rounds): a Minor rides along only when every file it names already receives a Critical/Important fix in this wave; every other Minor goes to the backlog (`.claude/audits/minor-backlog.tsv`, a tracked file with `merge=union` in `.gitattributes`, kept sorted by key), also with `AUDIT_FIX_SCOPE=none`. Backlog entries whose file receives a fix in this wave join that file's `fixes[]` entry as `verdict: "UNCERTAIN"`; the fixer re-checks them against current code, and entries that come back `FIXED` or `DISCARDED` leave the backlog. Write the split input to a file (Write tool; finding text never goes on a command line):
 
 **Duplicates:** `find.js` also returns `duplicates` (`[{keep, dropped[]}]`) and sets `duplicateOf: {dimension, id}` on every dropped finding, found by shared file, nearby lines and similar wording across all dimensions. Write the dropped ones in the log under `## Findings per Dimension` with `(duplicate of <dim>/<id>)` appended inside the description (the line shape stays `- [Severity][Dimension] file:line: description`), and never send them to `fix.js`: `minor-split.mjs` returns them as `duplicates`, outside `fix` and `toBacklog`.
 
@@ -407,7 +400,7 @@ orch_run_log --skill audit --outcome "{gate}" --counts "$COUNTS" --gate "{blocke
 
 - no Critical is open, including every `SECRET ...` line either `pre-checks.sh` run (Phase 1, and again after the fix wave in Phase 3) printed (a secret in the diff is a Critical by this repo's own rule; until 2026-09-16 the scan ran and nothing read its result),
 - no new test failure beyond `BASELINE_FAILURES`,
-- no selected dimension has `status: incomplete`. Since 2026-09-16 an `UNCERTAIN` verdict makes a
+- no selected dimension has `status: incomplete` (the built-in review under `## Not completed` counts as one more selected and incomplete unit, `references/builtin-reviews.md`). Since 2026-09-16 an `UNCERTAIN` verdict makes a
   dimension `incomplete` only for a Critical or Important finding (decided after runs 5 and 7): an
   unverified Minor changes no action and is only listed under `### Unverified`. An unverified
   Critical/Important no longer blocks once the fix wave resolved it, either `FIXED` and fix-verifier
@@ -475,7 +468,7 @@ orch_progress_release
 
 "Minor-Backlog abarbeiten", "Minors abarbeiten" or "clear the minor backlog": skip find, run only the
 fix wave over the backlog, write no marker. "Nachtlauf" or "nightly audit": the combined headless run, a
-visual pass (typography, ui_design, animation over the files changed since the last pass, hunk ranges
+quality pass (the ten non-gate dimensions over whole commits since the last pass, hunk ranges
 from `bin/hunk-ranges.sh` as above) plus the backlog sweep in one PR. State files live in `.audit/` (headless
 sessions cannot write under `.claude/`). Procedures in `references/minor-backlog.md`.
 

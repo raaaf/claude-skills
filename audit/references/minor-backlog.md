@@ -51,11 +51,14 @@ Run by a daily Claude Code cloud routine per repo. Only the user or that routine
 "Nachtlauf" / "nightly audit" run both steps below; the backlog-only phrases from "Sweep" run step b alone
 (branch `chore/minor-backlog-YYYY-MM-DD`, as before).
 
-Why a visual pass (decided 2026-10-01): `typography`, `ui_design` and `animation` left the pre-push default.
-Over 122 audit logs they found 0 Critical and mostly cosmetic Importants (straight vs typographic quotes, raw
-padding literals, long views; reduced-motion gaps are also covered by `a11y`, which stays in the gate), about
-11% of audit-find cost per push. `copy` and `seo` stayed: copy found destructive dialogs confirmed with "Ja" and
-missing delete confirmations, seo found PIN-protected pages leaking title/description/image into og: meta.
+Why a quality pass (decided 2026-10-02, extends the 2026-10-01 visual pass): the pre-push gate now runs only
+`security`, `privacy`, `architecture`, the built-in `/code-review high`
+(benchmark and cost evidence: `dimension-selection.md`). The other ten dimensions
+(`performance`, `code_quality`, `a11y`, `ux`, `copy`, `seo`, `docs_sync`, `typography`, `ui_design`,
+`animation`) run here. Earlier evidence for the first three (122 audit logs): 0 Critical and mostly cosmetic
+Importants, about 11% of audit-find cost per push; `copy` found destructive dialogs confirmed with "Ja" and
+missing delete confirmations, `seo` found PIN-protected pages leaking title/description/image into og: meta.
+The file names keep "visual" (`visual-pass-head`, `orch_visual_pass_*`, `AUDIT_VISUAL_PASS_CAP`) for compatibility.
 
 Preconditions, before any agent dispatch:
 
@@ -64,21 +67,26 @@ Preconditions, before any agent dispatch:
 - Step a has no files (`orch_visual_pass_files` empty) AND `orch_backlog_count` is 0: print
   `MINOR_BACKLOG: 0 open` and stop.
 
-### Step a: visual pass
+### Step a: quality pass
 
-1. Files = `orch_visual_pass_files` (lib): changed since the sha in `.audit/visual-pass-head` (tracked,
-   one line; legacy `.claude/audits/visual-pass-head` is read when it is missing); a missing or unknown file means the last day (`git log --since='1 day ago'`). At most `${AUDIT_VISUAL_PASS_CAP:-40}`
-   files per night (the most recently changed); `orch_visual_pass_overflow` is the rest. `visual-pass-head` still advances,
-   and the PR body states `N Dateien wegen Limit nicht optisch geprüft` (never silent). No files: skip step a.
+1. Files = `orch_visual_pass_files` (lib): whole commits since the sha in `.audit/visual-pass-head` (tracked,
+   one line; legacy `.claude/audits/visual-pass-head` is read when it is missing; a missing or unknown file means the
+   commits of the last day). The commits are walked oldest first (first-parent) and their still-existing
+   files taken until adding the next commit would exceed `${AUDIT_VISUAL_PASS_CAP:-40}` files; a single
+   commit above the cap is taken alone with its files capped, `orch_visual_pass_overflow` is the number of
+   capped files and the PR body states `N Dateien wegen Limit nicht geprüft` (never silent). The remainder
+   of the history is not lost: the head advances only to the last fully included commit
+   (`orch_visual_pass_head`), so the next night starts right after it. No files: skip step a.
    Why 1 day and 40: the first dry run with a 7-day fallback listed 949 files in one repo and 268, 96, 93, 88 in
    others (12 repos), which would exhaust the usage limit on night one.
-2. `find.js` over those files with dimensions `typography,ui_design,animation`, hunk scope per the normal size
+2. `find.js` over those files with dimensions `performance,code_quality,a11y,ux,copy,seo,docs_sync,typography,ui_design,animation`
+   (`seo` still subject to `orch_seo_relevant`), hunk scope per the normal size
    rules (Phase 1 `diff-size-gate.sh` thresholds). Compute `args.hunks` first with
    `bin/hunk-ranges.sh <base-ref> <files>` (base = the head sha, else `git rev-list -1 --before='1 day ago' HEAD`): the reviewer
    agents cannot run `git diff`, so without it the hunk scope stays unfollowable (first nightly, 2026-10-02).
 3. Critical/Important findings join the fix wave of step b; Minors go to the backlog (`minor-split.mjs` rules
    unchanged).
-4. Write the new head sha (`git rev-parse HEAD`) to `.audit/visual-pass-head` after the run, so it is
+4. Write `orch_visual_pass_head` (not `git rev-parse HEAD`) to `.audit/visual-pass-head` after the run, so it is
    committed with the PR.
 
 ### Step b: Minor backlog sweep
@@ -107,8 +115,8 @@ are reported; every other repo is dropped. Their Minors stay in their backlog un
   `$HOME/Local Sites` with `.audit/` or `.claude/audits/` and a GitHub `origin`, worktrees deduped by git common dir) as
   `path<TAB>status<TAB>detail`: `ready` (backlog desc), `skip-dirty` (default branch has unpushed local
   commits), `skip-open-pr` (open `chore/nightly-audit-*` / `chore/minor-backlog-*` PR), `skip-no-gh`, `nothing`.
-  Backlog and visual files are read from `origin/<default>` after a quiet fetch, never the working tree.
-  Above the cap the detail reads `visual_files=M (cap 40)` and the morning report line adds the unchecked count.
+  Backlog and quality-pass files are read from `origin/<default>` after a quiet fetch, never the working tree.
+  `visual_files=M` counts the pending files since the head; above the cap the detail reads `visual_files=M (cap 40)` and the morning report line says the rest follows on the next nights (catch-up over several nights, no file skipped).
 - `bin/nightly-run.sh [--dry-run] [root...]` runs the `ready` repos strictly one after another: detached
   temporary worktree from `origin/<default>` under `$TMPDIR` (the main checkout is never touched),
   `claude -p "Nachtlauf" --permission-mode acceptEdits` inside it, 45 min cap (`NIGHTLY_TIMEOUT_SECS`

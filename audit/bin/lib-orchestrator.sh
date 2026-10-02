@@ -73,12 +73,16 @@
 #   orch_backlog_remove <keys>       removes the entries with those keys (newline list), drops missing files; prints BACKLOG_REMOVED=n
 #   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
 #   orch_backlog_count               prints the number of stored entries (0 when none)
-#   orch_expand_dimensions <value>   `all` -> the gate set (all dimensions except typography, ui_design, animation), `all+visual` -> all 13, anything else unchanged
-#   orch_visual_pass_files [ref]   nightly visual pass scope (content of ref, e.g. origin/main, when given): files changed (still existing, .audit/ and .claude/audits/ dropped) since the sha in .audit/visual-pass-head (legacy .claude/audits/ fallback), else in the last day, capped at AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files
-#   orch_visual_pass_overflow [ref]   number of files above the cap (reported as unchecked, never silent)
+#   orch_expand_dimensions <value>   `all` -> the gate set (security, privacy, architecture), `all+nightly` (alias `all+visual`) -> all 13, anything else unchanged
+#   orch_visual_pass_files [ref]   nightly quality pass scope (content of ref, e.g. origin/main, when given): walks the commits after the sha in .audit/visual-pass-head (legacy .claude/audits/ fallback; else the last day) oldest first and takes whole commits' still-existing files (.audit/ and .claude/audits/ dropped) until the next commit would exceed AUDIT_VISUAL_PASS_CAP (default 40); a single commit above the cap is taken alone, capped
+#   orch_visual_pass_head [ref]    the sha to write to .audit/visual-pass-head after the pass: the last fully included commit, so the remainder is picked up the next night
+#   orch_visual_pass_overflow [ref]   files of a single oversized commit above the cap (reported as unchecked, never silent); 0 otherwise
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES (payments trigger)
+#   orch_sensitive_paths <changed>   prints the non-test changed paths on an auth/payment/privacy surface (reserved for a future /security-review, not dispatched today)
+#   orch_review_worktree_create <base_ref> [files]   temporary detached worktree at base_ref with the audit scope (base_ref..working tree, untracked files as intent-to-add) applied as UNCOMMITTED changes; prints its path (for the built-in /code-review)
+#   orch_review_worktree_remove <path>   removes that worktree (also after a failed review)
 #   orch_seo_surface <root>             prints yes|no (+ reason on stderr): does the repo have an SEO surface (sitemap, meta/og/JSON-LD/per-page title)
 #   orch_seo_relevant <changed> <root>  prints yes|no (+ reason on stderr): SEO surface AND a frontend/routes file in the diff, never PLATFORM=native
 #   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
@@ -461,6 +465,59 @@ orch_payments_touched() {
     <(printf '%s\n' "$stripe" | sort -u)
 }
 
+# Sensitive surface (decided 2026-10-02): changed non-test paths on an auth, payment or privacy surface get an
+# extra /security-review next to the built-in /code-review. Path-based and deliberately broad: a miss costs a
+# security finding, a false hit costs one review. Style/asset/prose files never count (tokens.css is a design
+# token file, a privacy.md is prose). `auth` must not match author(s); CamelCase Auth* names are caught separately.
+ORCH_SENSITIVE_RE='authent|authoriz|auth([^a-z]|$)|login|logout|passw(or)?d|token|session|middleware|polic(y|ies)|permission|payment|stripe|checkout|invoice|billing|webhook|gdpr|privacy|consent|personal[-_ ]?data'
+orch_sensitive_paths() {
+  local nontest
+  nontest=$(printf '%s\n' "$1" | sed '/^$/d' |
+    grep -Ev '(^|/)(tests?|spec|__tests__)/|Test\.php$|\.(test|spec)\.' |
+    grep -Eiv '\.(css|scss|sass|less|styl|svg|png|jpe?g|webp|gif|ico|woff2?|md|mdx|txt)$' || true)
+  { printf '%s\n' "$nontest" | grep -Ei "$ORCH_SENSITIVE_RE" || true
+    printf '%s\n' "$nontest" | grep -E 'Auth[A-Z]' || true; } | sed '/^$/d' | sort -u
+  return 0
+}
+
+# Review worktree (decided 2026-10-02): the built-in /code-review reviews "the current diff", so the audit
+# scope is materialized as one. A detached worktree at BASE_REF gets `git diff --binary BASE_REF` of the main
+# tree (commits plus uncommitted tracked changes) applied, and the untracked non-ignored files copied over
+# and marked intent-to-add so `git diff` shows them. The user's tree is never touched. $2 (newline list,
+# repo-root-relative) limits both parts to the audit scope; empty means the whole tree.
+# The removal uses the worktree-remove form that audit/hooks/block-worktree-wide-git.sh denies when it is
+# typed into a Bash call; the hook only sees the call text, so callers use these two helpers by name.
+orch_review_worktree_create() {
+  local base="$1" files="${2-}" root tmp wt patch p
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  tmp="${TMPDIR:-/tmp}"; tmp="${tmp%/}"
+  wt=$(mktemp -d "$tmp/audit-review.XXXXXX") || return 1
+  patch=$(mktemp "$tmp/audit-review-patch.XXXXXX") || return 1
+  if ! git -C "$root" worktree add -q --detach "$wt" "$base" >/dev/null 2>&1; then rm -rf "$wt" "$patch"; return 1; fi
+  if [ -n "$files" ]; then
+    printf '%s\n' "$files" | sed '/^$/d' | tr '\n' '\0' | xargs -0 git -C "$root" diff --binary "$base" -- > "$patch" 2>/dev/null
+  else
+    git -C "$root" diff --binary "$base" -- > "$patch" 2>/dev/null
+  fi
+  if [ -s "$patch" ] && ! git -C "$wt" apply --binary "$patch" >/dev/null 2>&1; then
+    rm -f "$patch"; orch_review_worktree_remove "$wt"; return 1
+  fi
+  rm -f "$patch"
+  git -C "$root" ls-files --others --exclude-standard | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qxF -- "$p"; then continue; fi
+    mkdir -p "$wt/$(dirname "$p")" && cp -p "$root/$p" "$wt/$p" && git -C "$wt" add -N -- "$p" >/dev/null 2>&1
+  done
+  printf '%s\n' "$wt"
+}
+
+orch_review_worktree_remove() {
+  case "${1-}" in */audit-review.*) ;; *) return 0 ;; esac
+  git worktree remove --force "$1" >/dev/null 2>&1 || rm -rf "$1"
+  git worktree prune >/dev/null 2>&1 || true
+  return 0
+}
+
 # SEO gate (decided 2026-10-01, 122 audit logs): seo cost 4% of audit-find cost for 12 Important and
 # 0 Critical in 12 days (worst cost per finding), mostly on logged-in apps. It runs only where SEO can
 # matter: an SEO surface exists in the repo AND the diff touches a frontend or routes file.
@@ -633,26 +690,33 @@ orch_backlog_count() {
   if [ -f "$f" ]; then grep -c . "$f" || true; else echo 0; fi
 }
 
-# typography, ui_design and animation left the pre-push gate for the nightly routine on 2026-10-01
-# (0 Critical, cosmetic Importants over 122 audit logs); an explicit list still selects them.
+# Pre-push gate (decided 2026-10-02): security, privacy and architecture are the own dimensions of the gate
+# (blind benchmark on 5 historical diffs: the built-in /code-review found 3 of 3 security Criticals); the
+# other ten run in the nightly run (typography, ui_design, animation since 2026-10-01). `all+nightly`
+# selects all 13, `all+visual` stays as an alias; an explicit list always passes through.
 orch_expand_dimensions() {
-  local gate="architecture,security,performance,code_quality,seo,a11y,ux,docs_sync,copy,privacy"
+  local gate="security,privacy,architecture"
   case "${1-}" in
     all) printf '%s\n' "$gate" ;;
-    all+visual) printf '%s\n' "architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy" ;;
+    all+nightly|all+visual) printf '%s\n' "architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy" ;;
     *) printf '%s\n' "${1-}" ;;
   esac
 }
 
-# Scope of the nightly visual pass (run from the default branch checkout). The tracked file holds one
-# commit sha; a missing, empty or unknown sha falls back to the last day of history (decided 2026-10-01:
-# a 7-day fallback listed 949 files in one repo, 12 repos would exhaust the usage limit on night one).
+# Nightly quality pass (all ten non-gate dimensions; the file names keep "visual" for compatibility).
+# Scope (run from the default branch checkout): the tracked file holds one commit sha; a missing, empty or
+# unknown sha falls back to the commits of the last day (decided 2026-10-01: a 7-day fallback listed 949
+# files in one repo, 12 repos would exhaust the usage limit on night one).
 # Optional $1 = a ref (e.g. origin/main): the sha file and the file existence are then read from that ref's
 # content instead of HEAD and the working tree (nightly-repos.sh, which must not depend on a checkout).
-# orch_visual_pass_all_files prints the uncapped scope; orch_visual_pass_files caps it to the
-# AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files; orch_visual_pass_overflow prints the rest.
-orch_visual_pass_all_files() {
-  local ref="${1:-}" sha p
+# Cap (2026-10-02): commits are walked oldest first (first-parent) and taken whole until adding the next
+# commit's files would exceed AUDIT_VISUAL_PASS_CAP (default 40). A first commit above the cap is taken
+# alone with its files capped (orch_visual_pass_overflow counts the rest). The head only advances to the
+# last included commit (orch_visual_pass_head), so the remainder is the next night's scope: no file is
+# skipped permanently except the capped files of one oversized commit, which are reported.
+# orch_visual_pass_all_files prints the uncapped pending scope (nightly-repos.sh counts it).
+orch__visual_pass_sha() {
+  local ref="${1:-}" sha
   # New path .audit/visual-pass-head first, legacy .claude/audits/visual-pass-head as a read-only fallback.
   if [ -n "$ref" ]; then
     sha=$(git show "$ref:.audit/visual-pass-head" 2>/dev/null | head -1 || true)
@@ -661,8 +725,15 @@ orch_visual_pass_all_files() {
     sha=$(head -1 .audit/visual-pass-head 2>/dev/null || true)
     [ -n "$sha" ] || sha=$(head -1 .claude/audits/visual-pass-head 2>/dev/null || true)
   fi
+  if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then printf '%s\n' "$sha"; fi
+  return 0
+}
+
+orch_visual_pass_all_files() {
+  local ref="${1:-}" sha p
+  sha=$(orch__visual_pass_sha "$ref")
   {
-    if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then
+    if [ -n "$sha" ]; then
       git diff --name-only "$sha" "${ref:-HEAD}" --
     else
       git log --since='1 day ago' --name-only --pretty=format: "${ref:-HEAD}" --
@@ -674,23 +745,52 @@ orch_visual_pass_all_files() {
   return 0
 }
 
-orch_visual_pass_files() {
-  local ref="${1:-}" cap="${AUDIT_VISUAL_PASS_CAP:-40}" all n p
-  all=$(orch_visual_pass_all_files "$ref")
-  n=$(printf '%s' "$all" | grep -c . || true)
-  if [ "${n:-0}" -le "$cap" ]; then [ -z "$all" ] || printf '%s\n' "$all"; return 0; fi
-  # Over the cap: newest commit first, ties by path.
-  printf '%s\n' "$all" | while IFS= read -r p; do
-    printf '%s\t%s\n' "$(git log -1 --format=%ct "${ref:-HEAD}" -- "$p")" "$p"
-  done | sort -t "$(printf '\t')" -k1,1nr -k2,2 | head -n "$cap" | cut -f2
+# Changed files of one commit against its first parent (root commit: its own files), still existing.
+orch__visual_pass_commit_files() {
+  local c="$1" ref="${2:-}" p
+  { git diff --name-only "$c^1" "$c" -- 2>/dev/null || git diff-tree --root --no-commit-id --name-only -r "$c"; } |
+    sed '/^$/d; /^\.claude\/audits\//d; /^\.audit\//d' | sort -u | while IFS= read -r p; do
+    if [ -n "$ref" ]; then git cat-file -e "$ref:$p" 2>/dev/null && printf '%s\n' "$p"
+    else [ -f "$p" ] && printf '%s\n' "$p"; fi
+  done
   return 0
 }
 
-orch_visual_pass_overflow() {
-  local cap="${AUDIT_VISUAL_PASS_CAP:-40}" n
-  n=$(orch_visual_pass_all_files "${1:-}" | grep -c . || true)
-  if [ "${n:-0}" -gt "$cap" ]; then printf '%s\n' "$((n - cap))"; else printf '0\n'; fi
+# Plan for tonight: line 1 "HEAD <sha>" (empty sha: no commit to include), line 2 "OVERFLOW <n>", then the files.
+orch__visual_pass_plan() {
+  local ref="${1:-}" tip="${1:-HEAD}" cap="${AUDIT_VISUAL_PASS_CAP:-40}" sha commits c cf next n set="" head="" over=0
+  sha=$(orch__visual_pass_sha "$ref")
+  if [ -n "$sha" ]; then commits=$(git rev-list --reverse --first-parent "$sha..$tip" -- 2>/dev/null || true)
+  else commits=$(git rev-list --reverse --first-parent --since='1 day ago' "$tip" -- 2>/dev/null || true); fi
+  for c in $commits; do
+    cf=$(orch__visual_pass_commit_files "$c" "$ref")
+    next=$(printf '%s\n%s\n' "$set" "$cf" | sed '/^$/d' | sort -u)
+    n=$(printf '%s' "$next" | grep -c . || true)
+    if [ "${n:-0}" -gt "$cap" ]; then
+      if [ -z "$set" ]; then   # first commit with files, above the cap: taken alone, capped
+        set=$(printf '%s\n' "$next" | head -n "$cap"); over=$((n - cap)); head="$c"
+      fi
+      break
+    fi
+    set="$next"; head="$c"
+  done
+  printf 'HEAD %s\nOVERFLOW %s\n' "$head" "$over"
+  [ -z "$set" ] || printf '%s\n' "$set"
+  return 0
 }
+
+orch_visual_pass_files() { orch__visual_pass_plan "${1:-}" | sed '1,2d'; return 0; }
+
+# Without a commit to include the head stays where it is (or becomes the tip when none was recorded).
+orch_visual_pass_head() {
+  local ref="${1:-}" h
+  h=$(orch__visual_pass_plan "$ref" | sed -n 1p | cut -d' ' -f2)
+  [ -n "$h" ] || h=$(orch__visual_pass_sha "$ref")
+  [ -n "$h" ] || h=$(git rev-parse "${ref:-HEAD}" 2>/dev/null || true)
+  printf '%s\n' "$h"
+}
+
+orch_visual_pass_overflow() { orch__visual_pass_plan "${1:-}" | sed -n 2p | cut -d' ' -f2; }
 
 # Recurrence and dismissal feed, from a FILE the orchestrator wrote with the
 # Write tool, one pattern per line. A pattern is derived from a finding, i.e.

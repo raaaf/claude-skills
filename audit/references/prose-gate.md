@@ -1,6 +1,6 @@
 # The Prose Gate: when the audit scales itself down
 
-Read this when `DIFF_CLASS=prose` (Phase 0.5), or when you are tempted to remove the gate.
+Read this when `DIFF_CLASS=prose` (computed in Phase 1), or when you are tempted to remove the gate.
 
 ## The problem it solves
 
@@ -32,19 +32,22 @@ config, no template or stylesheet. Documentation, guidelines, agent definitions 
 prose. Eval fixtures are exempt from the code signal on purpose, since they are deliberately broken
 test data that is never shipped, and adding a test case should not re-trigger the full gate.
 
-On `prose`:
+On `prose` (rewritten 2026-10-02):
 
-- **one round**, not three. A second round exists to catch what a fix broke, and a prose fix that
-  breaks something is caught by the same round's verification.
-- **Minors follow the normal split (decided 2026-10-01, `minor-backlog.md`).** A Minor rides along
-  only with a Critical/Important fix to its own file; the rest goes to the backlog. What bounds the
-  loop is the other three constraints on this list: one round, floor dimensions only, and the
-  marker certifying the post-fix tree, so the fixes this run makes need no second audit before the
-  push they gate.
-- **floor dimensions only.** No orchestrator additions "to be safe". If the floor derives only
-  `docs_sync` from a documentation diff, that is the answer, not a starting point.
-- **`CONFIDENCE_FLOOR=medium`**, so D.7 still verifies the uncertain findings. The gate lowers the
-  amount of work, never the standard of evidence for what it does report.
+- **no LLM dimension and no built-in review.** `/audit` empties the scope (`ALLE_DATEIEN`) in Phase 1.5,
+  so `find.js`, the `/code-review` subagent and the fix wave do not run, and the
+  start question is skipped. The run is a pass with zero findings, the same path as an empty filtered set
+  (`audit/SKILL.md`, Phase 4 marker paragraph).
+- **the deterministic checks stay**, including `check-docs-claims.sh`, `check-docs-path-drift.sh`, the
+  secret scan and the lockfile check. They are the whole gate for prose: a doc claim that contradicts
+  the disk is still caught, a Critical from them (a secret) still blocks the marker.
+- **the normal marker rules apply**, on the tree as it is; nothing is recorded as audited
+  (`orch_audited_record` gets an empty list), so a later code diff never skips a prose file because of it.
+
+Until 2026-10-02 a prose diff ran one round of floor dimensions (`docs_sync` and `copy`) at
+`CONFIDENCE_FLOOR=medium`. The benchmark behind the new gate (`dimension-selection.md`) and the cost of
+the dimensions made the deterministic checks the better trade: the prose findings that mattered were
+claims that disagree with the code, which `check-docs-claims.sh` finds mechanically.
 
 The gate fails open: anything the classifier cannot place is `code`. Under-auditing a code change is
 the expensive mistake; over-auditing prose is merely annoying.

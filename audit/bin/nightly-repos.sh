@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # Candidate repos for the nightly run (2026-10-01). One TSV line per repo: path<TAB>status<TAB>detail.
-#   ready          backlog=N visual_files=M[ (cap C) when above the cap] (sorted first, backlog size desc)
+#   ready          backlog=N visual_files=M[ (cap C) when more than C files are pending: the quality pass catches up over several nights] (sorted first, backlog size desc)
 #   skip-dirty     the default branch has unpushed local commits ahead of origin
 #   skip-open-pr   an open PR from a chore/nightly-audit-* or chore/minor-backlog-* branch (detail: number)
 #   skip-no-gh     gh missing or unauthenticated
-#   nothing        backlog 0 and no visual-pass files
+#   nothing        backlog 0 and no quality-pass files (visual_files = files changed since .audit/visual-pass-head)
 # Backlog and visual files are read from origin/<default> (after a quiet fetch), never the working tree.
 # Usage: nightly-repos.sh [root...]   (default roots: $HOME/Developer, "$HOME/Local Sites")
 set -uo pipefail

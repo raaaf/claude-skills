@@ -170,7 +170,7 @@ Tests red or criterion not achievable: say so honestly, never sugarcoat. Afterwa
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root >/dev/null 2>&1 || exit 0   # not an auditable repo: no line
 SCOPE_FILES=$(bash "$AUDIT_BIN/collect-scope.sh" 2>/dev/null | sed -n '/^---FILES---$/,/^---FRONTEND---$/{/^---FILES---$/d;/^---FRONTEND---$/d;p;}')
-UNAUDITED=$(orch_audited_filter "$SCOPE_FILES" "architecture,security,performance,code_quality,a11y,docs_sync" | grep -c .)
+UNAUDITED=$(orch_audited_filter "$SCOPE_FILES" "security,privacy,architecture" | grep -c .)
 echo "UNAUDITED_FILES=$UNAUDITED"
 ```
 

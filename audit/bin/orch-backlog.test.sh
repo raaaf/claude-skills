@@ -85,11 +85,11 @@ expect "$(cut -f1 "$STORE" | LC_ALL=C sort -c && echo sorted)" 'sorted' 'store i
 expect "$(orch_backlog_oldest 3 | cut -f6 | tr '\n' ',')" 'alpha thing,beta thing,gamma thing,' 'oldest 3 by first_seen then key'
 expect "$(orch_backlog_oldest 0)" '' 'oldest 0 prints nothing'
 
-# nightly visual pass: dimension spellings and the files-since-head helper
-G="architecture,security,performance,code_quality,seo,a11y,ux,docs_sync,copy,privacy"
-expect "$(orch_expand_dimensions all)" "$G" 'all = gate set'
-expect "$(orch_expand_dimensions all+visual | tr ',' '\n' | grep -cE '^(typography|ui_design|animation)$')" '3' 'all+visual includes the three visual dimensions'
-expect "$(orch_expand_dimensions all | tr ',' '\n' | grep -cE '^(typography|ui_design|animation)$' || true)" '0' 'all excludes the three visual dimensions'
+# pre-push gate dimension spellings (2026-10-02) and the nightly quality pass scope
+expect "$(orch_expand_dimensions all)" "security,privacy,architecture" 'all = the three gate dimensions'
+expect "$(orch_expand_dimensions all+nightly | tr ',' '\n' | grep -c .)" '13' 'all+nightly = all 13'
+expect "$(orch_expand_dimensions all+visual)" "$(orch_expand_dimensions all+nightly)" 'all+visual stays an alias of all+nightly'
+expect "$(orch_expand_dimensions all | tr ',' '\n' | grep -cE '^(performance|code_quality|seo|a11y|ux|docs_sync|copy|typography|ui_design|animation)$' || true)" '0' 'all excludes the ten nightly dimensions'
 expect "$(orch_expand_dimensions typography,copy)" 'typography,copy' 'explicit list passes through'
 
 mkdir -p .audit
@@ -108,7 +108,7 @@ expect "$(orch_visual_pass_files)" 'src/c.js' 'existing sha: files changed since
 git rev-parse HEAD > .audit/visual-pass-head
 expect "$(orch_visual_pass_files)" '' 'head at HEAD: nothing to do'
 
-# cap: the most recently changed files win, the remainder is counted
+# cap (2026-10-02): whole commits, oldest first, head advances only to the last included commit
 rm -f .audit/visual-pass-head
 n=1; for f in e1 e2 e3; do
   printf '%s\n' "$f" > "src/$f.js"; git add -A >/dev/null
@@ -116,8 +116,19 @@ n=1; for f in e1 e2 e3; do
   GIT_COMMITTER_DATE="$TS +0000" git -c user.name=t -c user.email=t@t commit -qm "$f" --date="$TS +0000" >/dev/null
   n=$((n+1))
 done
-expect "$(AUDIT_VISUAL_PASS_CAP=2 orch_visual_pass_files | sort | tr '\n' ' ')" 'src/c.js src/e3.js ' 'cap 2 keeps the two newest files'
-expect "$(AUDIT_VISUAL_PASS_CAP=2 orch_visual_pass_overflow)" '2' 'overflow counts the files above the cap'
+TIP=$(git rev-parse HEAD)
+E1=$(git log --format=%H --grep='^e1$' -1)
+export AUDIT_VISUAL_PASS_CAP=2
+expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/c.js src/e1.js ' 'night 1, cap 2: oldest whole commits up to the cap'
+expect "$(orch_visual_pass_head)" "$E1" 'night 1: head advances only to the last included commit, not the tip'
+expect "$(orch_visual_pass_overflow)" '0' 'night 1: nothing capped, the rest is deferred not lost'
+printf '%s\n' "$(orch_visual_pass_head)" > .audit/visual-pass-head
+expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/e2.js src/e3.js ' 'night 2: the remainder is picked up'
+expect "$(orch_visual_pass_head)" "$TIP" 'night 2: head reaches the tip'
+printf '%s\n' "$TIP" > .audit/visual-pass-head
+expect "$(orch_visual_pass_files)" '' 'night 3: nothing left'
+unset AUDIT_VISUAL_PASS_CAP
+rm -f .audit/visual-pass-head
 expect "$(orch_visual_pass_overflow)" '0' 'default cap 40: no overflow'
 
 # legacy fallback (2026-10-02): the old .claude/audits/ files are read until the first write, never deleted
@@ -135,3 +146,16 @@ expect "$(orch_backlog_count)" '0' 'emptied .audit/ store shadows the legacy fil
 rm -f "$STORE"; rm -f .claude/audits/minor-backlog.tsv
 printf '%s\n' "$OLD" > .claude/audits/visual-pass-head
 expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/c.js src/e1.js src/e2.js src/e3.js ' 'legacy visual-pass-head is the fallback' 
+
+# one commit above the cap is taken alone with capped files, reported; head moves to it
+rm -f .audit/visual-pass-head .claude/audits/visual-pass-head
+printf '%s\n' "$TIP" > .audit/visual-pass-head
+for f in b1 b2 b3; do printf '%s\n' "$f" > "src/$f.js"; done
+git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm big >/dev/null
+BIG=$(git rev-parse HEAD)
+printf 'z\n' > src/z.js; git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm after >/dev/null
+export AUDIT_VISUAL_PASS_CAP=2
+expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/b1.js src/b2.js ' 'large single commit: taken alone, capped to the cap'
+expect "$(orch_visual_pass_overflow)" '1' 'large single commit: capped files are reported'
+expect "$(orch_visual_pass_head)" "$BIG" 'large single commit: head moves to it, the next commit is left for the next night'
+unset AUDIT_VISUAL_PASS_CAP
