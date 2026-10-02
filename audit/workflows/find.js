@@ -245,9 +245,17 @@ function specialistEffort(agentType) {
 // turning every release into an open-ended refactor. Appended to both the specialist prompt (so
 // it reports fewer out-of-scope findings) and the verifier prompt (so it can REFUTE any that slip
 // through anyway). `forRole` only changes the closing sentence; the scope rule itself is shared.
-function hunkScopeClause(ctx, forRole) {
+function hunkScopeClause(ctx, forRole, paths) {
   if (!ctx.hunkScope) return '';
-  const rule = `HUNK SCOPE (large diff): BASE_REF=${ctx.baseRef}. For each file under review, run ` +
+  // Precomputed ranges (audit/bin/hunk-ranges.sh, args.hunks): the reviewers' tools (Read/Grep/Glob) cannot
+  // run `git diff`, so the specialists given the diff instruction could never follow it (nightly 2026-10-02).
+  const rule = ctx.hunks
+    ? `HUNK SCOPE (large diff): BASE_REF=${ctx.baseRef}. Changed line ranges of the NEW file, already ` +
+      `widened by 15 lines of context ("whole" = new file, read it in full): ${JSON.stringify(hunkRangesFor(ctx, paths))}. ` +
+      'A finding is in scope only if its cited lines intersect one of these ranges, or the change makes ' +
+      'pre-existing code wrong (e.g. a new caller of an already-broken helper). A pre-existing issue ' +
+      'elsewhere in the file, untouched by this diff, is out of scope.'
+    : `HUNK SCOPE (large diff): BASE_REF=${ctx.baseRef}. For each file under review, run ` +
     '`git -C REPO_ROOT diff ' + ctx.baseRef + ' -U15 -- <file>` and note which lines fall inside a changed ' +
     'hunk (plus its 15 lines of context on each side). A finding is in scope only if its cited lines ' +
     'intersect a changed hunk, or the change makes pre-existing code wrong (e.g. a new caller of an ' +
@@ -255,6 +263,14 @@ function hunkScopeClause(ctx, forRole) {
   return forRole === 'verifier'
     ? `\n${rule} REFUTE any CONFIRMED finding that is out of scope by this rule.`
     : `\n${rule} Do not add an out-of-scope issue to findings; instead count it in outOfScope.`;
+}
+
+// The precomputed range map restricted to `paths`; a path missing from it (no entry, so no known
+// hunks) is "whole" rather than silently out of scope.
+function hunkRangesFor(ctx, paths) {
+  const out = {};
+  for (const p of paths || []) out[p] = ctx.hunks[p] || 'whole';
+  return out;
 }
 
 // Briefing line that makes the security specialist cover the privacy module too (privacy fold,
@@ -709,11 +725,16 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
     // specialists at 120-200k context per call (docs_sync median 202k), mostly assigned-file reads.
     // payments keeps the whole-file contract: its scope is the full STRIPE_FILES surface.
     const hunkCoverage = ctx.hunkScope && dimension !== 'payments';
+    const hunkRead = ctx.hunks
+      ? `For every assigned file, read the line ranges listed in HUNK SCOPE below with offset/limit (they ` +
+        `already include the 15 lines of context; do not run git diff) and review every changed hunk, so ` +
+        `every cited line comes from a Read.`
+      : `For every assigned file, run the git diff from HUNK SCOPE below and review every changed hunk: Read ` +
+        `each hunk's line range plus its 15 lines of context with offset/limit, so every cited line comes ` +
+        `from a Read.`;
     const coverageClause = hunkCoverage
       ? `\nCOVERAGE CONTRACT (hunk scope) for this chunk: your assignment is exactly ${JSON.stringify(assigned)}. ` +
-      `For every assigned file, run the git diff from HUNK SCOPE below and review every changed hunk: Read ` +
-      `each hunk's line range plus its 15 lines of context with offset/limit, so every cited line comes ` +
-      `from a Read. A file that is new in the diff is one hunk: read it in full. Read other parts of a file ` +
+      `${hunkRead} A file that is new in the diff is one hunk: read it in full. Read other parts of a file ` +
       `only where a hunk depends on them (a changed call into unchanged code, a renamed symbol). There is ` +
       `no tool-call budget for these reads. coverage.files must list exactly the assigned paths whose ` +
       `hunks you reviewed completely, spelled as given here (no ./ or absolute prefix) and nothing else. ` +
@@ -726,7 +747,7 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
       `read one in full? Leave it out and set status "incomplete".`;
     // payments' scope is the FULL STRIPE_FILES surface by design (dimensionFiles, Phase 1.5),
     // not the diff's changed hunks, so it never gets the hunk-scope clause.
-    const hunkClause = dimension === 'payments' ? '' : hunkScopeClause(ctx, 'specialist');
+    const hunkClause = dimension === 'payments' ? '' : hunkScopeClause(ctx, 'specialist', assigned);
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/prompt-template.md and ${dimDoc} and execute the specialist task ` +
@@ -776,13 +797,14 @@ async function runDimension(ctx, dimension, agentFn, parallelFn, logFn) {
 
   // Stage 4: verifier, one agent per 35-40 findings.
   const verifierGroups = chunk(allFindings, 38);
-  const verifierHunkClause = dimension === 'payments' ? '' : hunkScopeClause(ctx, 'verifier');
+  const verifierHunkClause = (group) => dimension === 'payments' ? '' : hunkScopeClause(ctx, 'verifier',
+    [...new Set(group.flatMap((f) => (f.files || []).map((file) => file.path)))]);
   const verifierResults = await stage('verifier', verifierGroups.length, () => parallelFn(verifierGroups.map((group) => async () => {
     const result = await agentFn(
       ROOT_HEADER +
       `Read ${ctx.promptDir}/finding-verifier.md and verify these findings.\n` +
       (ctx.projectGuidelines ? `PROJECT_GUIDELINES=${ctx.projectGuidelines}\n` : '') +
-      `FINDINGS=${JSON.stringify(group)}` + verifierHunkClause,
+      `FINDINGS=${JSON.stringify(group)}` + verifierHunkClause(group),
       { agentType: 'code-reviewer', model: 'sonnet', schema: VERDICTS_SCHEMA, phase: 'Verify' }
     );
     if (warnIfNull(logFn, result, `${dimension}: a verifier group returned null (${group.length} findings uncovered)`)) return null;
@@ -1021,7 +1043,10 @@ function dimensionFileName(dim) {
 //         and verifier prompt gets a clause instructing it to diff each file against baseRef and
 //         only report/confirm findings inside a changed hunk (plus 15 lines of context), or where
 //         the change makes pre-existing code wrong. Findings a specialist judges out of scope are
-//         counted in its outOfScope reply field, not added to findings. Excluded from `payments`,
+//         counted in its outOfScope reply field, not added to findings. hunks (optional object,
+//         output of audit/bin/hunk-ranges.sh: path -> [[start,end],...] or "whole"): when present
+//         the clauses carry each file's ranges instead of the "run git diff" instruction (reviewer
+//         agents have no Bash); absent, the git-diff text stays. Excluded from `payments`,
 //         which intentionally audits the whole STRIPE_FILES surface, not the diff's hunks.
 //         sizeResult (optional string, one of diff-size-gate.sh's DIFF_SIZE_RESULT values):
 //         passed straight through, unlike hunkScope/baseRef. A `SMALL` value makes
@@ -1092,6 +1117,8 @@ const ctx = {
   sizeResult: args.sizeResult || '',
   hunkScope: !!args.hunkScope,
   baseRef: args.baseRef || '',
+  // { "<path>": [[start,end], ...] | "whole" } from audit/bin/hunk-ranges.sh; only used under hunkScope.
+  hunks: args.hunkScope && args.hunks && typeof args.hunks === 'object' ? args.hunks : null,
   // .claude/audit-guidelines.md of the audited repo, verbatim. Read by the orchestrator in
   // Phase 1 since the rebuild and passed nowhere until 2026-09-16, so "takes precedence over
   // global guidelines" (CLAUDE.md) was true of the read and false of the pipeline.

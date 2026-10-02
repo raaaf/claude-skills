@@ -67,7 +67,7 @@ Don't rewrite existing content — additive only unless something is genuinely w
 Since the 2026-09-05 per-dimension rebuild, `/audit` and `/full-audit` no longer scale by rounds —
 one `find.js` pass covers every selected dimension, one `fix.js` pass fixes every Critical/Important
 finding it confirms, or discards it with a reason. Minors ride along only with a fix to their own file,
-the rest goes to `.claude/audits/minor-backlog.tsv` (decided 2026-10-01, replaces the 2026-09-25 rule;
+the rest goes to `.audit/minor-backlog.tsv` (moved out of `.claude/` 2026-10-02, the headless nightly cannot write there; legacy path read as fallback; decided 2026-10-01, replaces the 2026-09-25 rule;
 `references/minor-backlog.md`). The file is tracked in the audited repo (sorted by key, `merge=union` in
 `.gitattributes`, never in audit scope) and a nightly routine clears it in small PRs: the headless sweep reads
 `AUDIT_MINOR_SWEEP_LIMIT` (default 15). Backlog writes happen before `orch_marker_write`. `CLAUDE_EFFORT` no

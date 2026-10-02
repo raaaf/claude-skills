@@ -152,3 +152,49 @@ test('hunkScope on: specialists cover changed hunks, not whole files; payments a
   assert.ok(cqOff.prompt.includes('Read every one of these files in full'));
   assert.ok(!cqOff.prompt.includes('COVERAGE CONTRACT (hunk scope)'));
 });
+
+// Precomputed hunks (2026-10-02): reviewer agents (ui-ux-reviewer, code-reviewer) have no Bash, so the
+// "run git diff" instruction could never be followed. With args.hunks the prompts carry the ranges and
+// no git-diff instruction; without it the old text stays.
+test('hunks given: specialist prompt carries the ranges and no git-diff instruction', async () => {
+  const hunks = { 'src/model.ts': [[1, 40], [80, 95]], 'app/Billing/Charge.php': 'whole' };
+  const { prompts } = await runWorkflow(baseArgs({ dimensions: ['code_quality'], dimensionFiles: {}, hunkScope: true, baseRef: 'origin/main', hunks }));
+  const audit = prompts.filter((p) => p.options.phase === 'Audit');
+  assert.ok(audit.length > 0);
+  for (const p of audit) {
+    assert.ok(p.prompt.includes('[[1,40],[80,95]]'));
+    assert.ok(!p.prompt.includes('git -C REPO_ROOT diff'));
+    assert.ok(!/(?<!not )run (the )?git diff/.test(p.prompt));
+    assert.ok(p.prompt.includes('read the line ranges listed in HUNK SCOPE'));
+  }
+});
+
+test('hunks missing: the old git-diff text stays', async () => {
+  const { prompts } = await runWorkflow(baseArgs({ dimensions: ['code_quality'], dimensionFiles: {}, hunkScope: true, baseRef: 'origin/main' }));
+  for (const p of prompts.filter((q) => q.options.phase === 'Audit')) {
+    assert.ok(p.prompt.includes('git -C REPO_ROOT diff origin/main -U15'));
+    assert.ok(p.prompt.includes('run the git diff from HUNK SCOPE'));
+  }
+});
+
+test('hunks given: the verifier prompt carries the ranges of the finding files', async () => {
+  const args = baseArgs({ dimensions: ['code_quality'], dimensionFiles: {}, hunkScope: true, baseRef: 'origin/main', hunks: { 'src/model.ts': [[2, 9]], 'other.ts': [[1, 1]] } });
+  let verifierPrompt = null;
+  const context = {
+    args, log() {}, performance: { now: () => 0 },
+    parallel: (thunks) => Promise.all(thunks.map((thunk) => thunk())),
+    agent: async (prompt, options) => {
+      if (options.phase === 'Scout') return scoutFilesStub(prompt);
+      if (options.phase === 'Audit') {
+        return { findings: [{ id: 'code_quality-0-1', severity: 'Important', confidence: 'high',
+          files: [{ path: 'src/model.ts', lines: '3' }], issue: 'x', impact: 'y' }], coverage: { status: 'complete', files: ['src/model.ts'] } };
+      }
+      verifierPrompt = prompt;
+      return { verdicts: [{ id: 'code_quality-0-1', verdict: 'CONFIRMED', severity: 'Important', reason: 'ok' }] };
+    }
+  };
+  await vm.runInNewContext(`(async () => {\n${workflowSource}\n})()`, context, { filename: workflowPath });
+  assert.ok(verifierPrompt.includes('{"src/model.ts":[[2,9]]}'));
+  assert.ok(!verifierPrompt.includes('other.ts'));
+  assert.ok(!verifierPrompt.includes('git -C REPO_ROOT diff'));
+});

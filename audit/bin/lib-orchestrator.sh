@@ -67,7 +67,7 @@
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
 #   orch_audited_record <files> <dims>   after a PASSED audit: stores path, blob sha and dims per file in the worktree's claude-audited-blobs
 #   orch_audited_filter <files> <dims>   prints the files NOT already certified by a passed audit (same blob sha, dims a superset), input order kept
-#   orch_backlog_add <tsv>   Minor backlog (.claude/audits/minor-backlog.tsv, TRACKED, merge=union in .gitattributes): appends the
+#   orch_backlog_add <tsv>   Minor backlog (.audit/minor-backlog.tsv, TRACKED, merge=union in .gitattributes; legacy .claude/audits/ copy read until the first write, then BACKLOG_LEGACY_FILE= is printed): appends the
 #                           5-column entries dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description from a FILE, key computed
 #                           here, deduped by key, entries whose file no longer exists dropped; prints BACKLOG_ADDED=n
 #   orch_backlog_for_files <files>   prints the stored 6-column entries (key first) whose file is in the newline list
@@ -75,7 +75,7 @@
 #   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
 #   orch_backlog_count               prints the number of stored entries (0 when none)
 #   orch_expand_dimensions <value>   `all` -> the gate set (all dimensions except typography, ui_design, animation), `all+visual` -> all 13, anything else unchanged
-#   orch_visual_pass_files [ref]   nightly visual pass scope (content of ref, e.g. origin/main, when given): files changed (still existing, .claude/audits/ dropped) since the sha in .claude/audits/visual-pass-head, else in the last day, capped at AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files
+#   orch_visual_pass_files [ref]   nightly visual pass scope (content of ref, e.g. origin/main, when given): files changed (still existing, .audit/ and .claude/audits/ dropped) since the sha in .audit/visual-pass-head (legacy .claude/audits/ fallback), else in the last day, capped at AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files
 #   orch_visual_pass_overflow [ref]   number of files above the cap (reported as unchecked, never silent)
 #   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
@@ -533,7 +533,14 @@ else ORCH__SRC="$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; fi
 ORCH_LIB_DIR=$(cd "$(dirname "$ORCH__SRC")" && pwd)
 orch__backlog_root() { orch__backlog_libs; audit_store_root; }
 orch__backlog_libs() { command -v gitignore_ensure >/dev/null 2>&1 || . "$ORCH_LIB_DIR/lib-git-base.sh"; }   # called in the main shell too: a source inside $(...) is lost
-orch__backlog_path() { local r; r=$(orch__backlog_root) || return 1; printf '%s/.claude/audits/minor-backlog.tsv' "$r"; }
+# Write target: .audit/ at the repo root (moved out of .claude/ 2026-10-02: headless sessions cannot write there).
+# orch__backlog_read_path prefers it and falls back to the legacy .claude/audits/ file until the first write.
+orch__backlog_path() { local r; r=$(orch__backlog_root) || return 1; printf '%s/.audit/minor-backlog.tsv' "$r"; }
+orch__backlog_read_path() {
+  local f l; f=$(orch__backlog_path) || return 1
+  l="${f%/.audit/minor-backlog.tsv}/.claude/audits/minor-backlog.tsv"
+  if [ ! -f "$f" ] && [ -f "$l" ]; then printf '%s' "$l"; else printf '%s' "$f"; fi
+}
 
 # Moves $1 over the store after dropping every entry whose file is gone; an empty result removes the store.
 orch__backlog_commit() {
@@ -547,7 +554,8 @@ orch__backlog_commit() {
     [ -f "$r/$file" ] && printf '%s\n' "$line"
   done < "$tmp" > "$out"
   rm -f "$tmp"
-  if [ -s "$out" ]; then mkdir -p "$(dirname "$f")" && LC_ALL=C sort -t "$(printf '\t')" -k1,1 "$out" > "$f" && rm -f "$out"; else rm -f "$out" "$f"; fi
+  if [ -s "$out" ]; then mkdir -p "$(dirname "$f")" && LC_ALL=C sort -t "$(printf '\t')" -k1,1 "$out" > "$f" && rm -f "$out"; elif [ -f "$r/.claude/audits/minor-backlog.tsv" ]; then mkdir -p "$(dirname "$f")" && : > "$f"; rm -f "$out"   # empty file shadows the legacy copy
+  else rm -f "$out" "$f"; fi
   return 0
 }
 
@@ -555,13 +563,14 @@ orch__backlog_commit() {
 orch__backlog_clean() { tr '\t\r\n' '   ' | awk '{ n = (NF > 50 ? 50 : NF); s = ""; for (i = 1; i <= n; i++) s = s (i > 1 ? " " : "") $i; print s }'; }
 
 orch_backlog_add() {
-  local in="$1" f r tmp line dim file ln seen desc key n=0
+  local in="$1" f rf r tmp line dim file ln seen desc key n=0
   [ -f "$in" ] || { echo "orch_backlog_add: no such file: $in" >&2; return 1; }
   orch__backlog_libs
   f=$(orch__backlog_path) || return 1
   r=$(orch__backlog_root) || return 1
   tmp=$(mktemp) || return 1
-  [ -f "$f" ] && cat "$f" > "$tmp"
+  rf=$(orch__backlog_read_path)
+  [ -f "$rf" ] && cat "$rf" > "$tmp"
   while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue
     dim=$(printf '%s' "$line" | cut -f1 | orch__backlog_clean)
@@ -579,16 +588,20 @@ orch_backlog_add() {
   done < "$in"
   orch__backlog_commit "$tmp" || return 1
   echo "BACKLOG_ADDED=$n"
+  orch__backlog_legacy_note "$r"
   orch__backlog_repo_setup "$r"
 }
+
+# The legacy file is never deleted here (.claude/ is protected); the report tells the user to remove it.
+orch__backlog_legacy_note() { [ ! -f "$1/.claude/audits/minor-backlog.tsv" ] || echo "BACKLOG_LEGACY_FILE=.claude/audits/minor-backlog.tsv (migrated to .audit/, can be deleted)"; }
 
 # The store is tracked: drop the exact .gitignore line older versions added, make sure .gitattributes
 # carries the union-merge line (appended once, file created when missing). Symlinked files are not touched.
 orch__backlog_repo_setup() {
-  local r="$1" rel='.claude/audits/minor-backlog.tsv' t
-  if [ -f "$r/.gitignore" ] && [ ! -L "$r/.gitignore" ] && grep -qxF "$rel" "$r/.gitignore"; then
+  local r="$1" rel='.audit/minor-backlog.tsv' old='.claude/audits/minor-backlog.tsv' t
+  if [ -f "$r/.gitignore" ] && [ ! -L "$r/.gitignore" ] && grep -qxF "$old" "$r/.gitignore"; then
     t=$(mktemp) || return 0
-    grep -vxF "$rel" "$r/.gitignore" > "$t" || true
+    grep -vxF "$old" "$r/.gitignore" > "$t" || true
     cat "$t" > "$r/.gitignore"; rm -f "$t"
   fi
   [ -L "$r/.gitattributes" ] && return 0
@@ -596,14 +609,14 @@ orch__backlog_repo_setup() {
 }
 
 orch_backlog_for_files() {
-  local f; f=$(orch__backlog_path) || return 0
+  local f; f=$(orch__backlog_read_path) || return 0
   [ -f "$f" ] || return 0
   ORCH_LIST="$1" awk -F'\t' 'BEGIN { n = split(ENVIRON["ORCH_LIST"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 } $3 in want' "$f"
 }
 
 orch_backlog_remove() {
   local f tmp before after
-  f=$(orch__backlog_path) || return 0
+  f=$(orch__backlog_read_path) || return 0
   [ -f "$f" ] || { echo "BACKLOG_REMOVED=0"; return 0; }
   tmp=$(mktemp) || return 1
   ORCH_LIST="$1" awk -F'\t' 'BEGIN { n = split(ENVIRON["ORCH_LIST"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") drop[a[i]] = 1 } !($1 in drop)' "$f" > "$tmp"
@@ -613,14 +626,14 @@ orch_backlog_remove() {
 }
 
 orch_backlog_oldest() {
-  local f; f=$(orch__backlog_path) || return 0
+  local f; f=$(orch__backlog_read_path) || return 0
   [ -f "$f" ] || return 0
   LC_ALL=C sort -t "$(printf '\t')" -k5,5 -k1,1 "$f" | awk -v n="${1:-0}" 'NR <= n'
 }
 
 orch_backlog_count() {
-  local f; f=$(orch__backlog_path 2>/dev/null) || { echo 0; return 0; }
-  [ -f "$f" ] && grep -c . "$f" || echo 0
+  local f; f=$(orch__backlog_read_path 2>/dev/null) || { echo 0; return 0; }
+  if [ -f "$f" ]; then grep -c . "$f" || true; else echo 0; fi
 }
 
 # typography, ui_design and animation left the pre-push gate for the nightly routine on 2026-10-01
@@ -643,15 +656,21 @@ orch_expand_dimensions() {
 # AUDIT_VISUAL_PASS_CAP (default 40) most recently changed files; orch_visual_pass_overflow prints the rest.
 orch_visual_pass_all_files() {
   local ref="${1:-}" sha p
-  if [ -n "$ref" ]; then sha=$(git show "$ref:.claude/audits/visual-pass-head" 2>/dev/null | head -1 || true)
-  else sha=$(head -1 .claude/audits/visual-pass-head 2>/dev/null || true); fi
+  # New path .audit/visual-pass-head first, legacy .claude/audits/visual-pass-head as a read-only fallback.
+  if [ -n "$ref" ]; then
+    sha=$(git show "$ref:.audit/visual-pass-head" 2>/dev/null | head -1 || true)
+    [ -n "$sha" ] || sha=$(git show "$ref:.claude/audits/visual-pass-head" 2>/dev/null | head -1 || true)
+  else
+    sha=$(head -1 .audit/visual-pass-head 2>/dev/null || true)
+    [ -n "$sha" ] || sha=$(head -1 .claude/audits/visual-pass-head 2>/dev/null || true)
+  fi
   {
     if [ -n "$sha" ] && git cat-file -e "$sha^{commit}" 2>/dev/null; then
       git diff --name-only "$sha" "${ref:-HEAD}" --
     else
       git log --since='1 day ago' --name-only --pretty=format: "${ref:-HEAD}" --
     fi
-  } | sed '/^$/d; /^\.claude\/audits\//d' | sort -u | while IFS= read -r p; do
+  } | sed '/^$/d; /^\.claude\/audits\//d; /^\.audit\//d' | sort -u | while IFS= read -r p; do
     if [ -n "$ref" ]; then git cat-file -e "$ref:$p" 2>/dev/null && printf '%s\n' "$p"
     else [ -f "$p" ] && printf '%s\n' "$p"; fi
   done

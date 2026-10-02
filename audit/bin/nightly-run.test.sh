@@ -25,7 +25,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/bin/gh"
 printf '#!/usr/bin/env bash\necho CLAUDE-CALLED > "%s/claude-called"\n' "$TMP" > "$TMP/bin/claude"
 chmod +x "$TMP/bin/gh" "$TMP/bin/claude"
 
-OUT=$(PATH="$TMP/bin:$PATH" bash "$SCRIPT" --dry-run "$TMP/root")
+OUT=$(NIGHTLY_ALLOW_FILE=/nonexistent PATH="$TMP/bin:$PATH" bash "$SCRIPT" --dry-run "$TMP/root")
 printf '%s\n' "$OUT" | grep -qF "WOULD RUN  $TMP/root/alpha (backlog=1" || { printf 'FAIL no WOULD RUN line\n%s\n' "$OUT" >&2; exit 1; }
 [ ! -e "$TMP/claude-called" ] || { echo 'FAIL claude was invoked' >&2; exit 1; }
 [ "$(git -C "$TMP/root/alpha" worktree list | wc -l | tr -d ' ')" = 1 ] || { echo 'FAIL worktree created' >&2; exit 1; }

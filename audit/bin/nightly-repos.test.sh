@@ -18,9 +18,9 @@ make_repo() {
   git config --global "url.$TMP/remotes/$name.git.insteadOf" "https://github.com/t/$name.git"
   git init -q "$r"; git -C "$r" remote add origin "https://github.com/t/$name.git"
   if [ "$audited" = 1 ]; then
-    mkdir -p "$r/.claude/audits"
-    : > "$r/.claude/audits/minor-backlog.tsv"
-    local i=0; while [ "$i" -lt "$lines" ]; do printf 'k%s\tcopy\ta.txt\t1\t2026-10-01\tx\n' "$i" >> "$r/.claude/audits/minor-backlog.tsv"; i=$((i+1)); done
+    mkdir -p "$r/.audit"
+    : > "$r/.audit/minor-backlog.tsv"
+    local i=0; while [ "$i" -lt "$lines" ]; do printf 'k%s\tcopy\ta.txt\t1\t2026-10-01\tx\n' "$i" >> "$r/.audit/minor-backlog.tsv"; i=$((i+1)); done
   fi
   echo hi > "$r/a.txt"
   git -C "$r" add -A; git -C "$r" commit -q -m init
@@ -32,6 +32,12 @@ make_repo small 1 1
 make_repo plain 0 0
 make_repo prd 2 1
 make_repo idle 0 1
+# legacy: backlog still at the old .claude/audits/ path on origin (fallback read)
+make_repo legacy 0 0
+mkdir -p "$TMP/root/legacy/.claude/audits"
+printf 'k1\tcopy\ta.txt\t1\t2026-10-01\tx\nk2\tcopy\ta.txt\t1\t2026-10-01\ty\n' > "$TMP/root/legacy/.claude/audits/minor-backlog.tsv"
+git -C "$TMP/root/legacy" add -A; git -C "$TMP/root/legacy" commit -q -m legacy
+git -C "$TMP/root/legacy" push -q origin main
 # idle: no visual files either (history older than 7 days)
 GIT_COMMITTER_DATE="2020-01-01T00:00:00" GIT_AUTHOR_DATE="2020-01-01T00:00:00" git -C "$TMP/root/idle" commit -q --amend --no-edit --reset-author
 git -C "$TMP/root/idle" push -q -f origin main
@@ -54,7 +60,7 @@ esac
 GH
 chmod +x "$TMP/bin/gh"
 
-OUT=$(AUDIT_VISUAL_PASS_CAP=3 PATH="$TMP/bin:$PATH" bash "$SCRIPT" "$TMP/root")
+OUT=$(NIGHTLY_ALLOW_FILE=/nonexistent AUDIT_VISUAL_PASS_CAP=3 PATH="$TMP/bin:$PATH" bash "$SCRIPT" "$TMP/root")
 expect() {
   printf '%s\n' "$OUT" | grep -qF -- "$1" || { printf 'FAIL %s\n%s\n' "$2" "$OUT" >&2; exit 1; }
   printf 'PASS %s\n' "$2"
@@ -62,6 +68,7 @@ expect() {
 expect "$TMP/root/big	ready	backlog=3" 'ready with backlog'
 expect "$TMP/root/capped	ready	backlog=0 visual_files=4 (cap 3)" 'visual files above the cap are flagged'
 expect "$TMP/root/small	ready	backlog=1 visual_files=1" 'visual files below the cap are not flagged'
+expect "$TMP/root/legacy	ready	backlog=2" 'legacy path is read as fallback'
 expect "$TMP/root/prd	skip-open-pr	#17" 'open PR skips'
 expect "$TMP/root/idle	nothing	" 'nothing to do'
 expect "$TMP/root/small	ready	backlog=1" 'second ready'
@@ -71,3 +78,9 @@ echo 'PASS non-audited repo ignored'
 echo 'PASS worktree deduped'
 [ "$(printf '%s\n' "$OUT" | sed -n 1p | cut -f1)" = "$TMP/root/big" ] || { echo 'FAIL ready order' >&2; exit 1; }
 echo 'PASS ready sorted by backlog desc'
+
+# Allowlist (2026-10-02): when the file exists, only listed repos are reported; ~ and comments allowed.
+printf '# production only\n%s/root/small\n' "$TMP" > "$TMP/allow"
+ALLOWED=$(NIGHTLY_ALLOW_FILE="$TMP/allow" AUDIT_VISUAL_PASS_CAP=3 PATH="$TMP/bin:$PATH" bash "$SCRIPT" "$TMP/root")
+[ "$(printf '%s\n' "$ALLOWED" | grep -c .)" = 1 ] && printf '%s\n' "$ALLOWED" | grep -q "^$TMP/root/small	" || { printf 'FAIL allowlist\n%s\n' "$ALLOWED" >&2; exit 1; }
+echo 'PASS allowlist keeps only listed repos'

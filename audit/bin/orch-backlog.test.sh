@@ -14,7 +14,7 @@ git init -q .
 mkdir -p src
 printf 'a\n' > src/a.js
 printf 'b\n' > src/b.js
-STORE="$TMP/.claude/audits/minor-backlog.tsv"
+STORE="$TMP/.audit/minor-backlog.tsv"
 
 expect() {
   local got="$1" expected="$2" label="$3"
@@ -64,10 +64,10 @@ expect "$(orch_backlog_count)" '0' 'removing every key empties the store'
 printf 'copy\tsrc/a.js\t1\t2026-10-01\tgitignore probe\n' > "$IN"
 orch_backlog_add "$IN" >/dev/null
 expect "$(orch_backlog_for_files $'src/a.js\nsrc/other.js' | wc -l | tr -d ' ')" '1' 'lookup takes a multi-line file list'
-expect "$(git check-ignore -q .claude/audits/minor-backlog.tsv && echo ignored || echo tracked)" 'tracked' 'store is not gitignored'
+expect "$(git check-ignore -q .audit/minor-backlog.tsv && echo ignored || echo tracked)" 'tracked' 'store is not gitignored'
 expect "$([ -f .gitignore ] && grep -c 'minor-backlog' .gitignore || echo 0)" '0' 'no .gitignore line written'
 orch_backlog_add "$IN" >/dev/null
-expect "$(grep -cxF '.claude/audits/minor-backlog.tsv merge=union' .gitattributes)" '1' '.gitattributes union line written once'
+expect "$(grep -cxF '.audit/minor-backlog.tsv merge=union' .gitattributes)" '1' '.gitattributes union line written once'
 
 # a legacy ignore line is removed, other lines stay
 printf 'node_modules\n.claude/audits/minor-backlog.tsv\ndist\n' > .gitignore
@@ -92,7 +92,7 @@ expect "$(orch_expand_dimensions all+visual | tr ',' '\n' | grep -cE '^(typograp
 expect "$(orch_expand_dimensions all | tr ',' '\n' | grep -cE '^(typography|ui_design|animation)$' || true)" '0' 'all excludes the three visual dimensions'
 expect "$(orch_expand_dimensions typography,copy)" 'typography,copy' 'explicit list passes through'
 
-rm -rf .claude/audits/visual-pass-head
+mkdir -p .audit
 git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm base --date='2020-01-01T00:00:00' >/dev/null
 GIT_COMMITTER_DATE='2020-01-01T00:00:00' git -c user.name=t -c user.email=t@t commit -q --amend --no-edit --date='2020-01-01T00:00:00'
 printf 'd\n' > src/d.js
@@ -103,13 +103,13 @@ OLD=$(git rev-parse HEAD)
 printf 'c\n' > src/c.js
 git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm recent >/dev/null
 expect "$(orch_visual_pass_files)" 'src/c.js' 'missing head file: only the file from today, the 3-day-old commit is outside the 1-day window'
-printf '%s\n' "$OLD" > .claude/audits/visual-pass-head
+printf '%s\n' "$OLD" > .audit/visual-pass-head
 expect "$(orch_visual_pass_files)" 'src/c.js' 'existing sha: files changed since it'
-git rev-parse HEAD > .claude/audits/visual-pass-head
+git rev-parse HEAD > .audit/visual-pass-head
 expect "$(orch_visual_pass_files)" '' 'head at HEAD: nothing to do'
 
 # cap: the most recently changed files win, the remainder is counted
-rm -f .claude/audits/visual-pass-head
+rm -f .audit/visual-pass-head
 n=1; for f in e1 e2 e3; do
   printf '%s\n' "$f" > "src/$f.js"; git add -A >/dev/null
   TS=$(( $(date +%s) - (4-n)*3600 ))
@@ -119,3 +119,19 @@ done
 expect "$(AUDIT_VISUAL_PASS_CAP=2 orch_visual_pass_files | sort | tr '\n' ' ')" 'src/c.js src/e3.js ' 'cap 2 keeps the two newest files'
 expect "$(AUDIT_VISUAL_PASS_CAP=2 orch_visual_pass_overflow)" '2' 'overflow counts the files above the cap'
 expect "$(orch_visual_pass_overflow)" '0' 'default cap 40: no overflow'
+
+# legacy fallback (2026-10-02): the old .claude/audits/ files are read until the first write, never deleted
+rm -f "$STORE" .audit/visual-pass-head
+mkdir -p .claude/audits
+printf 'k1\tux\tsrc/a.js\t1\t2026-09-30\tlegacy thing\n' > .claude/audits/minor-backlog.tsv
+expect "$(orch_backlog_count)" '1' 'legacy store is read when .audit/ has none'
+OUT=$(printf 'copy\tsrc/a.js\t2\t2026-10-02\tnew thing\n' > "$IN"; orch_backlog_add "$IN")
+expect "$(orch_backlog_count)" '2' 'first write merges the legacy entries into .audit/'
+expect "$(grep -c . "$STORE")" '2' 'write lands in .audit/'
+expect "$(grep -c . .claude/audits/minor-backlog.tsv)" '1' 'legacy file is left untouched'
+expect "$(printf '%s' "$OUT" | grep -c BACKLOG_LEGACY_FILE)" '1' 'write reports that the legacy file can be deleted'
+orch_backlog_remove "$(orch_backlog_for_files 'src/a.js' | cut -f1)" >/dev/null
+expect "$(orch_backlog_count)" '0' 'emptied .audit/ store shadows the legacy file'
+rm -f "$STORE"; rm -f .claude/audits/minor-backlog.tsv
+printf '%s\n' "$OLD" > .claude/audits/visual-pass-head
+expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/c.js src/e1.js src/e2.js src/e3.js ' 'legacy visual-pass-head is the fallback' 

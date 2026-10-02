@@ -14,12 +14,19 @@ spec-executor rounds on a HUGE diff, and 122 logs since 09-15 carry 1,900+ Minor
    exists are dropped on every write.
 
 `bin/minor-split.mjs` applies rules 1 to 3 (`audit/SKILL.md` Phase 2, "Decide per finding"). The store
-is `.claude/audits/minor-backlog.tsv` (main checkout) is a TRACKED file, committed with the code, kept sorted by key so diffs stay stable;
+is `.audit/minor-backlog.tsv` (main checkout) is a TRACKED file, committed with the code, kept sorted by key so diffs stay stable;
 `orch_backlog_add` removes the old `.gitignore` line for it and ensures `.gitattributes` carries
-`.claude/audits/minor-backlog.tsv merge=union`. It never enters audit scope (`collect-scope.sh` drops `.claude/audits/`) and a
+`.audit/minor-backlog.tsv merge=union`. It never enters audit scope (`collect-scope.sh` drops `.audit/` and `.claude/audits/`) and a
 delta of only the tsv/`.gitattributes` classifies as `prose`. It is maintained only through `orch_backlog_add`,
 `orch_backlog_for_files`, `orch_backlog_remove`, `orch_backlog_oldest` and `orch_backlog_count` in
 `bin/lib-orchestrator.sh`.
+
+**Location (moved 2026-10-02).** The first nightly run (zeit PR 437) could not update `.claude/audits/minor-backlog.tsv`
+and `visual-pass-head`: Claude Code protects `.claude/` even headless, so the next night would have redone the same
+work. Both files now live in `.audit/` at the repo root. Reads prefer `.audit/` and fall back to the legacy
+`.claude/audits/` file; the first write goes to `.audit/` and prints `BACKLOG_LEGACY_FILE=...`, which the
+report must repeat as "legacy file can be deleted" (the audit never deletes under `.claude/`). An emptied
+`.audit/` store stays as an empty file so the legacy copy is not read again.
 
 Order: every backlog write happens BEFORE `orch_marker_write` (and `orch_audited_record`), because the marker certifies
 the tracked tree and a later write would invalidate it. Line: `key  dimension  file  line  first_seen  description`.
@@ -59,17 +66,19 @@ Preconditions, before any agent dispatch:
 
 ### Step a: visual pass
 
-1. Files = `orch_visual_pass_files` (lib): changed since the sha in `.claude/audits/visual-pass-head` (tracked,
-   one line); a missing or unknown file means the last day (`git log --since='1 day ago'`). At most `${AUDIT_VISUAL_PASS_CAP:-40}`
+1. Files = `orch_visual_pass_files` (lib): changed since the sha in `.audit/visual-pass-head` (tracked,
+   one line; legacy `.claude/audits/visual-pass-head` is read when it is missing); a missing or unknown file means the last day (`git log --since='1 day ago'`). At most `${AUDIT_VISUAL_PASS_CAP:-40}`
    files per night (the most recently changed); `orch_visual_pass_overflow` is the rest. `visual-pass-head` still advances,
    and the PR body states `N Dateien wegen Limit nicht optisch geprüft` (never silent). No files: skip step a.
    Why 1 day and 40: the first dry run with a 7-day fallback listed 949 files in one repo and 268, 96, 93, 88 in
    others (12 repos), which would exhaust the usage limit on night one.
 2. `find.js` over those files with dimensions `typography,ui_design,animation`, hunk scope per the normal size
-   rules (Phase 1 `diff-size-gate.sh` thresholds).
+   rules (Phase 1 `diff-size-gate.sh` thresholds). Compute `args.hunks` first with
+   `bin/hunk-ranges.sh <base-ref> <files>` (base = the head sha, else `git rev-list -1 --before='1 day ago' HEAD`): the reviewer
+   agents cannot run `git diff`, so without it the hunk scope stays unfollowable (first nightly, 2026-10-02).
 3. Critical/Important findings join the fix wave of step b; Minors go to the backlog (`minor-split.mjs` rules
    unchanged).
-4. Write the new head sha (`git rev-parse HEAD`) to `.claude/audits/visual-pass-head` after the run, so it is
+4. Write the new head sha (`git rev-parse HEAD`) to `.audit/visual-pass-head` after the run, so it is
    committed with the PR.
 
 ### Step b: Minor backlog sweep
@@ -90,8 +99,12 @@ Preconditions, before any agent dispatch:
 Decided 2026-10-01. One scheduled run on the user's Mac walks every audited repo and runs the nightly audit
 above where there is work.
 
+Allowlist (2026-10-02, user decision: production systems only): when `~/.claude/nightly-repos.allow` exists
+(override `NIGHTLY_ALLOW_FILE`), only the repos listed there (one path per line, `~` and `#` comments allowed)
+are reported; every other repo is dropped. Their Minors stay in their backlog until a manual sweep.
+
 - `bin/nightly-repos.sh [root...]` lists candidates (git repos up to depth 4 under `$HOME/Developer` and
-  `$HOME/Local Sites` with `.claude/audits/` and a GitHub `origin`, worktrees deduped by git common dir) as
+  `$HOME/Local Sites` with `.audit/` or `.claude/audits/` and a GitHub `origin`, worktrees deduped by git common dir) as
   `path<TAB>status<TAB>detail`: `ready` (backlog desc), `skip-dirty` (default branch has unpushed local
   commits), `skip-open-pr` (open `chore/nightly-audit-*` / `chore/minor-backlog-*` PR), `skip-no-gh`, `nothing`.
   Backlog and visual files are read from `origin/<default>` after a quiet fetch, never the working tree.
@@ -100,6 +113,11 @@ above where there is work.
   temporary worktree from `origin/<default>` under `$TMPDIR` (the main checkout is never touched),
   `claude -p "Nachtlauf" --permission-mode acceptEdits` inside it, 45 min cap (`NIGHTLY_TIMEOUT_SECS`
   overrides), then worktree removal and prune. `--dry-run` only prints the plan.
+- Headless fallback (2026-10-02): in the first run `fix.js` could not be started and the session fell back to
+  single `audit-fix-agents` (the orchestrator checks their diffs). Cause not determinable: `find.js` ran through
+  the same `Workflow` tool, `Workflow` is in the skill's `allowed-tools`, `claude --help` lists no Workflow flag or
+  opt-in, and `-p` mode needs none for `--permission-mode acceptEdits`; the session's own error text was not kept.
+  Left as is. Next night, keep the session's `fix.js` error in the PR body to find the cause.
 - Report: `$HOME/.local/state/claude/nightly/YYYY-MM-DD.md`, one line per repo (PR URL, failure reason,
   timeout, or the skip status and detail); printed at the end of the run.
 - Push exception: `hooks/block-unsafe-push.sh` lets a marker-less push through only for one plain

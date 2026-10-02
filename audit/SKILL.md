@@ -237,7 +237,7 @@ ARGS2 = {...}`), replace every place the script reads `args` with `ARGS2`, and p
 path as `scriptPath`. See `.claude/audits/2026-09-21_040559-main.md` (Incidents) for the origin of
 this workaround.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, sizeResult: DIFF_SIZE_RESULT, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF } : {}) } })`,
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, sizeResult: DIFF_SIZE_RESULT, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF, hunks: HUNKS } : {}) } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`, and `HUNK_SCOPE` is
 `DIFF_SIZE_RESULT` (Phase 1, `diff-size-gate.sh`, carried via `orch_state_save`) being anything
 other than `SMALL` (i.e. `OK`, `LARGE`, or `HUGE`). `sizeResult` passes the same `DIFF_SIZE_RESULT`
@@ -247,6 +247,8 @@ value through unconditionally (unlike `hunkScope`/`baseRef`, which are only adde
 keep normal chunking; `architecture`/`docs_sync` are unaffected either way, since their chunks
 come from the cluster scout, never from file chunking. One call, one `runId`, `payments` scouts
 `STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
+
+`HUNKS` is computed by the orchestrator right before the call: `HUNKS=$(printf '%s\n' "$ALLE_DATEIEN" | xargs bash "$AUDIT_BIN/hunk-ranges.sh" "$BASE_REF")`, a JSON object `{ "<path>": [[start,end],...] | "whole" }` (changed lines of the new file plus 15 lines of context, merged). The specialists and verifiers only have Read/Grep/Glob and cannot run `git diff`, so `find.js` puts each file's ranges into their briefing instead of telling them to diff. Parse it into an object for `args.hunks`; a large one counts toward the 40 KB size estimate above and goes through the same scratchpad-copy mechanism. Without `hunks` `find.js` keeps the old "run git diff" text.
 
 **Why `hunkScope`:** on 2026-09-25 (events repo) three audits in a row reported mostly Important
 findings in untouched, pre-existing code of files the diff merely touched, turning every release
@@ -471,8 +473,9 @@ orch_progress_release
 
 "Minor-Backlog abarbeiten", "Minors abarbeiten" or "clear the minor backlog": skip find, run only the
 fix wave over the backlog, write no marker. "Nachtlauf" or "nightly audit": the combined headless run, a
-visual pass (typography, ui_design, animation over the files changed since the last pass) plus the
-backlog sweep in one PR. Procedures in `references/minor-backlog.md`.
+visual pass (typography, ui_design, animation over the files changed since the last pass, hunk ranges
+from `bin/hunk-ranges.sh` as above) plus the backlog sweep in one PR. State files live in `.audit/` (headless
+sessions cannot write under `.claude/`). Procedures in `references/minor-backlog.md`.
 
 ## Phase 5: Learning
 

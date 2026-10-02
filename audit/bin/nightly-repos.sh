@@ -25,7 +25,7 @@ for root in "${ROOTS[@]}"; do
   find "$root" -maxdepth 4 \( -name node_modules -o -name vendor -o -name Pods -o -name .build \) -prune -o -name .git -print 2>/dev/null |
   while IFS= read -r g; do
     dir=$(dirname "$g")
-    [ -d "$dir/.claude/audits" ] || continue
+    [ -d "$dir/.claude/audits" ] || [ -d "$dir/.audit" ] || continue
     url=$(git -C "$dir" config --get remote.origin.url 2>/dev/null || true)
     case "$url" in *github.com*) ;; *) continue ;; esac
     common=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null) || continue
@@ -37,6 +37,18 @@ done
 
 # Dedupe by common dir, preferring the main checkout.
 sort -t "$(printf '\t')" -k1,1 -k2,2nr "$TMP/cands" | awk -F'\t' '!seen[$1]++ { print $3 }' | sort > "$TMP/repos"
+
+# Optional allowlist (2026-10-02, user decision: nightly runs only on production systems). One repo
+# path per line, `~` allowed, `#` comments. When the file exists, every other repo is dropped silently.
+ALLOW_FILE="${NIGHTLY_ALLOW_FILE:-$HOME/.claude/nightly-repos.allow}"
+if [ -f "$ALLOW_FILE" ]; then
+  sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e "s#^~#$HOME#" "$ALLOW_FILE" | grep . |
+    while IFS= read -r a; do [ -d "$a" ] && (cd "$a" && pwd -P); done | sort -u > "$TMP/allow"
+  while IFS= read -r r; do
+    grep -qxF "$(cd "$r" && pwd -P)" "$TMP/allow" && printf '%s\n' "$r"
+  done < "$TMP/repos" > "$TMP/repos.allowed"
+  mv "$TMP/repos.allowed" "$TMP/repos"
+fi
 
 gh_ok=0
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then gh_ok=1; fi
@@ -61,7 +73,9 @@ while IFS= read -r repo; do
     printf '%s\tskip-dirty\t%s has %s unpushed local commits\n' "$repo" "$def" "$ahead" >> "$TMP/rest"; continue
   fi
 
-  backlog=$(git -C "$repo" show "origin/$def:.claude/audits/minor-backlog.tsv" 2>/dev/null | grep -c . || true)
+  # new path first (.audit/), legacy .claude/audits/ copy as fallback
+  backlog=$(git -C "$repo" show "origin/$def:.audit/minor-backlog.tsv" 2>/dev/null || git -C "$repo" show "origin/$def:.claude/audits/minor-backlog.tsv" 2>/dev/null || true)
+  backlog=$(printf '%s' "$backlog" | grep -c . || true)
   visual=$(cd "$repo" && orch_visual_pass_all_files "origin/$def" | grep -c . || true)
   vcap="${AUDIT_VISUAL_PASS_CAP:-40}"; vnote=""
   [ "${visual:-0}" -le "$vcap" ] || vnote=" (cap $vcap)"
