@@ -1,6 +1,11 @@
 // node --test audit/bin/minor-split.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { split } from './minor-split.mjs';
 
 const f = (id, severity, ...paths) => ({ id, severity, files: paths.map((path) => ({ path, lines: '1' })) });
@@ -46,4 +51,16 @@ test('a Minor alone never makes its file a fix file for backlog entries', () => 
   assert.deepEqual(r.fix, []);
   assert.deepEqual(r.ridealongBacklog, []);
   assert.deepEqual(ids(r.toBacklog), ['m']);
+});
+
+test('the CLI prints JSON when invoked through a symlink (import.meta.url is the realpath)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'minor-split-'));
+  try {
+    const link = join(dir, 'minor-split-link.mjs');
+    symlinkSync(fileURLToPath(new URL('./minor-split.mjs', import.meta.url)), link);
+    const out = execFileSync('node', [link], { input: '{"findings":[],"backlog":[]}' }).toString();
+    assert.deepEqual(JSON.parse(out), { fix: [], ridealongBacklog: [], toBacklog: [] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

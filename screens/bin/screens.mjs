@@ -25,7 +25,7 @@
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync,
-  rmSync, renameSync, chmodSync, copyFileSync, statSync, appendFileSync,
+  rmSync, renameSync, chmodSync, copyFileSync, statSync, appendFileSync, realpathSync,
 } from 'node:fs';
 import { join, dirname, basename, relative, resolve, sep } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
@@ -2765,7 +2765,7 @@ function main(argv) {
 
 const isMain = process.argv[1] && (() => {
   try {
-    return resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
   } catch {
     return false;
   }

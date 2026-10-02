@@ -16,7 +16,8 @@
 //             "backlog":  [{key, dimension, file, line, first_seen, description}] }
 //   output: { "fix": [...findings], "ridealongBacklog": [...entries], "toBacklog": [...Minors] }
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 export function split({ findings = [], backlog = [] } = {}) {
   const paths = (f) => (Array.isArray(f.files) ? f.files.map((x) => x.path) : []);
@@ -33,6 +34,7 @@ export function split({ findings = [], backlog = [] } = {}) {
   return { fix, ridealongBacklog, toBacklog };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// import.meta.url is the realpath, argv[1] keeps a symlink (~/.claude/skills/audit), so resolve it.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   process.stdout.write(JSON.stringify(split(JSON.parse(readFileSync(0, 'utf8') || '{}'))) + '\n');
 }
