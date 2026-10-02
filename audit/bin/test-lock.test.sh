@@ -25,4 +25,22 @@ check "--cmd form keys on the destination id inside a quoted string" "KEYED" \
 check "--cmd without a destination keys on the repo only" "KEYED" \
   "$(bash "$LOCK" --cmd "[ -d '$GC/claude-audit-test-lock' ] && echo KEYED" 2>&1)"
 
+
+# A linked worktree shares the main checkout's test database, so it must take the same lock.
+git -C "$TMP" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+git -C "$TMP" worktree add -q "$TMP/wt" 2>/dev/null
+check "a linked worktree locks in the main checkout's common git dir" "KEYED" \
+  "$(cd "$TMP/wt" && bash "$LOCK" --cmd "[ -d '$GC/claude-audit-test-lock' ] && echo KEYED" 2>&1)"
+
+# A waiter prints a progress line, so a caller's output-stall watchdog (deploy's test gate)
+# does not mistake waiting for the lock for a hung test run.
+mkdir "$GC/claude-audit-test-lock"
+OUT="$TMP/wait.out"
+TEST_LOCK_NOTICE_SECONDS=2 bash "$LOCK" --cmd "true" >"$OUT" 2>&1 &
+WAITER=$!
+sleep 5
+rmdir "$GC/claude-audit-test-lock"
+wait "$WAITER"
+check "a waiter reports that it is waiting" "yes" "$(grep -q 'test-lock: waiting' "$OUT" && echo yes || echo no)"
+
 [ "$FAIL" -eq 0 ] && echo "TEST_LOCK_TEST=OK" || { echo "TEST_LOCK_TEST=FAIL ($FAIL)"; exit 1; }

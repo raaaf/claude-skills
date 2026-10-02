@@ -88,6 +88,7 @@ fi
 OWNER_FILE="$LOCK_DIR/owner"
 TTL_SECONDS=900
 WAIT_MAX=960
+NOTICE_SECONDS=${TEST_LOCK_NOTICE_SECONDS:-60}   # progress line interval while waiting (even number: WAITED steps by 2)
 WAITED=0
 OWNED=0
 # Token identifying this process's hold on the lock, written into
@@ -127,6 +128,11 @@ acquire() {
     fi
     sleep 2
     WAITED=$((WAITED + 2))
+    # Periodic progress line: a caller with an output-stall watchdog (deploy's test gate
+    # kills a run after minutes without output) must not read waiting as a hang.
+    if [ $((WAITED % NOTICE_SECONDS)) -eq 0 ]; then
+      echo "test-lock: waiting for $LOCK_DIR (${WAITED}s)" >&2
+    fi
   done
   # mkdir succeeded: we own the lock. Record our token so release() can
   # verify, at cleanup time, that we still own it. If the token write
