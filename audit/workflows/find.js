@@ -339,9 +339,8 @@ function withPrivacyFold(dimensionContext, privacyDoc) {
 // One row per dimension: prompt-file number and slug, and the agent type that
 // audits it. Three hand-kept maps over the same ids (agent type, file number,
 // file slug) had to agree by discipline until 2026-09-16; they are derived from
-// this table now. ALL_DIMENSIONS below stays a literal array on purpose:
-// audit/evals/run-evals.sh scrapes that exact `const ALL_DIMENSIONS = [` line
-// at runtime, and the assertion after it keeps the two in step.
+// this table now. ALL_DIMENSIONS below stays a literal array on purpose; the
+// assertion after it keeps the two in step.
 const DIMENSION_TABLE = [
   { id: 'architecture', n: 1,  slug: 'architecture', agent: 'code-reviewer' },
   { id: 'security',     n: 2,  slug: 'security',     agent: 'security-auditor' },

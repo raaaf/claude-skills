@@ -11,7 +11,7 @@ Bash logic and prompt templates for Phase 2.5 (codebase context), Phase 3 (chall
 
 Precondition: the Bash tool must be available for the automated checks below and for the drift
 checks the architecture and risk agents run. When it is not (denied, sandboxed away), do not proceed
-silently: the agents verify by reading only, and the plan log records "drift checks manual-only" as
+silently: the agents verify by reading only, and the plan records "drift checks manual-only" as
 a limitation.
 
 ```bash
@@ -116,7 +116,7 @@ Agent(
 `{DRIFT_OUTPUT}`: before dispatch, the orchestrator runs the three drift commands itself and pastes
 their output (or `all empty`). The `plan-challenger` agent type has no Bash (seen 2026-09-26: both
 architecture and risk reported drift checks as manual-only), so without this the check silently
-degrades to reading cited lines. Record which way it ran in the plan log's `Drift check:` line.
+degrades to reading cited lines. Record which way it ran in the plan's meta section.
 
 | Agent | File | Perspective |
 |---|---|---|

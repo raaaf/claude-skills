@@ -65,7 +65,7 @@ agent is noise, most of a wave is a prompt defect. Write the number even when it
 
 ## Mandatory Field: Findings Fixed
 
-The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EVERY audit log. Trend computation in the learning log reads this line. Write `0`
+The `Findings fixed: Critical N / Important N / Minor N` line is mandatory in EVERY audit log. The cost and backlog tooling reads this line. Write `0`
 explicitly rather than leaving a category out. **Recompute, never hand-tally:** derive every
 found/fixed number by counting the itemized finding bullets in the log itself, immediately before
 writing the summary.
@@ -78,10 +78,9 @@ MUST be exactly:
     - [Severity][Dimension] file:line: description
 
 on ONE physical line: severity tag, dimension tag, `file:line`, and the description, in that order,
-never wrapped onto a continuation line. `audit/evals/run-evals.sh`'s `normalize_findings()` parses
-this exact shape to score recall; any other shape (numbered lists, bold-bullet headers with the
-description on the next line, tables) makes the finding unparseable, which scores as zero recall
-for that finding regardless of how correct or well-argued it was.
+never wrapped onto a continuation line. The shape is a contract for humans and the minor backlog (one
+grep-able line per finding); numbered lists, bold-bullet headers with the description on the next
+line and tables are not allowed.
 
 A duplicate (`duplicateOf` from `find.js`) keeps this shape and ends its description with `(duplicate of <dim>/<id>)`.
 
@@ -95,15 +94,10 @@ rules (`architecture`, `security`, `performance`, `code_quality`, `seo`, `a11y`,
 
 ## Post-log check (mandatory, before displaying the log in chat)
 
-Two mechanical checks on the log file just written:
-
-1. **Severity tags restricted to `{Critical, Important, Minor}`** and dimension tags restricted to
-   the 14 canonical ids above. A non-canonical tag is a bug in the line that wrote it: fix it to
-   the correct one, do not invent a fourth category.
-2. **If any `CONFIRMED` verdict occurred this run, `patterns.json` must be newer than the log file
-   about to be written.** Compare mtimes; if the store is older or missing, the per-verdict
-   `patterns-store.sh recur` calls did not run. Write one line under `## Incidents` instead of
-   silently back-filling.
+One mechanical check on the log file just written: **severity tags restricted to
+`{Critical, Important, Minor}`** and dimension tags restricted to the 14 canonical ids above. A
+non-canonical tag is a bug in the line that wrote it: fix it to the correct one, do not invent a
+fourth category.
 
 ## Display in chat (mandatory)
 

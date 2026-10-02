@@ -60,5 +60,4 @@ Run it against the whole project and read every hit:
 - Then plant the bug in a fixture and confirm it is caught. A check that has
   never gone red has not been tested.
 
-Add the fixture under `audit/evals/fixtures/` with its expectation, so the LLM
-path stays honest about the same class of bug.
+Keep the planted-bug case as a `*.test.sh` next to the script.

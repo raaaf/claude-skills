@@ -138,7 +138,7 @@ function flush_file() {
   # itself on any diff that touches it. Its own path is excluded for the same
   # reason the fixtures are: defining a rule is not an instance of the rule.
   skip = (file ~ /(^|\/)check-silencing\.sh$/ ||
-          file ~ /audit\/evals\/fixtures\// || file ~ /(^|\/)(vendor|node_modules|Pods|\.git)\// ||
+          file ~ /(^|\/)(vendor|node_modules|Pods|\.git)\// ||
           file ~ /(^|\/)\.claude\// ||
           file ~ /(^|\/)(dist|build|out|\.next|\.nuxt|coverage)\// ||
           file ~ /(^|\/)public\/(js|css|build|vendor)\// ||

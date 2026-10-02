@@ -114,13 +114,6 @@ CONF_HITS=$(printf '%s\n' "$FILES" | grep -E "$CONF_RE" || true)
 TPL_HITS=$(printf '%s\n' "$FILES" | grep -Ei "$TPL_RE" || true)
 YAML_HITS=$(printf '%s\n' "$FILES" | grep -Ei "$RUNTIME_YAML_RE" || true)
 
-# Eval fixtures are deliberately-broken test data, never shipped and never
-# findings (see the repo's Audit Context). A fixture does not make a diff
-# code-class, otherwise adding a test case re-triggers the full gate.
-EXEC_HITS=$(printf '%s\n' "$EXEC_HITS" | grep -v '/evals/fixtures/' || true)
-TPL_HITS=$(printf '%s\n' "$TPL_HITS" | grep -v '/evals/fixtures/' || true)
-YAML_HITS=$(printf '%s\n' "$YAML_HITS" | grep -v '/evals/fixtures/' || true)
-
 HAS_EXEC=0
 [ -n "$(printf '%s' "$EXEC_HITS$CONF_HITS$TPL_HITS$YAML_HITS" | tr -d '[:space:]')" ] && HAS_EXEC=1
 

@@ -55,7 +55,6 @@
 #   orch_verify_agents        runs verify-agents.sh against AUDIT_AGENTS_DIR; returns its rc
 #   orch_parse_stripe [root]  sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES
 #   orch_run_log <args...>    calls run-log.sh if present; never fails the caller
-#   orch_patterns_from_file recur|dismissed <file>   feeds patterns-store.sh one line at a time, each as one argv element
 #   orch_ship_value <key> [root]   prints `<key>:` from .claude/ship.md (test-command, deploy-command, health-check), else nothing (rc 1)
 #   orch_test_command_declared [root]   = orch_ship_value test-command
 #   orch_test_command [root]  declared value, else a manifest guess (composer/npm/swift/pytest), else nothing (rc 1)
@@ -132,8 +131,8 @@ orch_helper() {
 
 # Claim and touch are the same touch on the same file; claim additionally starts the
 # run's variable state from empty (orch_state_clear), so the two names read as
-# "claim once, touch after each wave". Release removes the marker only: the learning
-# phase runs after it and still reads saved values; the next claim clears them.
+# "claim once, touch after each wave". Release removes the marker only; saved values stay
+# readable until the next claim clears them.
 # Both marker paths are predictable (md5 of cwd) under a shared /tmp, so every access
 # refuses a symlink and a file another user owns (same guard as the state dir below);
 # nine runs named the unguarded touch before this landed (2026-09-16).
@@ -800,26 +799,6 @@ orch_visual_pass_head() {
 }
 
 orch_visual_pass_overflow() { orch__visual_pass_plan "${1:-}" | sed -n 2p | cut -d' ' -f2; }
-
-# Recurrence and dismissal feed, from a FILE the orchestrator wrote with the
-# Write tool, one pattern per line. A pattern is derived from a finding, i.e.
-# from audited-repo content, and must never be spliced into a command line:
-# `patterns-store.sh recur {pattern}` written out by an orchestrator was a
-# Critical on 2026-09-16 (same class of bug). Here
-# each line reaches the script as one quoted argv element, never parsed by a
-# shell. Usage: orch_patterns_from_file recur|dismissed <file>
-orch_patterns_from_file() {
-  local op="$1" file="$2" p n=0
-  case "$op" in recur|dismissed) ;; *) echo "orch_patterns_from_file: op must be recur or dismissed" >&2; return 1;; esac
-  [ -f "$file" ] || { echo "orch_patterns_from_file: no such file: $file" >&2; return 1; }
-  [ -n "${AUDIT_BIN:-}" ] || orch_resolve_audit_root || return 1
-  while IFS= read -r p || [ -n "$p" ]; do
-    [ -n "$p" ] || continue
-    bash "$AUDIT_BIN/patterns-store.sh" "$op" "$p" >/dev/null 2>&1 || true
-    n=$((n+1))
-  done < "$file"
-  echo "PATTERNS_FED=$n"
-}
 
 # /ship's health check curls a URL the audited repo wrote into .claude/ship.md. Six audit
 # runs named the unfiltered curl; run 10 filtered by host, run 11 found the numeric

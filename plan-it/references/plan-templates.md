@@ -1,8 +1,8 @@
-# Plan + Log Templates
+# Plan Templates
 
-Templates for Phase 2 (plan file) and Phase 4 (plan log).
+Templates for Phase 2 (plan file).
 
-Content: plan format (executor-grade, with drift check/STOP/done criteria) · plan log format · round heuristic
+Content: plan format (executor-grade, with drift check/STOP/done criteria) · round heuristic
 
 ## Plan Format (Phase 2)
 
@@ -106,30 +106,6 @@ Added to the plan when it matches:
 - **Schema migration** (any SwiftData/DB schema bump): rollback plan, test against real data, lightweight vs custom stage check, tombstone vs in-place.
 - **CloudKit**: schema deploy phase (pre-flight, manual Console fields), conflict strategy, race scenarios, container topology.
 - **iOS plan**: privacy and secrets hygiene, target membership / `project.yml` regeneration, known limitations. For an iOS major-version migration additionally: API fallback plan per new framework, Swift 6 hotspot list, capability matrix (region x language x model x device).
-
-## Plan Log Format (Phase 4)
-
-File: `.claude/plans/logs/{YYYY-MM-DD}-{slug}.md`
-
-```markdown
-# Plan Log — {Title}
-
-## Meta
-- Date: {DATE}
-- Rounds Phase 1 (understanding): {N}
-- Plan file: docs/plans/{date}-{slug}.md
-
-## Questions & Answers
-- {Question} → {user's answer or "assessment confirmed"}
-
-## Challenge Result
-- Concerns: {N_raw} raw -> {N_dedup} after dedupe -> {X} incorporated / {Y} accepted / {Z} rejected (always all five numbers, `0` written out)
-- Per dimension (raw): product {n} / architecture {n} / risk {n} / simplicity {n} / design {n} (all five, `0` written out; the learning retro computes the top-dimension trend from this line)
-- Drift check: {orchestrator-run | manual-only (challengers had no Bash)}
-
-## Notable
-- {Pattern or surprise, e.g. "user rejected all design concerns"}
-```
 
 ## Round Heuristic (Recommendation, Not a Hard Limit)
 

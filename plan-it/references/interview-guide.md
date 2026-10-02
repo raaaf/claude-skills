@@ -2,8 +2,8 @@
 
 Detail for Phase 1 (understanding). Read by the orchestrator when the assessment is difficult.
 
-> `Evidence:` notes below are counts from the plan-it learning retro over per-project plan logs
-> (`.claude/plans/logs/`, gitignored in each project); see `plan-it/SKILL.md` Phase 1.
+> `Evidence:` notes below are counts from the retired plan-it learning retro over per-project plan
+> logs (removed 2026-10-02); see `plan-it/SKILL.md` Phase 1.
 
 ## Step B: Codebase Scan Table
 
@@ -139,4 +139,4 @@ Bad: "Target user persona not specified. Please select: A) Admin B) End user C) 
 Plan the feature as ONE pass unless the user says otherwise. Do not propose a scope split or a
 "phase 2 later" as the recommended answer; the user overruled every such recommendation in five
 consecutive plans (two in one session). If a split seems necessary, state it as a cost in the plan's
-Known Costs, not as a question. Evidence: learning-log trend "scope-split/defer overruled", 2026-09.
+Known Costs, not as a question. Evidence: retired learning-log trend "scope-split/defer overruled", 2026-09.

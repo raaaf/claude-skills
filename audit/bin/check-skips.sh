@@ -77,7 +77,7 @@ fi
 # Eval fixtures are intentionally-broken TEST DATA, not product code: they must not
 # count as a frontend/code signal for the floor (learning 2026-07-07: a fixture
 # blade.php force-dispatched a11y/ui/ux/security for nothing).
-changed=$(collect_changed_files | grep -vE '(^|/)audit/evals/fixtures/')
+changed=$(collect_changed_files)
 
 match(){ printf '%s\n' "$changed" | grep -qiE "$1"; }
 
@@ -111,7 +111,7 @@ has_mig=0;      match '((^|/)migrations?/|(^|/)migrate/|\.migration\.)' && has_m
 # duplication of an existing helper): a diff that only adds files used to
 # route through `architecture:no-reason` unless a migration was in it
 # (learning 2026-08-11). Same code-extension filter as has_code below.
-new_files=$( { git diff --name-only --diff-filter=A "$(resolve_base_ref "$(resolve_default_branch)")"...HEAD 2>/dev/null; git diff --name-only --diff-filter=A HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u | grep -vE '(^|/)audit/evals/fixtures/' || true)
+new_files=$( { git diff --name-only --diff-filter=A "$(resolve_base_ref "$(resolve_default_branch)")"...HEAD 2>/dev/null; git diff --name-only --diff-filter=A HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u || true)
 has_new_code=0; [ -n "$new_files" ] && printf '%s\n' "$new_files" | grep -qvE '\.(md|txt|json|ya?ml|po|pot|arb|strings|xml|lock|toml|ini|cfg)$' && has_new_code=1
 has_code=0;     printf '%s\n' "$changed" | grep -qvE '\.(md|txt|json|ya?ml|po|pot|arb|strings|xml|lock|toml|ini|cfg)$' && [ -n "$changed" ] && has_code=1
 has_docs=0;     match '\.md$|(^|/)docs/|(^|/)\.env\.example$' && has_docs=1

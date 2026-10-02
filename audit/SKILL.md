@@ -29,8 +29,7 @@ hooks:
 
 ## Phase 0: Pre-flight checks
 
-Learning backlog question + open `audit-finding` issues/PR dedup context:
-`references/pre-flight-checks.md`. Skip entirely when `AUDIT_SKIP_LEARNING_CHECK=1`.
+Open `audit-finding` issues/PR dedup context: `references/pre-flight-checks.md`. Skip entirely when `AUDIT_SKIP_LEARNING_CHECK=1`.
 
 ## Phase 1: Scope & pre-checks
 
@@ -185,9 +184,9 @@ case "$GIT_COMMON_DIR" in
   *) PROJECT_ROOT="$(git rev-parse --show-toplevel)" ;;
 esac
 AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
-# The filename is a contract, not a preference: audit/evals/run-evals.sh matches
-# `YYYY-MM-DD_HHMMSS-<branch>.md` to find the log it scores, and a name outside that
-# shape makes the fixture UNMEASURED rather than a miss. `git branch --show-current`
+# The filename is a contract, not a preference: audit/bench/run-case.sh and the
+# nightly/backlog tooling match `YYYY-MM-DD_HHMMSS-<branch>.md` to find the log, and a name
+# outside that shape is not found. `git branch --show-current`
 # is EMPTY on a detached HEAD, which would produce a trailing `-.md` and fail the
 # match, so fall back to the short SHA. Do not rename this file by hand.
 AUDIT_BRANCH=$(git branch --show-current | tr '/' '-')
@@ -278,24 +277,6 @@ If a stage did not run, record `0 dispatches` and `not run`; if the clock is una
 run concurrently, so their wall times overlap and must not be added to estimate total audit time.
 This telemetry is descriptive only and must not change findings, status, routing, or gates.
 
-**Feed the recurrence store NOW, before deciding anything.** Write one normalized pattern per
-`CONFIRMED` verdict to a file (Write tool, one per line: short, no file or line, so the same problem
-elsewhere in the codebase collapses onto the same key) and hand it to the store:
-
-```bash
-for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }
-orch_patterns_from_file recur {path of the file you just wrote}   # a pattern is finding text and never goes on a command line
-```
-
-This step runs after EVERY `find.js` call of the run, including a re-run of single dimensions (a copy/ux re-run on 2026-09-20 produced 5 confirmed findings that reached the store only via the Phase 5 back-fill). It belongs HERE, at the verdicts, and not in the fix wave: `AUDIT_FIX_SCOPE=none` runs no
-fix wave at all, so a counter that only fed from the fix wave would never move on that common case.
-Until 2026-09-18 this duty was documented in `references/learning-phase.md` and
-`agents/learning-agent.md` as living in `workflows/fix.js` and `agents/fix-agent.md`, and it was in
-neither: 192 audit logs on disk had produced 36 store entries, so `patterns.json` had effectively
-never been fed by the loop, and every retro reasoned about recurrence from a counter that did not
-move. Phase 5 Step 0.5 still checks the count and back-fills, but that is the repair, not the path.
-
 **Decide per finding:** the verified `/code-review` findings (`references/builtin-reviews.md`) join the `find.js` findings here, logged as `[code_quality]`. `REFUTED` is discarded before any file is touched, with the verifier's reason. Of the rest (`CONFIRMED` and `UNCERTAIN`), every Critical and Important goes to `fix.js` unless `AUDIT_FIX_SCOPE=none` (find & log only). Severity floor (decided 2026-10-02): a non-REFUTED finding (`CONFIRMED` or `UNCERTAIN`) whose dimension is `security`, `privacy` or `payments`, including a `/code-review` finding re-tagged `security`, is never Minor: `minor-split.mjs` raises it to Important before the split, so it always goes to the fix wave and never to the backlog (acceptance test: a policy bypass and a missing dispute backfill ended as backlogged Minors). Minors are split deterministically (decided 2026-10-01: a zeit audit had 249 raw findings, 224 of them Minor, and fixing all meant ~17 spec-executor rounds): a Minor rides along only when every file it names already receives a Critical/Important fix in this wave; every other Minor goes to the backlog (`.claude/audits/minor-backlog.tsv`, a tracked file with `merge=union` in `.gitattributes`, kept sorted by key), also with `AUDIT_FIX_SCOPE=none`. Backlog entries whose file receives a fix in this wave join that file's `fixes[]` entry as `verdict: "UNCERTAIN"`; the fixer re-checks them against current code, and entries that come back `FIXED` or `DISCARDED` leave the backlog. Write the split input to a file (Write tool; finding text never goes on a command line):
 
 **Duplicates:** `find.js` also returns `duplicates` (`[{keep, dropped[]}]`) and sets `duplicateOf: {dimension, id}` on every dropped finding, found by shared file, nearby lines and similar wording across all dimensions. Write the dropped ones in the log under `## Findings per Dimension` with `(duplicate of <dim>/<id>)` appended inside the description (the line shape stays `- [Severity][Dimension] file:line: description`), and never send them to `fix.js`: `minor-split.mjs` returns them as `duplicates`, outside `fix` and `toBacklog`.
@@ -376,9 +357,8 @@ Every finding line, in every section listed above, MUST be exactly `- [Severity]
 file:line: description` on one physical line, e.g. `- [Critical][payments] app/Jobs/Charge.php:27:
 PaymentIntent::create has no idempotency_key, a queue retry double-charges the customer.` Do not
 wrap the file:line or description onto a continuation line, and do not substitute a numbered list,
-a bold-bullet header, or a table. `audit/evals/run-evals.sh`'s `normalize_findings()` parses exactly
-this shape to score recall; any other shape makes every finding on it unparseable, which reads as a
-capability regression (recall collapsed to zero) rather than what it actually is, a formatting slip.
+a bold-bullet header, or a table. The shape is a contract for humans and the minor backlog: one
+grep-able line per finding, never a formatting variant.
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
@@ -471,10 +451,6 @@ fix wave over the backlog, write no marker. "Nachtlauf" or "nightly audit": the 
 quality pass (the ten non-gate dimensions over whole commits since the last pass, hunk ranges
 from `bin/hunk-ranges.sh` as above) plus the backlog sweep in one PR. State files live in `.audit/` (headless
 sessions cannot write under `.claude/`). Procedures in `references/minor-backlog.md`.
-
-## Phase 5: Learning
-
-Skipped when `CLAUDE_EFFORT=low`. Otherwise read `references/learning-phase.md`: dispatch the learning agent (`run_in_background: false`), parse its output, write learning-log/trends/suppressions.
 
 ## Phase 6: PR (after push)
 

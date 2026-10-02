@@ -34,7 +34,6 @@ REQUIRED=(
   finding-verifier.md
   fix-verifier.md
   prompt-template.md
-  learning-agent.md
 )
 
 MISSING=""

@@ -83,7 +83,7 @@ Verification commands in `{WORKDIR}` are allowed — in the worktree case regard
 
 ## `/plan-it reconcile` — Maintain the Plan Backlog
 
-Processes what has happened since the last session. Read `docs/plans/*.md` (plus `.claude/plans/logs/` for context), per plan:
+Processes what has happened since the last session. Read `docs/plans/*.md`, per plan:
 
 - **Implemented** (done criteria hold on current HEAD, spot-check the cheap ones): mark as implemented in the plan. Never delete plan files — they are the record.
 - **Drifted** (drift check trips): check whether the problem still exists at all (may have been fixed incidentally). If it does: refresh the current-state sections + planned-at SHA. If it doesn't: mark as done/moot with a 1-line justification.

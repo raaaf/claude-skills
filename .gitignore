@@ -5,8 +5,7 @@ node_modules/
 
 .claude/audits/cache.json
 .claude/plans/logs/
+.claude/audits/.patterns-recurrence-baseline
 .claude/audits/full-audit-state.md
 .claude/audits/full-audit-batches/
-audit/evals/results/
 
-.claude/audits/.patterns-recurrence-baseline

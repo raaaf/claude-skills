@@ -92,7 +92,7 @@ collect_changed_files() {
 }
 
 # The root under which the per-repo audit store lives (.claude/audits: logs,
-# learning-log.md, patterns.json, suppressions.json, run markers). Derived from
+# suppressions.json, run markers). Derived from
 # `--git-common-dir`, not `--show-toplevel`: in a linked worktree the toplevel
 # is the worktree's own root, so every store would fork per worktree
 # (reproduced 2026-08-21, patterns.json; 2026-09-03, learning-log and
@@ -150,7 +150,7 @@ hash_of() {
   fi
 }
 
-# Shared with cache-write.sh and patterns-store.sh: add
+# Used by cache-write.sh: add
 # rel_path to repo_root/.gitignore, but only when it would actually change
 # something. Skips a no-op mutation on a tracked file (a .gitignore entry
 # cannot un-track it) and a redundant append when a broader rule already

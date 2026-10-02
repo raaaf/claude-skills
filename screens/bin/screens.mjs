@@ -1173,7 +1173,7 @@ function generateDemoPassword() {
 
 // Adds `entry` to the project's `.gitignore` unless `git check-ignore`
 // already covers it (same "check before appending" pattern as `audit/bin/
-// cache-write.sh`/`patterns-store.sh`, repo CLAUDE.md Gotchas): a broader
+// cache-write.sh`, repo CLAUDE.md Gotchas): a broader
 // existing rule is left alone, and the append never happens twice.
 function ensureGitignoreEntry(root, entry, runner = defaultRunner) {
   const checkRes = runner('git', ['-C', root, 'check-ignore', '-q', entry], {});

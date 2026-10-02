@@ -26,7 +26,7 @@ DIR="${1:?usage: match-guidelines.sh <guidelines-dir>}"
 # Same file set as collect-scope.sh (same rule as check-skips.sh); fixtures = test data, no guideline signal.
 lib_missing=0
 if command -v collect_changed_files >/dev/null 2>&1; then
-  changed=$(collect_changed_files | grep -vE '(^|/)audit/evals/fixtures/')
+  changed=$(collect_changed_files)
 else
   echo "match-guidelines: lib-git-base.sh missing or collect_changed_files undefined -- cannot derive changed files, treating every guideline as always-applicable" >&2
   changed=""

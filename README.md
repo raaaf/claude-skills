@@ -45,11 +45,11 @@ Symlinks, not copies: an edit in the clone is live in the next session. Needs Cl
 - `.claude/plan-guidelines.md`: rules every plan challenger gets.
 - `AUDIT_DIMENSIONS=security,a11y` and `AUDIT_FIX_SCOPE=none|all` skip the start question, for CI or headless runs. `none` means find and log only; any other value fixes every finding incl. Minor.
 
-Audit logs land in `.claude/audits/`, plans in `docs/plans/`, learnings in `.claude/audits/learning-log.md`. Logs reference `file:line`, never file contents, so they are safe to commit.
+Audit logs land in `.claude/audits/`, plans in `docs/plans/`. Logs reference `file:line`, never file contents, so they are safe to commit.
 
 ## Development
 
-`CLAUDE.md` is the contributor guide: conventions, invariants, and the gotchas that cost real time. `bash audit/bin/verify-agents.sh audit/agents` checks the agent roster, `audit/evals/` holds the fixture-based recall suite.
+`CLAUDE.md` is the contributor guide: conventions, invariants, and the gotchas that cost real time. `bash audit/bin/verify-agents.sh audit/agents` checks the agent roster, `audit/bench/` holds the five historical benchmark cases and a runner.
 
 ## Inspiration
 

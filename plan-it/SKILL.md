@@ -31,34 +31,6 @@ Tone + examples in `references/interview-guide.md`.
 
 ---
 
-## Phase 0: Learning Backlog Check
-
-Check whether unprocessed learning suggestions from earlier plans are still open:
-
-```bash
-LOG="$(git rev-parse --show-toplevel)/.claude/plans/learning-log.md"
-[ -f "$LOG" ] && grep -c "^- \[ \] " "$LOG" 2>/dev/null || echo 0
-```
-
-If `>= 1`: implement the open suggestions without asking — changes to `plan-it/agents/*.md` or
-`plan-it/references/*.md`, then `[ ]` → `[x]` — and continue with Phase 0.5. Report in one line
-which ones were applied. Leave a suggestion open (and say so) only when implementing it needs a
-decision the log does not contain.
-
-**Commit the applied items right away**, in the skill source repo, same rule and same reason as
-`audit/references/pre-flight-checks.md`: one commit, no push, only the files this application
-changed, and if the repo already had unrelated uncommitted changes, stage only your own and say so.
-Without this the edits sit in the working tree with nothing recording which run wrote them. That is
-not hypothetical: on 2026-09-15 seven modified `plan-it/*` files were found uncommitted, the
-learning log carried no matching marker, and the evidence claims in the new text ("4 of 8 plans")
-could not be traced to any log in the repo.
-
-If `0`: go straight to Phase 0.5.
-
-Skip via env var `PLAN_SKIP_LEARNING_CHECK=1`.
-
----
-
 ## Phase 0.5: Effort Configuration
 
 ```bash
@@ -67,23 +39,20 @@ case "$CLAUDE_EFFORT" in
   low)
     CHALLENGE_DIMS="product,architecture,risk"  # 3 of 5
     SKIP_EVALUATION=1
-    SKIP_LEARNING=1
     SKIP_CODEBASE_SCAN=1   # Phase 1 step B skipped
     ;;
   medium)
     CHALLENGE_DIMS="product,architecture,risk,simplicity"  # 4 of 5
     SKIP_EVALUATION=1
-    SKIP_LEARNING=0
     SKIP_CODEBASE_SCAN=0
     ;;
   high|xhigh|*)
     CHALLENGE_DIMS="product,architecture,risk,simplicity,design"  # voll
     SKIP_EVALUATION=0
-    SKIP_LEARNING=0
     SKIP_CODEBASE_SCAN=0
     ;;
 esac
-echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run) | Learning=$([ $SKIP_LEARNING -eq 1 ] && echo skip || echo run)"
+echo "Effort=$CLAUDE_EFFORT | Challenges=$CHALLENGE_DIMS | Eval=$([ $SKIP_EVALUATION -eq 1 ] && echo skip || echo run)"
 
 # Run-ledger start marker (see audit/bin/run-log.sh header) — before any real
 # work. Each SKILL.md Bash block is a fresh shell, so every block that calls an
@@ -96,11 +65,11 @@ type orch_run_log >/dev/null 2>&1 || echo "lib-orchestrator.sh not found; run lo
 orch_run_log --start --skill plan-it
 ```
 
-| Level | Challenges | Codebase Scan | Evaluation | Learning |
-|---|---|---|---|---|
-| low | 3 (product, arch, risk) | skip | skip | skip |
-| medium | 4 (+ simplicity) | run | skip | run |
-| high / xhigh (default) | 5 (all) | run | run | run |
+| Level | Challenges | Codebase Scan | Evaluation |
+|---|---|---|---|
+| low | 3 (product, arch, risk) | skip | skip |
+| medium | 4 (+ simplicity) | run | skip |
+| high / xhigh (default) | 5 (all) | run | run |
 
 ---
 
@@ -140,10 +109,9 @@ Before we compare — what's the actual goal?
 → My take: {likely goal based on context}
 ```
 
-> `Evidence:` notes in this skill and in `references/interview-guide.md` cite counts from the plan-it
-> learning retro (`agents/learning-agent.md`) over the per-project plan logs in each project's
-> `.claude/plans/logs/`, which are gitignored there. They are reproducible from those logs, not from
-> this repo, which is why a grep here finds nothing behind them (2026-09-15).
+> `Evidence:` notes in this skill and in `references/interview-guide.md` cite counts from the retired
+> plan-it learning retro (removed 2026-10-02) over per-project plan logs that were gitignored in each
+> project. They are not reproducible from this repo, which is why a grep here finds nothing behind them.
 
 **Framing symptom check:** when the user's question is a surface or label question (naming, wording, which brand, which label), first check whether a feature gap sits behind it before answering the surface question. Evidence: 4 of 8 plans had a hidden real goal.
 
@@ -324,57 +292,13 @@ Evaluation: {overall verdict}
 
 ---
 
-## Phase 4: Learning
-
-**Run log (shared step, fires whether or not learning runs):**
+## Phase 4: Run log
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_run_log --skill plan-it --outcome plan_written \
-  --counts "challenges={N},learning={run|skip}"
+  --counts "challenges={N}"
 ```
-
-**Skip if `SKIP_LEARNING=1`** (low effort). Run **Run log** above (`learning=skip`), then end of audit.
-
-TodoWrite: `Write plan log and learning` (in_progress)
-
-### Write the Plan Log
-
-```bash
-PLAN_LOG_DIR="$(git rev-parse --show-toplevel 2>/dev/null)/.claude/plans/logs"
-mkdir -p "$PLAN_LOG_DIR"
-```
-
-File: `$PLAN_LOG_DIR/{YYYY-MM-DD}-{slug}.md`. Format template in `references/plan-templates.md`.
-
-### Dispatch the Learning Agent (structured output, no self-write)
-
-```
-Agent(
-  prompt: "Read agents/learning-agent.md and execute the process.
-    PROJECT_ROOT={PROJECT_ROOT}
-    AKTUELLES_LOG={content of the plan log just written}",
-  subagent_type: plan-learning-agent,
-  run_in_background: false
-)
-```
-
-The agent returns **structured output**. **Subagents cannot write to `.claude/` paths** (hardcoded protection). The orchestrator parses it and writes it itself, which only works if the agent runs in the foreground. Subagents background by default and return in a later turn; `run_in_background: false` keeps the parse step in this turn.
-
-### Parse the Output
-
-The agent delivers two blocks between `LEARNING_RESULT_START` and `LEARNING_RESULT_END`:
-- `LEARNING_LOG_ENTRY` (markdown up to `LEARNING_LOG_ENTRY_END`) — retro with a `- [ ]` backlog list
-- `TRENDS_BLOCK` (markdown between `TRENDS_BLOCK_START` and `TRENDS_BLOCK_END`) — top snapshot
-
-### The Orchestrator Writes
-
-- Append `LEARNING_LOG_ENTRY` to `.claude/plans/learning-log.md` (or create it if this is the first plan).
-- Insert `TRENDS_BLOCK` at the top of `learning-log.md`, or replace the existing block (top snapshot, not an append).
-
-TodoWrite: `Write plan log and learning` (completed)
-
-Run **Run log** above (`learning=run`).
 
 ## Phase 5: Execute & Reconcile (Invocation Variants)
 

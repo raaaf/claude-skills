@@ -90,5 +90,4 @@ A failed `orch_review_worktree_create` (empty `REVIEW_WORKTREE`) counts as a fai
    input of `minor-split.mjs` (Phase 2, "Decide per finding"): Critical/Important to the fix wave, Minors
    split as usual, the Phase 4 `UNCERTAIN` marker rule unchanged. There is no Opus refuter pass for
    them; the fix-verifier still peer-reviews the fix.
-6. Log them under `[code_quality]` with their ids, and feed one pattern per `CONFIRMED` verdict into the
-   recurrence store like every other finding.
+6. Log them under `[code_quality]` with their ids.

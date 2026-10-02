@@ -145,7 +145,7 @@ does the specific decision this script makes have any evidence behind it other t
 read the code.
 
 The class is defined by the failure mode, not by the directory. It covers `audit/bin/*.sh`,
-`audit/evals/*.sh`, `audit/hooks/*.sh`, `*/bin/*.sh` in any skill, and the `hooks:` declarations in
+`audit/hooks/*.sh`, `*/bin/*.sh` in any skill, and the `hooks:` declarations in
 skill frontmatter. That last one is not a script at all, which is exactly why it gets missed: a
 PreToolUse guard is inert when the frontmatter uses a key the schema rejects, or when the script
 blocks with `exit 1` where only `exit 2` blocks. The scope is the shape of the problem, not a

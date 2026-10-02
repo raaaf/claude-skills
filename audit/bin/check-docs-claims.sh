@@ -4,7 +4,7 @@
 # claims that point at things which do not exist. Docs drift (CLAUDE.md /
 # README / SKILL.md going stale) is this repo's most recurrent finding
 # category (7 occurrences, top category in four consecutive audits, per
-# `patterns-store.sh recurrences`). check-docs-path-drift.sh already
+# the retired recurrence store). check-docs-path-drift.sh already
 # mechanises the "a doc names a file THIS DIFF just deleted" half; this
 # script covers the complementary, diff-independent half: a claim that has
 # been false for a while, found by checking every doc against the tree as
@@ -32,8 +32,7 @@
 # Bias is toward precision, not recall (a false positive here would fire on
 # every future audit forever): bare filenames without a "/", glob patterns
 # (`*`), template placeholders (`{name}`), variable interpolation (`$...`,
-# `${...}`), tilde/absolute/URL paths, and anything under `audit/evals/`
-# (deliberately-broken fixtures) are all skipped. Only single-line inline
+# `${...}`), tilde/absolute/URL paths are all skipped. Only single-line inline
 # code spans are scanned — fenced multi-line ```bash blocks are out of
 # scope, matching the "Markdown table or inline code" brief; those blocks
 # mostly carry variables and loops that this lightweight scanner cannot
@@ -194,11 +193,6 @@ check_candidate() {
 
   cc_first="${cc_tok%%/*}"
   is_topdir "$cc_first" || return
-
-  # Eval fixtures deliberately contain broken/missing content — never a finding.
-  case "$cc_tok" in
-    audit/evals/*) return ;;
-  esac
 
   # Directory-only mentions (no extension on the final segment) are skipped:
   # a bare directory is often describing an OPTIONAL/conditional source (e.g.

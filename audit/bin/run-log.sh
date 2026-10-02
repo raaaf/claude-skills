@@ -19,8 +19,8 @@
 # Derived fields (not passed in): ts, project, project_path, head, branch.
 # Outside a git repo these are empty strings, never a failure.
 # `project_path` is the MAIN checkout (via `--git-common-dir`), not the
-# worktree the run happened in: run-stats.sh keys its per-repo conditions on
-# this field, and a worktree-keyed ledger reported `ledger-stale` for a repo
+# worktree the run happened in: a worktree-keyed ledger reported `ledger-stale` (a since-removed
+# anomaly report keyed on this field) for a repo
 # that had been audited daily from a linked worktree (learning 2026-09-02).
 # `head`/`branch` still describe the worktree the run actually audited.
 #
@@ -48,8 +48,7 @@
 # older than that is a crashed/abandoned session, not a slow run, and letting
 # it through would poison the ledger with a fictional multi-hour (or
 # multi-day) duration. No marker, or a stale one: `duration_s` is omitted
-# exactly as before `--start` existed, never invented. (`run-stats.sh` had a
-# `duration-outlier` condition reading this field; it was deleted on
+# exactly as before `--start` existed, never invented. (A `duration-outlier` anomaly check read this field; it was deleted on
 # 2026-08-26 after 0 fires in 45 runs, so `duration_s` is now history only.)
 #
 # THIS SCRIPT MUST NEVER BREAK THE CALLING SKILL. Every failure path — jq
