@@ -2,8 +2,7 @@
 #
 # Tests for orch_unaudited_record/orch_unaudited_base/orch_unaudited_clear
 # (lib-orchestrator.sh): the quick-fix collection mechanism /ship and /audit
-# share. Builds a throwaway git repo per case, same shape as
-# diff-size-gate.test.sh.
+# share. Builds a throwaway git repo per case.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

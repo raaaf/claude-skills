@@ -2,8 +2,7 @@
 //
 // screens.mjs: deterministic CLI backing the /screens skill.
 //
-// Node >=20, built-ins only (see audit/bin/compute-floor.mjs for the same
-// convention: no npm, no package.json in this repo).
+// Node >=20, built-ins only (no npm, no package.json in this repo).
 //
 // Subcommands: plan, up, down, promote, marketing, index, trust, affected.
 // Each subcommand emits `KEY=value` lines and, from the second-to-last
@@ -1172,8 +1171,7 @@ function generateDemoPassword() {
 }
 
 // Adds `entry` to the project's `.gitignore` unless `git check-ignore`
-// already covers it (same "check before appending" pattern as `audit/bin/
-// cache-write.sh`, repo CLAUDE.md Gotchas): a broader
+// already covers it (check before appending): a broader
 // existing rule is left alone, and the append never happens twice.
 function ensureGitignoreEntry(root, entry, runner = defaultRunner) {
   const checkRes = runner('git', ['-C', root, 'check-ignore', '-q', entry], {});

@@ -117,8 +117,7 @@ else
     # None of the conventional names exist either. Derive the source set from
     # what the repo actually tracks: top-level directories holding
     # git-tracked files, minus the same dependency/build directories every
-    # consumer already prunes (EXCLUDE in scope-context-batching.md,
-    # FIND_OPTS in detect-mobile.sh) -- so a caller that skips those prunes
+    # consumer already prunes -- so a caller that skips those prunes
     # still doesn't sweep in node_modules/vendor/build output.
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       # -c core.quotePath=false disables git's default C-quoting of non-ASCII

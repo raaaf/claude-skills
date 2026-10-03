@@ -27,7 +27,7 @@ check allow 'git status'
 check ask 'git push'
 check ask 'git push -u origin feature/x'
 check ask 'git push -u origin chore/nightly-audit-2026-10-02'
-check ask 'git push -u origin chore/minor-backlog-2026-10-02'
+check ask 'git push -u origin chore/cleanup-sweep-2026-10-02'
 check ask 'git push -u origin chore/backlog-x'
 touch "$MARKER"
 check allow 'git push -u origin feature/x'

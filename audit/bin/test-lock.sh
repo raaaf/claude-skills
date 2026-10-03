@@ -155,7 +155,7 @@ release() {
   # with the substitution's own internal subshell/wait, which corrupts
   # bash 3.2's trap bookkeeping and prints spurious internal warnings
   # ("run_pending_traps: bad value in trap_list[15]", "Terminated: 15 ...")
-  # to stderr -- noise the fix-verifier would otherwise read as test
+  # to stderr -- noise a reviewing agent would otherwise read as test
   # output. Doing the lock-directory cleanup FIRST and killing the
   # heartbeat LAST avoids the interleaving entirely (verified: 0/40 noisy
   # runs with this order vs. ~50-70% noisy with kill-first, regardless of

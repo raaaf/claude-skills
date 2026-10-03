@@ -17,7 +17,7 @@
 #    call orch_state_load, and the name must be saved by an orch_state_save in the
 #    same SKILL.md (lib-orchestrator.sh header). Names a block sets itself
 #    (assignment, read, for, local, export, printf -v, or the lib setters
-#    orch_resolve_audit_root / orch_parse_stripe / orch_state_load) and the few
+#    orch_resolve_audit_root / orch_state_load) and the few
 #    environment names below are not reads of an earlier block. A save of a name the
 #    saving block never set is a hit too: it would store empty and mask the read.
 #
@@ -40,11 +40,8 @@ SAVED_NAMES=$(cat $FILES | awk '
         k=split(substr(line, RSTART, RLENGTH), p, " "); for (i=2; i<=k; i++) if (p[i] != "") print p[i]
         line=substr(line, RSTART+RLENGTH) } }' | sort -u | tr '\n' ' ')
 # Names that legitimately come from outside any block: the session environment, the
-# skill runtime ($ARGUMENTS is substituted before the model sees the file), and the
-# perf-measure eval output. The headless inputs AUDIT_DIMENSIONS and AUDIT_FIX_SCOPE are
-# deliberately NOT here: a block reads them as `NAME="${NAME:-...}"`, an assignment, and a bare
-# read of AUDIT_DIMENSIONS in a later block was exactly the run-10 Critical.
-ENV_NAMES="HOME PWD TMPDIR PATH CLAUDE_SKILL_DIR CLAUDE_EFFORT CLAUDE_PROJECT_DIR ARGUMENTS OSTYPE IFS RANDOM USER PERF_MEASURE_CMD"
+# skill runtime ($ARGUMENTS is substituted before the model sees the file).
+ENV_NAMES="HOME PWD TMPDIR PATH CLAUDE_SKILL_DIR CLAUDE_EFFORT CLAUDE_PROJECT_DIR ARGUMENTS OSTYPE IFS RANDOM USER"
 HITS=0
 for f in $FILES; do
   out=$(awk -v file="${f#"$ROOT"/}" -v envnames="$ENV_NAMES" -v savednames="$SAVED_NAMES" '
@@ -76,8 +73,7 @@ for f in $FILES; do
         n=substr(tmp, RSTART, RLENGTH); sub(/.*[ ]/, "", n); sets[n]=1
         tmp=substr(tmp, RSTART+RLENGTH)
       }
-      if (line ~ /orch_resolve_audit_root/) { sets["AUDIT_ROOT"]=1; sets["AUDIT_BIN"]=1; sets["AUDIT_AGENTS_DIR"]=1 }
-      if (line ~ /orch_parse_stripe/) { sets["STRIPE"]=1; sets["STRIPE_MODE"]=1; sets["STRIPE_RECURRING"]=1; sets["STRIPE_FILES"]=1 }
+      if (line ~ /orch_resolve_audit_root/) { sets["AUDIT_ROOT"]=1; sets["AUDIT_BIN"]=1 }
     }
     function noteReads(line,   tmp, n) {
       tmp=line

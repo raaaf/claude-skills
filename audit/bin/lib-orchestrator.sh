@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
 # Shared library: the orchestrator prologue every skill used to paste.
-# Sourced by the bash blocks in audit/, delegate/,
-# ship/ and plan-it/ SKILL.md. Before 2026-09-16 each of them carried its own
-# copy of helper resolution, cwd hashing, the in-progress marker, the Stripe
-# parse and the agent-roster guard, with variations; three audit runs named
-# the drift as one condition, so it is one file now.
+# Sourced by the bash blocks in audit/, delegate/, ship/, plan-it/ and screens/ SKILL.md. Before
+# 2026-09-16 each of them carried its own copy of helper resolution, cwd hashing and the
+# in-progress marker, with variations; three audit runs named the drift as one condition, so it
+# is one file now.
 #
 # EVERY BASH BLOCK IS A FRESH SHELL. The Bash tool starts a new process per block, so a
 # function sourced in Phase 1 does not exist in Phase 4 (the pre-refactor SKILL.md files
@@ -35,7 +34,7 @@
 #
 # Functions (all bash 3.2, no arrays exported, no side effects beyond the
 # variables named):
-#   orch_resolve_audit_root   sets AUDIT_ROOT, AUDIT_BIN, AUDIT_AGENTS_DIR; returns 1 if none found
+#   orch_resolve_audit_root   sets AUDIT_ROOT, AUDIT_BIN; returns 1 if none found
 #   orch_helper <script.sh>   prints "$AUDIT_BIN/<script>" if it exists, else nothing (rc 1)
 #   orch_hash_passed          md5 of $PWD WITHOUT newline  -> /tmp/claude-audit-passed-*
 #   orch_hash_progress        md5 of pwd  WITH newline     -> /tmp/claude-audit-in-progress-*
@@ -52,8 +51,6 @@
 #   orch_url_host <url>       prints the host of an http(s) URL (userinfo dropped, [IPv6] kept whole), else nothing
 #   orch_host_public <host>   rc 0 unless loopback/private/link-local/ULA/mapped, *.local/*.internal, or a
 #                             numeric host that is not a canonical dotted quad (decimal, octal, hex, short forms)
-#   orch_verify_agents        runs verify-agents.sh against AUDIT_AGENTS_DIR; returns its rc
-#   orch_parse_stripe [root]  sets STRIPE, STRIPE_MODE, STRIPE_RECURRING, STRIPE_FILES
 #   orch_run_log <args...>    calls run-log.sh if present; never fails the caller
 #   orch_ship_value <key> [root]   prints `<key>:` from .claude/ship.md (test-command, deploy-command, health-check), else nothing (rc 1)
 #   orch_test_command_declared [root]   = orch_ship_value test-command
@@ -63,28 +60,11 @@
 #                           collect into one /audit later
 #   orch_unaudited_base     prints the recorded base sha, else nothing (rc 1)
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
-#   orch_audited_record <files> <dims>   after a PASSED audit: stores path, blob sha and dims per file in the worktree's claude-audited-blobs
-#   orch_audited_add_dims <files> <dims>   after orch_audited_record: merges extra dims into each file's line when the blob sha matches, else writes a line with just those dims
-#   orch_audited_filter <files> <dims>   prints the files NOT already certified by a passed audit (same blob sha, dims a superset), input order kept
-#   orch_backlog_add <tsv>   Minor backlog (.audit/minor-backlog.tsv, TRACKED, merge=union in .gitattributes; legacy .claude/audits/ copy read until the first write, then BACKLOG_LEGACY_FILE= is printed): appends the
-#                           5-column entries dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description from a FILE, key computed
-#                           here, deduped by key, entries whose file no longer exists dropped; prints BACKLOG_ADDED=n
-#   orch_backlog_for_files <files>   prints the stored 6-column entries (key first) whose file is in the newline list
-#   orch_backlog_remove <keys>       removes the entries with those keys (newline list), drops missing files; prints BACKLOG_REMOVED=n
-#   orch_backlog_oldest <n>          prints the n oldest stored entries (first_seen, then key; 6 columns, key first)
-#   orch_backlog_count               prints the number of stored entries (0 when none)
-#   orch_expand_dimensions <value> [profile]   `all` -> TIER_GUENSTIG of the diff-profile.sh output (else the gate set security, privacy, architecture), `all+full` (alias `all+nightly`) -> all 13, anything else unchanged
-#   orch_frontend_ext_re      prints FRONTEND_EXT_RE from lib-git-base.sh (literal fallback mirrors collect-scope.sh)
-#   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
-#   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES, generic wiring dropped unless the path names a payment concern (payments trigger)
-#   orch_sensitive_paths <changed>   prints the non-test changed paths on an auth/payment/privacy surface (reserved for a future /security-review, not dispatched today)
+#   orch_sensitive_paths <changed>   prints the non-test changed paths on an auth/payment/privacy surface (feeds the sensitive-path checklist agent of /audit Phase 2)
 #   orch_usage_start         saves AUDIT_USAGE_T0 (epoch) to the state; call right after orch_progress_claim (the claim clears the state)
 #   orch_usage_report        prints `AUDIT_COST_USD=<x.xx> AUDIT_COST_WEEK_PCT=<y.y> WEEK_USD=<z> WEEK_PCT_EST=<w>` (n/a per value on error, never fails): this session plus *audit-review* sessions since T0, and the week since the last reset in ~/.claude/usage-limits.conf
 #   orch_review_worktree_create <base_ref> [files]   temporary detached worktree at base_ref with the audit scope (base_ref..working tree, untracked files as intent-to-add) applied as UNCOMMITTED changes; prints its path (for the built-in /code-review)
 #   orch_review_worktree_remove <path>   removes that worktree (also after a failed review)
-#   orch_seo_surface <root>             prints yes|no (+ reason on stderr): does the repo have an SEO surface (sitemap, meta/og/JSON-LD/per-page title)
-#   orch_seo_relevant <changed> <root>  prints yes|no (+ reason on stderr): SEO surface AND a frontend/routes file in the diff, never PLATFORM=native
-#   orch_payments_floor <dims> <stripe_files> <root> <floor_json>   merges the payments scout floor into FLOOR_FILES
 #
 # There are two hash conventions, deliberately two functions with two names:
 # passed and progress. `orch_hash_progress` stays md5 of bare cwd because
@@ -115,11 +95,10 @@ orch_resolve_audit_root() {
   for c in "${CLAUDE_SKILL_DIR:-}" \
            "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit" \
            "$HOME/.claude/skills/audit"; do
-    [ -n "$c" ] && [ -d "$c/agents" ] && [ -f "$c/bin/verify-agents.sh" ] && { AUDIT_ROOT="$c"; break; }
+    [ -n "$c" ] && [ -f "$c/bin/lib-orchestrator.sh" ] && { AUDIT_ROOT="$c"; break; }
   done
   [ -n "$AUDIT_ROOT" ] || return 1
   AUDIT_BIN="$AUDIT_ROOT/bin"
-  AUDIT_AGENTS_DIR="$AUDIT_ROOT/agents"
   return 0
 }
 
@@ -226,11 +205,12 @@ orch_tree_hash() {
   git rev-parse "$c^{tree}" 2>/dev/null
 }
 # orch_marker_write <selected> <skipped> <incomplete> <degraded>
+# /audit passes: selected = reviews run, skipped = 0, incomplete = failed reviews plus open Critical/Important findings, degraded = 0.
 #
 # The coverage arguments are mandatory, and that is the point: the gate used to live only in
 # SKILL.md prose, so an orchestrator that misread its own run result could call this helper and
-# get a green marker anyway. On 2026-09-17 three runs passed find.js its arguments by pointer
-# instead of by value, every scout got an empty scope, 13 of 14 dimensions came back `skipped`,
+# get a green marker anyway. On 2026-09-17 three runs of the former pipeline passed their arguments by pointer
+# instead of by value, 13 of 14 reviews came back `skipped`,
 # and the marker was written over a diff nobody had examined. Refusing here makes the numbers
 # impossible to skip past.
 orch_marker_write() {
@@ -238,16 +218,16 @@ orch_marker_write() {
   for n in "$selected" "$skipped" "$incomplete" "$degraded"; do
     case "$n" in
       ''|*[!0-9]*)
-        echo "orch_marker_write: needs <selected> <skipped> <incomplete> <degraded> as counts from the find.js result" >&2
+        echo "orch_marker_write: needs <selected> <skipped> <incomplete> <degraded> as counts" >&2
         return 1 ;;
     esac
   done
-  [ "$selected" -gt 0 ] || { echo "orch_marker_write: refusing, no dimension was selected" >&2; return 1; }
-  [ "$incomplete" -eq 0 ] || { echo "orch_marker_write: refusing, $incomplete dimension(s) incomplete" >&2; return 1; }
-  [ "$degraded" -eq 0 ] || { echo "orch_marker_write: refusing, $degraded dimension(s) degraded" >&2; return 1; }
+  [ "$selected" -gt 0 ] || { echo "orch_marker_write: refusing, no review was selected" >&2; return 1; }
+  [ "$incomplete" -eq 0 ] || { echo "orch_marker_write: refusing, $incomplete review(s) or open finding(s) incomplete" >&2; return 1; }
+  [ "$degraded" -eq 0 ] || { echo "orch_marker_write: refusing, $degraded review(s) degraded" >&2; return 1; }
   # One empty dimension is a repo without a frontend; most of them empty is a broken run.
   if [ $((skipped * 2)) -gt "$selected" ]; then
-    echo "orch_marker_write: refusing, $skipped of $selected dimension(s) skipped (more than half)" >&2
+    echo "orch_marker_write: refusing, $skipped of $selected review(s) skipped (more than half)" >&2
     return 1
   fi
   local t m; t=$(orch_tree_hash) || t=""; m=$(orch__passed_path)
@@ -273,22 +253,6 @@ orch_marker_delta() {   # the paths that changed since the marker's tree, for th
   local m rec now; m=$(orch__passed_path)
   rec=$(head -1 "$m" 2>/dev/null) || return 1; now=$(orch_tree_hash) || return 1
   git diff --name-only "$rec" "$now" 2>/dev/null
-}
-
-orch_verify_agents() {
-  [ -n "${AUDIT_BIN:-}" ] || orch_resolve_audit_root || { echo "verify-agents: audit root not found"; return 1; }
-  bash "$AUDIT_BIN/verify-agents.sh" "$AUDIT_AGENTS_DIR"
-}
-
-orch_parse_stripe() {
-  local root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-  local out
-  out="$(bash "$AUDIT_BIN/detect-stripe.sh" "$root" 2>/dev/null)" || out=""
-  STRIPE=$(printf '%s\n' "$out" | sed -n 's/^STRIPE=//p'); STRIPE="${STRIPE:-no}"
-  STRIPE_MODE=$(printf '%s\n' "$out" | sed -n 's/^STRIPE_MODE=//p')
-  STRIPE_RECURRING=$(printf '%s\n' "$out" | sed -n 's/^STRIPE_RECURRING=//p')
-  # BSD sed: `p;}` not `p}` (that exact slip emptied this list twice on 2026-09-14)
-  STRIPE_FILES=$(printf '%s\n' "$out" | sed -n '/^STRIPE_FILES<<END$/,/^END$/{/^STRIPE_FILES<<END$/d;/^END$/d;p;}')
 }
 
 orch_run_log() {
@@ -331,9 +295,8 @@ orch_unaudited_record() {
   f=$(orch__unaudited_path) || return 1
   [ -f "$f" ] && return 0
   base=$(git rev-parse --verify '@{u}' 2>/dev/null) || {
-    local lib="${AUDIT_BIN:-$HOME/.claude/skills/audit/bin}/lib-git-base.sh"
     # shellcheck disable=SC1090
-    [ -f "$lib" ] && . "$lib"
+    [ -f "$ORCH_LIB_DIR/lib-git-base.sh" ] && . "$ORCH_LIB_DIR/lib-git-base.sh"
     command -v resolve_default_branch >/dev/null 2>&1 || return 1
     db=$(resolve_default_branch)
     base=$(resolve_base_ref "$db")
@@ -353,99 +316,6 @@ orch_unaudited_clear() {
   rm -f "$f"
 }
 
-# Content-hash memory of what a PASSED audit certified (2026-09-30: 37% of audit-find cost of
-# 09-27..09-30 went to runs where over half the files had been audited before; the shop/printify
-# worktree ran 13 audits in 24 h). Keyed on the blob sha of the working-tree file, so commits,
-# amends and rebases do not matter. Per worktree (git-dir, not the common dir): another
-# worktree's working tree is a different content state.
-orch__audited_path() {
-  local d
-  d=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null) || return 1
-  printf '%s/claude-audited-blobs' "$d"
-}
-
-# Lines are path<TAB>blob-sha<TAB>dims. A re-record replaces the path's line; a listed path
-# that no longer exists loses its line; every other line stays.
-orch_audited_record() {
-  local files="$1" dims="$2" f tmp p sha sorted line
-  f=$(orch__audited_path) || return 1
-  sorted=$(printf '%s' "$dims" | tr ',' '\n' | grep . | sort -u | paste -sd, -)
-  tmp=$(mktemp) || return 1
-  if [ -f "$f" ]; then
-    while IFS= read -r line; do
-      [ -n "$line" ] || continue
-      p=${line%%$'\t'*}
-      printf '%s\n' "$files" | grep -Fxq -- "$p" || printf '%s\n' "$line"
-    done < "$f" > "$tmp"
-  fi
-  while IFS= read -r p; do
-    [ -n "$p" ] && [ -f "$p" ] || continue
-    sha=$(git hash-object -- "$p" 2>/dev/null) || continue
-    printf '%s\t%s\t%s\n' "$p" "$sha" "$sorted" >> "$tmp"
-  done <<EOF
-$files
-EOF
-  mv "$tmp" "$f"
-}
-
-# Merges dims into the lines of the listed files: same blob sha keeps the old dims and adds the
-# new ones, a different sha (or no line) gets a fresh line with only the new dims. Other lines
-# stay. Call AFTER orch_audited_record; payments' scope is a subset of the audited files.
-orch_audited_add_dims() {
-  local files="$1" dims="$2" f tmp p sha line rec recdims merged
-  f=$(orch__audited_path) || return 1
-  tmp=$(mktemp) || return 1
-  if [ -f "$f" ]; then
-    while IFS= read -r line; do
-      [ -n "$line" ] || continue
-      p=${line%%$'\t'*}
-      printf '%s\n' "$files" | grep -Fxq -- "$p" || printf '%s\n' "$line"
-    done < "$f" > "$tmp"
-  fi
-  while IFS= read -r p; do
-    [ -n "$p" ] && [ -f "$p" ] || continue
-    sha=$(git hash-object -- "$p" 2>/dev/null) || continue
-    recdims=""
-    if [ -f "$f" ]; then
-      rec=$(awk -F'\t' -v p="$p" -v s="$sha" '$1 == p && $2 == s { l = $0 } END { print l }' "$f")
-      [ -z "$rec" ] || recdims=$(printf '%s' "$rec" | cut -f3)
-    fi
-    merged=$(printf '%s,%s' "$recdims" "$dims" | tr ',' '\n' | grep . | sort -u | paste -sd, -)
-    printf '%s\t%s\t%s\n' "$p" "$sha" "$merged" >> "$tmp"
-  done <<EOF
-$files
-EOF
-  mv "$tmp" "$f"
-}
-
-# Prints the files that still need an audit. Covered needs all three: a record line, an equal
-# blob sha, recorded dims a superset of the requested ones. Anything else prints the file.
-orch_audited_filter() {
-  local files="$1" dims="$2" f p sha rec recsha recdims d ok
-  f=$(orch__audited_path 2>/dev/null) || f=""
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    ok=0
-    if [ -n "$f" ] && [ -f "$f" ] && [ -f "$p" ]; then
-      sha=$(git hash-object -- "$p" 2>/dev/null) || sha=""
-      rec=$(awk -F'\t' -v p="$p" '$1 == p { l = $0 } END { print l }' "$f")
-      if [ -n "$sha" ] && [ -n "$rec" ]; then
-        recsha=$(printf '%s' "$rec" | cut -f2)
-        recdims=$(printf '%s' "$rec" | cut -f3)
-        if [ "$recsha" = "$sha" ]; then
-          ok=1
-          for d in $(printf '%s' "$dims" | tr ',' ' '); do
-            case ",$recdims," in *",$d,"*) ;; *) ok=0 ;; esac
-          done
-        fi
-      fi
-    fi
-    [ "$ok" = 1 ] || printf '%s\n' "$p"
-  done <<EOF
-$files
-EOF
-}
-
 orch_test_command_declared() { orch_ship_value test-command "${1:-}"; }
 
 # /audit's variant: the declared command, else the manifest's own. /ship deliberately
@@ -462,50 +332,9 @@ orch_test_command() {
   fi
 }
 
-# "Which files are frontend?" has exactly one definition, FRONTEND_EXT_RE in
-# lib-git-base.sh (CLAUDE.md Gotchas).
-# Prints the shared pattern; the literal fallback mirrors collect-scope.sh.
-orch_frontend_ext_re() {
-  local lib="${AUDIT_BIN:-$HOME/.claude/skills/audit/bin}/lib-git-base.sh"
-  # shellcheck disable=SC1090
-  [ -f "$lib" ] && . "$lib"
-  printf '%s' "${FRONTEND_EXT_RE:-\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$}"
-}
-
-# payments.md always applies once the payments dimension runs (the detector has
-# already established a Stripe integration), but its applies_to path regex may
-# not match a generic file in the surface, so match-guidelines.sh can omit it.
-# Prints GUIDELINE_MATCHES with the line appended when missing..
-orch_payments_guidelines() {
-  local matches="$1"
-  if printf '%s\n' "$matches" | grep -q '^payments\.md'; then printf '%s' "$matches"
-  else printf '%s\npayments.md\tmandatory\tscoped' "$matches"
-  fi
-}
-
-# Payments trigger: changed paths that sit in the Stripe surface, test files excluded.
-# 2026-09-30 (events): tests/Pest.php, a test helper, is in STRIPE_FILES; touching it alone
-# started the payments dimension (12 agents, 41 USD, 35 findings, all in unchanged code).
-# Test paths: tests/ test/ spec/ __tests__/ segments, *Test.php, *.test.*, *.spec.*.
-# 2026-10-02 (acceptance test, 7-file diff): routes/console.php sits in STRIPE_FILES, so payments ran,
-# scanned the whole Stripe surface and reported only pre-existing code. Generic wiring (routes/, config/,
-# bootstrap/, app/Console/Kernel.php, app/Providers/, lang files, views) is dropped too, UNLESS the path
-# itself names a payment concern (stripe|payment|checkout|billing|invoice|refund|dispute|webhook|cashier|
-# subscription|ticket).
-ORCH_WIRING_RE='(^|/)(routes|config|bootstrap|lang)/|^app/Console/Kernel\.php$|(^|/)app/Providers/|(^|/)resources/(views|lang)/'
-ORCH_PAYMENT_PATH_RE='stripe|payment|checkout|billing|invoice|refund|dispute|webhook|cashier|subscription|ticket'
-orch_payments_touched() {
-  local changed="$1" stripe="$2" nontest
-  nontest=$(printf '%s\n' "$changed" | grep -Ev '(^|/)(tests?|spec|__tests__)/|Test\.php$|\.(test|spec)\.' || true)
-  comm -12 \
-    <({ printf '%s\n' "$nontest" | grep -Ev "$ORCH_WIRING_RE" || true
-        printf '%s\n' "$nontest" | grep -E "$ORCH_WIRING_RE" | grep -Ei "$ORCH_PAYMENT_PATH_RE" || true; } | sed '/^$/d' | sort -u) \
-    <(printf '%s\n' "$stripe" | sort -u)
-}
-
 # Sensitive surface (decided 2026-10-02): changed non-test paths on an auth, payment or privacy surface get an
-# extra /security-review next to the built-in /code-review. Path-based and deliberately broad: a miss costs a
-# security finding, a false hit costs one review. Style/asset/prose files never count (tokens.css is a design
+# extra checklist review (references/sensitive-checklist.md) next to the built-in /code-review. Path-based and
+# deliberately broad: a miss costs a security finding, a false hit costs one review. Style/asset/prose files never count (tokens.css is a design
 # token file, a privacy.md is prose). `auth` must not match author(s); CamelCase Auth* names are caught separately.
 ORCH_SENSITIVE_RE='authent|authoriz|auth([^a-z]|$)|login|logout|passw(or)?d|token|session|middleware|polic(y|ies)|permission|payment|stripe|checkout|invoice|billing|webhook|gdpr|privacy|consent|personal[-_ ]?data'
 orch_sensitive_paths() {
@@ -556,192 +385,12 @@ orch_review_worktree_remove() {
   return 0
 }
 
-# SEO gate (decided 2026-10-01, 122 audit logs): seo cost 4% of audit-find cost for 12 Important and
-# 0 Critical in 12 days (worst cost per finding), mostly on logged-in apps. It runs only where SEO can
-# matter: an SEO surface exists in the repo AND the diff touches a frontend or routes file.
-# Surface = a sitemap (path or route) or views emitting meta description / og: / twitter: / JSON-LD /
-# a per-page <title>. public/robots.txt alone is no signal (Laravel ships one by default).
-# Cheap: one find (vendor dirs pruned, 4000-file cap) and two greps that stop at the first hit.
-orch_seo_surface() {
-  local root="$1" files hit
-  orch__backlog_libs
-  files=$(find "$root" \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
-    \( -iname '*sitemap*' -o -name '*.php' -o -name '*.html' -o -name '*.htm' -o -name '*.vue' -o -name '*.svelte' \
-    -o -name '*.astro' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.ts' -o -name '*.js' -o -name '*.erb' \
-    -o -name '*.twig' -o -name '*.njk' -o -name '*.hbs' -o -name '*.ejs' -o -name '*.liquid' -o -name '*.py' -o -name '*.rb' \) \
-    -print 2>/dev/null | grep -Ev "$VENDOR_DIR_RE" | head -4000) || true
-  hit=$(printf '%s\n' "$files" | grep -i 'sitemap' | head -1) || true
-  if [ -n "$hit" ]; then echo "SEO surface: sitemap file $hit" >&2; echo yes; return 0; fi
-  hit=$(printf '%s\n' "$files" | grep -E '(^|/)(routes?|urls?)[^/]*\.(php|js|ts|py|rb)$|(^|/)routes?/' | tr '\n' '\0' | xargs -0 grep -il 'sitemap' 2>/dev/null | head -1) || true
-  if [ -n "$hit" ]; then echo "SEO surface: sitemap route in $hit" >&2; echo yes; return 0; fi
-  hit=$(printf '%s\n' "$files" | grep -Ev '\.(ts|js|py|rb)$' | tr '\n' '\0' | xargs -0 grep -lE \
-    "name=[\"']description|property=[\"']og:|name=[\"']twitter:|application/ld\+json|<title[^>]*>[^<]*(@yield|@section|\{\{|\{%|<\?|\\\$title|\\\$slot)" 2>/dev/null | head -1) || true
-  if [ -n "$hit" ]; then echo "SEO surface: meta/title markup in $hit" >&2; echo yes; return 0; fi
-  echo "no SEO surface (no sitemap, no meta description/og/twitter/JSON-LD/per-page title in views)" >&2
-  echo no
-}
-
-orch_seo_relevant() {
-  local changed="$1" root="$2" re surface
-  if [ "${PLATFORM:-}" = native ]; then echo "SEO skipped: PLATFORM=native" >&2; echo no; return 0; fi
-  surface=$(orch_seo_surface "$root") || true
-  [ "$surface" = yes ] || { echo no; return 0; }
-  re=$(orch_frontend_ext_re)
-  if printf '%s\n' "$changed" | grep -Eq "$re|(^|/)routes?/|(^|/)(routes?|urls?)[^/]*\.(php|js|ts|py|rb)$"; then
-    echo "SEO surface present and diff touches a frontend or routes file" >&2; echo yes
-  else
-    echo "SEO surface present, but the diff touches no frontend or routes file" >&2; echo no
-  fi
-}
-
-# Merges the payments scout floor (computed over STRIPE_FILES, not the shared
-# scope) into the FLOOR_FILES JSON. Usage:
-#   FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")
-# No payments in the selection, or no jq: prints the input unchanged (a NOTE on
-# stderr for the jq case).
-orch_payments_floor() {
-  local dims="$1" stripe_files="$2" root="$3" floor="$4" pay
-  case ",$dims," in *,payments,*) ;; *) printf '%s' "$floor"; return 0;; esac
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "NOTE payments floor: jq unavailable, payments floor computed over the shared scope only" >&2
-    printf '%s' "$floor"; return 0
-  fi
-  pay=$(printf '%s\n' "$stripe_files" | node "${AUDIT_BIN:?}/compute-floor.mjs" "$root" "payments") || { printf '%s' "$floor"; return 0; }
-  jq -s '.[0] * .[1]' <(printf '%s' "$floor") <(printf '%s' "$pay")
-}
-
-# Minor backlog (decided 2026-10-01): Minors that did not ride along with a Critical/Important fix
-# of their own file wait here and join that file's fixes (as UNCERTAIN) in a later wave. Store root:
-# audit_store_root (the main checkout). The file is TRACKED, kept
-# sorted by key so diffs stay stable; .gitattributes marks it merge=union. Every write must happen
-# BEFORE orch_marker_write: the marker certifies the tracked tree.
-# Line: key<TAB>dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description. The key is
-# file|normalize-suppression("[dimension] description"), so reworded repeats of one finding collapse.
 # zsh (the Bash tool's shell) has no BASH_SOURCE; ${(%):-%x} is its sourced-file path. Without this the
-# dir resolved to the cwd and every lib-git-base.sh source failed (orch-zsh-source.test.sh).
+# dir resolved to the cwd and the lib-git-base.sh source in orch_unaudited_record failed (orch-zsh-source.test.sh).
 if [ -n "${BASH_SOURCE[0]:-}" ]; then ORCH__SRC="${BASH_SOURCE[0]}"
 elif [ -n "${ZSH_VERSION:-}" ]; then eval 'ORCH__SRC=${(%):-%x}'
 else ORCH__SRC="$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; fi
 ORCH_LIB_DIR=$(cd "$(dirname "$ORCH__SRC")" && pwd)
-orch__backlog_root() { orch__backlog_libs; audit_store_root; }
-orch__backlog_libs() { command -v gitignore_ensure >/dev/null 2>&1 || . "$ORCH_LIB_DIR/lib-git-base.sh"; }   # called in the main shell too: a source inside $(...) is lost
-# Write target: .audit/ at the repo root (moved out of .claude/ 2026-10-02: headless sessions cannot write there).
-# orch__backlog_read_path prefers it and falls back to the legacy .claude/audits/ file until the first write.
-orch__backlog_path() { local r; r=$(orch__backlog_root) || return 1; printf '%s/.audit/minor-backlog.tsv' "$r"; }
-orch__backlog_read_path() {
-  local f l; f=$(orch__backlog_path) || return 1
-  l="${f%/.audit/minor-backlog.tsv}/.claude/audits/minor-backlog.tsv"
-  if [ ! -f "$f" ] && [ -f "$l" ]; then printf '%s' "$l"; else printf '%s' "$f"; fi
-}
-
-# Moves $1 over the store after dropping every entry whose file is gone; an empty result removes the store.
-orch__backlog_commit() {
-  local tmp="$1" f r out line file
-  f=$(orch__backlog_path) || return 1
-  r=$(orch__backlog_root) || return 1
-  out=$(mktemp) || return 1
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -n "$line" ] || continue
-    file=$(printf '%s' "$line" | cut -f3)
-    [ -f "$r/$file" ] && printf '%s\n' "$line"
-  done < "$tmp" > "$out"
-  rm -f "$tmp"
-  if [ -s "$out" ]; then mkdir -p "$(dirname "$f")" && LC_ALL=C sort -t "$(printf '\t')" -k1,1 "$out" > "$f" && rm -f "$out"; elif [ -f "$r/.claude/audits/minor-backlog.tsv" ]; then mkdir -p "$(dirname "$f")" && : > "$f"; rm -f "$out"   # empty file shadows the legacy copy
-  else rm -f "$out" "$f"; fi
-  return 0
-}
-
-# One line, tabs and newlines to spaces, at most 50 words (a finding text is audited-repo content: no secret values).
-orch__backlog_clean() { tr '\t\r\n' '   ' | awk '{ n = (NF > 50 ? 50 : NF); s = ""; for (i = 1; i <= n; i++) s = s (i > 1 ? " " : "") $i; print s }'; }
-
-orch_backlog_add() {
-  local in="$1" f rf r tmp line dim file ln seen desc key n=0
-  [ -f "$in" ] || { echo "orch_backlog_add: no such file: $in" >&2; return 1; }
-  orch__backlog_libs
-  f=$(orch__backlog_path) || return 1
-  r=$(orch__backlog_root) || return 1
-  tmp=$(mktemp) || return 1
-  rf=$(orch__backlog_read_path)
-  [ -f "$rf" ] && cat "$rf" > "$tmp"
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -n "$line" ] || continue
-    dim=$(printf '%s' "$line" | cut -f1 | orch__backlog_clean)
-    file=$(printf '%s' "$line" | cut -f2 | orch__backlog_clean)
-    ln=$(printf '%s' "$line" | cut -f3 | orch__backlog_clean)
-    seen=$(printf '%s' "$line" | cut -f4 | orch__backlog_clean)
-    desc=$(printf '%s' "$line" | cut -f5- | orch__backlog_clean)
-    [ -n "$dim" ] && [ -n "$file" ] && [ -n "$desc" ] || continue
-    [ -f "$r/$file" ] || continue
-    [ -n "$seen" ] || seen=$(date +%F)
-    key="$file|$(printf '[%s] %s' "$dim" "$(printf '%s' "$desc" | sed -E 's/[[:punct:]]+$//')" | bash "$ORCH_LIB_DIR/normalize-suppression.sh")"
-    awk -F'\t' -v k="$key" '$1 == k { found = 1 } END { exit !found }' "$tmp" && continue
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$dim" "$file" "$ln" "$seen" "$desc" >> "$tmp"
-    n=$((n+1))
-  done < "$in"
-  orch__backlog_commit "$tmp" || return 1
-  echo "BACKLOG_ADDED=$n"
-  orch__backlog_legacy_note "$r"
-  orch__backlog_repo_setup "$r"
-}
-
-# The legacy file is never deleted here (.claude/ is protected); the report tells the user to remove it.
-orch__backlog_legacy_note() { [ ! -f "$1/.claude/audits/minor-backlog.tsv" ] || echo "BACKLOG_LEGACY_FILE=.claude/audits/minor-backlog.tsv (migrated to .audit/, can be deleted)"; }
-
-# The store is tracked: drop the exact .gitignore line older versions added, make sure .gitattributes
-# carries the union-merge line (appended once, file created when missing). Symlinked files are not touched.
-orch__backlog_repo_setup() {
-  local r="$1" rel='.audit/minor-backlog.tsv' old='.claude/audits/minor-backlog.tsv' t
-  if [ -f "$r/.gitignore" ] && [ ! -L "$r/.gitignore" ] && grep -qxF "$old" "$r/.gitignore"; then
-    t=$(mktemp) || return 0
-    grep -vxF "$old" "$r/.gitignore" > "$t" || true
-    cat "$t" > "$r/.gitignore"; rm -f "$t"
-  fi
-  [ -L "$r/.gitattributes" ] && return 0
-  grep -qxF "$rel merge=union" "$r/.gitattributes" 2>/dev/null || printf '%s merge=union\n' "$rel" >> "$r/.gitattributes"
-}
-
-orch_backlog_for_files() {
-  local f; f=$(orch__backlog_read_path) || return 0
-  [ -f "$f" ] || return 0
-  ORCH_LIST="$1" awk -F'\t' 'BEGIN { n = split(ENVIRON["ORCH_LIST"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 } $3 in want' "$f"
-}
-
-orch_backlog_remove() {
-  local f tmp before after
-  f=$(orch__backlog_read_path) || return 0
-  [ -f "$f" ] || { echo "BACKLOG_REMOVED=0"; return 0; }
-  tmp=$(mktemp) || return 1
-  ORCH_LIST="$1" awk -F'\t' 'BEGIN { n = split(ENVIRON["ORCH_LIST"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") drop[a[i]] = 1 } !($1 in drop)' "$f" > "$tmp"
-  before=$(grep -c . "$f"); after=$(grep -c . "$tmp" || true)
-  orch__backlog_commit "$tmp" || return 1
-  echo "BACKLOG_REMOVED=$((before - after))"
-}
-
-orch_backlog_oldest() {
-  local f; f=$(orch__backlog_read_path) || return 0
-  [ -f "$f" ] || return 0
-  LC_ALL=C sort -t "$(printf '\t')" -k5,5 -k1,1 "$f" | awk -v n="${1:-0}" 'NR <= n'
-}
-
-orch_backlog_count() {
-  local f; f=$(orch__backlog_read_path 2>/dev/null) || { echo 0; return 0; }
-  if [ -f "$f" ]; then grep -c . "$f" || true; else echo 0; fi
-}
-
-# Headless AUDIT_DIMENSIONS spellings (decided 2026-10-03): `all` is the Guenstig tier of the diff profile
-# ($2, the key=value output of diff-profile.sh: TIER_GUENSTIG=...), the base gate set (security, privacy,
-# architecture) when no profile is given. `all+full` selects all 13, `all+nightly` stays an alias; an explicit
-# list always passes through.
-orch_expand_dimensions() {
-  local gate="security,privacy,architecture" tier
-  case "${1-}" in
-    all)
-      tier=$(printf '%s\n' "${2-}" | sed -n 's/^TIER_GUENSTIG=//p' | head -1)
-      printf '%s\n' "${tier:-$gate}" ;;
-    all+full|all+nightly) printf '%s\n' "architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy" ;;
-    *) printf '%s\n' "${1-}" ;;
-  esac
-}
 
 # /ship's health check curls a URL the audited repo wrote into .claude/ship.md. Six audit
 # runs named the unfiltered curl; run 10 filtered by host, run 11 found the numeric

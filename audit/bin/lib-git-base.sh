@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 #
 # Shared library: resolve the diff base for audit scripts.
-# Sourced by collect-scope.sh, diff-size-gate.sh, pre-check scripts,
-# check-skips.sh, and match-guidelines.sh.
+# Sourced by collect-scope.sh, pre-checks.sh and the check-*.sh scripts.
 #
 # Exports:
 #   DEFAULT_BRANCH — default branch name (main, master, develop, trunk, …)
@@ -69,7 +68,7 @@ resolve_base_ref() {
   printf '%s' "$BASE_REF"
 }
 
-# Shared with check-skips.sh and match-guidelines.sh: the changed-files set
+# The changed-files set
 # for the current audit scope. Union of:
 #   1. committed since BASE_REF (resolve_base_ref) up to HEAD
 #   2. working tree vs HEAD (covers staged AND unstaged in one diff)
@@ -109,77 +108,13 @@ audit_store_root() {
   esac
 }
 
-# Canonical "is this a frontend file" extension pattern (grep -E form).
-# Shared by collect-scope.sh (which files land in the FRONTEND scope list) and
-# check-skips.sh (which dimensions the routing floor forces back on).
-#
-# These two were written independently and drifted: collect-scope knew
-# xml/storyboard/xib but not sass/less, check-skips knew sass/less but not
-# xml/storyboard/xib. So a changed .sass file forced a11y/ui/ux/animation on
-# but never appeared in the frontend file list those workers were handed, and
-# a changed .storyboard did the reverse. This is the union of both, defined
-# once so the two can no longer disagree.
-#
-# Swift/Kotlin/Dart count as frontend on purpose: native projects need the
-# a11y/UI/UX/animation workers too (see PLATFORM in detect-framework.sh).
-# Over-matching is the safe direction here — an extra dimension running costs
-# a worker, a missed one costs coverage.
+# Canonical "is this a frontend file" extension pattern (grep -E form), defined once.
+# Used by collect-scope.sh (which files land in the FRONTEND scope list). Swift/Kotlin/Dart
+# count as frontend on purpose: native projects have UI files too (see PLATFORM in
+# detect-framework.sh).
 FRONTEND_EXT_RE='\.(blade\.php|html?|vue|tsx?|jsx?|css|scss|sass|less|styl|svelte|astro|swift|kt|kts|dart|xml|storyboard|xib)$'
-
-# The 13 unconditional audit dimensions in worker order (audit/agents/{1..13}-*.md);
-# the conditional 14th, payments, is deliberately not listed, its gate lives in
-# audit/SKILL.md Phase 1.5. Only consumer today: check-skips.sh, itself unwired
-# since the 2026-09-05 rebuild (see CLAUDE.md Commands). verify-agents.sh keeps
-# its own hardcoded roster and never reads this. The canonical list is
-# DIMENSION_TABLE in audit/workflows/find.js.
-AUDIT_DIMS="architecture security performance code_quality seo a11y typography ui_design ux animation docs_sync copy privacy"
 
 # Dependency, build and tooling directories that no audit check should walk
 # into (grep -E form, matches a path segment). Consumers that use `find`
 # translate this into their own -prune arguments.
 VENDOR_DIR_RE='(^|/)(node_modules|vendor|\.git|dist|build|\.next|\.nuxt|target|Pods|\.venv|venv|__pycache__)/'
-
-# Shared with cache-write.sh and cache-check.sh: sha256 of a file, with a
-# shasum fallback for systems without sha256sum. Do not change the hashing
-# behaviour, cache keys depend on it staying identical across both callers.
-hash_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
-
-# Used by cache-write.sh: add
-# rel_path to repo_root/.gitignore, but only when it would actually change
-# something. Skips a no-op mutation on a tracked file (a .gitignore entry
-# cannot un-track it) and a redundant append when a broader rule already
-# covers the path (check-ignore, not a literal grep, so ".claude/audits/"
-# still matches "cache.json"). Any mutation that does happen is announced on
-# stdout so it shows up in the audit log instead of being a silent side
-# effect on a file the audit run does not own.
-#
-# Usage: gitignore_ensure <repo_root> <rel_path> [<check_path>]
-# check_path defaults to rel_path -- pass a more specific path (e.g. the
-# actual output directory) when rel_path itself is a pattern rather than a
-# path that exists yet.
-gitignore_ensure() {
-  local repo_root="$1" rel_path="$2" check_path="${3:-$2}"
-  # A symlinked .gitignore is never written to: ">>" follows the symlink and
-  # would append outside the repo, and git itself ignores a symlinked
-  # .gitignore (check-ignore never reports it as covering anything), so the
-  # else branch below would otherwise re-append on every single run
-  # (reproduced: three runs against a symlinked .gitignore produced three
-  # appended lines in the link target). -L checks the link itself, no
-  # dereference.
-  if [ -L "$repo_root/.gitignore" ]; then
-    echo "NOTE: $repo_root/.gitignore is a symlink; refusing to follow it. Not touching it -- add '$rel_path' to it manually if needed."
-  elif git -C "$repo_root" ls-files --error-unmatch "$rel_path" >/dev/null 2>&1; then
-    echo "NOTE: $rel_path is tracked by git; .gitignore cannot exclude it. Run 'git rm --cached $rel_path' if that was not intended."
-  elif git -C "$repo_root" check-ignore -q "$check_path" 2>/dev/null; then
-    echo "$rel_path already ignored, .gitignore left unchanged"
-  else
-    printf '\n%s\n' "$rel_path" >> "$repo_root/.gitignore"
-    echo "Added $rel_path to .gitignore (was not previously ignored)"
-  fi
-}

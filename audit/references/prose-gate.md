@@ -4,11 +4,10 @@ Read this when `DIFF_CLASS=prose` (computed in Phase 1), or when you are tempted
 
 ## The problem it solves
 
-`/audit` is a pre-push gate calibrated for code that ships to users. At effort high it dispatches up
-to twelve dimensions, verifies every Critical and Important finding with a fresh adversarial
-verifier, and peer-reviews every fix. On a diff of that kind, that is exactly right.
+`/audit` is a pre-push gate calibrated for code that ships to users: a built-in code review of the
+diff, a triage and a fix round. On a diff of that kind, that is exactly right.
 
-Applied to a diff that only changes prose, the same machinery still finds something, because finding
+Applied to a diff that only changes prose, a review still finds something, because finding
 something is what it is built to do. And every finding it fixes produces a new diff, which by the
 repo's own rule deserves an audit before it is pushed.
 
@@ -32,22 +31,18 @@ config, no template or stylesheet. Documentation, guidelines, agent definitions 
 prose. Eval fixtures are exempt from the code signal on purpose, since they are deliberately broken
 test data that is never shipped, and adding a test case should not re-trigger the full gate.
 
-On `prose` (rewritten 2026-10-02):
+On `prose` (rewritten 2026-10-02, adapted 2026-10-03):
 
-- **no LLM dimension and no built-in review.** `/audit` empties the scope (`ALLE_DATEIEN`) in Phase 1.5,
-  so `find.js`, the `/code-review` subagent and the fix wave do not run, and the
-  start question is skipped. The run is a pass with zero findings, the same path as an empty filtered set
-  (`audit/SKILL.md`, Phase 4 marker paragraph).
+- **no built-in review and no checklist agent.** `/audit` runs Phase 1 only (`audit/SKILL.md`), skips
+  Phases 2 to 4 and goes to Phase 5. The run is a pass with zero review findings; the marker is written
+  with `orch_marker_write 1 0 0 0` (the deterministic gate counts as the one review).
 - **the deterministic checks stay**, including `check-docs-claims.sh`, `check-docs-path-drift.sh`, the
   secret scan and the lockfile check. They are the whole gate for prose: a doc claim that contradicts
   the disk is still caught, a Critical from them (a secret) still blocks the marker.
-- **the normal marker rules apply**, on the tree as it is; nothing is recorded as audited
-  (`orch_audited_record` gets an empty list), so a later code diff never skips a prose file because of it.
+- **the normal marker rules apply**, on the tree as it is.
 
-Until 2026-10-02 a prose diff ran one round of floor dimensions (`docs_sync` and `copy`) at
-`CONFIDENCE_FLOOR=medium`. The benchmark behind the new gate (`dimension-selection.md`) and the cost of
-the dimensions made the deterministic checks the better trade: the prose findings that mattered were
-claims that disagree with the code, which `check-docs-claims.sh` finds mechanically.
+Until 2026-10-02 a prose diff ran two LLM dimensions (`docs_sync` and `copy`). The prose findings that
+mattered were claims that disagree with the code, which `check-docs-claims.sh` finds mechanically.
 
 The gate fails open: anything the classifier cannot place is `code`. Under-auditing a code change is
 the expensive mistake; over-auditing prose is merely annoying.
@@ -58,8 +53,7 @@ It does not skip the pre-checks. Secret scanning, lockfile drift and the determi
 checks run on every diff regardless of class, because a secret in a Markdown file is still a secret
 in a public repo.
 
-It does not lower severity. A Critical in prose is still a Critical and still blocks the push. What
-changes is how hard the audit looks for Minor findings, not what it does with a real one.
+It does not lower severity. A Critical in prose is still a Critical and still blocks the push.
 
 ## The judgment the gate cannot make for you
 
@@ -69,4 +63,4 @@ justifies a shipped security control. Both happened in this repo.
 
 So: when a prose diff changes something that *decides* how future work is done, say so and raise the
 scope by hand for that run. That is a deliberate, stated exception, which is different from adding
-dimensions reflexively because the diff felt important.
+review rounds reflexively because the diff felt important.

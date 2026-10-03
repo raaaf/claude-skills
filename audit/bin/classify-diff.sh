@@ -13,8 +13,7 @@
 # Emits two shell assignments meant to be consumed with eval. BOTH values are
 # printf %q quoted: the reason contains parentheses and commas, and an unquoted
 # assignment makes `eval` die with a syntax error while the caller still sees a
-# plausible DIFF_CLASS from the first line. Same lesson as perf-measure.sh
-# --detect; do not "simplify" this back to a bare echo.
+# plausible DIFF_CLASS from the first line. Do not "simplify" this back to a bare echo.
 #   DIFF_CLASS=prose | code | mixed
 #   DIFF_CLASS_REASON=<one line>
 #

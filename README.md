@@ -8,7 +8,7 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 
 | Command | What it does |
 |---|---|
-| `/audit` | Audits your uncommitted and unpushed changes before a push. 13 dimensions, verified findings, one fix wave, then the push is unlocked. |
+| `/audit` | Reviews your uncommitted and unpushed changes like a PR before a push: deterministic checks, the built-in `/code-review`, one fix round, then the push is unlocked. |
 | `/plan-it` | Interviews you, writes an executor-grade plan that ends in a /delegate-ready spec, challenges it (architecture and risk always; product, design, simplicity when the plan calls for them). `execute` runs it in a worktree and reviews the result. |
 | `/delegate` | Default way to implement: the session model writes a mini-spec, Sonnet builds it, the session model reviews the diff. |
 | `/ship` | Docs sync, commit, audit gate, push, deploy, verify. |
@@ -19,14 +19,13 @@ Archived skills: /full-audit and /design-audit were removed on 2026-10-02; resto
 
 ## How an audit runs
 
-1. Deterministic pre-checks: secrets, lockfile drift, i18n keys, dependency vulnerabilities, CI hardening.
-2. One start question: which dimensions. Every confirmed finding, including Minor, is fixed or discarded with a stated reason.
-3. `find.js`, one Workflow pipeline per dimension in parallel: a scout picks the relevant files (a content-based floor guarantees the obvious ones), specialists read chunks of 5 to 8 files, a fresh verifier confirms or refutes every finding, an Opus refuter double-checks each Critical.
-4. You decide per confirmed finding: fix, log, discard.
-5. `fix.js`: one fixer per file, a fix-verifier per 3 to 5 fixes, a regression pass over everything touched, then the test suite once.
-6. Log with cost line, push marker if nothing Critical is open.
+1. Deterministic pre-checks: secrets, lockfile drift, i18n keys, dependency vulnerabilities, CI hardening, docs claims.
+2. The built-in `/code-review high` reviews the diff in a temporary worktree. When the diff touches auth, payment or privacy paths, one extra checklist agent reviews those paths for policy bypass, third-party data flow without consent, payment correctness and secrets in logs.
+3. The orchestrator reads every finding and decides: fix, or discard with a stated reason.
+4. One executor fixes, the test suite runs once.
+5. Log with cost line, push marker if nothing Critical or Important is open.
 
-Sonnet does all the reading and fixing, Opus only the refuting. Measured on a 257-file WordPress theme: 27 to 42 minutes and 73 to 124 USD for the whole codebase, where the previous batch-and-rounds design took 22 hours and around 760 USD.
+A prose-only diff gets the deterministic checks only. A pre-push audit is a PR review, so it costs about as much as one.
 
 ## Install
 
@@ -41,15 +40,14 @@ Symlinks, not copies: an edit in the clone is live in the next session. Needs Cl
 
 ## Configure per project
 
-- `.claude/audit-guidelines.md`: project rules the audit workers read first. Optional lines `perf-measure: <command that prints PERF_METRIC=<number>>` for measured performance fixes.
+- `.claude/audit-guidelines.md`: project rules the audit reads during triage.
 - `.claude/plan-guidelines.md`: rules every plan challenger gets.
-- `AUDIT_DIMENSIONS=security,a11y` and `AUDIT_FIX_SCOPE=none|all` skip the start question, for CI or headless runs. `none` means find and log only; any other value fixes every finding incl. Minor.
 
 Audit logs land in `.claude/audits/`, plans in `docs/plans/`. Logs reference `file:line`, never file contents, so they are safe to commit.
 
 ## Development
 
-`CLAUDE.md` is the contributor guide: conventions, invariants, and the gotchas that cost real time. `bash audit/bin/verify-agents.sh audit/agents` checks the agent roster, `audit/bench/` holds the five historical benchmark cases and a runner.
+`CLAUDE.md` is the contributor guide: conventions, invariants, and the gotchas that cost real time. `bash audit/bin/check-docs-claims.sh` checks that the docs name only files that exist.
 
 ## Inspiration
 
