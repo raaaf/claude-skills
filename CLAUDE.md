@@ -65,7 +65,7 @@ per dispatched worker type, symlinked to `~/.claude/agents` (so an edit is live 
 put a non-agent `.md` file there, every `*.md` loads as an agent). Roster: `plan-challenger`,
 `spec-executor`, `screens-view-discoverer`
 (points at `screens/agents/view-discoverer.md`), plus generic `code-reviewer`, `security-auditor`,
-`performance-auditor`, `ui-ux-reviewer`, `test-writer`. Where a definition points at a worker
+`fact-checker`, `ui-ux-reviewer`, `test-writer`. Where a definition points at a worker
 spec inside a skill, the procedure stays in the skill. The
 agent with Bash (`spec-executor`) carries the
 worktree-wide git guard in its own `hooks:` frontmatter (skill-frontmatter hooks do not reach

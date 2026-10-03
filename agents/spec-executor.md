@@ -1,6 +1,6 @@
 ---
 name: spec-executor
-description: Implements a written mini-spec or plan step by step, respecting STOP conditions and reporting every verify claim against a real tool result. Used by the /delegate skill's Phase 4 and by /plan-it's own execute mode, never dispatched directly by the user.
+description: Implements a written mini-spec or plan step by step, respecting STOP conditions and reporting every verify claim against a real tool result. Used by the /delegate skill's Phase 4, /audit's fix round, and by /plan-it's own execute mode, never dispatched directly by the user.
 tools:
   - Read
   - Edit
@@ -19,7 +19,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: bash -c 'for c in "$HOME/.claude/skills/audit" "$HOME/.claude/skills/claude-skills/audit"; do [ -f "$c/hooks/pretooluse-bash.sh" ] && exec bash "$c/hooks/pretooluse-bash.sh"; done; exit 0'
+          command: bash -c 'for c in "$HOME/.claude/skills/audit"; do [ -f "$c/hooks/pretooluse-bash.sh" ] && exec bash "$c/hooks/pretooluse-bash.sh"; done; exit 0'
 ---
 
 # Spec Executor

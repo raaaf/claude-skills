@@ -19,6 +19,7 @@ allowed-tools:
   - Bash
   - Glob
   - AskUserQuestion
+  - Agent
 ---
 
 # Ship
@@ -245,6 +246,12 @@ Hard rules:
 - **A version bump is intent, not triage.** An entry under `Unreleased` needs no question. Cutting
   a new version number is the user's call, so AskUserQuestion only when there is no `Unreleased`
   section to add to.
+
+**Fact check (only when this phase updated at least one doc).** Dispatch ONE `fact-checker` agent
+(`run_in_background: false`) with the list of doc files you edited and the instruction to check only
+the claims in the hunks you changed (`git diff -- <doc files>`) against the code. Every `WRONG` line:
+correct the doc before the commit. `UNVERIFIABLE` lines need no action. No doc edits, no dispatch:
+the agent costs a run, and unchanged docs are `check-docs-claims.sh`'s job.
 
 Phase 1 stages these with `git add -u`, since every file touched here was already tracked. Doc-only
 edits do not invalidate a fresh audit marker: the marker is bound to the audited tree, and Phase 2
