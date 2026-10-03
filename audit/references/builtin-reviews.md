@@ -11,7 +11,7 @@ privacy one (OSM tiles without consent) and one architecture policy bypass, and 
 issues the audit never reported (a refund without `reverse_transfer`, an unauthenticated `mapPins`).
 The own dimensions in the gate (`security`, `privacy`, `architecture`) cover the misses, the built-in
 review covers the blind spots of the dimension prompts. The other ten dimensions cost about 40% of the
-weekly usage and run nightly.
+weekly usage and are proposed per diff (`dimension-selection.md`).
 
 **security-review: not in the gate until verified to review the full scope (2026-10-02).** `/security-review`
 diffs commits against `origin/HEAD`, it did not run once in the benchmark, and repairing a missing

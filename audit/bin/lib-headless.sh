@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Shared headless runner for `claude -p` audit sessions (nightly-run.sh, bench/run-case.sh), 2026-10-02.
+# Shared headless runner for `claude -p` audit sessions (bench/run-case.sh), 2026-10-02.
 # Source it; bash 3.2 compatible. Evidence it answers: headless sessions refused every Bash call that sourced
 # lib-orchestrator.sh or called orch_*, and one session ended while the find.js Workflow still ran.
 #
@@ -31,10 +31,6 @@ audit_headless_allowed_tools() {
   list="$list,Bash(orch_*)"                                  # helper functions from lib-orchestrator.sh (ledger, marker, backlog, log)
   list="$list,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git rev-parse*)"   # git read commands
   list="$list,Bash(git ls-files*),Bash(git merge-base*),Bash(git branch*),Bash(git symbolic-ref*)"
-  list="$list,Bash(git add*),Bash(git commit*)"             # stage and commit the nightly fixes
-  list="$list,Bash(git checkout -b chore/*),Bash(git switch -c chore/*)"   # create the chore/ branch
-  list="$list,Bash(git push -u origin chore/nightly-audit-*),Bash(git push -u origin chore/minor-backlog-*),Bash(git push -u origin chore/backlog-*)"  # the push-hook exception
-  list="$list,Bash(gh pr list*),Bash(gh pr create*)"        # open-PR check, PR creation
   list="$list,Workflow,Skill,Agent,Read,Edit,Write,Grep,Glob"
   printf '%s' "$list"
 }

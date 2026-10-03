@@ -1,7 +1,7 @@
 ---
 name: audit
-description: "Pre-push code audit. Pre-push gate: the dimensions security, privacy and architecture (plus payments on a Stripe repo) run through a per-dimension Workflow pipeline, next to the built-in /code-review high on every code diff (reviewed in a temporary worktree); its findings go through one refute-first verifier. The other ten dimensions (13 in total: performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy) run in the nightly run. Also deterministic secret/lockfile/i18n/CI pre-checks and one fix wave with peer-review verification, then allows git push; a prose-only diff gets deterministic checks only. One start question (dimensions); every Critical/Important finding is fixed or discarded with a reason, other Minors go to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked."
-when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog, Nachtlauf, nightly audit"
+description: "Pre-push code audit. Pre-push gate: the dimensions security, privacy and architecture (plus payments on a Stripe repo) run through a per-dimension Workflow pipeline, next to the built-in /code-review high on every code diff (reviewed in a temporary worktree); its findings go through one refute-first verifier. The other ten dimensions (13 in total: performance, code quality, SEO, a11y, typography, UI, UX, animation, docs sync, copy) are proposed from a deterministic diff profile. Also deterministic secret/lockfile/i18n/CI pre-checks and one fix wave with peer-review verification, then allows git push; a prose-only diff gets deterministic checks only. One start question (three tiers: Günstig, Gründlich, Alles); every Critical/Important finding is fixed or discarded with a reason, other Minors go to a per-repo backlog. Use when the user runs /audit, says 'before pushing' or 'review my changes', or has uncommitted/unpushed changes that should be checked."
+when_to_use: "/audit, vor dem pushen prüfen, Änderungen vor dem push checken, ist das sauber genug zum pushen, kurzer check vor dem commit, diff nochmal prüfen, before pushing, git push, pre-push review, review my changes, audit uncommitted changes, check before pushing, Minor-Backlog abarbeiten, Minors abarbeiten, clear the minor backlog"
 model: inherit
 effort: high
 allowed-tools:
@@ -96,26 +96,29 @@ Deterministic-check result table and derivation of `ALLE_DATEIEN`/`FRONTEND_DATE
 
 **WIP/stale-snapshot scope check:** does the working tree contain files that clearly do NOT belong to the current task? Ask via `AskUserQuestion`: only the session/task changes vs. the entire working tree.
 
-## Phase 1.5: Start question (dimensions)
+## Phase 1.5: Start question (three tiers from a diff profile)
 
-**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value, `AUDIT_DIMENSIONS` takes its default (the gate set: `security`, `privacy`, `architecture`; the other ten dimensions run in the nightly run, `all+nightly` selects all 13). This guarantees a headless run never hangs on a question.
+**A set variable suppresses the question.** If `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set (CI/eval-harness/headless), skip `AskUserQuestion` entirely: the set variable takes its value. `AUDIT_DIMENSIONS` unset takes `all`. `all` is the Günstig tier of the diff profile (below; the base gate set `security`, `privacy`, `architecture`, plus `a11y` and `copy` when frontend or language files changed), `all+full` (alias `all+nightly`) selects all 13, an explicit list stays as given. This guarantees a headless run never hangs on a question.
 
-A `DIFF_CLASS=prose` diff (Phase 1) skips the question: nothing is selectable. Otherwise, before the question, display the advisory recommendation from changed paths:
+A `DIFF_CLASS=prose` diff (Phase 1) skips the question and the profile: nothing is selectable. Every other run (headless too, `all` needs it) builds the profile first (deterministic, no LLM):
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; exit 1; }   # sets AUDIT_BIN
-orch_state_load   # ALLE_DATEIEN as Phase 0 saved it
-printf '%s\n' "$ALLE_DATEIEN" | bash "$AUDIT_BIN/suggest-dimensions.sh"
+orch_state_load   # ALLE_DATEIEN, STRIPE_FILES, DIFF_SIZE_RESULT as Phase 0/1 saved them
+export DIFF_SIZE_RESULT STRIPE_FILES
+DIFF_PROFILE=$(printf '%s\n' "$ALLE_DATEIEN" | bash "$AUDIT_BIN/diff-profile.sh" "$(git rev-parse --show-toplevel)")
+printf '%s\n' "$DIFF_PROFILE"
+orch_state_save DIFF_PROFILE
 ```
 
-Show its output as context for the question, not as a new preset or preselected answer. Then ask
-exactly one `AskUserQuestion` round, one question, presets from
-`references/dimension-selection.md`. The suggestion is advisory only: Everything remains the
-default, the user may choose any existing preset or Custom, and the suggestion never sets or edits
-`AUDIT_DIMENSIONS`. Do not run it for headless runs where either audit environment variable is set.
+The profile is `key=value` lines (file counts per kind, `SENSITIVE_PATHS`, `PAYMENTS`, `SEO_RELEVANT`, `SUGGEST_<dim>` with `REASON_<dim>`, `TIER_*`, `COST_*`, `RECOMMENDED`). Show a compact German summary: what changed (counts per kind, size class, sensitive paths if any), then per tier the dimensions it runs, the reasons for the added ones (`REASON_<dim>`) and the cost as "grobe Schätzung, ca. N M gewichtete Tokens" (`COST_*`). Unless a set variable suppressed the question, ask exactly ONE `AskUserQuestion`, one question, the three tiers as options (`RECOMMENDED` tier first, label ending in "(Recommended)"); the automatic "Other" takes a custom dimension list. Tier definitions (`bin/diff-profile.sh` computes them, `references/dimension-selection.md` has the rules and the cost model):
 
-- **Dimensions:** Everything (default, the gate set: security, privacy, architecture) | Backend only | Frontend only | Custom (multi-select over all 13, plus payments when the repo has a Stripe integration; ticking nightly dimensions is how an interactive run includes them).
+- **Günstig:** `security`, `privacy`, `architecture` (+ `payments` automatically when its trigger fires) and the built-in `/code-review high`, plus `a11y` and `copy` when frontend or language files changed. `TIER_GUENSTIG`.
+- **Gründlich:** Günstig plus every dimension with `SUGGEST_<dim>=yes`. `TIER_GRUENDLICH`; when it equals Günstig, say so in the option text.
+- **Alles:** all 13 dimensions. `TIER_ALLES`.
+
+`RECOMMENDED` is Gründlich when sensitive paths changed or at least 3 dimensions are suggested, else Günstig. The tiers are proposals, never a gate: the user's pick (or custom list) is the selection.
 
 Result: `AUDIT_DIMENSIONS` (comma list). A selection that omits a gate dimension never writes the push marker (the gate set itself is not partial), and the log names the dimensions not checked.
 
@@ -127,9 +130,9 @@ Run every `orch_backlog_add` and `orch_backlog_remove` BEFORE the block below, b
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES from Phase 1
-AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list from the question; the 3 gate-set ids when the answer was Everything}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
-AUDIT_DIMENSIONS=$(orch_expand_dimensions "$AUDIT_DIMENSIONS")   # headless spellings: `all` = gate set (security, privacy, architecture; the rest runs nightly, 2026-10-02), `all+nightly` = all 13, `all+visual` alias (lib); find.js accepts dimension ids only
+orch_state_load   # ALLE_DATEIEN, STRIPE, STRIPE_FILES, GUIDELINE_MATCHES, DIFF_PROFILE from Phase 1
+AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:-{comma list of the chosen tier (TIER_* from DIFF_PROFILE) or the custom list}}"   # a set env var (headless) wins, else the answer, substituted here: the question's result exists nowhere in this shell
+AUDIT_DIMENSIONS=$(orch_expand_dimensions "$AUDIT_DIMENSIONS" "${DIFF_PROFILE:-}")   # headless spellings: `all` = Günstig tier of DIFF_PROFILE (base gate set when none), `all+full` / `all+nightly` = all 13 (lib); find.js accepts dimension ids only
 AUDIT_FIX_SCOPE="${AUDIT_FIX_SCOPE:-all}"; [ "$AUDIT_FIX_SCOPE" = none ] || AUDIT_FIX_SCOPE=all   # headless 'none' = find and log only; everything else runs the fix wave (Critical/Important, plus Minors per minor-split.mjs; with none the Minors are still backlogged)
 ALLE_DATEIEN_FULL="$ALLE_DATEIEN"   # the whole diff scope; only the filtered set below goes to find.js
 ALLE_DATEIEN=$(orch_audited_filter "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS")   # drops files byte-identical to what a passed audit certified with a covering dimension set (lib); runs BEFORE the payments trigger, which then sees the filtered set
@@ -185,7 +188,7 @@ case "$GIT_COMMON_DIR" in
 esac
 AUDIT_DIR="$PROJECT_ROOT/.claude/audits"; mkdir -p "$AUDIT_DIR"
 # The filename is a contract, not a preference: audit/bench/run-case.sh and the
-# nightly/backlog tooling match `YYYY-MM-DD_HHMMSS-<branch>.md` to find the log, and a name
+# backlog tooling match `YYYY-MM-DD_HHMMSS-<branch>.md` to find the log, and a name
 # outside that shape is not found. `git branch --show-current`
 # is EMPTY on a detached HEAD, which would produce a trailing `-.md` and fail the
 # match, so fall back to the short SHA. Do not rename this file by hand.
@@ -444,13 +447,10 @@ for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/aud
 orch_progress_release
 ```
 
-## Minor backlog sweep and nightly audit (on request)
+## Minor backlog sweep (on request)
 
 "Minor-Backlog abarbeiten", "Minors abarbeiten" or "clear the minor backlog": skip find, run only the
-fix wave over the backlog, write no marker. "Nachtlauf" or "nightly audit": the combined headless run, a
-quality pass (the ten non-gate dimensions over whole commits since the last pass, hunk ranges
-from `bin/hunk-ranges.sh` as above) plus the backlog sweep in one PR. State files live in `.audit/` (headless
-sessions cannot write under `.claude/`). Procedures in `references/minor-backlog.md`.
+fix wave over the backlog, write no marker. Procedure in `references/minor-backlog.md`.
 
 ## Phase 6: PR (after push)
 

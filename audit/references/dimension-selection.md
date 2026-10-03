@@ -1,43 +1,56 @@
-# Start Question: Dimensions (Phase 1.5)
+# Start Question: Three Tiers (Phase 1.5)
 
-Used by `audit/SKILL.md`. One `AskUserQuestion` round, one
-question, unless `AUDIT_DIMENSIONS` or `AUDIT_FIX_SCOPE` is set — a set variable suppresses the
-question (headless/CI/eval-harness never hangs on a prompt).
+Used by `audit/SKILL.md`. One `AskUserQuestion` round, one question, unless `AUDIT_DIMENSIONS` or
+`AUDIT_FIX_SCOPE` is set: a set variable suppresses the question (headless/CI/eval-harness never hangs on a prompt).
 
-For interactive `/audit` only, `audit/bin/suggest-dimensions.sh` may display a path-based
-recommendation immediately before the question. It is context, not a preset, does not preselect an
-answer, and never changes `AUDIT_DIMENSIONS`. Everything remains the default and all existing
-choices remain available. The suggestion
-does not bypass dimension validation, deterministic checks, Stripe gating, or push-marker rules.
+**Diff profile (decided 2026-10-03).** `audit/bin/diff-profile.sh` reads the scope file list and prints `key=value`
+lines: file counts per kind (backend, frontend, view, lang, migration, docs, test, config, API), `QUERY_FILES`/`LOOP_FILES`
+(Eloquent/SQL patterns and collection loops, grep on the changed files), `SENSITIVE_PATHS` (`orch_sensitive_paths`),
+`PAYMENTS` (`orch_payments_touched` with `STRIPE_FILES`), `SEO_RELEVANT` (`orch_seo_relevant`), the size class
+(`DIFF_SIZE_RESULT`, else `diff-size-gate.sh`) and per optional dimension `SUGGEST_<dim>=yes|no` with `REASON_<dim>`:
 
-**`payments` is a CONDITIONAL 14th dimension, not one of the 13 offered here.** It is never
-presented in the Custom multi-select and never part of any preset unless `detect-stripe.sh`
-reports `STRIPE=yes` for the current repo; a repo without Stripe never sees it at all. Gating and
-scope resolution live in `audit/SKILL.md` Phase 1.5, not in this file.
-
-**Skip via ENV:** a set `AUDIT_DIMENSIONS` (comma list of dimension ids, or `all`) or `AUDIT_FIX_SCOPE`
-(`none|all`; unset or any other value normalizes to `all`) skips the question. The Phase 1.5 block
-in the orchestrator (`audit/SKILL.md`) applies them with `${NAME:-answer}`
-and expands the spelling through `orch_expand_dimensions`: `all` is the gate set (`security`, `privacy`, `architecture`), `all+nightly` is all 13 (`all+visual` stays an accepted alias); `payments` is added by the block's own `STRIPE=yes` gate, never by
-the env value itself.
-
-**Otherwise via `AskUserQuestion`, one round, one question:**
-
-Dimension preset:
-
-| Option | Dimensions |
+| Dimension | Suggested when |
 |---|---|
-| Everything (default, the gate set) | security, privacy, architecture, payments (only when `STRIPE=yes` and the diff touches its surface) |
-| Backend only | architecture, security, performance, code_quality, docs_sync, privacy, payments (only when `STRIPE=yes`) |
-| Frontend only | seo, a11y, typography, ui_design, ux, animation, copy |
-| Custom | multi-select across all 13 dimensions; `payments` joins the list only when `STRIPE=yes` |
+| `a11y`, `copy` | frontend or language files changed |
+| `performance` | a migration, a file with query patterns, or a collection loop (`->each(`, `.reduce(`, ...) changed |
+| `docs_sync` | docs/README/CLAUDE.md, config or route/API files changed |
+| `seo` | `orch_seo_relevant` says yes (SEO surface and a frontend/routes change) |
+| `typography`, `ui_design`, `ux`, `animation` | view or CSS files changed |
+| `code_quality` | backend logic changed and the diff is not `SMALL` |
+
+**Tiers** (built from the profile, payments is added by the Phase 1.5 block's own trigger and never listed in a tier):
+
+| Tier | Dimensions |
+|---|---|
+| Günstig | security, privacy, architecture (+ payments) and the built-in `/code-review high`, plus a11y and copy when frontend or language files changed |
+| Gründlich | Günstig plus every dimension with `SUGGEST_<dim>=yes` |
+| Alles | all 13 dimensions |
+
+`RECOMMENDED` (first option, labelled "(Recommended)") is Gründlich when sensitive paths changed or at least 3 dimensions are
+suggested, else Günstig. The automatic "Other" option takes a custom dimension list. The tiers are advisory: they do not bypass
+validation, deterministic checks, Stripe gating or push-marker rules.
+
+**Cost estimate ("grobe Schätzung").** Weighted M tokens: the Günstig base is SMALL 8, OK 12, LARGE/HUGE 18 (measured 2026-10-02:
+8.5-14.4 M per gate run incl. the code review); every dimension beyond the three gate dimensions (payments included) adds 1.5 M on a
+SMALL diff, 3 M on a larger one. `diff-profile.sh` prints `COST_GUENSTIG`, `COST_GRUENDLICH`, `COST_ALLES`. Pinned by `bin/diff-profile.test.sh`.
+
+**`payments` is a CONDITIONAL 14th dimension, not one of the 13 offered here.** It is never part of a tier list unless
+`detect-stripe.sh` reports `STRIPE=yes` and the diff touches its surface; a repo without Stripe never sees it. Gating and scope
+resolution live in `audit/SKILL.md` Phase 1.5, not in this file.
+
+**Skip via ENV:** a set `AUDIT_DIMENSIONS` (comma list of dimension ids, `all` or `all+full`) or `AUDIT_FIX_SCOPE`
+(`none|all`; unset or any other value normalizes to `all`) skips the question. The Phase 1.5 block applies them with `${NAME:-answer}`
+and expands the spelling through `orch_expand_dimensions <value> <profile>`: `all` is the Günstig tier of the profile (the base gate set
+`security`, `privacy`, `architecture` when there is none, so a frontend diff gets `a11y` and `copy` automatically), `all+full` is all 13
+(`all+nightly` stays an accepted alias), an explicit list is unchanged; `payments` is added by the block's own `STRIPE=yes` gate,
+never by the env value itself.
 
 Every run fixes every Critical/Important finding it confirms, plus the Minors that ride along with a fix to
 their own file; all other Minors go to the backlog (`minor-backlog.md`). `AUDIT_FIX_SCOPE=none`
 (headless "find and log only") fixes nothing. There is no fix-scope question and nothing preselects it from the effort
 level.
 
-**Gate reduced to three dimensions (decided 2026-10-02).** The pre-push gate runs `security`, `privacy` and `architecture` (plus `payments` automatically), the built-in `/code-review high` on every code diff (`builtin-reviews.md`). `performance`, `code_quality`, `a11y`, `ux`, `copy`, `seo`, `docs_sync`, `typography`, `ui_design` and `animation` run in the nightly run (`minor-backlog.md`). Evidence: on a blind benchmark of 5 historical diffs with 6 known audit Criticals the built-in review found all 3 security Criticals and 1 of 2 architecture Criticals, missed the privacy one (OSM tiles without consent) and one policy bypass, and found 2 serious issues the audit never reported; the dimensions cost about 40% of weekly usage. Earlier evidence for the first three nightly dimensions (2026-10-01, 122 audit logs): 0 Critical, mostly cosmetic Importants, about 11% of audit-find cost per push; `copy` found destructive dialogs confirmed with "Ja" and `seo` found PIN-protected pages leaking into og: meta, and both now get their coverage nightly. All of them stay selectable via Custom, Frontend only, an explicit `AUDIT_DIMENSIONS` list or `all+nightly`. The gate set is not a "partial selection" for the marker rule; a selection that omits a gate dimension is.
+**Gate reduced to three dimensions (decided 2026-10-02).** The base gate runs `security`, `privacy` and `architecture` (plus `payments` automatically), the built-in `/code-review high` on every code diff (`builtin-reviews.md`). Evidence: on a blind benchmark of 5 historical diffs with 6 known audit Criticals the built-in review found all 3 security Criticals and 1 of 2 architecture Criticals, missed the privacy one (OSM tiles without consent) and one policy bypass, and found 2 serious issues the audit never reported; the dimensions cost about 40% of weekly usage. Earlier evidence for the first three optional dimensions (2026-10-01, 122 audit logs): 0 Critical, mostly cosmetic Importants, about 11% of audit-find cost per push; `copy` found destructive dialogs confirmed with "Ja" and `seo` found PIN-protected pages leaking into og: meta. Hence the optional dimensions are proposed per diff (Gründlich) instead of always running. A selection that omits a gate dimension never writes the push marker; the three base dimensions are not a "partial selection".
 
 **Validation:** `SELECTED_DIMENSIONS` must contain at least 1 valid dimension out of the 13, plus
 `payments` when `STRIPE=yes` (14 valid values in that case). Discard invalid values.

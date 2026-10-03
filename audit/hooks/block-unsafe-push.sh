@@ -145,51 +145,6 @@ fi
 
 cwd=$(echo "$input" | jq -r '.cwd')
 
-# Nightly exception (2026-10-01): the headless nightly run (references/minor-backlog.md) pushes only
-# `chore/nightly-audit-*` / `chore/minor-backlog-*` / `chore/backlog-*` branches, and an "ask" stalls a headless session.
-# Allow without a marker ONLY for one plain command of the shape `git [-C dir] push [-u] [remote]
-# [refspec...]` where every pushed ref resolves to such a branch. Anything else (chained commands,
-# quotes, substitutions, force/all/tags/mirror/delete, unknown options, a default-branch target, an
-# unresolvable current branch) falls through to the marker check below, i.e. keeps the old behavior.
-nightly_push_ok() {
-  case "$cmd" in *[\;\&\|\`\$\(\)\{\}\<\>\"\'\\]*|*$'\n'*) return 1 ;; esac
-  local repo="$cwd" tok seen_push=0 positionals=0 refs="" default b dst
-  set -f
-  # shellcheck disable=SC2086
-  set -- $cmd
-  set +f
-  [ "${1:-}" = "git" ] || return 1
-  shift
-  if [ "${1:-}" = "-C" ] && [ -n "${2:-}" ]; then repo="$2"; shift 2; fi
-  [ "${1:-}" = "push" ] || return 1
-  shift
-  for tok in "$@"; do
-    case "$tok" in
-      -u|--set-upstream|-q|--quiet|--no-verify) ;;
-      -*) return 1 ;;
-      *) positionals=$((positionals + 1))
-         [ "$positionals" -gt 1 ] && refs="$refs $tok" ;;
-    esac
-  done
-  if [ -z "$refs" ]; then refs=HEAD; fi
-  default=$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)
-  for tok in $refs; do
-    case "$tok" in +*|:*|*:) return 1 ;; esac
-    dst="${tok#*:}"
-    if [ "$dst" = "HEAD" ]; then
-      b=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
-      dst="$b"
-    fi
-    dst="${dst#refs/heads/}"
-    case "$dst" in chore/nightly-audit-*|chore/minor-backlog-*|chore/backlog-*) ;; *) return 1 ;; esac
-    case "$dst" in *[!A-Za-z0-9._/-]*|*..*) return 1 ;; esac
-    [ "$dst" = "main" ] || [ "$dst" = "master" ] || [ "$dst" = "$default" ] && return 1
-  done
-  return 0
-}
-if nightly_push_ok; then
-  exit 0
-fi
 hash=$(echo -n "$cwd" | md5 2>/dev/null || echo -n "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
 marker="/tmp/claude-audit-passed-$hash"
 

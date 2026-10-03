@@ -21,5 +21,5 @@ expect "$(class .claude/audits/minor-backlog.tsv)" prose 'backlog tsv alone is p
 expect "$(class .claude/audits/minor-backlog.tsv .gitattributes)" prose 'backlog tsv plus .gitattributes is prose'
 expect "$(class .claude/audits/minor-backlog.tsv src/a.js)" code 'a code file next to the tsv stays code'
 expect "$(class .audit/minor-backlog.tsv)" prose 'new-path backlog tsv alone is prose'
-expect "$(class .audit/minor-backlog.tsv .audit/visual-pass-head .gitattributes)" prose 'new-path tsv, head file and .gitattributes are prose'
+expect "$(class .audit/minor-backlog.tsv .gitattributes)" prose 'new-path tsv and .gitattributes are prose'
 expect "$(class .audit/minor-backlog.tsv src/a.js)" code 'a code file next to the new-path tsv stays code'

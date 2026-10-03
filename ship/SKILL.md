@@ -284,7 +284,7 @@ Show the generated message. AskUserQuestion:
 Stage all tracked modified files (not untracked):
 ```bash
 git add -u   # already-staged files stay staged
-for f in .audit/minor-backlog.tsv .audit/visual-pass-head; do [ -f "$f" ] && git add -- "$f"; done   # /audit state files (prose); -u misses them while untracked
+for f in .audit/minor-backlog.tsv; do [ -f "$f" ] && git add -- "$f"; done   # /audit state file (prose); -u misses it while untracked
 ```
 
 Check the staged diff for sensitive files AND for secret-shaped content. The filename grep alone is

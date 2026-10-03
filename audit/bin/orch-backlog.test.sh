@@ -85,54 +85,16 @@ expect "$(cut -f1 "$STORE" | LC_ALL=C sort -c && echo sorted)" 'sorted' 'store i
 expect "$(orch_backlog_oldest 3 | cut -f6 | tr '\n' ',')" 'alpha thing,beta thing,gamma thing,' 'oldest 3 by first_seen then key'
 expect "$(orch_backlog_oldest 0)" '' 'oldest 0 prints nothing'
 
-# pre-push gate dimension spellings (2026-10-02) and the nightly quality pass scope
-expect "$(orch_expand_dimensions all)" "security,privacy,architecture" 'all = the three gate dimensions'
-expect "$(orch_expand_dimensions all+nightly | tr ',' '\n' | grep -c .)" '13' 'all+nightly = all 13'
-expect "$(orch_expand_dimensions all+visual)" "$(orch_expand_dimensions all+nightly)" 'all+visual stays an alias of all+nightly'
-expect "$(orch_expand_dimensions all | tr ',' '\n' | grep -cE '^(performance|code_quality|seo|a11y|ux|docs_sync|copy|typography|ui_design|animation)$' || true)" '0' 'all excludes the ten nightly dimensions'
-expect "$(orch_expand_dimensions typography,copy)" 'typography,copy' 'explicit list passes through'
+# dimension spellings (headless AUDIT_DIMENSIONS): `all` = Guenstig tier of the diff profile, `all+full` / `all+nightly` = all 13
+PROFILE=$'TIER_GUENSTIG=security,privacy,architecture,a11y,copy\nTIER_ALLES=architecture,security,performance,code_quality,seo,a11y,typography,ui_design,ux,animation,docs_sync,copy,privacy'
+expect "$(orch_expand_dimensions all)" "security,privacy,architecture" 'all without a profile = the three base gate dimensions'
+expect "$(orch_expand_dimensions all "$PROFILE")" "security,privacy,architecture,a11y,copy" 'all with a profile = its Guenstig tier'
+expect "$(orch_expand_dimensions all+full | tr ',' '\n' | grep -c .)" '13' 'all+full = all 13'
+expect "$(orch_expand_dimensions all+nightly "$PROFILE")" "$(orch_expand_dimensions all+full)" 'all+nightly stays an alias of all+full'
+expect "$(orch_expand_dimensions typography,copy "$PROFILE")" 'typography,copy' 'explicit list passes through'
 
-mkdir -p .audit
-git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm base --date='2020-01-01T00:00:00' >/dev/null
-GIT_COMMITTER_DATE='2020-01-01T00:00:00' git -c user.name=t -c user.email=t@t commit -q --amend --no-edit --date='2020-01-01T00:00:00'
-printf 'd\n' > src/d.js
-git add -A >/dev/null
-T3=$(( $(date +%s) - 3*86400 ))
-GIT_COMMITTER_DATE="$T3 +0000" git -c user.name=t -c user.email=t@t commit -qm threedays --date="$T3 +0000" >/dev/null
-OLD=$(git rev-parse HEAD)
-printf 'c\n' > src/c.js
-git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm recent >/dev/null
-expect "$(orch_visual_pass_files)" 'src/c.js' 'missing head file: only the file from today, the 3-day-old commit is outside the 1-day window'
-printf '%s\n' "$OLD" > .audit/visual-pass-head
-expect "$(orch_visual_pass_files)" 'src/c.js' 'existing sha: files changed since it'
-git rev-parse HEAD > .audit/visual-pass-head
-expect "$(orch_visual_pass_files)" '' 'head at HEAD: nothing to do'
-
-# cap (2026-10-02): whole commits, oldest first, head advances only to the last included commit
-rm -f .audit/visual-pass-head
-n=1; for f in e1 e2 e3; do
-  printf '%s\n' "$f" > "src/$f.js"; git add -A >/dev/null
-  TS=$(( $(date +%s) - (4-n)*3600 ))
-  GIT_COMMITTER_DATE="$TS +0000" git -c user.name=t -c user.email=t@t commit -qm "$f" --date="$TS +0000" >/dev/null
-  n=$((n+1))
-done
-TIP=$(git rev-parse HEAD)
-E1=$(git log --format=%H --grep='^e1$' -1)
-export AUDIT_VISUAL_PASS_CAP=2
-expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/c.js src/e1.js ' 'night 1, cap 2: oldest whole commits up to the cap'
-expect "$(orch_visual_pass_head)" "$E1" 'night 1: head advances only to the last included commit, not the tip'
-expect "$(orch_visual_pass_overflow)" '0' 'night 1: nothing capped, the rest is deferred not lost'
-printf '%s\n' "$(orch_visual_pass_head)" > .audit/visual-pass-head
-expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/e2.js src/e3.js ' 'night 2: the remainder is picked up'
-expect "$(orch_visual_pass_head)" "$TIP" 'night 2: head reaches the tip'
-printf '%s\n' "$TIP" > .audit/visual-pass-head
-expect "$(orch_visual_pass_files)" '' 'night 3: nothing left'
-unset AUDIT_VISUAL_PASS_CAP
-rm -f .audit/visual-pass-head
-expect "$(orch_visual_pass_overflow)" '0' 'default cap 40: no overflow'
-
-# legacy fallback (2026-10-02): the old .claude/audits/ files are read until the first write, never deleted
-rm -f "$STORE" .audit/visual-pass-head
+# legacy fallback (2026-10-02): the old .claude/audits/ file is read until the first write, never deleted
+rm -f "$STORE"
 mkdir -p .claude/audits
 printf 'k1\tux\tsrc/a.js\t1\t2026-09-30\tlegacy thing\n' > .claude/audits/minor-backlog.tsv
 expect "$(orch_backlog_count)" '1' 'legacy store is read when .audit/ has none'
@@ -143,55 +105,11 @@ expect "$(grep -c . .claude/audits/minor-backlog.tsv)" '1' 'legacy file is left 
 expect "$(printf '%s' "$OUT" | grep -c BACKLOG_LEGACY_FILE)" '1' 'write reports that the legacy file can be deleted'
 orch_backlog_remove "$(orch_backlog_for_files 'src/a.js' | cut -f1)" >/dev/null
 expect "$(orch_backlog_count)" '0' 'emptied .audit/ store shadows the legacy file'
-rm -f "$STORE"; rm -f .claude/audits/minor-backlog.tsv
-printf '%s\n' "$OLD" > .claude/audits/visual-pass-head
-expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/c.js src/e1.js src/e2.js src/e3.js ' 'legacy visual-pass-head is the fallback' 
+rm -f "$STORE"; rm -rf .claude/audits
 
-# one commit above the cap is taken alone with capped files, reported; head moves to it
-rm -f .audit/visual-pass-head .claude/audits/visual-pass-head
-printf '%s\n' "$TIP" > .audit/visual-pass-head
-for f in b1 b2 b3; do printf '%s\n' "$f" > "src/$f.js"; done
-git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm big >/dev/null
-BIG=$(git rev-parse HEAD)
-printf 'z\n' > src/z.js; git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm after >/dev/null
-export AUDIT_VISUAL_PASS_CAP=2
-expect "$(orch_visual_pass_files | tr '\n' ' ')" 'src/b1.js src/b2.js ' 'large single commit: taken alone, capped to the cap'
-expect "$(orch_visual_pass_overflow)" '1' 'large single commit: capped files are reported'
-expect "$(orch_visual_pass_head)" "$BIG" 'large single commit: head moves to it, the next commit is left for the next night'
-unset AUDIT_VISUAL_PASS_CAP
-
-# triage groups (2026-10-02): optional 7th column, 6-column rows are untriaged
-rm -f "$STORE" .audit/visual-pass-head .claude/audits/visual-pass-head; rm -rf .claude/audits
-printf 'copy\tsrc/a.js\t1\t2026-10-03\tlabel one\n' > "$IN"
-printf 'a11y\tsrc/c.js\t1\t2026-10-01\tlabel two\n' >> "$IN"
-printf 'copy\tsrc/e1.js\t1\t2026-10-02\tlabel three\n' >> "$IN"
-orch_backlog_add "$IN" >/dev/null
-expect "$(orch_backlog_untriaged | wc -l | tr -d ' ')" '3' '6-column rows read as untriaged'
-K1=$(orch_backlog_for_files 'src/a.js' | cut -f1)
-K2=$(orch_backlog_for_files 'src/c.js' | cut -f1)
-K3=$(orch_backlog_for_files 'src/e1.js' | cut -f1)
-orch_backlog_set_group "$(printf '%s\tCopy Invoicing_DE\n%s\tcopy-invoicing-de\n%s\ta11y-modals\n' "$K1" "$K3" "$K2")"
-expect "$(orch_backlog_untriaged)" '' 'set_group: nothing untriaged afterwards'
-expect "$(orch_backlog_for_files 'src/a.js' | cut -f7)" 'copy-invoicing-de' 'set_group adds the 7th column (slug sanitized)'
-expect "$(orch_backlog_for_files 'src/a.js' | cut -f1-6)" "$(printf '%s\tcopy\tsrc/a.js\t1\t2026-10-03\tlabel one' "$K1")" 'set_group leaves columns 1-6 untouched'
-expect "$(orch_backlog_groups | tr '\t' '|' | tr '\n' ' ')" 'a11y-modals|1|2026-10-01|a11y copy-invoicing-de|2|2026-10-02|copy ' 'groups: group, count, oldest first_seen, dimensions'
-expect "$(orch_backlog_group_entries copy-invoicing-de | cut -f3 | tr '\n' ' ')" 'src/a.js src/e1.js ' 'group entries: only that group'
-expect "$(orch_backlog_group_entries nope)" '' 'group entries: unknown group is empty'
-printf 'copy\tsrc/a.js\t7\t2026-10-09\tlabel one\n' > "$IN"
-orch_backlog_add "$IN" >/dev/null
-expect "$(orch_backlog_for_files 'src/a.js' | cut -f7)" 'copy-invoicing-de' 're-add keeps the group'
-printf 'ux\tsrc/a.js\t1\t2026-10-09\tfresh finding\n' > "$IN"
-orch_backlog_add "$IN" >/dev/null
-expect "$(orch_backlog_untriaged | cut -f6)" 'fresh finding' 'a new row after triage is untriaged, grouped rows stay grouped'
-orch_backlog_remove "$K1" >/dev/null
-expect "$(orch_backlog_groups | cut -f1,2 | tr '\t' ':' | tr '\n' ' ')" 'a11y-modals:1 copy-invoicing-de:1 ' 'remove works on 7-column rows'
-
-# stale pre-filter: file gone or cited line beyond the file length
-rm -f "$STORE"
-printf 'copy\tsrc/a.js\t1\t2026-10-01\tin range\n' > "$IN"
-printf 'copy\tsrc/a.js\t5\t2026-10-01\tbeyond the end\n' >> "$IN"
-printf 'copy\tsrc/c.js\t1\t2026-10-01\tfile will vanish\n' >> "$IN"
-orch_backlog_add "$IN" >/dev/null
-rm src/c.js
-expect "$(orch_backlog_stale | wc -l | tr -d ' ')" '2' 'stale: beyond-the-end line and vanished file, in-range line kept'
-expect "$(orch_backlog_stale | grep -c 'beyond' || true)" '1' 'stale: the beyond-the-end key is named'
+# rows with a 7th column (written by an older version) are still read, looked up and removed
+printf 'k7\tux\tsrc/a.js\t1\t2026-09-30\tgrouped thing\tsome-group\n' > "$STORE"
+expect "$(orch_backlog_count)" '1' '7-column row is counted'
+expect "$(orch_backlog_for_files 'src/a.js' | cut -f1)" 'k7' '7-column row is found by file'
+orch_backlog_remove k7 >/dev/null
+expect "$(orch_backlog_count)" '0' '7-column row is removed by key'
