@@ -86,6 +86,15 @@ else
   LOCK_DIR="${TMPDIR:-/tmp}/claude-audit-test-lock-${HASH}${DEST_KEY}"
 fi
 OWNER_FILE="$LOCK_DIR/owner"
+
+# Reentrant for children of the holder: a wrapped command that calls this script again (deploy's
+# test gate wraps its suite, and /ship or /audit wrap `deploy <app> test`) runs under the lock its
+# parent already holds. Without this the inner call waited WAIT_MAX on its own parent and aborted
+# without running a test (2026-10-03). Only descendants inherit TEST_LOCK_HELD, and the lock dir
+# must still exist, so an unrelated run never skips the lock.
+if [ "${TEST_LOCK_HELD:-}" = "$LOCK_DIR" ] && [ -d "$LOCK_DIR" ]; then
+  exec "$@"
+fi
 TTL_SECONDS=900
 WAIT_MAX=960
 NOTICE_SECONDS=${TEST_LOCK_NOTICE_SECONDS:-60}   # progress line interval while waiting (even number: WAITED steps by 2)
@@ -171,6 +180,7 @@ release() {
 }
 
 acquire
+export TEST_LOCK_HELD="$LOCK_DIR"
 HB_PID=""
 trap release EXIT INT TERM
 

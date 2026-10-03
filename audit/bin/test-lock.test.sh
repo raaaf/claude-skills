@@ -43,4 +43,16 @@ rmdir "$GC/claude-audit-test-lock"
 wait "$WAITER"
 check "a waiter reports that it is waiting" "yes" "$(grep -q 'test-lock: waiting' "$OUT" && echo yes || echo no)"
 
+# A wrapped command that itself goes through test-lock.sh (deploy's test gate does) must not wait
+# for the lock its own parent holds: on 2026-10-03 /ship wrapped `deploy zeit test` and the inner
+# call waited 960s on itself, then aborted without running a test.
+OUT="$TMP/nested.out"
+bash "$LOCK" bash "$LOCK" --cmd "echo INNER" >"$OUT" 2>&1 &
+NESTED=$!
+sleep 4
+kill "$NESTED" 2>/dev/null && pkill -f "test-lock.sh --cmd echo INNER" 2>/dev/null
+wait "$NESTED" 2>/dev/null
+check "a nested call runs under the lock its parent holds" "INNER" "$(grep -x INNER "$OUT")"
+check "a nested call leaves the parent's lock to the parent" "gone" "$([ -d "$GC/claude-audit-test-lock" ] && rm -rf "$GC/claude-audit-test-lock" && echo left || echo gone)"
+
 [ "$FAIL" -eq 0 ] && echo "TEST_LOCK_TEST=OK" || { echo "TEST_LOCK_TEST=FAIL ($FAIL)"; exit 1; }
