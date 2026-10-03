@@ -13,11 +13,16 @@
 #   SENSITIVE_COUNT, SENSITIVE_PATHS (comma list), PAYMENTS, SEO_RELEVANT,
 #   SUGGEST_<dim>=yes|no with REASON_<dim>=<short reason> for the ten non-gate dimensions, SUGGEST_COUNT,
 #   TIER_GUENSTIG / TIER_GRUENDLICH / TIER_ALLES (comma lists, payments NOT included: the Phase 1.5 block adds it),
-#   COST_GUENSTIG / COST_GRUENDLICH / COST_ALLES (rough weighted M tokens, payments included), RECOMMENDED.
+#   COST_GUENSTIG / COST_GRUENDLICH / COST_ALLES (rough weighted M tokens, payments included),
+#   COST_<tier>_PCT (share of the weekly budget, one decimal), RECOMMENDED.
+#   env USAGE_LIMITS_CONF overrides ~/.claude/usage-limits.conf (WEEK_BUDGET_USD, default 2600).
 #
 # Cost model (measured 2026-10-02: 8.5-14.4 M per gate run incl. /code-review): the Guenstig base is
 # SMALL 8, OK 12, LARGE/HUGE 18 M; every dimension beyond the three gate dimensions adds 1.5 M on a SMALL
-# diff, 3 M on a larger one. A rough estimate, not a measurement.
+# diff, 3 M on a larger one. LARGE/HUGE scale with the file count N instead: base max(18, 0.15 N) M, per
+# added dimension max(3, 0.04 N) M (2026-10-03: zeit Gruendlich on a 140-file HUGE diff cost ~78 M, ~3.5% of
+# the week, against a flat 48 M estimate). PCT = M x 1.2 USD / WEEK_BUDGET_USD (1 weighted M ~ 1.2 USD).
+# A rough estimate, not a measurement. LARGE/HUGE always recommends GUENSTIG.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export AUDIT_BIN="$SCRIPT_DIR"
 # shellcheck source=lib-orchestrator.sh
@@ -126,9 +131,23 @@ cost_of() {
   total=$(printf '%s\n' "$list" | tr ',' '\n' | grep -c .)
   added=$((total - 3))
   [ "$payments" = yes ] && added=$((added + 1))
-  case "$size" in SMALL) base=80; per=15 ;; OK) base=120; per=30 ;; *) base=180; per=30 ;; esac
-  awk -v t=$((base + added * per)) 'BEGIN { printf "%s\n", (t % 10 == 0) ? t / 10 : sprintf("%.1f", t / 10) }'
+  case "$size" in
+    SMALL) base=80; per=15 ;;
+    OK) base=120; per=30 ;;
+    *) base=$((n_total * 3 / 2)); [ "$base" -ge 180 ] || base=180
+       per=$(((n_total * 4 + 5) / 10)); [ "$per" -ge 30 ] || per=30 ;;
+  esac
+  echo $((base + added * per))
 }
-echo "COST_GUENSTIG=$(cost_of "$guenstig")"; echo "COST_GRUENDLICH=$(cost_of "$gruendlich")"; echo "COST_ALLES=$(cost_of "$alles")"
+# fmt_tenths <tenths>: 210 -> 21, 266 -> 26.6
+fmt_tenths() { awk -v t="$1" 'BEGIN { printf "%s\n", (t % 10 == 0) ? t / 10 : sprintf("%.1f", t / 10) }'; }
+# pct_of <tenths>: share of the weekly budget in percent, one decimal
+pct_of() { awk -v t="$1" -v b="$budget" 'BEGIN { printf "%.1f\n", t / 10 * 1.2 / b * 100 }'; }
+budget=$(sed -n 's/^WEEK_BUDGET_USD=//p' "${USAGE_LIMITS_CONF:-$HOME/.claude/usage-limits.conf}" 2>/dev/null | head -1)
+case "$budget" in ''|*[!0-9]*|0) budget=2600 ;; esac
+c_g=$(cost_of "$guenstig"); c_r=$(cost_of "$gruendlich"); c_a=$(cost_of "$alles")
+echo "COST_GUENSTIG=$(fmt_tenths "$c_g")"; echo "COST_GRUENDLICH=$(fmt_tenths "$c_r")"; echo "COST_ALLES=$(fmt_tenths "$c_a")"
+echo "COST_GUENSTIG_PCT=$(pct_of "$c_g")"; echo "COST_GRUENDLICH_PCT=$(pct_of "$c_r")"; echo "COST_ALLES_PCT=$(pct_of "$c_a")"
 
-if [ "$n_sensitive" -gt 0 ] || [ "$n_suggest" -ge 3 ]; then echo "RECOMMENDED=GRUENDLICH"; else echo "RECOMMENDED=GUENSTIG"; fi
+if [ "$size" = LARGE ] || [ "$size" = HUGE ]; then echo "RECOMMENDED=GUENSTIG"   # big diffs: the flat per-dimension cost hid a 78 M run
+elif [ "$n_sensitive" -gt 0 ] || [ "$n_suggest" -ge 3 ]; then echo "RECOMMENDED=GRUENDLICH"; else echo "RECOMMENDED=GUENSTIG"; fi

@@ -6,7 +6,9 @@ Reads session transcripts from ~/.claude/projects/*/*.jsonl (main session
 transcripts) plus each session's subagent transcripts under
 ~/.claude/projects/*/<session-id>/**/*.jsonl, and reports a weighted usage
 total, the top sessions by usage, a per-tool-group breakdown, and subagent
-types by count and weighted cost.
+types by count and weighted cost. Only turns whose own timestamp lies inside the
+--days window are counted (the file mtime is just a cheap prefilter): a long
+session touched today no longer drags in its days-old subagent turns.
 
 Weights (input=1, cache read=0.1, cache write=2, output=5) approximate
 relative $ cost per token class, not raw token counts.
@@ -16,6 +18,7 @@ Usage:
 """
 import argparse
 import collections
+import datetime
 import glob
 import json
 import os
@@ -51,8 +54,23 @@ def tool_group(name):
     return 'Other tools'
 
 
-def analyze(path):
-    """Reads one transcript file, returns (total_weighted, turn_count, group_breakdown) or None."""
+def in_window(entry, since):
+    """True when the record's ISO timestamp is >= since (epoch seconds); records without one count."""
+    if since is None:
+        return True
+    ts = entry.get('timestamp')
+    if not isinstance(ts, str):
+        return True
+    try:
+        return datetime.datetime.fromisoformat(ts[:-1] + '+00:00' if ts.endswith('Z') else ts).timestamp() >= since
+    except ValueError:
+        return True
+
+
+def analyze(path, since=None):
+    """Reads one transcript file, returns (total_weighted, turn_count, group_breakdown) or None.
+
+    since: epoch seconds; only turns (and the tool results answered in that span) from then on count."""
     try:
         lines = [json.loads(l) for l in open(path) if l.strip()]
     except (OSError, json.JSONDecodeError):
@@ -65,12 +83,15 @@ def analyze(path):
 
     for entry in lines:
         message = entry.get('message') or {}
+        counted = in_window(entry, since)
         if entry.get('type') == 'assistant':
             for c in message.get('content') or []:
                 if isinstance(c, dict) and c.get('type') == 'tool_use':
                     tool_names[c['id']] = c['name']
             usage = message.get('usage')
             msg_id = message.get('id')
+            if usage and not counted:
+                continue
             if usage and msg_id in seen_ids:
                 # A streamed message is logged once per content block; only the later lines
                 # carry the final output count (the first undercounts ~11x, 2026-09-30).
@@ -79,7 +100,7 @@ def analyze(path):
             elif usage:
                 seen_ids[msg_id] = dict(usage)
                 turns.append(seen_ids[msg_id])
-        elif entry.get('type') == 'user':
+        elif entry.get('type') == 'user' and counted:
             content = message.get('content')
             for c in content if isinstance(content, list) else []:
                 if isinstance(c, dict) and c.get('type') == 'tool_result':
@@ -139,7 +160,7 @@ def main():
             continue
         if args.exclude and args.exclude in session_file:
             continue
-        result = analyze(session_file)
+        result = analyze(session_file, cutoff)
         if not result:
             continue
         total, n, groups = result
@@ -148,7 +169,7 @@ def main():
         sub_total = 0
         sub_count = 0
         for sub_file in glob.glob(os.path.join(session_dir, '**', '*.jsonl'), recursive=True):
-            sub_result = analyze(sub_file)
+            sub_result = analyze(sub_file, cutoff)
             if not sub_result:
                 continue
             sub_total += sub_result[0]

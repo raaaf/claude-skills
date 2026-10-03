@@ -64,6 +64,7 @@
 #   orch_unaudited_base     prints the recorded base sha, else nothing (rc 1)
 #   orch_unaudited_clear    removes the recorded base (called once /audit has covered it)
 #   orch_audited_record <files> <dims>   after a PASSED audit: stores path, blob sha and dims per file in the worktree's claude-audited-blobs
+#   orch_audited_add_dims <files> <dims>   after orch_audited_record: merges extra dims into each file's line when the blob sha matches, else writes a line with just those dims
 #   orch_audited_filter <files> <dims>   prints the files NOT already certified by a passed audit (same blob sha, dims a superset), input order kept
 #   orch_backlog_add <tsv>   Minor backlog (.audit/minor-backlog.tsv, TRACKED, merge=union in .gitattributes; legacy .claude/audits/ copy read until the first write, then BACKLOG_LEGACY_FILE= is printed): appends the
 #                           5-column entries dimension<TAB>file<TAB>line<TAB>first_seen<TAB>description from a FILE, key computed
@@ -381,6 +382,36 @@ orch_audited_record() {
     [ -n "$p" ] && [ -f "$p" ] || continue
     sha=$(git hash-object -- "$p" 2>/dev/null) || continue
     printf '%s\t%s\t%s\n' "$p" "$sha" "$sorted" >> "$tmp"
+  done <<EOF
+$files
+EOF
+  mv "$tmp" "$f"
+}
+
+# Merges dims into the lines of the listed files: same blob sha keeps the old dims and adds the
+# new ones, a different sha (or no line) gets a fresh line with only the new dims. Other lines
+# stay. Call AFTER orch_audited_record; payments' scope is a subset of the audited files.
+orch_audited_add_dims() {
+  local files="$1" dims="$2" f tmp p sha line rec recdims merged
+  f=$(orch__audited_path) || return 1
+  tmp=$(mktemp) || return 1
+  if [ -f "$f" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      p=${line%%$'\t'*}
+      printf '%s\n' "$files" | grep -Fxq -- "$p" || printf '%s\n' "$line"
+    done < "$f" > "$tmp"
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] && [ -f "$p" ] || continue
+    sha=$(git hash-object -- "$p" 2>/dev/null) || continue
+    recdims=""
+    if [ -f "$f" ]; then
+      rec=$(awk -F'\t' -v p="$p" -v s="$sha" '$1 == p && $2 == s { l = $0 } END { print l }' "$f")
+      [ -z "$rec" ] || recdims=$(printf '%s' "$rec" | cut -f3)
+    fi
+    merged=$(printf '%s,%s' "$recdims" "$dims" | tr ',' '\n' | grep . | sort -u | paste -sd, -)
+    printf '%s\t%s\t%s\n' "$p" "$sha" "$merged" >> "$tmp"
   done <<EOF
 $files
 EOF

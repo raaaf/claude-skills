@@ -63,5 +63,22 @@ expect tiers "$P" COST_ALLES 42
 P=$(profile cost-small SMALL app/Services/Mailer.php)
 expect cost-small "$P" COST_GUENSTIG 8
 expect cost-small "$P" COST_ALLES 23
+# HUGE: cost scales with the file count (140 files: base 21 M, 5.6 M per added dimension), PCT from a fixed conf
+printf 'WEEK_BUDGET_USD=1000\n' > "$tmpdir/limits.conf"
+huge_files=(); for i in $(seq 1 139); do huge_files+=("app/Services/F$i.php"); done
+huge_files+=(app/Http/Middleware/AuthCheck.php)
+P=$(USAGE_LIMITS_CONF="$tmpdir/limits.conf" profile huge HUGE "${huge_files[@]}")
+expect huge "$P" TIER_GRUENDLICH security,privacy,architecture,code_quality
+expect huge "$P" COST_GUENSTIG 21
+expect huge "$P" COST_GRUENDLICH 26.6
+expect huge "$P" COST_ALLES 77
+expect huge "$P" COST_GUENSTIG_PCT 2.5
+expect huge "$P" COST_GRUENDLICH_PCT 3.2
+expect huge "$P" COST_ALLES_PCT 9.2
+expect huge "$P" RECOMMENDED GUENSTIG
+
+P=$(USAGE_LIMITS_CONF="$tmpdir/none.conf" profile pct-default OK resources/views/home.blade.php resources/css/app.css lang/de.json README.md)
+expect pct-default "$P" COST_ALLES_PCT 1.9
+
 [ "$fail" = 0 ] && printf 'All diff-profile.sh tests passed.\n'
 [ "$fail" = 0 ]

@@ -60,3 +60,18 @@ expect "$(grep -c '^a.txt' "$RECORD")" '1' 'other lines untouched'
 
 fresh
 expect "$(orch_audited_filter $'a.txt\nb.txt' 'copy')" $'a.txt\nb.txt' 'no record file: everything kept'
+
+# orch_audited_add_dims: same blob merges dims, changed blob starts over, other lines stay
+fresh
+orch_audited_record $'a.txt\nb.txt' 'security'
+orch_audited_add_dims 'a.txt' 'payments'
+expect "$(grep '^a.txt' "$RECORD" | cut -f3)" 'payments,security' 'add_dims: same sha merges and keeps old dims'
+expect "$(orch_audited_filter 'a.txt' 'payments,security')" '' 'add_dims: filter skips the merged file for payments'
+expect "$(grep '^b.txt' "$RECORD" | cut -f3)" 'security' 'add_dims: other file line untouched'
+
+fresh
+orch_audited_record 'a.txt' 'security'
+printf 'changed\n' > a.txt
+orch_audited_add_dims 'a.txt' 'payments'
+expect "$(grep '^a.txt' "$RECORD" | cut -f3)" 'payments' 'add_dims: changed sha replaces with only new dims'
+expect "$(grep -c '^a.txt' "$RECORD")" '1' 'add_dims: one line per path'

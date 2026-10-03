@@ -113,13 +113,13 @@ printf '%s\n' "$DIFF_PROFILE"
 orch_state_save DIFF_PROFILE
 ```
 
-The profile is `key=value` lines (file counts per kind, `SENSITIVE_PATHS`, `PAYMENTS`, `SEO_RELEVANT`, `SUGGEST_<dim>` with `REASON_<dim>`, `TIER_*`, `COST_*`, `RECOMMENDED`). Show a compact German summary: what changed (counts per kind, size class, sensitive paths if any), then per tier the dimensions it runs, the reasons for the added ones (`REASON_<dim>`) and the cost as "grobe Schätzung, ca. N M gewichtete Tokens" (`COST_*`). Unless a set variable suppressed the question, ask exactly ONE `AskUserQuestion`, one question, the three tiers as options (`RECOMMENDED` tier first, label ending in "(Recommended)"); the automatic "Other" takes a custom dimension list. Tier definitions (`bin/diff-profile.sh` computes them, `references/dimension-selection.md` has the rules and the cost model):
+The profile is `key=value` lines (file counts per kind, `SENSITIVE_PATHS`, `PAYMENTS`, `SEO_RELEVANT`, `SUGGEST_<dim>` with `REASON_<dim>`, `TIER_*`, `COST_*`, `RECOMMENDED`). Show a compact German summary: what changed (counts per kind, size class, sensitive paths if any), then per tier the dimensions it runs, the reasons for the added ones (`REASON_<dim>`) and the cost as "grobe Schätzung, ca. N M gewichtete Tokens, ca. P % der Woche" (`COST_*`, `COST_*_PCT`). On `LARGE`/`HUGE` (`DIFF_SIZE_RESULT`): before asking, run `orch_usage_report` and show the current week estimate (`WEEK_PCT_EST`); the Gründlich and Alles option descriptions state their week % and the line "Großer Diff: aufteilen oder Günstig empfohlen". Unless a set variable suppressed the question, ask exactly ONE `AskUserQuestion`, one question, the three tiers as options (`RECOMMENDED` tier first, label ending in "(Recommended)"); the automatic "Other" takes a custom dimension list. Tier definitions (`bin/diff-profile.sh` computes them, `references/dimension-selection.md` has the rules and the cost model):
 
 - **Günstig:** `security`, `privacy`, `architecture` (+ `payments` automatically when its trigger fires) and the built-in `/code-review high`, plus `a11y` and `copy` when frontend or language files changed. `TIER_GUENSTIG`.
 - **Gründlich:** Günstig plus every dimension with `SUGGEST_<dim>=yes`. `TIER_GRUENDLICH`; when it equals Günstig, say so in the option text.
 - **Alles:** all 13 dimensions. `TIER_ALLES`.
 
-`RECOMMENDED` is Gründlich when sensitive paths changed or at least 3 dimensions are suggested, else Günstig. The tiers are proposals, never a gate: the user's pick (or custom list) is the selection.
+`RECOMMENDED` is always Günstig on `LARGE`/`HUGE` diffs (2026-10-03: zeit Gründlich on a 140-file HUGE diff cost ~78 M, ~3.5% of the week, against a 48 M profile estimate); otherwise Gründlich when sensitive paths changed or at least 3 dimensions are suggested, else Günstig. The tiers are proposals, never a gate: the user's pick (or custom list) is the selection.
 
 Result: `AUDIT_DIMENSIONS` (comma list). A selection that omits a gate dimension never writes the push marker (the gate set itself is not partial), and the log names the dimensions not checked.
 
@@ -143,6 +143,8 @@ echo "AUDITED_SKIP: $AUDITED_SKIP file(s) unchanged since last passed audit"
 if [ "${STRIPE:-no}" = "yes" ]; then
   STRIPE_TOUCHED=$(orch_payments_touched "$ALLE_DATEIEN" "$STRIPE_FILES")   # test paths and generic wiring (routes/, config/, providers, views) excluded unless the path names a payment concern (lib): neither alone may start payments
   if [ -n "$STRIPE_TOUCHED" ]; then
+    PAYMENTS_SCOPE=$(printf '%s\n%s\n' "$STRIPE_TOUCHED" "$(orch_audited_filter "$STRIPE_FILES" payments)" | grep . | sort -u)   # touched surface files plus surface files not certified for payments (changed since a passed payments audit, or never audited): first run per repo = full surface
+    echo "PAYMENTS_SCOPE: $(printf '%s\n' "$PAYMENTS_SCOPE" | grep -c .) of $(printf '%s\n' "$STRIPE_FILES" | grep -c .) surface files (rest certified for payments)"
     AUDIT_DIMENSIONS="${AUDIT_DIMENSIONS:+$AUDIT_DIMENSIONS,}payments"   # no leading comma on an empty selection; the SAME variable Phase 2 splits for find.js; a separate SELECTED_DIMENSIONS was appended here until 2026-09-16 and never reached the dispatch
     GUIDELINE_MATCHES=$(orch_payments_guidelines "$GUIDELINE_MATCHES")   # payments.md always applies once the dimension runs (lib)
   else
@@ -155,7 +157,7 @@ case ",$AUDIT_DIMENSIONS," in *,seo,*)   # subtractive: seo only where SEO can m
     echo "SEO_SKIP: $(head -1 "${TMPDIR:-/tmp}/seo-reason.$$")"
   fi; rm -f "${TMPDIR:-/tmp}/seo-reason.$$";; esac
 echo "AUDIT_DIMENSIONS=$AUDIT_DIMENSIONS AUDIT_FIX_SCOPE=$AUDIT_FIX_SCOPE"
-orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES ALLE_DATEIEN ALLE_DATEIEN_FULL AUDITED_SKIP   # Phase 2 and Phase 4 load these; a hand-substituted copy in Phase 4 was the previous mechanism; ALLE_DATEIEN is now the filtered set
+orch_state_save AUDIT_DIMENSIONS AUDIT_FIX_SCOPE GUIDELINE_MATCHES ALLE_DATEIEN ALLE_DATEIEN_FULL AUDITED_SKIP PAYMENTS_SCOPE   # Phase 2 and Phase 4 load these; a hand-substituted copy in Phase 4 was the previous mechanism; ALLE_DATEIEN is now the filtered set
 ```
 
 **Already-audited files are skipped (2026-09-30).** `orch_audited_filter` drops files byte-identical (git blob sha) to what an earlier PASSED audit certified; `ALLE_DATEIEN_FULL` keeps the whole list, `ALLE_DATEIEN` is the filtered set every later phase uses. Rules and evidence: `references/dimension-selection.md`.
@@ -171,8 +173,12 @@ dimension only runs once the detector has already established the repo is a Stri
 the guideline always applies when `payments` runs. The block above appends the line only when
 `match-guidelines.sh` did not already emit it.
 
-When `payments` runs, its scope is the FULL `STRIPE_FILES` surface (not just `STRIPE_TOUCHED`): pass
-it as `dimensionFiles: { payments: STRIPE_FILES }` for that dimension when invoking `find.js` in
+When `payments` runs, its scope is `PAYMENTS_SCOPE`: `STRIPE_TOUCHED` plus every `STRIPE_FILES`
+surface file not yet certified for `payments` (`orch_audited_filter`). The first run per repo scans
+the full surface, later runs only touched files plus surface files changed since a passed payments
+audit (2026-10-03: events SMALL 12-file diffs cost 10-17 M weighted each because one touched Stripe
+file made payments rescan the whole surface every run). Pass it as
+`dimensionFiles: { payments: PAYMENTS_SCOPE }` for that dimension when invoking `find.js` in
 Phase 2, and thread `STRIPE_MODE` and `STRIPE_RECURRING` through `dimensionContext: { payments:
 "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING }` so the specialist applies
 mode-dependent rules (cashier/sdk/client/hosted/http) and gates the dashboard checklist on whether
@@ -203,18 +209,18 @@ The orchestrator does not read scope files at all — `find.js` has no filesyste
 and specialist subagents read the audited repo themselves, so there is nothing content-based left for
 the orchestrator to inline. Before dispatch, the block below computes the content-based scout floor
 with the helper and prints it. `STRIPE_FILES` is deliberately NOT unioned into `ALLE_DATEIEN`: it is
-not part of the diff scope, and unioning it in would widen what every other dimension audits. It IS
-passed to the helper, in a second invocation, because the helper reads files from disk itself, so
-handing it the surface costs the orchestrator nothing, and `payments` should get a deterministic
-floor over the surface it actually scouts, not just whatever of that surface the diff happened to
-touch:
+not part of the diff scope, and unioning it in would widen what every other dimension audits.
+`PAYMENTS_SCOPE` (the part of the surface `payments` actually scouts this run) IS passed to the
+helper, in a second invocation, because the helper reads files from disk itself, so handing it the
+scope costs the orchestrator nothing, and `payments` should get a deterministic floor over the files
+it actually scouts, not just whatever of that surface the diff happened to touch:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root || { echo "Abgebrochen — audit-Root nicht gefunden."; orch_progress_release; exit 1; }
-orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PROJECT_ROOT from the blocks above
+orch_state_load   # ALLE_DATEIEN, AUDIT_DIMENSIONS, STRIPE_FILES, PAYMENTS_SCOPE, PROJECT_ROOT from the blocks above
 FLOOR_FILES=$(printf '%s\n' "$ALLE_DATEIEN" | node "$AUDIT_BIN/compute-floor.mjs" "$PROJECT_ROOT" "$AUDIT_DIMENSIONS")   # content-based scout floor, {"<dimension>": ["<path>", ...]} for every selected dimension
-FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$STRIPE_FILES" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over STRIPE_FILES; unchanged when payments is not selected (lib)
+FLOOR_FILES=$(orch_payments_floor "$AUDIT_DIMENSIONS" "$PAYMENTS_SCOPE" "$PROJECT_ROOT" "$FLOOR_FILES")   # merges the payments floor over PAYMENTS_SCOPE; unchanged when payments is not selected (lib)
 printf 'FLOOR_FILES=%s\n' "$FLOOR_FILES"   # pass this JSON as floorFiles in the Workflow call below
 case "$DIFF_SIZE_RESULT" in SMALL|"") HUNK_SCOPE=false ;; *) HUNK_SCOPE=true ;; esac   # from Phase 1's diff-size-gate.sh; every result above SMALL scopes to changed hunks; empty stays false; used by the Workflow call below
 echo "HUNK_SCOPE=$HUNK_SCOPE"
@@ -242,7 +248,7 @@ ARGS2 = {...}`), replace every place the script reads `args` with `ARGS2`, and p
 path as `scriptPath`. See `.claude/audits/2026-09-21_040559-main.md` (Incidents) for the origin of
 this workaround.
 
-Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: STRIPE_FILES } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, sizeResult: DIFF_SIZE_RESULT, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF, hunks: HUNKS } : {}) } })`,
+Start the find workflow: `Workflow({ scriptPath: "${CLAUDE_SKILL_DIR}/workflows/find.js", args: { repoRoot: PROJECT_ROOT, scope: "diff", files: [...ALLE_DATEIEN split on newlines...], dimensions: [...AUDIT_DIMENSIONS split on commas...], effort: CLAUDE_EFFORT, promptDir: AUDIT_AGENTS_DIR, guidelinesDir: "${CLAUDE_SKILL_DIR}/guidelines", guidelines: GUIDELINE_MATCHES, projectGuidelines: PROJECT_GUIDELINES, floorFiles: FLOOR_FILES, dimensionFiles: PAYMENTS_SELECTED ? { payments: PAYMENTS_SCOPE } : {}, dimensionContext: PAYMENTS_SELECTED ? { payments: "STRIPE_MODE=" + STRIPE_MODE + " STRIPE_RECURRING=" + STRIPE_RECURRING } : {}, sizeResult: DIFF_SIZE_RESULT, ...(HUNK_SCOPE ? { hunkScope: true, baseRef: BASE_REF, hunks: HUNKS } : {}) } })`,
 where `PAYMENTS_SELECTED` is whether `payments` is in `AUDIT_DIMENSIONS`, and `HUNK_SCOPE` is
 `DIFF_SIZE_RESULT` (Phase 1, `diff-size-gate.sh`, carried via `orch_state_save`) being anything
 other than `SMALL` (i.e. `OK`, `LARGE`, or `HUGE`). `sizeResult` passes the same `DIFF_SIZE_RESULT`
@@ -251,7 +257,7 @@ value through unconditionally (unlike `hunkScope`/`baseRef`, which are only adde
 5-8-file chunk (`chunkFilesForDimension`), except `security`/`privacy`/`payments`, which always
 keep normal chunking; `architecture`/`docs_sync` are unaffected either way, since their chunks
 come from the cluster scout, never from file chunking. One call, one `runId`, `payments` scouts
-`STRIPE_FILES` while every other dimension scouts `ALLE_DATEIEN` as before.
+`PAYMENTS_SCOPE` while every other dimension scouts `ALLE_DATEIEN` as before.
 
 `HUNKS` is computed by the orchestrator right before the call: `HUNKS=$(printf '%s\n' "$ALLE_DATEIEN" | xargs bash "$AUDIT_BIN/hunk-ranges.sh" "$BASE_REF")`, a JSON object `{ "<path>": [[start,end],...] | "whole" }` (changed lines of the new file plus 15 lines of context, merged). The specialists and verifiers only have Read/Grep/Glob and cannot run `git diff`, so `find.js` puts each file's ranges into their briefing instead of telling them to diff. Parse it into an object for `args.hunks`; a large one counts toward the 40 KB size estimate above and goes through the same scratchpad-copy mechanism. Without `hunks` `find.js` keeps the old "run git diff" text.
 
@@ -431,13 +437,13 @@ on exactly the state it exists to catch.
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
-orch_state_load   # ALLE_DATEIEN (filtered) and AUDIT_DIMENSIONS for the audited-blob record below
+orch_state_load   # ALLE_DATEIEN (filtered), AUDIT_DIMENSIONS and PAYMENTS_SCOPE for the audited-blob record below
 # Counts from the Phase 2 find.js result: how many dimensions were selected, and how many came
 # back skipped / incomplete / degraded. They are mandatory, and the helper refuses on its own if
 # they do not hold, so the gate no longer depends on this prose being read correctly. The
 # orchestrator substitutes the {N_...} placeholders with the counts it derived from the find.js
 # JSON before running this block, same convention as the COUNTS line above.
-orch_marker_write "{N_SELECTED}" "{N_SKIPPED}" "{N_INCOMPLETE}" "{N_DEGRADED}" && orch_audited_record "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS"   # writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit; only when it succeeded, the post-fix content hashes of the audited files are recorded (Phase 1.5 filter reads them next run)
+orch_marker_write "{N_SELECTED}" "{N_SKIPPED}" "{N_INCOMPLETE}" "{N_DEGRADED}" && orch_audited_record "$ALLE_DATEIEN" "$AUDIT_DIMENSIONS" && { [ -z "${PAYMENTS_SCOPE:-}" ] || orch_audited_add_dims "$PAYMENTS_SCOPE" payments; }   # add_dims AFTER record (record replaces lines, add_dims merges): surface files scanned for payments but outside the diff get certified too; writes the audited tree id (orch_tree_hash) into the passed-family marker, /ship compares it after its own commit; only when it succeeded, the post-fix content hashes of the audited files are recorded (Phase 1.5 filter reads them next run)
 # The fresh marker's own tree binding now certifies this range; the quick-fix collection file
 # (ship/references/audit-collection.md) has nothing left to add, whether or not it was used above.
 orch_unaudited_clear

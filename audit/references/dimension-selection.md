@@ -26,13 +26,17 @@ lines: file counts per kind (backend, frontend, view, lang, migration, docs, tes
 | Gründlich | Günstig plus every dimension with `SUGGEST_<dim>=yes` |
 | Alles | all 13 dimensions |
 
-`RECOMMENDED` (first option, labelled "(Recommended)") is Gründlich when sensitive paths changed or at least 3 dimensions are
-suggested, else Günstig. The automatic "Other" option takes a custom dimension list. The tiers are advisory: they do not bypass
+`RECOMMENDED` (first option, labelled "(Recommended)") is always Günstig on LARGE/HUGE diffs (2026-10-03: zeit Gründlich on a
+140-file HUGE diff cost ~78 M, ~3.5% of the week, against a 48 M profile estimate); otherwise Gründlich when sensitive paths
+changed or at least 3 dimensions are suggested, else Günstig. The automatic "Other" option takes a custom dimension list. The tiers are advisory: they do not bypass
 validation, deterministic checks, Stripe gating or push-marker rules.
 
 **Cost estimate ("grobe Schätzung").** Weighted M tokens: the Günstig base is SMALL 8, OK 12, LARGE/HUGE 18 (measured 2026-10-02:
 8.5-14.4 M per gate run incl. the code review); every dimension beyond the three gate dimensions (payments included) adds 1.5 M on a
-SMALL diff, 3 M on a larger one. `diff-profile.sh` prints `COST_GUENSTIG`, `COST_GRUENDLICH`, `COST_ALLES`. Pinned by `bin/diff-profile.test.sh`.
+SMALL diff, 3 M on a larger one. On LARGE/HUGE both scale with the file count N: base max(18, 0.15 N) M, per dimension
+max(3, 0.04 N) M. `diff-profile.sh` prints `COST_GUENSTIG`, `COST_GRUENDLICH`, `COST_ALLES` plus `COST_<tier>_PCT` (M x 1.2 USD
+/ `WEEK_BUDGET_USD` from `~/.claude/usage-limits.conf`, default 2600); the summary shows the % of the week, and on LARGE/HUGE the
+current week estimate (`orch_usage_report`) and "Großer Diff: aufteilen oder Günstig empfohlen". Pinned by `bin/diff-profile.test.sh`.
 
 **`payments` is a CONDITIONAL 14th dimension, not one of the 13 offered here.** It is never part of a tier list unless
 `detect-stripe.sh` reports `STRIPE=yes` and the diff touches its surface; a repo without Stripe never sees it. Gating and scope
@@ -62,7 +66,10 @@ separate formatted "Audit Scope: {N}/13 dimensions" line.
 ## Conditional and subtractive dimensions (moved from SKILL.md Phase 1.5)
 
 **`payments` (CONDITIONAL 14th dimension):** joins `AUDIT_DIMENSIONS` only when BOTH hold:
-`STRIPE=yes` (from Phase 1) AND the changed-file set intersects `STRIPE_FILES`. The intersection is
+`STRIPE=yes` (from Phase 1) AND the changed-file set intersects `STRIPE_FILES`. Once it runs, its scope is `PAYMENTS_SCOPE`:
+the touched surface files plus surface files not certified for `payments` (`orch_audited_filter`); `orch_audited_add_dims`
+records the certification after a passed audit (first run per repo = full surface; 2026-10-03: one touched Stripe file made
+events SMALL diffs rescan the whole surface, 10-17 M each). The intersection is
 computed against `STRIPE_FILES`, the precomputed Stripe surface `detect-stripe.sh` already found,
 never by grepping the diff text for "stripe": half of a payments checklist is about an *absent*
 guard (a webhook route with no signature check, a client secret logged instead of masked), and an
