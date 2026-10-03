@@ -89,6 +89,7 @@ GUIDELINE_MATCHES=$(bash "$AUDIT_BIN/match-guidelines.sh" "${CLAUDE_SKILL_DIR}/g
 
 # In-progress marker: run-scoped (claim now, touch after find.js, touch after fix.js, release at Phase 4).
 orch_progress_claim   # progress-family hash (pwd WITH newline); touched after each Notification, released in Phase 4
+orch_usage_start   # saves AUDIT_USAGE_T0 for the cost report in Phase 4; after the claim, which clears the state
 orch_state_save ALLE_DATEIEN BASE_REF FRAMEWORK SOURCE_DIRS PLATFORM PRECHECK_OUT STRIPE STRIPE_MODE STRIPE_RECURRING STRIPE_FILES PROJECT_GUIDELINES GUIDELINE_MATCHES DIFF_SIZE_RESULT DIFF_CLASS   # later blocks read these back with orch_state_load (fresh shell per block, lib header); after the claim, which clears the state
 ```
 
@@ -371,8 +372,10 @@ orch_state_load   # AUDIT_DIMENSIONS as Phase 1.5 saved it, payments included wh
 # derive the projects dir from cwd using the same slug convention as
 # ~/.claude/projects/ (every "/" becomes "-").
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects/$(pwd | sed 's#/#-#g')"
-bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # cost line for the log header + run-ledger
-COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd={USD}"
+bash "$AUDIT_BIN/run-cost.sh" --latest "$CLAUDE_PROJECTS_DIR" --json 2>/dev/null   # turns/tokens for the log header (whole session)
+USAGE_LINE=$(orch_usage_report); echo "$USAGE_LINE"   # AUDIT_COST_USD, AUDIT_COST_WEEK_PCT, WEEK_USD, WEEK_PCT_EST (n/a on error)
+AUDIT_COST_USD=$(printf '%s' "$USAGE_LINE" | sed -n 's/.*AUDIT_COST_USD=\([^ ]*\).*/\1/p')
+COUNTS="critical={N_CRITICAL},important={N_IMPORTANT},minor={N_MINOR},usd=$AUDIT_COST_USD"
 if [ "${AUDIT_DIMENSIONS#*payments}" != "$AUDIT_DIMENSIONS" ]; then
   COUNTS="$COUNTS,payments_head=$(git rev-parse HEAD)"
 fi
@@ -461,6 +464,8 @@ fix wave over the backlog, write no marker. Procedure in `references/minor-backl
 ```
 Audit: {C} Critical, {I} Important offen | Push {frei|blockiert|nicht zutreffend}
 MINOR_BACKLOG: {N} open
+Kosten: {AUDIT_COST_USD} USD (ca. {AUDIT_COST_WEEK_PCT} % der Woche) | Woche ca. {WEEK_PCT_EST} % (lokale Schätzung, genauer Wert: /usage)
 ```
 
 `N` is `orch_backlog_count` (source the lib first, as in every block).
+The cost figures come from the Phase 4 `orch_usage_report` line, written with German decimal commas (`16,07`); `n/a` stays `n/a`. The same figures go into the audit log header as `Kosten dieses Laufs: X USD (ca. Y % der Woche), Woche ca. Z % (lokale Schätzung über die Sessions auf diesem Mac; genauer Wert: /usage)` (`references/audit-log-template.md`).

@@ -77,6 +77,8 @@
 #   orch_payments_guidelines <matches>   prints GUIDELINE_MATCHES with payments.md appended when missing
 #   orch_payments_touched <changed> <stripe_files>   prints the non-test changed paths that sit in STRIPE_FILES, generic wiring dropped unless the path names a payment concern (payments trigger)
 #   orch_sensitive_paths <changed>   prints the non-test changed paths on an auth/payment/privacy surface (reserved for a future /security-review, not dispatched today)
+#   orch_usage_start         saves AUDIT_USAGE_T0 (epoch) to the state; call right after orch_progress_claim (the claim clears the state)
+#   orch_usage_report        prints `AUDIT_COST_USD=<x.xx> AUDIT_COST_WEEK_PCT=<y.y> WEEK_USD=<z> WEEK_PCT_EST=<w>` (n/a per value on error, never fails): this session plus *audit-review* sessions since T0, and the week since the last reset in ~/.claude/usage-limits.conf
 #   orch_review_worktree_create <base_ref> [files]   temporary detached worktree at base_ref with the audit scope (base_ref..working tree, untracked files as intent-to-add) applied as UNCOMMITTED changes; prints its path (for the built-in /code-review)
 #   orch_review_worktree_remove <path>   removes that worktree (also after a failed review)
 #   orch_seo_surface <root>             prints yes|no (+ reason on stderr): does the repo have an SEO surface (sitemap, meta/og/JSON-LD/per-page title)
@@ -734,5 +736,79 @@ orch_host_public() {
   case "$h" in
     127.*|0.*|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 1 ;;
   esac
+  return 0
+}
+
+# Usage report (2026-10-03). Prices and the 1% = 20 USD calibration: run-cost.sh and audit/CLAUDE.md.
+orch_usage_start() {
+  # The printed mark lands in this session's transcript (Bash tool output), so orch_usage_report can find
+  # the session file even when the audited repo is not the directory the session was started in.
+  AUDIT_USAGE_T0=$(date +%s)
+  AUDIT_USAGE_MARK="audit-usage-${AUDIT_USAGE_T0}-$$-${RANDOM}"
+  orch_state_save AUDIT_USAGE_T0 AUDIT_USAGE_MARK
+  echo "AUDIT_USAGE_MARK=$AUDIT_USAGE_MARK"
+}
+
+# epoch -> formatted: BSD `date -r <epoch>` first, GNU `date -d @<epoch>` as fallback
+orch__date_at() { date -r "$1" "$2" 2>/dev/null || date -d "@$1" "$2"; }
+
+# prints the epoch of the last weekly reset (WEEK_RESET_DOW 1=Mon..7=Sun at WEEK_RESET_HOUR in WEEK_RESET_TZ)
+orch__week_reset_epoch() {
+  local now="$1" dow="$2" hour="$3" tz="$4" cur_dow hms secs back r
+  cur_dow=$(TZ="$tz" orch__date_at "$now" +%u) || return 1
+  hms=$(TZ="$tz" orch__date_at "$now" +%H:%M:%S) || return 1
+  secs=$(( 10#${hms%%:*} * 3600 + 10#$(printf '%s' "$hms" | cut -d: -f2) * 60 + 10#${hms##*:} ))
+  back=$(( (cur_dow - dow + 7) % 7 ))
+  r=$(( now - secs - back * 86400 + hour * 3600 ))
+  [ "$r" -gt "$now" ] && r=$(( r - 604800 ))
+  printf '%s' "$r"
+}
+
+orch__usage_compute() (
+  local root="$HOME/.claude/projects" conf="$HOME/.claude/usage-limits.conf" now t0 rc cost="n/a" week="n/a" d f usd n
+  local WEEK_RESET_DOW=4 WEEK_RESET_HOUR=12 WEEK_RESET_TZ=Europe/Berlin WEEK_BUDGET_USD=2600
+  export LC_NUMERIC=C
+  [ -f "$conf" ] && . "$conf"
+  case "$WEEK_RESET_DOW$WEEK_RESET_HOUR" in ''|*[!0-9]*) WEEK_RESET_DOW=4; WEEK_RESET_HOUR=12 ;; esac
+  case "$WEEK_BUDGET_USD" in ''|*[!0-9.]*) WEEK_BUDGET_USD=2000 ;; esac
+  orch_state_load
+  t0="${AUDIT_USAGE_T0:-}"
+  [ -n "${AUDIT_BIN:-}" ] || orch_resolve_audit_root || true
+  rc="${AUDIT_BIN:-}/run-cost.sh"
+  now=$(date +%s)
+  if [ -f "$rc" ]; then
+    if [ -n "$t0" ]; then
+      f=""
+      [ -n "${AUDIT_USAGE_MARK:-}" ] && f=$(grep -lF "$AUDIT_USAGE_MARK" "$root"/*/*.jsonl 2>/dev/null | head -1)
+      if [ -n "$f" ]; then
+        usd=$(bash "$rc" "$(dirname "$f")" "$(basename "$f" .jsonl)" --since "$t0" 2>/dev/null | sed -n 's/.* usd=\([0-9.]*\) .*/\1/p')
+      else
+        usd=$(bash "$rc" --latest "$root/$(pwd | sed 's#/#-#g')" --since "$t0" 2>/dev/null | sed -n 's/.* usd=\([0-9.]*\) .*/\1/p')
+      fi
+      if [ -n "$usd" ]; then
+        cost="$usd"
+        n=$(( (now - t0) / 60 + 2 ))
+        for d in "$root"/*audit-review*; do
+          [ -d "$d" ] || continue
+          while IFS= read -r f; do
+            usd=$(bash "$rc" "$d" "$(basename "$f" .jsonl)" --since "$t0" 2>/dev/null | sed -n 's/.* usd=\([0-9.]*\) .*/\1/p')
+            [ -n "$usd" ] && cost=$(awk -v a="$cost" -v b="$usd" 'BEGIN{printf "%.2f", a+b}')
+          done < <(find "$d" -maxdepth 1 -type f -name '*.jsonl' -mmin "-$n" 2>/dev/null)
+        done
+      fi
+    fi
+    f=$(orch__week_reset_epoch "$now" "$WEEK_RESET_DOW" "$WEEK_RESET_HOUR" "$WEEK_RESET_TZ") &&
+      usd=$(bash "$rc" --window "$root" "$f" 2>/dev/null | sed -n 's/^WINDOW .* usd=\([0-9.]*\).*/\1/p') && [ -n "$usd" ] && week="$usd"
+  fi
+  pct() { case "$1" in n/a) printf 'n/a' ;; *) awk -v u="$1" -v b="$WEEK_BUDGET_USD" 'BEGIN{printf "%.1f", u/b*100}' ;; esac; }
+  printf 'AUDIT_COST_USD=%s AUDIT_COST_WEEK_PCT=%s WEEK_USD=%s WEEK_PCT_EST=%s\n' "$cost" "$(pct "$cost")" "$week" "$(pct "$week")"
+)
+
+orch_usage_report() {
+  # Always computed in bash: the Bash tool runs zsh, where an unmatched glob ("$root"/*audit-review*) aborts.
+  local out="" lib="${AUDIT_BIN:-}/lib-orchestrator.sh"
+  [ -f "$lib" ] || { orch_resolve_audit_root >/dev/null 2>&1 || true; lib="${AUDIT_BIN:-}/lib-orchestrator.sh"; }
+  [ -f "$lib" ] && out=$(ORCH_USAGE_LIB="$lib" bash -c '. "$ORCH_USAGE_LIB"; orch__usage_compute' 2>/dev/null)
+  case "$out" in AUDIT_COST_USD=*) echo "$out" ;; *) echo "AUDIT_COST_USD=n/a AUDIT_COST_WEEK_PCT=n/a WEEK_USD=n/a WEEK_PCT_EST=n/a" ;; esac
   return 0
 }

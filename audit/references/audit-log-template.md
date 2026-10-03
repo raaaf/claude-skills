@@ -20,6 +20,7 @@ Format for the audit log under `.claude/audits/{datum}_{zeit}-{branch}.md`, writ
 - Critical found/fixed: A/B
 - Important found/fixed: C/D
 - Cost: {usd|null} USD | Accounting: {complete|unavailable} | Source: {actual source or reason unavailable}
+- Kosten dieses Laufs: {AUDIT_COST_USD} USD (ca. {AUDIT_COST_WEEK_PCT} % der Woche), Woche ca. {WEEK_PCT_EST} % (lokale Schätzung über die Sessions auf diesem Mac; genauer Wert: /usage)
 - API turns/tokens: {actual values or unavailable}; never substitute zero for missing accounting
 
 ## Pipeline Telemetry
