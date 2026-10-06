@@ -12,7 +12,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { reviewedHash, parseArgs } from './lib.mjs';
+import { reviewedHash, parseArgs, outputRoot } from './lib.mjs';
 
 const LIMITS = {
   'ios-6.9': { maxCount: 10 },
@@ -49,7 +49,7 @@ function main() {
     process.exit(1);
   }
   const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-  const generatedRoot = path.join(projectRoot, 'native', 'store-assets', 'generated');
+  const generatedRoot = outputRoot(projectRoot, config);
 
   const problems = [];
 

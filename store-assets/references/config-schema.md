@@ -80,8 +80,11 @@ here). One config per project.
 
 ## Field reference
 
+- `output_dir` (optional) — project-relative root for rendered stills, default
+  `native/store-assets/generated`. Both `render.mjs` and `validate.mjs` read it; files land in
+  `<output_dir>/<format>/<locale>/<scene-id>.jpg`.
 - `brand.headline_font` / `brand.subline_font` — `family`: the CSS `font-family` name used in the
-  scene's `@font-face`. `path`: project-relative path to the font file (woff2). No fallback font is
+  scene's `@font-face`. `path`: project-relative path to the font file (`.woff2`, `.woff`, `.ttf` or `.otf`; the CSS `format()` is derived from the extension). No fallback font is
   ever baked into the output (Edge Cases in `SKILL.md`): a font that fails
   `document.fonts.check()` aborts the render instead of silently substituting one.
 - `brand.logo` — project-relative path to the logo asset placed on the canvas.
@@ -99,8 +102,12 @@ here). One config per project.
   - `background` / `foreground` — this scene's canvas background and text color (hex), so
     consecutive store screenshots can alternate a project's brand palette instead of repeating one
     color on every screen. Also selects the iPhone bezel color on `ios-6.9`
-    (`store-specs.md` "Devices", `IPHONE_COLOR_BY_BG`), unless the scene is a `combo` layout (each
-    phone sets its own `ios_color`).
+    (`store-specs.md` "Devices", `IPHONE_COLOR_BY_BG`), unless `ios_color` is set; a `combo` layout
+    sets `ios_color` per phone. Unknown backgrounds without `ios_color` fall back to the first
+    bezel color in `store-specs.md` (Black).
+  - `ios_color` (optional, layout `single`) — iPhone bezel color for this scene, one of the
+    `colors` in `store-specs.md` "Devices" (same values as a combo part's `ios_color`). Ignored on
+    `play-phone`.
   - `layout` — `"single"` (default, one device) or `"combo"` (two devices, `01-hero` only so far).
     A `single` scene needs `source`/`crop_top_px`; a `combo` scene needs `combo` instead of both.
   - `source.<locale>.<theme>` (layout `single`) — project-relative path to the source screen PNG.
@@ -147,5 +154,5 @@ plus the project logo, since Play accepts exactly one Feature Graphic (`store-sp
   hand-editing every scene. A `combo` scene's `ios_color` per phone is overridden the same way (both
   phones use the derived color instead of their own configured ones).
 - `--out <dir>` — writes directly into `<dir>` (project-relative) instead of
-  `native/store-assets/generated/<format>/<locale>/`, and skips the `generated/index.html` rewrite
+  `<output_dir>/<format>/<locale>/`, and skips the `generated/index.html` rewrite
   (a `--out` run is a partial/variant run, not the project's main catalog).

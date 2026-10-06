@@ -239,8 +239,8 @@
       const sublineFamily = get('sublineFamily', 'Inter Variable');
       const fontStyle = document.createElement('style');
       fontStyle.textContent = `
-        @font-face { font-family: "${headlineFamily}"; src: url("${get('headlineFont', '')}") format("woff2"); font-weight: 400; font-style: normal; }
-        @font-face { font-family: "${sublineFamily}"; src: url("${get('sublineFont', '')}") format("woff2"); font-weight: 400 700; font-style: normal; }
+        @font-face { font-family: "${headlineFamily}"; src: url("${get('headlineFont', '')}") format("${get('headlineFormat', 'woff2')}"); font-weight: 400; font-style: normal; }
+        @font-face { font-family: "${sublineFamily}"; src: url("${get('sublineFont', '')}") format("${get('sublineFormat', 'woff2')}"); font-weight: 400 700; font-style: normal; }
       `;
       document.head.appendChild(fontStyle);
 

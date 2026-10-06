@@ -22,6 +22,11 @@ pre-flight fails with the missing path before any render if the cache is not the
 
 ## Gotchas
 
+- **Playwright fallback lives in `~/.cache/store-assets/npm`.** When the project has no own
+  `playwright`/`@playwright/test`, `render.mjs` runs `npm install --prefix ~/.cache/store-assets/npm
+  playwright@<pin>` once (not `npx`, which gives no importable module path), imports it from there,
+  and sets `PLAYWRIGHT_BROWSERS_PATH=~/.cache/store-assets/browsers`, running `install chromium`
+  only when that dir has no `chromium*` entry. Nothing is installed into the project or the skill.
 - **`bin/lib.mjs` is the single source of truth for `reviewedHash()` and `parseArgs()`.** Both
   `render.mjs`'s pre-flight and `validate.mjs`'s real gate call the exact same function with the
   exact same arguments (`reviewedHash(text.headline, text.subline)`, no fallback); a scene with no

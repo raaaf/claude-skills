@@ -81,9 +81,10 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
 - `width_pct` — the device's width as a percent of the canvas (`ios-6.9`/`play-phone`), the same
   role as Round-1's device-width constants, now per-device-kind here instead of in `scene.html`.
 - iPhone bezel color by scene background (`bin/render.mjs`'s `IPHONE_COLOR_BY_BG`, a skill-level
-  rule, not a config field): `#04081f` (navy) -> Silver, `#f7f7f7` (light) -> Black, `#e0452f`
-  (brand) -> Glacier. A scene's combo layout (`config-schema.md` "layout: combo") overrides this
-  per phone via its own `ios_color` field. Android has no color variants (one `back.webp`).
+  rule): `#04081f` (navy) -> Silver, `#f7f7f7` (light) -> Black, `#e0452f`
+  (brand) -> Glacier. Any other background falls back to the first entry of `colors` above
+  (Black). A `single` scene's own `ios_color` field overrides the lookup; a combo layout
+  (`config-schema.md` "layout: combo") overrides it per phone via each part's `ios_color`. Android has no color variants (one `back.webp`).
 
 ### Asset provenance (rebuilding on another machine)
 

@@ -20,7 +20,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { reviewedHash, parseArgs } from './lib.mjs';
+import { reviewedHash, parseArgs, fontFormat, pickIphoneColor, outputRoot } from './lib.mjs';
 
 const SKILL_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const STORE_SPECS_PATH = path.join(SKILL_DIR, 'references', 'store-specs.md');
@@ -32,9 +32,10 @@ const STORE_SPECS_PATH = path.join(SKILL_DIR, 'references', 'store-specs.md');
 const DEVICE_BY_FORMAT = { 'ios-6.9': 'iphone', 'play-phone': 'android' };
 
 // iPhone bezel color by scene background (store-specs.md "Devices"), a
-// skill-level rule, not a config field. A combo scene's own `ios_color`
-// per phone overrides this, except under --background (variant renders
-// want one uniform color across the whole strip).
+// skill-level rule. A scene's own `ios_color` (single scene) or a combo
+// part's `ios_color` overrides this, except under --background (variant
+// renders want one uniform color across the whole strip). Backgrounds not
+// listed here fall back to the first color in store-specs.md "Devices".
 const IPHONE_COLOR_BY_BG = { '#04081f': 'Silver', '#f7f7f7': 'Black', '#e0452f': 'Glacier' };
 
 function fail(message) {
@@ -190,16 +191,34 @@ function preflight(projectRoot, config, devicesSpec) {
   }
 }
 
-function resolvePlaywright(projectRoot) {
+const PLAYWRIGHT_PIN = '1.63.0'; // references/store-specs.md "Pinned tool versions"
+const CACHE_ROOT = path.join(os.homedir(), '.cache', 'store-assets');
+
+// Project's own playwright wins. Otherwise the pinned version is installed
+// once into a private prefix under ~/.cache/store-assets/npm (never the
+// project's or the skill's node_modules) and its Chromium into
+// ~/.cache/store-assets/browsers, only when not already cached.
+async function resolvePlaywright(projectRoot) {
   const projectPkg = path.join(projectRoot, 'node_modules', 'playwright');
   if (existsSync(projectPkg)) return import(pathToFileURL(path.join(projectPkg, 'index.mjs')).href);
   const testPkg = path.join(projectRoot, 'node_modules', '@playwright/test');
   if (existsSync(testPkg)) return import(pathToFileURL(path.join(testPkg, 'index.mjs')).href);
-  fail(
-    'no project-local playwright/@playwright/test found; fallback is `npx -y playwright@<pinned>` ' +
-      'plus `npx playwright install chromium` with PLAYWRIGHT_BROWSERS_PATH=~/.cache/store-assets/browsers ' +
-      '(references/store-specs.md "Pinned tool versions"), not implemented in this script yet.'
-  );
+
+  const prefix = path.join(CACHE_ROOT, 'npm');
+  const pkgDir = path.join(prefix, 'node_modules', 'playwright');
+  mkdirSync(prefix, { recursive: true });
+  if (!existsSync(pkgDir)) {
+    console.error(`INFO: installing playwright@${PLAYWRIGHT_PIN} into ${prefix}`);
+    execFileSync('npm', ['install', '--prefix', prefix, '--no-save', '--no-audit', '--no-fund', `playwright@${PLAYWRIGHT_PIN}`], { stdio: 'inherit' });
+  }
+  const browsersPath = path.join(CACHE_ROOT, 'browsers');
+  process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
+  const hasChromium = existsSync(browsersPath) && readdirSync(browsersPath).some((d) => d.startsWith('chromium'));
+  if (!hasChromium) {
+    console.error(`INFO: installing chromium into ${browsersPath}`);
+    execFileSync('node', [path.join(pkgDir, 'cli.js'), 'install', 'chromium'], { stdio: 'inherit', env: process.env });
+  }
+  return import(pathToFileURL(path.join(pkgDir, 'index.mjs')).href);
 }
 
 function buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part, locale, iosColor }) {
@@ -249,8 +268,10 @@ function baseParams(projectRoot, config, format, scene, locale) {
     fg: scene.foreground,
     headlineFont: projectFileUrl(projectRoot, config.brand.headline_font.path),
     headlineFamily: config.brand.headline_font.family,
+    headlineFormat: fontFormat(config.brand.headline_font.path),
     sublineFont: projectFileUrl(projectRoot, config.brand.subline_font.path),
     sublineFamily: config.brand.subline_font.family,
+    sublineFormat: fontFormat(config.brand.subline_font.path),
     headline: text.headline,
     subline: text.subline || '',
     logoSrc: projectFileUrl(projectRoot, config.brand.logo),
@@ -316,14 +337,19 @@ async function renderOne({ projectRoot, config, devicesSpec, scene, format, loca
   const params = { ...baseParams(projectRoot, config, format, effectiveScene, locale), layout: scene.layout || 'single', device: deviceKind };
   params.deviceSpec = deviceSpecParam(devicesSpec, deviceKind);
 
+  const pickColor = (explicit) =>
+    deviceKind === 'iphone'
+      ? pickIphoneColor({ explicit, background, byBackground: IPHONE_COLOR_BY_BG, validColors: devicesSpec.iphone.colors })
+      : undefined;
+
   if (scene.layout === 'combo') {
-    const iosColorOverride = backgroundOverride ? IPHONE_COLOR_BY_BG[backgroundOverride] : null;
-    const front = buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part: scene.combo.front, locale, iosColor: iosColorOverride || scene.combo.front.ios_color });
-    const back = buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part: scene.combo.back, locale, iosColor: iosColorOverride || scene.combo.back.ios_color });
+    // Under --background the variant's uniform color wins over per-phone ios_color.
+    const front = buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part: scene.combo.front, locale, iosColor: pickColor(backgroundOverride ? null : scene.combo.front.ios_color) });
+    const back = buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part: scene.combo.back, locale, iosColor: pickColor(backgroundOverride ? null : scene.combo.back.ios_color) });
     params.front = JSON.stringify(front);
     params.back = JSON.stringify(back);
   } else {
-    const iosColor = backgroundOverride ? IPHONE_COLOR_BY_BG[backgroundOverride] : IPHONE_COLOR_BY_BG[scene.background];
+    const iosColor = pickColor(backgroundOverride ? null : scene.ios_color);
     const single = buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part: scene, locale, iosColor });
     Object.assign(params, {
       screenSrc: single.screenSrc,
@@ -420,7 +446,7 @@ async function main() {
   for (const formatId of formatIds) {
     const format = { id: formatId, ...config.formats[formatId] };
     const outDirFor = (locale) =>
-      args.out ? path.resolve(projectRoot, args.out) : path.join(projectRoot, 'native', 'store-assets', 'generated', formatId, locale);
+      args.out ? path.resolve(projectRoot, args.out) : path.join(outputRoot(projectRoot, config), formatId, locale);
 
     if (formatId === 'play-feature') {
       for (const locale of locales) {
@@ -443,7 +469,7 @@ async function main() {
   console.log(`OK rendered=${written.length}`);
 
   if (!args.out && !args.scene && !args.format && !args.locale) {
-    const generatedRoot = path.join(projectRoot, 'native', 'store-assets', 'generated');
+    const generatedRoot = outputRoot(projectRoot, config);
     const indexPath = await writeIndex(projectRoot, config, generatedRoot);
     console.log(`INDEX ${indexPath}`);
   }
