@@ -97,6 +97,11 @@ final class ScreensCatalogTests: XCTestCase {
     }
 
     func test_screensCatalog() throws {
+        // Only /screens sets SCREENS_MANIFEST_PATH. A plain scheme-level
+        // `xcodebuild test` has no manifest or backend, so skip instead of failing.
+        guard env["SCREENS_MANIFEST_PATH"] != nil else {
+            throw XCTSkip("SCREENS_MANIFEST_PATH not set; this catalog test is driven by /screens only")
+        }
         let projectRoot = env["SCREENS_PROJECT_ROOT"] ?? ""
         guard let manifestPath = env["SCREENS_MANIFEST_PATH"],
               let manifestData = FileManager.default.contents(atPath: manifestPath),
