@@ -177,14 +177,20 @@ final class ScreensCatalogTests: XCTestCase {
     /// building this handler, platform-apple.md "System permission prompts"). macOS renders it as
     /// a separate process's window (`com.apple.UserNotificationCenter`, verified against the
     /// accessibility tree of a live prompt on this Xcode 27/macOS); iOS renders it in springboard,
-    /// reached only through a registered `addUIInterruptionMonitor` (`setUp` above), which needs a
-    /// `tap()` to be checked. Bounded to <= 3s and never fails the test when no prompt appears.
+    /// reached through the springboard app's `alerts` (queried directly, no blind app tap).
+    /// Bounded (1s on iOS, 3s on macOS) and never fails the test when no prompt appears.
     private func dismissSystemPrompt(app: XCUIApplication) {
         #if os(macOS)
         let systemDialog = XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter")
         tapSystemPromptButton(in: systemDialog, allow: allowSystemPrompts)
         #else
-        app.tap()
+        // Never tap the app blindly: a centre tap opened a Bibliothek list row in sprachverliebt
+        // (2026-10-06) and dismissed a long-press context menu before capture. Only act when a
+        // springboard alert is actually on screen, and tap its allow/deny button directly.
+        let alert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        if alert.waitForExistence(timeout: 1) {
+            tapSystemPromptButton(in: alert, allow: allowSystemPrompts)
+        }
         #endif
     }
 
@@ -223,9 +229,15 @@ final class ScreensCatalogTests: XCTestCase {
         if let id = step["id"] {
             return app.descendants(matching: .any).matching(identifier: id).firstMatch
         }
-        return app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH %@", step["label"] ?? "")
-        ).firstMatch
+        return app.descendants(matching: .any).matching(NSPredicate(format: "label MATCHES %@", labelPattern(step["label"] ?? ""))).firstMatch
+    }
+
+    /// Label-prefix regex (for `label MATCHES`) that ignores soft hyphens (U+00AD): SwiftUI text with automatic
+    /// hyphenation (sprachverliebt: "Au\u{00AD}gens\u{00AD}tern") exposes them in the accessibility
+    /// label, so a plain `BEGINSWITH "Augenstern"` never matches (found 2026-10-06).
+    nonisolated private func labelPattern(_ prefix: String) -> String {
+        let pattern = prefix.map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "\u{00AD}?")
+        return "(?s)" + pattern + "\u{00AD}?.*"
     }
 
     private func perform(steps: [[String: String]], in app: XCUIApplication) {
@@ -254,6 +266,16 @@ final class ScreensCatalogTests: XCTestCase {
                 if field.waitForExistence(timeout: 10) {
                     field.tap()
                     field.typeText(step["text"] ?? "")
+                }
+            case "long_press":
+                let element = matchElement(app, step)
+                if element.waitForExistence(timeout: 10) {
+                    // Let list rows settle (AccessibilityAuditTests sleeps 1s before pressing).
+                    Thread.sleep(forTimeInterval: 1)
+                    // Press the containing cell when one exists (context menus attach to the row).
+                    let cell = app.cells.containing(NSPredicate(format: "label MATCHES %@", labelPattern(step["label"] ?? ""))).firstMatch
+                    let target = cell.exists ? cell : element
+                    target.press(forDuration: 1.2)
                 }
             case "swipe_up":
                 app.swipeUp()
