@@ -2,7 +2,7 @@
 
 Templates for Phase 2 (plan file).
 
-Content: plan format (executor-grade, with drift check/STOP/done criteria, challenge-result block, Delegate spec) · round heuristic
+Content: plan format (executor-grade, with drift check/STOP/done criteria, challenge-result block, Delegate spec)
 
 ## Plan Format (Phase 2)
 
@@ -10,7 +10,7 @@ File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 
 **Executor rule:** The plan is written for an executor WITHOUT session context (a different model, a different session, or a human). Everything needed is in the file: exact paths, current state, conventions with an exemplar file, commands. "As discussed" is a violation.
 
-**Spelling self-check before v1 (German plans):** before showing v1, grep the plan file for `ae|oe|ue|ss` inside German words and replace with real umlauts (ä, ö, ü, ß). Do this on v1, not v2; the v1 draft has shipped in transliteration before and cost a round.
+**Spelling self-check before v1 (German plans):** before challenging v1, grep the plan file for `ae|oe|ue|ss` inside German words and replace with real umlauts (ä, ö, ü, ß). Do this on v1; the v1 draft has shipped in transliteration before.
 
 ```markdown
 # {Title}
@@ -132,13 +132,3 @@ Added to the plan when it matches:
 - **Schema migration** (any SwiftData/DB schema bump): rollback plan, test against real data, lightweight vs custom stage check, tombstone vs in-place.
 - **CloudKit**: schema deploy phase (pre-flight, manual Console fields), conflict strategy, race scenarios, container topology.
 - **iOS plan**: privacy and secrets hygiene, target membership / `project.yml` regeneration, known limitations. For an iOS major-version migration additionally: API fallback plan per new framework, Swift 6 hotspot list, capability matrix (region x language x model x device).
-
-## Round Heuristic (Recommendation, Not a Hard Limit)
-
-| Complexity | Rounds | When |
-|---|---|---|
-| Simple | 2 | Clear requirement, isolated feature, no data model overhaul |
-| Medium | 3 | Data model overhaul, multi-channel feature, complex policy question |
-| High | 4+ | Framing needs clarification, initial pivot (e.g. "Should we do X?" → actually Y) |
-
-For data model overhauls, the third pass almost always pays off.

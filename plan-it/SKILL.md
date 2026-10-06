@@ -16,7 +16,6 @@ allowed-tools:
   - TodoWrite
   - AskUserQuestion
   - ToolSearch
-  - mcp__ccd_view__show_pane
 ---
 
 # /plan-it — Iterative Plan Builder
@@ -204,18 +203,15 @@ words. Longer material goes into an `## Appendix` after the Delegate spec, or is
 with the `## Delegate spec` section in /delegate's mini-spec format (template in
 `references/plan-templates.md`), so /delegate can execute the plan without re-specifying it.
 
-### Iteration
+### No review round
 
-1. Show plan v1 to the user before asking anything. The AskUserQuestion dialog covers the chat, so a plan that exists only on disk is unreadable at question time. Open the written file: in the Claude desktop app call `mcp__ccd_view__show_pane` with `pane: "file"` and the plan's absolute path (load it via ToolSearch if deferred); if that tool is absent or reports no open window, run `open "<plan path>"` (macOS default Markdown viewer). Repeat after every revision so the user always reads the current version.
-2. Feedback via AskUserQuestion: "Is the direction right? What's missing or off?"
-3. Incorporate → v2
-4. Repeat until the user is satisfied
+The user does not read plan drafts. Do not open the plan file, do not show it, and do not ask for
+feedback on it. The challenge panel in Phase 3 takes the role of the review round. User input comes
+only from the Phase 1 interview and, after Phase 3, from the "zur Diskussion" scope cuts.
 
-After **every** incorporation round (not only round 1), re-verify all cited `file:line` references against HEAD — a reference can go stale between rounds. Evidence: stale `billProjectInGroup` reference, seen a second time (Evidence provenance: see the note at the top of Phase 1).
-
-**Round heuristic** (recommendation, not a hard limit) in `references/plan-templates.md`. Short version: 2 rounds for simple plans, 3 for medium ones, 4+ for pivots.
-
-When the user says "go": Phase 2.5.
+After writing v1, re-verify all cited `file:line` references against HEAD, then go straight to
+Phase 2.5. Evidence: stale `billProjectInGroup` reference (Evidence provenance: see the note at the
+top of Phase 1).
 
 ---
 
@@ -312,6 +308,8 @@ with the reason.
 Output:
 ```
 Plan done: docs/plans/{date}-{slug}.md
+
+{3-5 lines: what the plan builds, the key decisions, the open scope cuts}
 
 {N} concerns from the {M} challengers that ran ({names}):
 - {X} accepted (incorporated)
