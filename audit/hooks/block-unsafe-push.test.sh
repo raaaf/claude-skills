@@ -31,4 +31,13 @@ check ask 'git push -u origin chore/cleanup-sweep-2026-10-02'
 check ask 'git push -u origin chore/backlog-x'
 touch "$MARKER"
 check allow 'git push -u origin feature/x'
+
+# A marker recorded for a tree with a new untracked file must hold while the file is still untracked
+# (the guard must hash the same tree as orch_tree_hash) and after it is committed.
+printf 'new\n' > "$CWD/new.php"
+(cd "$CWD" && bash "$(dirname "$HOOK")/../bin/tree-hash.sh") > "$MARKER"
+check allow 'git push -u origin feature/x'
+git -C "$CWD" add -A
+git -C "$CWD" -c user.email=t@t -c user.name=t commit -q -m add
+check allow 'git push -u origin feature/x'
 [ "$fail" = 0 ]

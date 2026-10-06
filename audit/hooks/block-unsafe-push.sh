@@ -164,8 +164,11 @@ if [ "$marker_mtime" -gt 0 ] && [ $(( $(date +%s) - marker_mtime )) -lt 1800 ]; 
   fi
   recorded=$(head -1 "$marker" 2>/dev/null || true)
   if [ -n "$recorded" ] && git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
-    stash=$(git -C "$cwd" stash create 2>/dev/null || true)
-    current=$(git -C "$cwd" rev-parse "${stash:-HEAD}^{tree}" 2>/dev/null || true)
+    # Same helper as orch_tree_hash, so untracked files count the same way in marker and guard.
+    # A missing helper leaves current empty and the guard fails open.
+    treehash="$(dirname "$0")/../bin/tree-hash.sh"
+    current=""
+    [ -f "$treehash" ] && current=$(cd "$cwd" && bash "$treehash" 2>/dev/null || true)
     if [ -n "$current" ] && [ "$current" != "$recorded" ]; then
       delta=$(git -C "$cwd" diff --name-only "$recorded" "$current" 2>/dev/null || true)
       classify="$(dirname "$0")/../bin/classify-diff.sh"

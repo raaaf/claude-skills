@@ -43,7 +43,7 @@
 #   orch_state_load           reads every saved variable back into the current shell; the answer to
 #                             "a value set in an earlier block" (see the block rule below)
 #   orch_state_clear          removes the state dir; called by orch_progress_claim, and by skills without a claim (ship) at their start
-#   orch_tree_hash            tree object id of the working tree (tracked files) via `git stash create`, HEAD's tree when clean
+#   orch_tree_hash            tree object id of the working tree incl. untracked non-ignored files, built in a temp copy of the index
 #   orch_marker_write         writes orch_tree_hash into /tmp/claude-audit-passed-*; the marker certifies a tree, not a moment
 #   orch_marker_matches       rc 0 when the passed marker's tree equals orch_tree_hash now, rc 2 when the
 #                             delta is prose-only (classify-diff.sh --paths), rc 1 otherwise
@@ -194,16 +194,14 @@ orch_state_load() {
 # The passed marker used to be an empty file whose mtime was the whole claim, so an
 # edit made after the audit but inside the 30-minute window shipped as "audited"
 # (run 11, 2026-09-16). It now records the tree it certified: the working tree's
-# tracked content (what /ship's `git add -u` will commit), via `git stash create`,
-# which writes a dangling commit and touches neither index nor working tree; a
-# clean tree has no stash to create and is HEAD's tree. /ship compares after its
-# own commit, when HEAD's tree is that same tree if nothing changed in between.
-# The PreToolUse push hook still checks existence and age only (it has no run
-# context); /ship's gate is the consumer that binds.
-orch_tree_hash() {
-  local c; c=$(git stash create 2>/dev/null); c="${c:-HEAD}"
-  git rev-parse "$c^{tree}" 2>/dev/null
-}
+# content including untracked, non-ignored files. Untracked files are included
+# because /audit often reviews a brand-new file, and after the user's
+# `git add -A && git commit` that file is part of HEAD's tree; a tree without it
+# would read as a code delta and the marker as stale (sprachverliebt, 2026-10-06).
+# The logic lives in tree-hash.sh (temp copy of the real index), shared with the
+# push guard so both hash the same tree. /ship compares after its own commit, when
+# HEAD's tree is that same tree if nothing changed in between.
+orch_tree_hash() { bash "$ORCH_LIB_DIR/tree-hash.sh"; }
 # orch_marker_write <selected> <skipped> <incomplete> <degraded>
 # /audit passes: selected = reviews run, skipped = 0, incomplete = failed reviews plus open Critical/Important findings, degraded = 0.
 #
