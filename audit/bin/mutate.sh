@@ -38,6 +38,7 @@
 #       -> SURVIVOR_RAW=<relpath>:<line>:<mutator> per survivor, MUTATE_UNFILTERED=<n>, and for
 #          Pest MUTATE_SCORE=<relpath>:<pct>. --root turns absolute log paths repo-relative.
 #   mutate.sh --changed-lines <diff-file>     zero-context unified diff -> <path>:<line> per added line
+#                                             (a deletion-only hunk emits its anchor line once)
 #   mutate.sh --filter <changed-lines-file>   SURVIVOR_RAW lines on stdin -> SURVIVOR=/SURVIVORS_TRUNCATED=
 # bash 3.2 compatible.
 set -u
@@ -93,6 +94,7 @@ changed_lines() { # diff-file
       s = $3; sub(/^\+/, "", s)
       n = split(s, a, ",")
       start = a[1] + 0; len = (n > 1 ? a[2] + 0 : 1)
+      if (len == 0) print p ":" start   # pure deletion: anchor on the line before the gap
       for (j = 0; j < len; j++) print p ":" (start + j)
     }' "$1"
 }
@@ -142,8 +144,12 @@ ROOT=$(pwd -P)
 
 skip() { echo "MUTATE_RESULT=SKIP"; echo "MUTATE_REASON=$1"; exit 0; }
 
-TARGETS=".claude/mutation-targets"
+TARGETS="$ROOT/.claude/mutation-targets"
 [ -f "$TARGETS" ] || skip no-targets
+
+# git prints tracked (--name-only) and untracked paths relative to different bases inside a
+# subdirectory; work from the top level so both share one.
+if TOP=$(git rev-parse --show-toplevel 2>/dev/null); then cd "$TOP" && ROOT=$(pwd -P); fi
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/mutate.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -190,9 +196,12 @@ run_budgeted() { # log cmd...
   local log=$1 remaining cmd
   shift
   remaining=$((BUDGET - (SECONDS - START)))
-  if [ "$remaining" -le 0 ]; then RUN_STATUS=124; return; fi
+  # Budget gone before the run: empty the log (the previous file's log must not be parsed again)
+  # and return 1 so the caller stops without counting this file.
+  if [ "$remaining" -le 0 ]; then RUN_STATUS=124; : > "$log"; return 1; fi
   cmd=$(printf '%q ' "$TIMEOUT_BIN" -k 10 "$remaining" "$@")
-  bash "$HERE/test-lock.sh" --cmd "$cmd" > "$log" 2>&1
+  # </dev/null: the runner must not read the caller's `while read` file list.
+  bash "$HERE/test-lock.sh" --cmd "$cmd" > "$log" 2>&1 </dev/null
   RUN_STATUS=$?
 }
 
@@ -233,7 +242,7 @@ while IFS= read -r f; do
     fqcn=${ns:+$ns\\}$base
     TESTS=()
     while IFS= read -r t; do TESTS+=("$t"); done < "$WORK/tests"
-    run_budgeted "$LOG" vendor/bin/pest --mutate --covered-only "--class=$fqcn" "${TESTS[@]}"
+    run_budgeted "$LOG" vendor/bin/pest --mutate --covered-only "--class=$fqcn" "${TESTS[@]}" || { TIMED_OUT=1; break; }
     parse_pest "$LOG" "$ROOT" "$f" > "$WORK/parsed"
   else
     srcdir=${f%%/*}
@@ -248,7 +257,7 @@ while IFS= read -r f; do
 EOF
     : > "$WORK/infection-text.log"
     run_budgeted "$LOG" php "$INFECTION_PHAR" "--configuration=$WORK/infection.json5" "--filter=$f" \
-      --only-covering-test-cases --order-by=default --threads=1 --no-interaction --no-progress
+      --only-covering-test-cases --order-by=default --threads=1 --no-interaction --no-progress || { TIMED_OUT=1; break; }
     {
       parse_infection "$WORK/infection-text.log" "$ROOT"
       strip_ansi "$LOG" | sed -n "s/.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*/MUTATE_SCORE=$f:\1/p" | head -1

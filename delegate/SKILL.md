@@ -81,19 +81,29 @@ Inline (no file; when a plan's `## Delegate spec` exists, reuse it verbatim, see
 
 ## Phase 3.5: Oracle tests (working-tree mode only)
 
-Skip with a one-line note (report `oracle=skipped`) when: the mini-spec has no `[logic test]` step, `--no-oracle` was given, or the run uses `--worktree` (a worktree holds only committed files; `/plan-it execute` keeps its own flow). Otherwise the tests come from a separate agent that sees the contract, not the implementation. Detail, contract rules, triage: `references/oracle.md`.
+Skip with a one-line note (report `oracle=skipped`, run the reset block below) when: the mini-spec has no `[logic test]` step, `--no-oracle` was given, or the run uses `--worktree` (a worktree holds only committed files; `/plan-it execute` keeps its own flow). Otherwise the tests come from a separate agent that sees the contract, not the implementation. Detail, contract rules, triage: `references/oracle.md`.
 
 1. Write the **contract** from the mini-spec, the user's request and public signatures/docblocks only, never from implementation bodies read in Phase 1. Every line carries its source (`spec`, `request`, `docblock`). Include the real project setup (factory states, exemplar test file, helpers).
 2. Dispatch `Agent(subagent_type: test-writer, run_in_background: false)` with "oracle mode", the contract, and an output cap (files written plus assumptions, under 150 words).
 3. Red check: run each oracle file through `test-lock.sh`. Accepted: assertion failure, or a missing-symbol error for a not-yet-existing unit. Parse error or green: one retry with the error text. Still wrong: fall back to the old flow (executor writes the tests, Phase 5 step 4), report `oracle=fallback`. Never BLOCK here.
-4. On success snapshot the files and save the run id:
+4. On success snapshot the files and save the run id. A snapshot that fails (exit 1, `ORACLE_SNAPSHOT_MISSING=<file>`: an oracle file does not exist) is a fallback too, report `oracle=fallback`:
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root
 ORACLE_RUN_ID="delegate-$(date +%s)-$$"
 ORACLE_EXPECTED=1
-bash "$AUDIT_BIN/oracle-lock.sh" snapshot --run "$ORACLE_RUN_ID" {ORACLE_FILES}
+bash "$AUDIT_BIN/oracle-lock.sh" snapshot --run "$ORACLE_RUN_ID" {ORACLE_FILES} || { ORACLE_RUN_ID=; ORACLE_EXPECTED=0; }   # failed snapshot = fallback
+orch_state_save ORACLE_RUN_ID ORACLE_EXPECTED
+```
+
+On every skip and fallback path (skipped, red check fallback, failed snapshot) reset the carried state, so a later run never loads an earlier `ORACLE_EXPECTED=1`:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root
+ORACLE_RUN_ID=
+ORACLE_EXPECTED=0
 orch_state_save ORACLE_RUN_ID ORACLE_EXPECTED
 ```
 
@@ -132,8 +142,19 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 3. Scope: `git diff --stat` against the affected-files list. A file outside it = fail.
 4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the target line of every new test (invert it, the test must go red; a happy-path test stays green while the new branch ships untested). A test that only asserts mock calls, mounts a component, or has no assertion = fail.
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
-6. **Oracle check** (only when `ORACLE_EXPECTED=1`): `bash "$AUDIT_BIN/oracle-lock.sh" check --run "$ORACLE_RUN_ID"`. `ORACLE_RESULT=CHANGED` = review fail (name the `ORACLE_CHANGED=` files; for a shared setup file check `git log` first, another session may have edited it). `NONE` while expected = review fail (a lost snapshot is not a pass). Also run `bash "$AUDIT_BIN/check-silencing.sh"` (catches `skip`/`markTestSkipped` workarounds).
-7. **Mutation run** (only when the diff touches a file matched by the project's `.claude/mutation-targets`): `bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --oracle-files "{ORACLE_FILES}"`. Triage the survivors and run at most one informed test round, then one confirmation run; procedure in `references/oracle.md`. `SKIP`, `TIMEOUT` and `ERROR` never block; report `ERROR` (with its `MUTATE_ERROR` line) in the result and log `mutate=ERROR`.
+6. **Oracle check** (only when `ORACLE_EXPECTED=1`; the block after step 7 runs it): `oracle-lock.sh check`. `ORACLE_RESULT=CHANGED` = review fail (name the `ORACLE_CHANGED=` files; for a shared setup file check `git log` first, another session may have edited it). `NONE` while expected = review fail (a lost snapshot is not a pass). Also `check-silencing.sh` (catches `skip`/`markTestSkipped` workarounds).
+7. **Mutation run** (only when the diff touches a file matched by the project's `.claude/mutation-targets`; `mutate.sh`, in the block below). Triage the survivors and run at most one informed test round, then one confirmation run; procedure in `references/oracle.md`. `SKIP`, `TIMEOUT` and `ERROR` never block; report `ERROR` (with its `MUTATE_ERROR` line) in the result and log `mutate=ERROR`.
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root
+orch_state_load
+if [ "${ORACLE_EXPECTED:-0}" = 1 ]; then
+  bash "$AUDIT_BIN/oracle-lock.sh" check --run "${ORACLE_RUN_ID:-none}"
+  bash "$AUDIT_BIN/check-silencing.sh"
+fi
+[ -f .claude/mutation-targets ] && bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --oracle-files "{ORACLE_FILES}"
+```
 
 **Verdict:**
 
@@ -150,6 +171,8 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestra
 orch_resolve_audit_root
 orch_state_load
 bash "$AUDIT_BIN/oracle-lock.sh" clear --run "${ORACLE_RUN_ID:-none}"   # drop the snapshot at every terminal verdict
+ORACLE_EXPECTED=0
+orch_state_save ORACLE_EXPECTED
 orch_run_log --skill delegate --outcome "{APPROVE|BLOCK}" \
   --counts "revision_rounds={N},oracle={used|fallback|skipped},mutate={OK|SKIP|TIMEOUT|ERROR|none},survivors={N}"
 ```

@@ -4,10 +4,13 @@
 #
 # Usage:
 #   oracle-lock.sh snapshot --run <id> <files...>   hash the files plus shared setup when present
+#                                                   (absent setup files are recorded as ABSENT). A missing
+#                                                   oracle file prints ORACLE_SNAPSHOT_MISSING=<file>, writes
+#                                                   no manifest and exits 1.
 #   oracle-lock.sh check    --run <id>              compare against the snapshot
 #   oracle-lock.sh clear    --run <id>              drop the snapshot
 #
-# check prints ORACLE_CHANGED=<file> per changed or missing file, then
+# check prints ORACLE_CHANGED=<file> per changed or missing file (or ABSENT file that now exists), then
 # ORACLE_RESULT=OK|CHANGED|NONE. NONE means no snapshot exists for the run id; the caller treats
 # NONE as a failure while it expects one. Always exits 0, the verdict is in the output.
 #
@@ -52,19 +55,21 @@ hash_of() {
 case "$ACTION" in
   snapshot)
     mkdir -p "$STATE_ROOT" || exit 1
+    MISSING=0
+    for f in ${FILES[@]+"${FILES[@]}"}; do
+      [ -f "$f" ] || { echo "ORACLE_SNAPSHOT_MISSING=$f"; MISSING=1; }
+    done
+    [ "$MISSING" -eq 0 ] || exit 1
     : > "$MANIFEST.tmp"
     for f in ${FILES[@]+"${FILES[@]}"}; do
-      if [ -f "$f" ]; then
-        printf '%s  %s\n' "$(hash_of "$f")" "$f" >> "$MANIFEST.tmp"
-      else
-        echo "oracle-lock: skipping missing file $f" >&2
-      fi
+      printf '%s  %s\n' "$(hash_of "$f")" "$f" >> "$MANIFEST.tmp"
     done
     for f in $SHARED_SETUP; do
-      [ -f "$f" ] && printf '%s  %s\n' "$(hash_of "$f")" "$f" >> "$MANIFEST.tmp"
+      if [ -f "$f" ]; then printf '%s  %s\n' "$(hash_of "$f")" "$f" >> "$MANIFEST.tmp"
+      else printf 'ABSENT  %s\n' "$f" >> "$MANIFEST.tmp"; fi
     done
     mv "$MANIFEST.tmp" "$MANIFEST"
-    echo "ORACLE_SNAPSHOT=$(wc -l < "$MANIFEST" | tr -d ' ')"
+    echo "ORACLE_SNAPSHOT=$(grep -vc '^ABSENT  ' "$MANIFEST" | tr -d ' ')"
     ;;
   check)
     if [ ! -f "$MANIFEST" ]; then echo "ORACLE_RESULT=NONE"; exit 0; fi
@@ -72,7 +77,9 @@ case "$ACTION" in
     while IFS= read -r line; do
       want=${line%%  *}
       f=${line#*  }
-      if [ ! -f "$f" ] || [ "$(hash_of "$f")" != "$want" ]; then
+      if [ "$want" = ABSENT ]; then
+        [ ! -f "$f" ] || { echo "ORACLE_CHANGED=$f"; CHANGED=1; }
+      elif [ ! -f "$f" ] || [ "$(hash_of "$f")" != "$want" ]; then
         echo "ORACLE_CHANGED=$f"
         CHANGED=1
       fi

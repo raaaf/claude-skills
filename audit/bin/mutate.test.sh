@@ -31,8 +31,14 @@ has "infection: five escaped mutants" "MUTATE_UNFILTERED=5" "$INF"
 
 # --- changed lines and the +-3 filter with cap -----------------------------------------------
 printf '%s\n' '+++ b/app/A.php' '@@ -3,0 +4,2 @@' '@@ -10 +12 @@' '@@ -20,2 +21,0 @@' > "$TMP/diff"
-check "changed-lines parses added ranges and ignores pure deletions" "app/A.php:4 app/A.php:5 app/A.php:12" \
+check "changed-lines parses added ranges and anchors pure deletions" "app/A.php:4 app/A.php:5 app/A.php:12 app/A.php:21" \
   "$("$BASH_BIN" "$MUT" --changed-lines "$TMP/diff" | tr '\n' ' ' | sed 's/ $//')"
+
+# a deletion-only hunk keeps a survivor around the gap
+printf '%s\n' '+++ b/app/A.php' '@@ -20,2 +21,0 @@' > "$TMP/diff-del"
+"$BASH_BIN" "$MUT" --changed-lines "$TMP/diff-del" > "$TMP/changed-del"
+check "filter keeps a survivor next to a deletion-only hunk" "SURVIVOR=app/A.php:23:X " \
+  "$(printf '%s\n' SURVIVOR_RAW=app/A.php:23:X SURVIVOR_RAW=app/A.php:30:Y | "$BASH_BIN" "$MUT" --filter "$TMP/changed-del" | tr '\n' ' ')"
 
 printf '%s\n' app/A.php:10 > "$TMP/changed"
 OUT=$(printf '%s\n' SURVIVOR_RAW=app/A.php:6:X SURVIVOR_RAW=app/A.php:7:Y SURVIVOR_RAW=app/A.php:13:Z SURVIVOR_RAW=app/A.php:14:W SURVIVOR_RAW=app/B.php:10:V \
@@ -83,7 +89,9 @@ mkdir -p vendor/bin
 cat > vendor/bin/pest <<EOF
 #!/bin/sh
 echo "\$@" > "$TMP/pest-args"
+echo run >> "$TMP/pest-runs"
 case "\$(cat "$TMP/pest-mode" 2>/dev/null)" in
+  stdin) cat >/dev/null ;;
   fail) echo "  Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException"; exit 1 ;;
   nomut) echo "  INFO  No mutations created."; exit 0 ;;
 esac
@@ -130,6 +138,25 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   has "fallback prints a note" "MUTATE_NOTE=fallback-test-selection:5" "$OUT"
   rm -f tests/Feature/*Test.php tests/Unit/U*Test.php
   mv "$TMP/named-test" tests/Unit/SecretSantaMatchServiceTest.php
+  # two matched files; a runner that reads stdin must not swallow the second file
+  cp app/Services/SecretSantaMatchService.php app/Services/Second.php
+  git add app/Services/Second.php && git -c user.email=t@t -c user.name=t commit -q -m second
+  sed -i.bak '50s/.*/\/\/ changed 50/' app/Services/Second.php && rm -f app/Services/Second.php.bak
+  printf '<?php\n' > tests/Unit/SecondTest.php
+  echo stdin > "$TMP/pest-mode"; rm -f "$TMP/pest-runs"
+  run >/dev/null
+  check "a stdin-reading runner does not swallow the next file" "2" "$(wc -l < "$TMP/pest-runs" | tr -d ' ')"
+  # budget gone before the 2nd file (slow git diff after the 1st run): TIMEOUT, no stale log parsed
+  rm -f "$TMP/pest-mode"
+  mkdir -p slowbin
+  REALGIT=$(command -v git)
+  printf '#!/bin/sh\n[ "$1" = diff ] && [ "$2" = -U0 ] && sleep 3\nexec %s "$@"\n' "$REALGIT" > slowbin/git
+  chmod +x slowbin/git
+  OUT=$(PATH="$REPO/slowbin:$REPO/bin:$PATH" MUTATE_BUDGET=2 "$BASH_BIN" "$MUT" "$REPO" HEAD 2>&1)
+  has "exhausted budget -> TIMEOUT" "MUTATE_RESULT=TIMEOUT" "$OUT"
+  check "exhausted budget: 2nd file not parsed from the stale log" "1" "$(printf '%s\n' "$OUT" | grep -c '^MUTATE_SCORE=')"
+  rm -rf slowbin tests/Unit/SecondTest.php
+  git rm -q -f app/Services/Second.php && git -c user.email=t@t -c user.name=t commit -q -m rmsecond
   # a runner that dies without a summary is ERROR, not OK
   echo fail > "$TMP/pest-mode"
   OUT=$(run)

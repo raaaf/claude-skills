@@ -21,7 +21,9 @@ format and cap in the briefing: files written plus assumptions, under 150 words.
 Run each oracle file through `bash "$AUDIT_BIN/test-lock.sh" --cmd "<single-file test command>"`.
 Accepted: an assertion failure, or for a not-yet-existing unit a missing-symbol error. Parse error or
 green: one retry with the error text. Still wrong: fallback to today's flow (the executor writes the
-tests, Phase 5 step 4 line-inversion check) and say so in the report. Never BLOCK on the oracle step.
+tests, Phase 5 step 4 line-inversion check) and say so in the report. A failed `oracle-lock.sh snapshot`
+(exit 1, `ORACLE_SNAPSHOT_MISSING=<file>`: an oracle file does not exist) is the same fallback
+(`oracle=fallback`). Never BLOCK on the oracle step.
 
 ## Locked tests
 

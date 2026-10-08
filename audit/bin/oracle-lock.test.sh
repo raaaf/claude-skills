@@ -45,6 +45,19 @@ printf 'changed\n' > tests/Unit/BetaTest.php
 check "two run ids are isolated (r2 changed)" "ORACLE_RESULT=CHANGED" "$(result r2)"
 check "two run ids are isolated (r1 untouched)" "ORACLE_RESULT=OK" "$(result r1)"
 
+# a missing oracle file is an error: named, exit 1, no manifest
+MISS=$(bash "$LOCK" snapshot --run r3 tests/Unit/AlphaTest.php tests/Unit/GoneTest.php 2>/dev/null); MISS_RC=$?
+check "a missing oracle file exits 1" "1" "$MISS_RC"
+check "a missing oracle file is named" "ORACLE_SNAPSHOT_MISSING=tests/Unit/GoneTest.php" "$MISS"
+check "a failed snapshot writes no manifest" "ORACLE_RESULT=NONE" "$(result r3)"
+
+# a shared setup file absent at snapshot time counts as changed once it appears
+bash "$LOCK" snapshot --run r4 tests/Unit/AlphaTest.php >/dev/null
+check "absent setup file stays OK while absent" "ORACLE_RESULT=OK" "$(result r4)"
+printf 'case\n' > tests/TestCase.php
+check "an absent setup file created later is detected" "ORACLE_CHANGED=tests/TestCase.php" "$(changed r4)"
+rm tests/TestCase.php
+
 bash "$LOCK" clear --run r1 >/dev/null
 check "clear removes the state" "ORACLE_RESULT=NONE" "$(result r1)"
 check "clear leaves other runs alone" "ORACLE_RESULT=CHANGED" "$(result r2)"
