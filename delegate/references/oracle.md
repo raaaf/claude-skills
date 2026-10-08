@@ -34,7 +34,7 @@ file before failing.
 ## Mutation run (Phase 5, conditional)
 
 Only when `.claude/mutation-targets` (one glob per line, `#` comments) matches a changed file.
-`bash "$AUDIT_BIN/mutate.sh" "$PWD" "$BASE_REF" --oracle-files "<oracle files>"` prints
+`bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --oracle-files "<oracle files>"` prints
 `MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR`, `MUTATE_REASON`, `MUTATE_ERROR`, `MUTATE_SCORE`, `SURVIVOR=<file>:<line>:<mutator>`
 (changed lines +-3, at most 15) and `SURVIVORS_TRUNCATED`. SKIP, TIMEOUT and ERROR never block: ERROR (`runner-failed`, the runner died without a result) is reported in the result and the run log (`mutate=ERROR`), not retried. Test selection: oracle files plus `tests/` files whose basename starts with the class basename (`MoneyTest.php` for `Money`). Only when that set is empty, files that merely mention the class (Unit first, at most `MUTATE_MAX_TEST_FILES`, default 5) and `MUTATE_NOTE=fallback-test-selection:<n>`; mention that in the report, the selection was heuristic. Mentioning-only discovery picked 15 DB-backed Feature tests once and timed out. Browser test directories are excluded from the test list; `no-mutations` is a SKIP. The score is
 a finding source, never a target.
