@@ -27,6 +27,8 @@
 # that keeps its declaration and silently loses every check) is real and is
 # caught by the planted-bug test; delete it with evidence, not with impatience.
 #
+# 2026-10-09: rules 1 to 4 skip *.md, *.mdx, *.txt and docs/ (prose about assertions fired on a SKILL.md line); rule 5 is unchanged.
+#
 # Usage: bash check-silencing.sh [root]
 #
 # Output: one line per hit, `SILENCING_HIT <file>:<line> <kind>: <detail>`,
@@ -127,7 +129,7 @@ function flush_file() {
   # `+++ b/path` carries the prefix, `+++ /dev/null` (deleted file) does not.
   # Blind substr($0,7) turned /dev/null into the path "ev/null" and emitted
   # hits under that name.
-  if ($0 ~ /^\+\+\+ \/dev\/null/) { file = ""; skip = 1; is_config = 0; next }
+  if ($0 ~ /^\+\+\+ \/dev\/null/) { file = ""; skip = 1; is_config = 0; is_prose = 0; next }
   file = substr($0, 7)
   # Fixtures deliberately contain skipped tests and suppressions (they are test
   # data, never findings), same for vendored trees.
@@ -144,6 +146,9 @@ function flush_file() {
           file ~ /(^|\/)public\/(js|css|build|vendor)\// ||
           file ~ /\.min\.(js|css)$/)
   if (skip) skipfile[file] = 1
+  # Prose paths: documentation says "assertion", "skip" and "eslint-disable"
+  # without doing any of it, so rules 1 to 4 never read them.
+  is_prose = (file ~ /\.(md|mdx|txt)$/ || file ~ /(^|\/)docs\//)
   # Config-shaped paths, excluding anything under a test directory.
   is_config = (file ~ /\.(json|ya?ml|toml|ini|cfg|conf|xml|properties)$/ ||
                file ~ /(^|\/)(\.[a-z]+rc|CONSTRAINTS\.md)$/ ||
@@ -159,6 +164,7 @@ function flush_file() {
 /^-/ {
   if (skip) next
   body = substr($0, 2)
+  if (is_prose) { old_num[file] = body; next }
   if (body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) {
     removed_asserts++
     if (first_removed_assert == 0) first_removed_assert = newline
@@ -176,23 +182,23 @@ function flush_file() {
   # A single added line this long is a bundle, not source anyone wrote.
   if (length(body) > 400) next
 
-  if (body ~ /(@ts-ignore|@ts-expect-error|eslint-disable|#[ \t]*noqa|type:[ \t]*ignore|phpcs:ignore|@phpstan-ignore|psalm-suppress|swiftlint:disable|pylint:[ \t]*disable|@SuppressWarnings|nolint|#pragma[ \t]+warning[ \t]+disable)/) {
+  if (!is_prose && body ~ /(@ts-ignore|@ts-expect-error|eslint-disable|#[ \t]*noqa|type:[ \t]*ignore|phpcs:ignore|@phpstan-ignore|psalm-suppress|swiftlint:disable|pylint:[ \t]*disable|@SuppressWarnings|nolint|#pragma[ \t]+warning[ \t]+disable)/) {
     emit("suppression-added", "a check is silenced at this line rather than satisfied")
   }
-  if (body ~ /(\.skip\(|\.only\(|\.skip[ \t]*$|xit\(|xdescribe\(|pytest\.mark\.skip|@Disabled|\.xfail)/) {
+  if (!is_prose && body ~ /(\.skip\(|\.only\(|\.skip[ \t]*$|xit\(|xdescribe\(|pytest\.mark\.skip|@Disabled|\.xfail)/) {
     emit("test-disabled", "a test is disabled or narrowed to .only at declaration level")
   }
   # A runtime skip is often a legitimate precondition (`if (count <= 8)
   # markTestSkipped(...)`), and one added line carries no reliable evidence
   # either way. Reported as its own weaker kind rather than dropped: the caller
   # treats it as Minor and reads the guard above it.
-  if (body ~ /(markTestSkipped|markTestIncomplete|XCTSkip|t\.Skip\()/) {
+  if (!is_prose && body ~ /(markTestSkipped|markTestIncomplete|XCTSkip|t\.Skip\()/) {
     emit("test-skipped-at-runtime", "a test skips itself at runtime, check whether the guard above it is a real precondition")
   }
-  if (body ~ /catch[^{]*\{[ \t]*\}/ || body ~ /except[^:]*:[ \t]*pass[ \t]*$/ || body ~ /rescue[ \t]+nil/) {
+  if (!is_prose && (body ~ /catch[^{]*\{[ \t]*\}/ || body ~ /except[^:]*:[ \t]*pass[ \t]*$/ || body ~ /rescue[ \t]+nil/)) {
     emit("error-swallowed", "an empty catch/except discards the error")
   }
-  if (body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) added_asserts++
+  if (!is_prose && body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) added_asserts++
 
   # Rule 5: a threshold key whose number moved down in the same hunk. Config
   # files ONLY. In source and test files the same shape is ordinary data

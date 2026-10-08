@@ -58,6 +58,7 @@ cwd-hash families `orch_hash_passed`/`orch_hash_progress`, `orch_progress_claim`
 | `bash audit/bin/orch-zsh-source.test.sh` | Pins that the lib resolves its own directory when sourced from zsh |
 | `bash audit/bin/orch-tree-hash.test.sh` | Pins `tree-hash.sh` (via `orch_tree_hash`): untracked non-ignored files count, ignored ones do not, the real index stays untouched, the hash equals HEAD's tree after `git add -A` and commit |
 | `bash audit/bin/unaudited-base.test.sh` | Pins the quick-fix collection (`orch_unaudited_*`) |
+| `bash audit/bin/check-silencing.test.sh` | Pins `check-silencing.sh` (planted assertions-removed, test-disabled, error-swallowed and suppression hits; prose in `*.md`/`*.txt`/`docs/` stays silent; threshold in `CONSTRAINTS.md` still hits) |
 | `bash audit/bin/classify-diff.test.sh` | Pins the prose/code classification of path lists |
 | `bash audit/hooks/block-unsafe-push.test.sh` | Pins the push guard: a push without a fresh marker asks on every branch, with a fresh marker it passes, and a marker over a then-untracked file still matches (same `tree-hash.sh` as the marker) |
 
