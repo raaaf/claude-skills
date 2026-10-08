@@ -838,6 +838,35 @@ test('iosDeviceSetup: reuses an existing device, never calls simctl create', () 
   assert.equal(createCalled, false);
 });
 
+test('iosDeviceSetup bootedByUs + cmdDown: shutdown only when this run booted the simulator', () => {
+  const name = (root) => simulatorNameForDevice(repoHash(root), 'iphone');
+  const runnerFor = (root, state, calls) => (cmd, args) => {
+    calls.push([cmd, ...args].join(' '));
+    if (cmd === 'df') return { stdout: 'Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 26 74%\n', status: 0 };
+    if (args[1] === 'list' && args[2] === 'devices') {
+      return { stdout: JSON.stringify({ devices: { 'iOS-18': [{ name: name(root), udid: 'UDID-1', state }] } }), status: 0 };
+    }
+    return { stdout: '', status: 0 };
+  };
+  const config = { ios: { device_class: 'iphone' }, platforms: ['ios'] };
+
+  const rootA = fixture();
+  writeJson(join(rootA, '.screens/config.json'), config);
+  assert.equal(iosDeviceSetup(rootA, config, runnerFor(rootA, 'Shutdown', [])).bootedByUs, true);
+  mkdirSync(join(rootA, '.screens/.run'), { recursive: true });
+  writeFileSync(join(rootA, '.screens/.run/ios.booted'), 'UDID-1');
+  const callsA = [];
+  cmdDown(['--platform', 'ios'], rootA, runnerFor(rootA, 'Booted', callsA));
+  assert.ok(callsA.includes('xcrun simctl shutdown UDID-1'));
+
+  const rootB = fixture();
+  writeJson(join(rootB, '.screens/config.json'), config);
+  assert.equal(iosDeviceSetup(rootB, config, runnerFor(rootB, 'Booted', [])).bootedByUs, false);
+  const callsB = [];
+  cmdDown(['--platform', 'ios'], rootB, runnerFor(rootB, 'Booted', callsB));
+  assert.ok(!callsB.some((c) => c.includes('simctl shutdown')));
+});
+
 test('iosDeviceSetup: no existing device -> creates one from the newest available iOS runtime', () => {
   const root = fixture();
   const config = { ios: { device_class: 'iphone' } };

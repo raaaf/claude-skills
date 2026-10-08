@@ -480,6 +480,23 @@ function appearanceArgs(udid, theme) {
 // window"), and applies the fixed status bar. Appearance (light/dark) is
 // NOT set here: it is a per-theme, per-xcodebuild-invocation step the
 // driver runs before each themed test pass (`screens/references/platform-apple.md`).
+// True when `simctl list devices -j` reports the device as Booted.
+function isSimulatorBooted(devicesJson, udid) {
+  try {
+    const parsed = JSON.parse(devicesJson);
+    return Object.values(parsed.devices || {}).some((b) => b.some((d) => d.udid === udid && d.state === 'Booted'));
+  } catch {
+    return false;
+  }
+}
+
+// Marker written by `up` only when THIS run booted the simulator; `down`
+// shuts the simulator down only when it exists (a sim the user already had
+// booted is never touched). Idle booted sims cost RAM (2026-10-08 swap incident).
+function simBootedMarkerPath(root) {
+  return join(root, '.screens/.run', 'ios.booted');
+}
+
 function iosDeviceSetup(root, config, runner = defaultRunner) {
   const diskSkip = diskGuardSkip(root, runner);
   if (diskSkip) return diskSkip;
@@ -490,6 +507,7 @@ function iosDeviceSetup(root, config, runner = defaultRunner) {
 
   const listRes = runner('xcrun', ['simctl', 'list', 'devices', '-j'], {});
   let udid = findSimulatorUdidByName(listRes.stdout, name);
+  const wasBooted = udid ? isSimulatorBooted(listRes.stdout, udid) : false;
 
   if (!udid) {
     const runtimesRes = runner('xcrun', ['simctl', 'list', 'runtimes', '-j'], {});
@@ -507,7 +525,7 @@ function iosDeviceSetup(root, config, runner = defaultRunner) {
   runner('xcrun', ['simctl', 'boot', udid], {});
   runner('xcrun', statusBarOverrideArgs(udid), {});
 
-  return { ok: true, skip: false, udid, name };
+  return { ok: true, skip: false, udid, name, bootedByUs: !wasBooted };
 }
 
 // macOS runs the app directly (no simulator, plan "Isolation and
@@ -1270,6 +1288,12 @@ function cmdUp(args, root = process.cwd(), runner = defaultRunner) {
     return lines;
   }
   if (device.udid) lines.push(`SIMULATOR_UDID=${device.udid}`);
+  if (platform === 'ios' && device.bootedByUs) {
+    const marker = simBootedMarkerPath(root);
+    mkdirSync(dirname(marker), { recursive: true });
+    writeFileSync(marker, device.udid);
+    ensureGitignoreEntry(root, '/.screens/.run/', runner);
+  }
   if (platform !== 'android' && device.name) lines.push(`SIMULATOR_NAME=${device.name}`);
   if (platform === 'android') {
     if (device.name) lines.push(`ANDROID_AVD_NAME=${device.name}`);
@@ -1461,7 +1485,9 @@ function cmdDown(args, root = process.cwd(), runner = defaultRunner) {
     const name = simulatorNameForDevice(hash, deviceClass);
     const listRes = runner('xcrun', ['simctl', 'list', 'devices', '-j'], {});
     const udid = findSimulatorUdidByName(listRes.stdout, name);
-    if (udid) runner('xcrun', ['simctl', 'shutdown', udid], {});
+    const marker = simBootedMarkerPath(root);
+    if (udid && existsSync(marker)) runner('xcrun', ['simctl', 'shutdown', udid], {});
+    rmSync(marker, { force: true });
   }
   if (platform === 'ios' || platform === 'macos') {
     rmSync(join(root, '.screens', '.build', platform), { recursive: true, force: true });
