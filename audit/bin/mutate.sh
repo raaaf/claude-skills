@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Targeted mutation run for /delegate Phase 5. Mutates only the changed files that the project lists
-# in `.claude/mutation-targets` (one glob per line, `#` comments) and reports the survivors on
+# in `.claude/mutation-targets` (one glob per line, `#` comments; optional test hint
+# `<glob> :: NameTest|OtherTest` names the test classes to run for indirectly tested classes) and reports the survivors on
 # lines the diff touched (+-3). A finding source for one extra test round, never a score target.
 #
 # Usage:
@@ -11,7 +12,8 @@
 #                                                no-runner, no-tests, no-timeout, no-mutations;
 #                                                with ERROR: runner-failed
 #   MUTATE_ERROR=<line>                          only with ERROR: first error line of the runner log
-# Test discovery: oracle files plus tests/ files whose basename starts with the class basename
+# Test discovery with a hint: oracle files plus the hinted test classes only (MUTATE_NOTE=hint-missing:<Name>
+# for a name without a file). Without a hint: oracle files plus tests/ files whose basename starts with the class basename
 # (MoneyTest.php for Money). Only when that set is empty: files that merely mention the class, Unit
 # first, at most MUTATE_MAX_TEST_FILES (5), plus MUTATE_NOTE=fallback-test-selection:<n>. Skips any
 # Browser/ directory (Playwright, far too slow for mutation). A runner that
@@ -162,10 +164,13 @@ while IFS= read -r f; do
   [ -f "$f" ] || continue
   while IFS= read -r glob || [ -n "$glob" ]; do
     glob=${glob%%#*}
+    hint=""
+    case "$glob" in *" :: "*) hint=${glob#* :: }; glob=${glob%% :: *} ;; esac
     glob=$(printf '%s' "$glob" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    hint=$(printf '%s' "$hint" | tr -d '[:space:]')
     [ -n "$glob" ] || continue
     # shellcheck disable=SC2254
-    case "$f" in $glob) echo "$f" >> "$WORK/matched"; break ;; esac
+    case "$f" in $glob) printf '%s\t%s\n' "$f" "$hint" >> "$WORK/matched"; break ;; esac
   done < "$TARGETS"
 done < "$WORK/changed"
 [ -s "$WORK/matched" ] || skip no-match
@@ -205,7 +210,7 @@ run_budgeted() { # log cmd...
   RUN_STATUS=$?
 }
 
-while IFS= read -r f; do
+while IFS=$'\t' read -r f hint; do
   [ "$TIMED_OUT" -eq 0 ] || break
   base=$(basename "$f" .php)
 
@@ -220,14 +225,25 @@ while IFS= read -r f; do
   # Primary set: oracle files plus tests/ files named after the class (MoneyTest.php for Money). Only
   # when it is empty, fall back to files that merely mention the class, Unit first, capped: DB-backed
   # Feature tests blow the time budget (15 files timed out at 500 s).
-  { for t in $ORACLE_FILES; do [ -f "$t" ] && echo "$t"; done
-    [ -d tests ] && find tests -type f -name "${base}*.php" 2>/dev/null
-  } | grep -vE '(^|/)Browser/' | sort -u > "$WORK/tests"
-  if [ ! -s "$WORK/tests" ] && [ -d tests ]; then
-    grep -rlw --include='*.php' -- "$base" tests 2>/dev/null | grep -vE '(^|/)Browser/' | sort \
-      | awk '{ print (index($0, "tests/Unit/") == 1 ? "0 " : "1 ") $0 }' | sort -s -k1,1 | cut -d' ' -f2- \
-      | head -n "${MUTATE_MAX_TEST_FILES:-5}" > "$WORK/tests"
-    [ -s "$WORK/tests" ] && echo "MUTATE_NOTE=fallback-test-selection:$(wc -l < "$WORK/tests" | tr -d ' ')" >> "$WORK/notes"
+  if [ -n "$hint" ]; then
+    # Per-target hint (`glob :: NameA|NameB`): oracle files plus the named test classes, nothing else.
+    : > "$WORK/tests"
+    for t in $ORACLE_FILES; do [ -f "$t" ] && echo "$t" >> "$WORK/tests"; done
+    for name in $(printf '%s' "$hint" | tr '|' ' '); do
+      found=$([ -d tests ] && find tests -type f -name "$name.php" 2>/dev/null | grep -vE '(^|/)Browser/')
+      if [ -n "$found" ]; then printf '%s\n' "$found" >> "$WORK/tests"; else echo "MUTATE_NOTE=hint-missing:$name" >> "$WORK/notes"; fi
+    done
+    sort -u "$WORK/tests" -o "$WORK/tests"
+  else
+    { for t in $ORACLE_FILES; do [ -f "$t" ] && echo "$t"; done
+      [ -d tests ] && find tests -type f -name "${base}*.php" 2>/dev/null
+    } | grep -vE '(^|/)Browser/' | sort -u > "$WORK/tests"
+    if [ ! -s "$WORK/tests" ] && [ -d tests ]; then
+      grep -rlw --include='*.php' -- "$base" tests 2>/dev/null | grep -vE '(^|/)Browser/' | sort \
+        | awk '{ print (index($0, "tests/Unit/") == 1 ? "0 " : "1 ") $0 }' | sort -s -k1,1 | cut -d' ' -f2- \
+        | head -n "${MUTATE_MAX_TEST_FILES:-5}" > "$WORK/tests"
+      [ -s "$WORK/tests" ] && echo "MUTATE_NOTE=fallback-test-selection:$(wc -l < "$WORK/tests" | tr -d ' ')" >> "$WORK/notes"
+    fi
   fi
   if [ ! -s "$WORK/tests" ]; then LAST_REASON=no-tests; continue; fi
 
@@ -256,11 +272,14 @@ while IFS= read -r f; do
 }
 EOF
     : > "$WORK/infection-text.log"
+    # Only the selected tests: a PHPUnit --filter of their class basenames keeps Infection off the full suite.
+    tfilter=$(while IFS= read -r t; do basename "$t" .php; done < "$WORK/tests" | paste -sd'|' -)
     run_budgeted "$LOG" php "$INFECTION_PHAR" "--configuration=$WORK/infection.json5" "--filter=$f" \
+      "--test-framework-options=--filter=$tfilter" \
       --only-covering-test-cases --order-by=default --threads=1 --no-interaction --no-progress || { TIMED_OUT=1; break; }
     {
       parse_infection "$WORK/infection-text.log" "$ROOT"
-      strip_ansi "$LOG" | sed -n "s/.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*/MUTATE_SCORE=$f:\1/p" | head -1
+      strip_ansi "$LOG" | sed -n "s|.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" | head -1
     } > "$WORK/parsed"
   fi
   strip_ansi "$LOG" > "$WORK/stripped"

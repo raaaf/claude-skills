@@ -167,6 +167,31 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   echo nomut > "$TMP/pest-mode"
   check "No mutations created -> SKIP no-mutations" "MUTATE_RESULT=SKIP MUTATE_REASON=no-mutations" "$(run | tr '\n' ' ' | sed 's/ $//')"
   rm -f "$TMP/pest-mode"
+  # per-target hint (`glob :: Name|Name`): the named test classes replace name and grep discovery
+  mkdir -p tests/Feature
+  printf '<?php\n' > tests/Feature/IndirectTest.php
+  printf 'app/Services/*.php :: IndirectTest|GhostTest # indirect\n' > .claude/mutation-targets
+  OUT=$(run)
+  ARGS=$(cat "$TMP/pest-args")
+  has "hint files used instead of grep hits" "tests/Feature/IndirectTest.php" "$ARGS"
+  check "hint replaces the class-name match" "0" "$(printf '%s\n' "$ARGS" | grep -c 'SecretSantaMatchServiceTest')"
+  has "hint-missing note" "MUTATE_NOTE=hint-missing:GhostTest" "$OUT"
+  printf 'app/Services/*.php :: GhostTest\n' > .claude/mutation-targets
+  check "hint without any file -> SKIP no-tests" "MUTATE_RESULT=SKIP MUTATE_REASON=no-tests" "$(run | tr '\n' ' ' | sed 's/ $//')"
+  # Infection gets the selected tests as a PHPUnit filter, not the whole suite
+  printf 'app/Services/*.php :: IndirectTest|SecretSantaMatchServiceTest\n' > .claude/mutation-targets
+  printf '#!/bin/sh\n[ "$1" = "-m" ] && { printf "[PHP Modules]\\nCore\\npcov\\n"; exit 0; }\nexec sh "$@"\n' > bin/php
+  chmod +x bin/php
+  printf '#!/bin/sh\necho "$@" > "%s/inf-args"\necho "Mutation Score Indicator (MSI): 80%%"\n' "$TMP" > "$TMP/infection.phar"
+  : > phpunit.xml
+  mv vendor/bin/pest "$TMP/pest-off"
+  OUT=$(INFECTION_PHAR="$TMP/infection.phar" run)
+  has "infection: only the selected tests are filtered" "--test-framework-options=--filter=IndirectTest|SecretSantaMatchServiceTest " "$(cat "$TMP/inf-args") "
+  has "infection: score reported" "MUTATE_SCORE=app/Services/SecretSantaMatchService.php:80" "$OUT"
+  mv "$TMP/pest-off" vendor/bin/pest
+  rm -f phpunit.xml
+  cp "$TMP/targets-match" .claude/mutation-targets
+  use_php php-pcov
 else
   echo "skip full-flow tests: neither timeout nor gtimeout installed"
 fi
