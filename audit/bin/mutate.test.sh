@@ -113,6 +113,23 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   run >/dev/null
   check "a Browser/ test file is not passed to the runner" "0" "$(grep -c 'Browser' "$TMP/pest-args")"
   rm -rf tests/Browser
+  # a test named after the class wins over files that merely mention it (DB-backed Feature tests blow the budget)
+  mkdir -p tests/Feature
+  printf '<?php\n// SecretSantaMatchService\n' > tests/Feature/GrepOnlyTest.php
+  OUT=$(run)
+  check "a grep-only file is not passed when a test is named after the class" "0" "$(grep -c 'GrepOnly' "$TMP/pest-args")"
+  check "no fallback note when the name match exists" "0" "$(printf '%s\n' "$OUT" | grep -c 'MUTATE_NOTE')"
+  # no test is named after the class: fall back to grep hits, Unit first, capped at 5, with a note
+  mv tests/Unit/SecretSantaMatchServiceTest.php "$TMP/named-test"
+  rm tests/Unit/OracleTest.php
+  for n in 1 2 3 4; do printf '<?php\n// SecretSantaMatchService\n' > "tests/Feature/F${n}Test.php"; printf '<?php\n// SecretSantaMatchService\n' > "tests/Unit/U${n}Test.php"; done
+  OUT=$(run)
+  ARGS=$(cat "$TMP/pest-args")
+  check "fallback passes at most 5 test files" "5" "$(printf '%s\n' "$ARGS" | tr ' ' '\n' | grep -c 'tests/')"
+  check "fallback prefers tests/Unit" "4" "$(printf '%s\n' "$ARGS" | tr ' ' '\n' | grep -c 'tests/Unit/')"
+  has "fallback prints a note" "MUTATE_NOTE=fallback-test-selection:5" "$OUT"
+  rm -f tests/Feature/*Test.php tests/Unit/U*Test.php
+  mv "$TMP/named-test" tests/Unit/SecretSantaMatchServiceTest.php
   # a runner that dies without a summary is ERROR, not OK
   echo fail > "$TMP/pest-mode"
   OUT=$(run)
@@ -130,7 +147,7 @@ fi
 # --- neither timeout nor gtimeout: SKIP, never an unbounded run ------------------------------
 MIN="$TMP/minbin"
 mkdir -p "$MIN"
-for tool in git sed grep sort head cat tr cut basename dirname mktemp rm mkdir wc sleep env date; do
+for tool in git find awk sed grep sort head cat tr cut basename dirname mktemp rm mkdir wc sleep env date; do
   p=$(command -v "$tool") && ln -sf "$p" "$MIN/$tool"
 done
 cp stubs/php-pcov "$MIN/php"

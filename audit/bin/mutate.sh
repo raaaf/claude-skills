@@ -11,7 +11,10 @@
 #                                                no-runner, no-tests, no-timeout, no-mutations;
 #                                                with ERROR: runner-failed
 #   MUTATE_ERROR=<line>                          only with ERROR: first error line of the runner log
-# Test discovery skips any Browser/ directory (Playwright, far too slow for mutation). A runner that
+# Test discovery: oracle files plus tests/ files whose basename starts with the class basename
+# (MoneyTest.php for Money). Only when that set is empty: files that merely mention the class, Unit
+# first, at most MUTATE_MAX_TEST_FILES (5), plus MUTATE_NOTE=fallback-test-selection:<n>. Skips any
+# Browser/ directory (Playwright, far too slow for mutation). A runner that
 # exits non-zero (not a timeout) without a result summary is ERROR, never OK. `No mutations created`
 # (Pest resolved the class to another project's file, e.g. symlinked vendor/ in a worktree) makes
 # that file a SKIP no-mutations. ERROR and SKIP never block the caller.
@@ -174,6 +177,7 @@ RUN_FAILED=0
 : > "$WORK/raw"
 : > "$WORK/changed-lines"
 : > "$WORK/scores"
+: > "$WORK/notes"
 
 resolve_timeout() {
   if command -v timeout >/dev/null 2>&1; then TIMEOUT_BIN=timeout
@@ -204,9 +208,18 @@ while IFS= read -r f; do
 
   # Test files: oracle files plus tests/ files that mention the class. An empty filter would run the
   # whole suite, so an empty list skips the file.
+  # Primary set: oracle files plus tests/ files named after the class (MoneyTest.php for Money). Only
+  # when it is empty, fall back to files that merely mention the class, Unit first, capped: DB-backed
+  # Feature tests blow the time budget (15 files timed out at 500 s).
   { for t in $ORACLE_FILES; do [ -f "$t" ] && echo "$t"; done
-    [ -d tests ] && grep -rlw --include='*.php' -- "$base" tests 2>/dev/null
+    [ -d tests ] && find tests -type f -name "${base}*.php" 2>/dev/null
   } | grep -vE '(^|/)Browser/' | sort -u > "$WORK/tests"
+  if [ ! -s "$WORK/tests" ] && [ -d tests ]; then
+    grep -rlw --include='*.php' -- "$base" tests 2>/dev/null | grep -vE '(^|/)Browser/' | sort \
+      | awk '{ print (index($0, "tests/Unit/") == 1 ? "0 " : "1 ") $0 }' | sort -s -k1,1 | cut -d' ' -f2- \
+      | head -n "${MUTATE_MAX_TEST_FILES:-5}" > "$WORK/tests"
+    [ -s "$WORK/tests" ] && echo "MUTATE_NOTE=fallback-test-selection:$(wc -l < "$WORK/tests" | tr -d ' ')" >> "$WORK/notes"
+  fi
   if [ ! -s "$WORK/tests" ]; then LAST_REASON=no-tests; continue; fi
 
   if ! resolve_timeout; then
@@ -275,6 +288,6 @@ if [ "$RUN_FAILED" -eq 1 ]; then
 fi
 if [ "$EXECUTED" -eq 0 ]; then skip "$LAST_REASON"; fi
 if [ "$TIMED_OUT" -eq 1 ]; then echo "MUTATE_RESULT=TIMEOUT"; else echo "MUTATE_RESULT=OK"; fi
-cat "$WORK/scores"
+cat "$WORK/scores" "$WORK/notes"
 filter_survivors "$WORK/changed-lines" < "$WORK/raw"
 exit 0
