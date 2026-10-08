@@ -25,7 +25,22 @@ tests, Phase 5 step 4 line-inversion check) and say so in the report. A failed `
 (exit 1, `ORACLE_SNAPSHOT_MISSING=<file>`: an oracle file does not exist) is the same fallback
 (`oracle=fallback`). Never BLOCK on the oracle step.
 
+## Pin mode
+
+A task is in pin mode when the mini-spec adds tests for existing behavior and plans no production change. The red check inverts:
+the oracle tests are expected GREEN, because the behavior already exists. A red invariant is a suspected
+bug in existing code: STOP and report it to the user with the inputs that fail, never weaken or delete
+the test. Phase 4 (executor) is skipped since nothing in production changes. Phase 5 runs
+`mutate.sh "$PWD" HEAD --files "<target files>" --oracle-files "<test files>"`: `--files` measures
+exactly the pinned production files regardless of the diff (only tests changed, so the diff-based
+selection would always SKIP `no-match`) and keeps survivors on any line, not just changed ones. A file
+outside `.claude/mutation-targets` is still measured, with `MUTATE_NOTE=not-a-target:<file>`.
+
 ## Locked tests
+
+The Bash tool runs zsh, which does not word-split an unquoted variable: pass `oracle-lock.sh snapshot`
+the paths written out literally, one argument each. `mutate.sh --oracle-files` and `--files` take one
+quoted string and split it themselves.
 
 `oracle-lock.sh snapshot` also hashes `tests/Pest.php`, `tests/TestCase.php`, `phpunit.xml`,
 `phpunit.xml.dist` when present. Factories stay editable (residual risk). A locked test that looks

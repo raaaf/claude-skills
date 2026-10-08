@@ -116,6 +116,22 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   printf '<?php\n' > tests/Unit/OracleTest.php
   run --oracle-files tests/Unit/OracleTest.php >/dev/null
   has "oracle files are passed to the runner" "tests/Unit/OracleTest.php" "$(cat "$TMP/pest-args")"
+  # --files: an unchanged target is measured, survivors far from any diff line are kept; a non-target gets a note
+  mkdir -p app/Unchanged
+  printf '<?php\nnamespace App\\Unchanged;\n' > app/Unchanged/Unc.php
+  printf '<?php\n' > tests/Unit/UncTest.php
+  git add app/Unchanged/Unc.php && git -c user.email=t@t -c user.name=t commit -q -m unc -- app/Unchanged/Unc.php
+  printf 'app/Unchanged/*.php\n' > .claude/mutation-targets
+  check "without --files an unchanged target gives SKIP no-match" "MUTATE_RESULT=SKIP MUTATE_REASON=no-match" "$(run | tr '\n' ' ' | sed 's/ $//')"
+  OUT=$(run --files app/Unchanged/Unc.php)
+  has "--files measures an unchanged target" "MUTATE_RESULT=OK" "$OUT"
+  has "--files keeps a survivor far from every changed line" ":63:" "$OUT"
+  has "--files runs the tests of that file" "tests/Unit/UncTest.php" "$(cat "$TMP/pest-args")"
+  check "--files on a target prints no not-a-target note" "0" "$(printf '%s\n' "$OUT" | grep -c 'not-a-target')"
+  printf 'app/Services/*.php\n' > .claude/mutation-targets
+  OUT=$(run --files app/Unchanged/Unc.php)
+  has "--files on a non-target is measured with a note" "MUTATE_NOTE=not-a-target:app/Unchanged/Unc.php" "$OUT"
+  has "--files on a non-target still runs" "MUTATE_RESULT=OK" "$OUT"
   # Browser suites need Playwright and are far too slow for mutation: never passed to the runner
   mkdir -p tests/Browser/Event
   printf '<?php\n// SecretSantaMatchService in a browser test\n' > tests/Browser/Event/SantaCardTest.php

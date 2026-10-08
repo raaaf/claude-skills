@@ -5,7 +5,10 @@
 # lines the diff touched (+-3). A finding source for one extra test round, never a score target.
 #
 # Usage:
-#   mutate.sh <root> <base-ref> [--oracle-files "<f1> <f2>"]
+#   mutate.sh <root> <base-ref> [--oracle-files "<f1> <f2>"] [--files "<f1> <f2>"]
+# --files (one string, split here) measures exactly those files, independent of the diff, and keeps
+# every survivor (no changed-line filter; cap still applies). For pin mode: tests change, production
+# code does not. A file matching no target glob is measured without a hint plus MUTATE_NOTE=not-a-target:<file>.
 # Output (KEY=value, exit 0 always):
 #   MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR
 #   MUTATE_REASON=<why>                          with SKIP: no-targets, no-match, no-coverage,
@@ -22,7 +25,7 @@
 # (Pest resolved the class to another project's file, e.g. symlinked vendor/ in a worktree) makes
 # that file a SKIP no-mutations. ERROR and SKIP never block the caller.
 #   MUTATE_SCORE=<relpath>:<pct>                 when the runner reports one
-#   SURVIVOR=<relpath>:<line>:<mutator>          changed lines +-3, at most MUTATE_CAP (15)
+#   SURVIVOR=<relpath>:<line>:<mutator>          changed lines +-3 (any line with --files), at most MUTATE_CAP (15)
 #   SURVIVORS_TRUNCATED=<n>                      survivors beyond the cap
 #
 # Runners per PHP file: Pest when vendor/bin/pest exists and composer.json requires pestphp/pest
@@ -102,8 +105,8 @@ changed_lines() { # diff-file
     }' "$1"
 }
 
-filter_survivors() { # changed-lines-file ; SURVIVOR_RAW lines on stdin
-  awk -v cap="$CAP" -v cfile="$1" '
+filter_survivors() { # changed-lines-file [nofilter] ; SURVIVOR_RAW lines on stdin
+  awk -v cap="$CAP" -v cfile="$1" -v nofilter="${2:-}" '
     BEGIN { while ((getline l < cfile) > 0) { c = l; sub(/:[0-9]+$/, "", c); ln = substr(l, length(c) + 2) + 0; ch[c SUBSEP ln] = 1 } }
     /^SURVIVOR_RAW=/ {
       v = substr($0, 14)
@@ -112,7 +115,7 @@ filter_survivors() { # changed-lines-file ; SURVIVOR_RAW lines on stdin
       rest = substr(v, length(path) + 2); line = rest + 0
       hit = 0
       for (d = -3; d <= 3; d++) if ((path SUBSEP (line + d)) in ch) hit = 1
-      if (!hit) next
+      if (!hit && nofilter == "") next
       if (kept < cap) { print "SURVIVOR=" v; kept++ } else extra++
     }
     END { if (extra > 0) print "SURVIVORS_TRUNCATED=" extra }'
@@ -135,11 +138,12 @@ ROOT=${1:-}
 BASE=${2:-}
 shift 2 2>/dev/null || true
 ORACLE_FILES=""
+FILES=""
 while [ $# -gt 0 ]; do
-  case "$1" in --oracle-files) ORACLE_FILES=${2:-}; shift 2 ;; *) shift ;; esac
+  case "$1" in --oracle-files) ORACLE_FILES=${2:-}; shift 2 ;; --files) FILES=${2:-}; shift 2 ;; *) shift ;; esac
 done
 if [ -z "$ROOT" ] || [ -z "$BASE" ]; then
-  echo "usage: mutate.sh <root> <base-ref> [--oracle-files \"<f1> <f2>\"]" >&2
+  echo "usage: mutate.sh <root> <base-ref> [--oracle-files \"<f1> <f2>\"] [--files \"<f1> <f2>\"]" >&2
   exit 64
 fi
 cd "$ROOT" || exit 1
@@ -158,11 +162,17 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/mutate.XXXXXX") || exit 1
 trap 'rm -rf "$WORK"' EXIT
 
 # Changed PHP files (tracked changes against the base plus untracked files) that match a target glob.
-{ git diff --name-only "$BASE" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u > "$WORK/changed"
+if [ -n "$FILES" ]; then
+  for f in $FILES; do echo "$f"; done | sort -u > "$WORK/changed"
+else
+  { git diff --name-only "$BASE" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u > "$WORK/changed"
+fi
 : > "$WORK/matched"
+: > "$WORK/pre-notes"
 while IFS= read -r f; do
   case "$f" in *.php) ;; *) continue ;; esac
   [ -f "$f" ] || continue
+  found=0
   while IFS= read -r glob || [ -n "$glob" ]; do
     glob=${glob%%#*}
     hint=""
@@ -171,8 +181,12 @@ while IFS= read -r f; do
     hint=$(printf '%s' "$hint" | tr -d '[:space:]')
     [ -n "$glob" ] || continue
     # shellcheck disable=SC2254
-    case "$f" in $glob) printf '%s\t%s\n' "$f" "$hint" >> "$WORK/matched"; break ;; esac
+    case "$f" in $glob) printf '%s\t%s\n' "$f" "$hint" >> "$WORK/matched"; found=1; break ;; esac
   done < "$TARGETS"
+  if [ -n "$FILES" ] && [ "$found" -eq 0 ]; then
+    printf '%s\t\n' "$f" >> "$WORK/matched"
+    echo "MUTATE_NOTE=not-a-target:$f" >> "$WORK/pre-notes"
+  fi
 done < "$WORK/changed"
 [ -s "$WORK/matched" ] || skip no-match
 
@@ -190,7 +204,7 @@ RUN_REASON=runner-failed
 : > "$WORK/raw"
 : > "$WORK/changed-lines"
 : > "$WORK/scores"
-: > "$WORK/notes"
+cat "$WORK/pre-notes" > "$WORK/notes"
 
 resolve_timeout() {
   if command -v timeout >/dev/null 2>&1; then TIMEOUT_BIN=timeout
@@ -345,5 +359,5 @@ fi
 if [ "$EXECUTED" -eq 0 ]; then echo "MUTATE_RESULT=SKIP"; echo "MUTATE_REASON=$LAST_REASON"; cat "$WORK/notes"; exit 0; fi
 if [ "$TIMED_OUT" -eq 1 ]; then echo "MUTATE_RESULT=TIMEOUT"; else echo "MUTATE_RESULT=OK"; fi
 cat "$WORK/scores" "$WORK/notes"
-filter_survivors "$WORK/changed-lines" < "$WORK/raw"
+filter_survivors "$WORK/changed-lines" "$FILES" < "$WORK/raw"
 exit 0
