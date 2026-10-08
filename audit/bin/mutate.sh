@@ -275,8 +275,8 @@ EOF
     # Only the selected tests: a PHPUnit --filter of their class basenames keeps Infection off the full suite.
     tfilter=$(while IFS= read -r t; do basename "$t" .php; done < "$WORK/tests" | paste -sd'|' -)
     run_budgeted "$LOG" php "$INFECTION_PHAR" "--configuration=$WORK/infection.json5" "--filter=$f" \
-      "--test-framework-options=--filter=$tfilter" \
-      --only-covering-test-cases --order-by=default --threads=1 --no-interaction --no-progress || { TIMED_OUT=1; break; }
+      "--test-framework-options=--filter=$tfilter --order-by=default" \
+      --only-covering-test-cases --threads=1 --no-interaction --no-progress || { TIMED_OUT=1; break; }
     {
       parse_infection "$WORK/infection-text.log" "$ROOT"
       strip_ansi "$LOG" | sed -n "s|.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" | head -1

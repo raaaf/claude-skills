@@ -182,11 +182,14 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   printf 'app/Services/*.php :: IndirectTest|SecretSantaMatchServiceTest\n' > .claude/mutation-targets
   printf '#!/bin/sh\n[ "$1" = "-m" ] && { printf "[PHP Modules]\\nCore\\npcov\\n"; exit 0; }\nexec sh "$@"\n' > bin/php
   chmod +x bin/php
-  printf '#!/bin/sh\necho "$@" > "%s/inf-args"\necho "Mutation Score Indicator (MSI): 80%%"\n' "$TMP" > "$TMP/infection.phar"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/inf-args"\necho "Mutation Score Indicator (MSI): 80%%"\n' "$TMP" > "$TMP/infection.phar"
   : > phpunit.xml
   mv vendor/bin/pest "$TMP/pest-off"
   OUT=$(INFECTION_PHAR="$TMP/infection.phar" run)
-  has "infection: only the selected tests are filtered" "--test-framework-options=--filter=IndirectTest|SecretSantaMatchServiceTest " "$(cat "$TMP/inf-args") "
+  # one argv element carries filter and PHPUnit's --order-by; Infection itself has no --order-by option
+  has "infection: filter and order-by arrive as one --test-framework-options argument" \
+    "--test-framework-options=--filter=IndirectTest|SecretSantaMatchServiceTest --order-by=default" "$(cat "$TMP/inf-args")"
+  check "infection: no standalone --order-by argument" "0" "$(grep -c '^--order-by' "$TMP/inf-args")"
   has "infection: score reported" "MUTATE_SCORE=app/Services/SecretSantaMatchService.php:80" "$OUT"
   mv "$TMP/pest-off" vendor/bin/pest
   rm -f phpunit.xml
