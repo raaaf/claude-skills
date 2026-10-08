@@ -10,7 +10,7 @@
 #   MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR
 #   MUTATE_REASON=<why>                          with SKIP: no-targets, no-match, no-coverage,
 #                                                no-runner, no-tests, no-timeout, no-mutations;
-#                                                with ERROR: runner-failed
+#                                                with ERROR: runner-failed, initial-tests-failed
 #   MUTATE_ERROR=<line>                          only with ERROR: first error line of the runner log
 # Test discovery with a hint: oracle files plus the hinted test classes only (MUTATE_NOTE=hint-missing:<Name>
 # for a name without a file). Without a hint: oracle files plus tests/ files whose basename starts with the class basename
@@ -185,6 +185,7 @@ TIMED_OUT=0
 LAST_REASON=no-runner
 RUN_ERROR=""
 RUN_FAILED=0
+RUN_REASON=runner-failed
 : > "$WORK/raw"
 : > "$WORK/changed-lines"
 : > "$WORK/scores"
@@ -290,8 +291,16 @@ EOF
     0|124|137) ;;
     *)
       # The runner died before producing a result (e.g. Playwright missing): never report that as OK.
-      if ! grep -qE 'Mutations:|Mutation Score Indicator' "$WORK/stripped"; then
-        RUN_ERROR=$(grep -m1 -E 'Exception|Error|error' "$WORK/stripped" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+      # Anchored: a failing test can dump JS that contains the text `Mutations:` mid-line.
+      INITIAL_FAILED=0
+      grep -q 'Project tests must be in a passing state' "$WORK/stripped" && INITIAL_FAILED=1
+      if [ "$INITIAL_FAILED" -eq 1 ] || ! grep -qE '^[[:space:]]*Mutations:[[:space:]]+[0-9]|Mutation Score Indicator \(MSI\):[[:space:]]*[0-9]' "$WORK/stripped"; then
+        RUN_ERROR=""
+        if [ "$INITIAL_FAILED" -eq 1 ]; then
+          RUN_REASON=initial-tests-failed
+          RUN_ERROR=$(sed -n '/Project tests must be in a passing state/,$p' "$WORK/stripped" | grep -m1 -E 'tests/.*Test\.php:[0-9]+' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        fi
+        [ -n "$RUN_ERROR" ] || RUN_ERROR=$(grep -m1 -E 'Exception|Error|error' "$WORK/stripped" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         [ -n "$RUN_ERROR" ] || RUN_ERROR=$(grep -m1 -v '^[[:space:]]*$' "$WORK/stripped" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         [ -n "$RUN_ERROR" ] || RUN_ERROR="runner exited $RUN_STATUS without output"
         RUN_FAILED=1
@@ -311,7 +320,7 @@ EOF
 done < "$WORK/matched"
 
 if [ "$RUN_FAILED" -eq 1 ]; then
-  echo "MUTATE_RESULT=ERROR"; echo "MUTATE_REASON=runner-failed"; echo "MUTATE_ERROR=$RUN_ERROR"
+  echo "MUTATE_RESULT=ERROR"; echo "MUTATE_REASON=$RUN_REASON"; echo "MUTATE_ERROR=$RUN_ERROR"
   exit 0
 fi
 if [ "$EXECUTED" -eq 0 ]; then skip "$LAST_REASON"; fi

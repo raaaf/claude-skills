@@ -94,6 +94,7 @@ case "\$(cat "$TMP/pest-mode" 2>/dev/null)" in
   stdin) cat >/dev/null ;;
   fail) echo "  Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException"; exit 1 ;;
   nomut) echo "  INFO  No mutations created."; exit 0 ;;
+  js) echo "!function(){new MutationObserver(function(){});var Mutations: 5;}()"; exit 1 ;;
 esac
 cat "$FIX/pest-mutate-secretsanta.log"
 EOF
@@ -163,6 +164,11 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   has "runner failure -> ERROR" "MUTATE_RESULT=ERROR" "$OUT"
   has "runner failure -> reason" "MUTATE_REASON=runner-failed" "$OUT"
   has "runner failure -> first exception line" "MUTATE_ERROR=Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException" "$OUT"
+  # a failing test dumps JS containing `Mutations:` mid-line: that is no runner summary
+  echo js > "$TMP/pest-mode"
+  OUT=$(run)
+  has "mid-line Mutations: text is no summary -> ERROR" "MUTATE_RESULT=ERROR" "$OUT"
+  rm -f "$TMP/pest-mode"
   # Pest resolved the class elsewhere (symlinked vendor/): nothing was tested
   echo nomut > "$TMP/pest-mode"
   check "No mutations created -> SKIP no-mutations" "MUTATE_RESULT=SKIP MUTATE_REASON=no-mutations" "$(run | tr '\n' ' ' | sed 's/ $//')"
@@ -191,6 +197,12 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     "--test-framework-options=--filter=IndirectTest|SecretSantaMatchServiceTest --order-by=default" "$(cat "$TMP/inf-args")"
   check "infection: no standalone --order-by argument" "0" "$(grep -c '^--order-by' "$TMP/inf-args")"
   has "infection: score reported" "MUTATE_SCORE=app/Services/SecretSantaMatchService.php:80" "$OUT"
+  # Infection refuses to start when the suite is red: ERROR initial-tests-failed naming the failing file
+  printf '#!/bin/sh\necho "  [ERROR] Project tests must be in a passing state before running Infection."\necho "1) Tests\\Feature\\Tax\\MissingReceiptServiceTest::test_x"\necho "   tests/Feature/Tax/MissingReceiptServiceTest.php:88  "\nexit 1\n' > "$TMP/infection-red.phar"
+  OUT=$(INFECTION_PHAR="$TMP/infection-red.phar" run)
+  has "infection red suite: ERROR" "MUTATE_RESULT=ERROR" "$OUT"
+  has "infection red suite: reason" "MUTATE_REASON=initial-tests-failed" "$OUT"
+  has "infection red suite: names the failing test file" "MUTATE_ERROR=tests/Feature/Tax/MissingReceiptServiceTest.php:88" "$OUT"
   mv "$TMP/pest-off" vendor/bin/pest
   rm -f phpunit.xml
   cp "$TMP/targets-match" .claude/mutation-targets
