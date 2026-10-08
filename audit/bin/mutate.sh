@@ -6,9 +6,15 @@
 # Usage:
 #   mutate.sh <root> <base-ref> [--oracle-files "<f1> <f2>"]
 # Output (KEY=value, exit 0 always):
-#   MUTATE_RESULT=OK|SKIP|TIMEOUT
-#   MUTATE_REASON=<why>                          only with SKIP (no-targets, no-match, no-coverage,
-#                                                no-runner, no-tests, no-timeout)
+#   MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR
+#   MUTATE_REASON=<why>                          with SKIP: no-targets, no-match, no-coverage,
+#                                                no-runner, no-tests, no-timeout, no-mutations;
+#                                                with ERROR: runner-failed
+#   MUTATE_ERROR=<line>                          only with ERROR: first error line of the runner log
+# Test discovery skips any Browser/ directory (Playwright, far too slow for mutation). A runner that
+# exits non-zero (not a timeout) without a result summary is ERROR, never OK. `No mutations created`
+# (Pest resolved the class to another project's file, e.g. symlinked vendor/ in a worktree) makes
+# that file a SKIP no-mutations. ERROR and SKIP never block the caller.
 #   MUTATE_SCORE=<relpath>:<pct>                 when the runner reports one
 #   SURVIVOR=<relpath>:<line>:<mutator>          changed lines +-3, at most MUTATE_CAP (15)
 #   SURVIVORS_TRUNCATED=<n>                      survivors beyond the cap
@@ -163,6 +169,8 @@ START=$SECONDS
 EXECUTED=0
 TIMED_OUT=0
 LAST_REASON=no-runner
+RUN_ERROR=""
+RUN_FAILED=0
 : > "$WORK/raw"
 : > "$WORK/changed-lines"
 : > "$WORK/scores"
@@ -198,7 +206,7 @@ while IFS= read -r f; do
   # whole suite, so an empty list skips the file.
   { for t in $ORACLE_FILES; do [ -f "$t" ] && echo "$t"; done
     [ -d tests ] && grep -rlw --include='*.php' -- "$base" tests 2>/dev/null
-  } | sort -u > "$WORK/tests"
+  } | grep -vE '(^|/)Browser/' | sort -u > "$WORK/tests"
   if [ ! -s "$WORK/tests" ]; then LAST_REASON=no-tests; continue; fi
 
   if ! resolve_timeout; then
@@ -206,7 +214,7 @@ while IFS= read -r f; do
     break
   fi
 
-  LOG="$WORK/run-$EXECUTED.log"
+  LOG="$WORK/run.log"
   if [ "$RUNNER" = pest ]; then
     ns=$(sed -n 's/^namespace[[:space:]]*\([^;]*\);.*/\1/p' "$f" | head -1)
     fqcn=${ns:+$ns\\}$base
@@ -233,6 +241,22 @@ EOF
       strip_ansi "$LOG" | sed -n "s/.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*/MUTATE_SCORE=$f:\1/p" | head -1
     } > "$WORK/parsed"
   fi
+  strip_ansi "$LOG" > "$WORK/stripped"
+  # Pest creates no mutations when it resolves the class to another project's file (a worktree whose
+  # vendor/ is a symlink to the main project): nothing was tested, so this file is a SKIP.
+  if grep -q 'No mutations created' "$WORK/stripped"; then LAST_REASON=no-mutations; continue; fi
+  case "$RUN_STATUS" in
+    0|124|137) ;;
+    *)
+      # The runner died before producing a result (e.g. Playwright missing): never report that as OK.
+      if ! grep -qE 'Mutations:|Mutation Score Indicator' "$WORK/stripped"; then
+        RUN_ERROR=$(grep -m1 -E 'Exception|Error|error' "$WORK/stripped" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -n "$RUN_ERROR" ] || RUN_ERROR=$(grep -m1 -v '^[[:space:]]*$' "$WORK/stripped" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -n "$RUN_ERROR" ] || RUN_ERROR="runner exited $RUN_STATUS without output"
+        RUN_FAILED=1
+        break
+      fi ;;
+  esac
   EXECUTED=$((EXECUTED + 1))
   case "$RUN_STATUS" in 124|137) TIMED_OUT=1 ;; esac
 
@@ -245,6 +269,10 @@ EOF
   fi
 done < "$WORK/matched"
 
+if [ "$RUN_FAILED" -eq 1 ]; then
+  echo "MUTATE_RESULT=ERROR"; echo "MUTATE_REASON=runner-failed"; echo "MUTATE_ERROR=$RUN_ERROR"
+  exit 0
+fi
 if [ "$EXECUTED" -eq 0 ]; then skip "$LAST_REASON"; fi
 if [ "$TIMED_OUT" -eq 1 ]; then echo "MUTATE_RESULT=TIMEOUT"; else echo "MUTATE_RESULT=OK"; fi
 cat "$WORK/scores"

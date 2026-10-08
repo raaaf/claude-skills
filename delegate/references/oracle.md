@@ -35,8 +35,8 @@ file before failing.
 
 Only when `.claude/mutation-targets` (one glob per line, `#` comments) matches a changed file.
 `bash "$AUDIT_BIN/mutate.sh" "$PWD" "$BASE_REF" --oracle-files "<oracle files>"` prints
-`MUTATE_RESULT=OK|SKIP|TIMEOUT`, `MUTATE_REASON`, `MUTATE_SCORE`, `SURVIVOR=<file>:<line>:<mutator>`
-(changed lines +-3, at most 15) and `SURVIVORS_TRUNCATED`. SKIP and TIMEOUT never block. The score is
+`MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR`, `MUTATE_REASON`, `MUTATE_ERROR`, `MUTATE_SCORE`, `SURVIVOR=<file>:<line>:<mutator>`
+(changed lines +-3, at most 15) and `SURVIVORS_TRUNCATED`. SKIP, TIMEOUT and ERROR never block: ERROR (`runner-failed`, the runner died without a result) is reported in the result and the run log (`mutate=ERROR`), not retried. Browser test directories are excluded from the test list; `no-mutations` is a SKIP. The score is
 a finding source, never a target.
 
 Triage each survivor, drop with a one-line reason:
@@ -52,4 +52,4 @@ the 2 rounds); after the fix run `mutate.sh` once more for confirmation.
 
 ## Telemetry values
 
-`oracle=used|fallback|skipped`, `mutate=OK|SKIP|TIMEOUT|none`, `survivors=<N after triage>`.
+`oracle=used|fallback|skipped`, `mutate=OK|SKIP|TIMEOUT|ERROR|none`, `survivors=<N after triage>`.

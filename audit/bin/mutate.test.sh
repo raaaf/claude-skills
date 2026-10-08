@@ -83,6 +83,10 @@ mkdir -p vendor/bin
 cat > vendor/bin/pest <<EOF
 #!/bin/sh
 echo "\$@" > "$TMP/pest-args"
+case "\$(cat "$TMP/pest-mode" 2>/dev/null)" in
+  fail) echo "  Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException"; exit 1 ;;
+  nomut) echo "  INFO  No mutations created."; exit 0 ;;
+esac
 cat "$FIX/pest-mutate-secretsanta.log"
 EOF
 chmod +x vendor/bin/pest
@@ -103,6 +107,22 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   printf '<?php\n' > tests/Unit/OracleTest.php
   run --oracle-files tests/Unit/OracleTest.php >/dev/null
   has "oracle files are passed to the runner" "tests/Unit/OracleTest.php" "$(cat "$TMP/pest-args")"
+  # Browser suites need Playwright and are far too slow for mutation: never passed to the runner
+  mkdir -p tests/Browser/Event
+  printf '<?php\n// SecretSantaMatchService in a browser test\n' > tests/Browser/Event/SantaCardTest.php
+  run >/dev/null
+  check "a Browser/ test file is not passed to the runner" "0" "$(grep -c 'Browser' "$TMP/pest-args")"
+  rm -rf tests/Browser
+  # a runner that dies without a summary is ERROR, not OK
+  echo fail > "$TMP/pest-mode"
+  OUT=$(run)
+  has "runner failure -> ERROR" "MUTATE_RESULT=ERROR" "$OUT"
+  has "runner failure -> reason" "MUTATE_REASON=runner-failed" "$OUT"
+  has "runner failure -> first exception line" "MUTATE_ERROR=Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException" "$OUT"
+  # Pest resolved the class elsewhere (symlinked vendor/): nothing was tested
+  echo nomut > "$TMP/pest-mode"
+  check "No mutations created -> SKIP no-mutations" "MUTATE_RESULT=SKIP MUTATE_REASON=no-mutations" "$(run | tr '\n' ' ' | sed 's/ $//')"
+  rm -f "$TMP/pest-mode"
 else
   echo "skip full-flow tests: neither timeout nor gtimeout installed"
 fi

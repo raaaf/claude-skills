@@ -133,7 +133,7 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the target line of every new test (invert it, the test must go red; a happy-path test stays green while the new branch ships untested). A test that only asserts mock calls, mounts a component, or has no assertion = fail.
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
 6. **Oracle check** (only when `ORACLE_EXPECTED=1`): `bash "$AUDIT_BIN/oracle-lock.sh" check --run "$ORACLE_RUN_ID"`. `ORACLE_RESULT=CHANGED` = review fail (name the `ORACLE_CHANGED=` files; for a shared setup file check `git log` first, another session may have edited it). `NONE` while expected = review fail (a lost snapshot is not a pass). Also run `bash "$AUDIT_BIN/check-silencing.sh"` (catches `skip`/`markTestSkipped` workarounds).
-7. **Mutation run** (only when the diff touches a file matched by the project's `.claude/mutation-targets`): `bash "$AUDIT_BIN/mutate.sh" "$PWD" "$BASE_REF" --oracle-files "{ORACLE_FILES}"`. Triage the survivors and run at most one informed test round, then one confirmation run; procedure in `references/oracle.md`. `SKIP` and `TIMEOUT` never block.
+7. **Mutation run** (only when the diff touches a file matched by the project's `.claude/mutation-targets`): `bash "$AUDIT_BIN/mutate.sh" "$PWD" "$BASE_REF" --oracle-files "{ORACLE_FILES}"`. Triage the survivors and run at most one informed test round, then one confirmation run; procedure in `references/oracle.md`. `SKIP`, `TIMEOUT` and `ERROR` never block; report `ERROR` (with its `MUTATE_ERROR` line) in the result and log `mutate=ERROR`.
 
 **Verdict:**
 
@@ -151,7 +151,7 @@ orch_resolve_audit_root
 orch_state_load
 bash "$AUDIT_BIN/oracle-lock.sh" clear --run "${ORACLE_RUN_ID:-none}"   # drop the snapshot at every terminal verdict
 orch_run_log --skill delegate --outcome "{APPROVE|BLOCK}" \
-  --counts "revision_rounds={N},oracle={used|fallback|skipped},mutate={OK|SKIP|TIMEOUT|none},survivors={N}"
+  --counts "revision_rounds={N},oracle={used|fallback|skipped},mutate={OK|SKIP|TIMEOUT|ERROR|none},survivors={N}"
 ```
 
 ## Phase 6: Live walkthrough (visual tasks only)
