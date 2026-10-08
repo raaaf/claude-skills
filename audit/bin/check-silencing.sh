@@ -137,9 +137,10 @@ function flush_file() {
   # hits on the first real probe of a second repo were the published JS
   # bundles of one framework.
   # The source of this script states every pattern it looks for, so it reports
-  # itself on any diff that touches it. Its own path is excluded for the same
+  # itself on any diff that touches it. Its own path and its test (which plants
+  # every pattern as data) are excluded for the same
   # reason the fixtures are: defining a rule is not an instance of the rule.
-  skip = (file ~ /(^|\/)check-silencing\.sh$/ ||
+  skip = (file ~ /(^|\/)check-silencing(\.test)?\.sh$/ ||
           file ~ /(^|\/)(vendor|node_modules|Pods|\.git)\// ||
           file ~ /(^|\/)\.claude\// ||
           file ~ /(^|\/)(dist|build|out|\.next|\.nuxt|coverage)\// ||
