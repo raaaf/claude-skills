@@ -182,6 +182,15 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   has "hint files used instead of grep hits" "tests/Feature/IndirectTest.php" "$ARGS"
   check "hint replaces the class-name match" "0" "$(printf '%s\n' "$ARGS" | grep -c 'SecretSantaMatchServiceTest')"
   has "hint-missing note" "MUTATE_NOTE=hint-missing:GhostTest" "$OUT"
+  # the `::` separator tolerates any surrounding whitespace
+  for sep in ' ::' ':: ' '::'; do
+    printf 'app/Services/*.php%sIndirectTest\n' "$sep" > .claude/mutation-targets
+    rm -f "$TMP/pest-args"
+    run >/dev/null
+    ARGS=$(cat "$TMP/pest-args")
+    has "hint separator [$sep] uses the hint" "tests/Feature/IndirectTest.php" "$ARGS"
+    check "hint separator [$sep] replaces the class-name match" "0" "$(printf '%s\n' "$ARGS" | grep -c 'SecretSantaMatchServiceTest')"
+  done
   printf 'app/Services/*.php :: GhostTest\n' > .claude/mutation-targets
   has "hint without any file -> SKIP no-tests" "MUTATE_RESULT=SKIP MUTATE_REASON=no-tests" "$(run | tr '\n' ' ')"
   # Infection gets the selected tests as a PHPUnit filter, not the whole suite
@@ -234,6 +243,17 @@ STUB
   has "infection config: default per-mutant timeout" '"timeout": 120,' "$(cat "$TMP/inf-config")"
   INF_CFG_COPY="$TMP/inf-config" MUTATE_INFECTION_TIMEOUT=400 INFECTION_PHAR="$TMP/infection-ok.phar" run >/dev/null
   has "infection config: timeout override via MUTATE_INFECTION_TIMEOUT" '"timeout": 400,' "$(cat "$TMP/inf-config")"
+  OUT=$(INF_CFG_COPY="$TMP/inf-config" MUTATE_INFECTION_TIMEOUT=2m INFECTION_PHAR="$TMP/infection-ok.phar" run)
+  has "infection config: invalid timeout falls back to 120" '"timeout": 120,' "$(cat "$TMP/inf-config")"
+  has "invalid timeout prints a note" "MUTATE_NOTE=invalid-infection-timeout:2m" "$OUT"
+  # both summary lines present: the covered-code figure wins whatever the order
+  cat > "$TMP/infection-both.phar" <<'STUB'
+#!/bin/sh
+echo "         Mutation Score Indicator (MSI): 40%"
+echo "         Covered Code MSI: 81%"
+STUB
+  OUT=$(INFECTION_PHAR="$TMP/infection-both.phar" run)
+  has "infection: Covered Code MSI preferred over MSI" "MUTATE_SCORE=app/Services/SecretSantaMatchService.php:81" "$OUT"
   mv "$TMP/pest-off" vendor/bin/pest
   rm -f phpunit.xml
   cp "$TMP/targets-match" .claude/mutation-targets

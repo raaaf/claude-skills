@@ -166,7 +166,7 @@ while IFS= read -r f; do
   while IFS= read -r glob || [ -n "$glob" ]; do
     glob=${glob%%#*}
     hint=""
-    case "$glob" in *" :: "*) hint=${glob#* :: }; glob=${glob%% :: *} ;; esac
+    case "$glob" in *"::"*) hint=${glob#*::}; glob=${glob%%::*} ;; esac
     glob=$(printf '%s' "$glob" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     hint=$(printf '%s' "$hint" | tr -d '[:space:]')
     [ -n "$glob" ] || continue
@@ -264,11 +264,15 @@ while IFS=$'\t' read -r f hint; do
     parse_pest "$LOG" "$ROOT" "$f" > "$WORK/parsed"
   else
     srcdir=${f%%/*}
+    inf_timeout=${MUTATE_INFECTION_TIMEOUT:-120}
+    case "$inf_timeout" in
+      ''|*[!0-9]*|0*) echo "MUTATE_NOTE=invalid-infection-timeout:$inf_timeout" >> "$WORK/notes"; inf_timeout=120 ;;
+    esac
     cat > "$WORK/infection.json5" <<EOF
 {
   "source": {"directories": ["$ROOT/$srcdir"]},
   "phpUnit": {"configDir": "$ROOT"},
-  "timeout": ${MUTATE_INFECTION_TIMEOUT:-120},
+  "timeout": $inf_timeout,
   "tmpDir": "$WORK/infection-tmp",
   "logs": {"text": "$WORK/infection-text.log"},
   "mutators": {"@default": true}
@@ -282,8 +286,11 @@ EOF
       --only-covering-test-cases --threads=1 --no-interaction --no-progress || { TIMED_OUT=1; break; }
     {
       parse_infection "$WORK/infection-text.log" "$ROOT"
-      strip_ansi "$LOG" | sed -n -e "s|.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" \
-        -e "s|.*Covered Code MSI: \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" | head -1
+      # Covered Code MSI wins; the plain MSI line is only the fallback when it is absent.
+      strip_ansi "$LOG" > "$WORK/inf-summary"
+      score=$(sed -n 's|.*Covered Code MSI: \([0-9.]*\)%.*|\1|p' "$WORK/inf-summary" | head -1)
+      [ -n "$score" ] || score=$(sed -n 's|.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*|\1|p' "$WORK/inf-summary" | head -1)
+      [ -z "$score" ] || echo "MUTATE_SCORE=$f:$score"
     } > "$WORK/parsed"
   fi
   strip_ansi "$LOG" > "$WORK/stripped"
@@ -311,7 +318,7 @@ EOF
       fi ;;
   esac
   if [ "$RUNNER" = infection ]; then
-    # Mutants that exceeded the per-mutant timeout are skipped, not tested: a file where every
+    # Mutants Infection skips because their estimated test time exceeds the configured timeout are not tested: a file where every
     # generated mutant was skipped (or none generated) has no result.
     gen=$(sed -n 's/^[[:space:]]*\([0-9][0-9]*\) mutations were generated.*/\1/p' "$WORK/stripped" | head -1)
     skipped=$(sed -n 's/^[[:space:]]*\([0-9][0-9]*\) mutants required more time than configured.*/\1/p' "$WORK/stripped" | head -1)

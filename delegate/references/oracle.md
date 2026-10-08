@@ -41,6 +41,12 @@ Only when `.claude/mutation-targets` (one glob per line, `#` comments, optional 
 (changed lines +-3, at most 15) and `SURVIVORS_TRUNCATED`. SKIP, TIMEOUT and ERROR never block: ERROR (`runner-failed`, the runner died without a result) is reported in the result and the run log (`mutate=ERROR`), not retried. Test selection: oracle files plus `tests/` files whose basename starts with the class basename (`MoneyTest.php` for `Money`). Only when that set is empty, files that merely mention the class (Unit first, at most `MUTATE_MAX_TEST_FILES`, default 5) and `MUTATE_NOTE=fallback-test-selection:<n>`; mention that in the report, the selection was heuristic. Mentioning-only discovery picked 15 DB-backed Feature tests once and timed out. Browser test directories are excluded from the test list; `no-mutations` is a SKIP. The score is
 a finding source, never a target.
 
+Reasons and notes the orchestrator handles (none blocks):
+- ERROR `runner-failed`: the runner died without a result; report it, do not retry.
+- ERROR `initial-tests-failed`: the project suite is red; report the failing test named in `MUTATE_ERROR`.
+- SKIP `no-tests`, `no-mutations`, `all-mutants-skipped`: report it; for `no-tests` or `all-mutants-skipped` suggest a `::` test hint or a higher `MUTATE_INFECTION_TIMEOUT`.
+- NOTE `fallback-test-selection`, `hint-missing`, `skipped-mutants`, `invalid-infection-timeout`: mention in the result report.
+
 Triage each survivor, drop with a one-line reason:
 - equivalent (e.g. `true` to `false` on a value only read by `isset`)
 - performance-only (retry counts, step budgets)
