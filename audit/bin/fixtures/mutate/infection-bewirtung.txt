@@ -1,0 +1,75 @@
+Note: Pass `--log-verbosity=all` to log information about killed and errored mutants.
+Note: Pass `--debug` to log test-framework output.
+
+Escaped mutants:
+================
+
+1) /private/tmp/claude-501/-Users-rafael-Developer/22db411a-cbd6-4c87-8f64-5f062db6f594/scratchpad/mut-zeit/snap-bew/app/Services/Tax/BewirtungSplit.php:36    [M] Assignment [ID] 4adf952bd21d7eb61153bfb9fa60a4ce
+
+@@ @@
+         $tip = 0.0;
+
+         foreach ($bookings as $booking) {
+-            $gross += abs((float) $booking->amount);
++            $gross = abs((float) $booking->amount);
+             $vat += $booking->vatAmount();
+             $tip += (float) ($booking->bewirtung_trinkgeld ?? 0);
+         }
+
+
+2) /private/tmp/claude-501/-Users-rafael-Developer/22db411a-cbd6-4c87-8f64-5f062db6f594/scratchpad/mut-zeit/snap-bew/app/Services/Tax/BewirtungSplit.php:37    [M] Assignment [ID] 40f5136c98e647d37de0fa29b47e90f8
+
+@@ @@
+
+         foreach ($bookings as $booking) {
+             $gross += abs((float) $booking->amount);
+-            $vat += $booking->vatAmount();
++            $vat = $booking->vatAmount();
+             $tip += (float) ($booking->bewirtung_trinkgeld ?? 0);
+         }
+
+
+3) /private/tmp/claude-501/-Users-rafael-Developer/22db411a-cbd6-4c87-8f64-5f062db6f594/scratchpad/mut-zeit/snap-bew/app/Services/Tax/BewirtungSplit.php:38    [M] CastFloat [ID] cefd1f74175e2154e34d739d6bc6d84f
+
+@@ @@
+         foreach ($bookings as $booking) {
+             $gross += abs((float) $booking->amount);
+             $vat += $booking->vatAmount();
+-            $tip += (float) ($booking->bewirtung_trinkgeld ?? 0);
++            $tip += $booking->bewirtung_trinkgeld ?? 0;
+         }
+
+         return new self($gross, $vat, $tip, (float) config('steuer.bewirtung.deductible_ratio', 0.70));
+
+
+4) /private/tmp/claude-501/-Users-rafael-Developer/22db411a-cbd6-4c87-8f64-5f062db6f594/scratchpad/mut-zeit/snap-bew/app/Services/Tax/BewirtungSplit.php:38    [M] Assignment [ID] b3181af814210bb8db3f2d6193468c8d
+
+@@ @@
+         foreach ($bookings as $booking) {
+             $gross += abs((float) $booking->amount);
+             $vat += $booking->vatAmount();
+-            $tip += (float) ($booking->bewirtung_trinkgeld ?? 0);
++            $tip = (float) ($booking->bewirtung_trinkgeld ?? 0);
+         }
+
+         return new self($gross, $vat, $tip, (float) config('steuer.bewirtung.deductible_ratio', 0.70));
+
+
+5) /private/tmp/claude-501/-Users-rafael-Developer/22db411a-cbd6-4c87-8f64-5f062db6f594/scratchpad/mut-zeit/snap-bew/app/Services/Tax/BewirtungSplit.php:55    [M] PublicVisibility [ID] 6eaafbfa7d95ce678f8a903ed9846147
+
+@@ @@
+     }
+
+     /** Bewirtungsaufwand without deductible VAT, Trinkgeld included. */
+-    public function net(): float
++    protected function net(): float
+     {
+         return $this->gross - $this->vat + $this->tip;
+     }
+
+
+Timed Out mutants:
+==================
+
+Skipped mutants:
+================

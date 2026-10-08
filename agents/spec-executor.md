@@ -32,6 +32,12 @@ files except to grep an identifier's usages. If 40 tool calls pass without a ver
 turning green, stop and report what blocks. If a STOP condition occurs, stop immediately and
 report — do not improvise past it.
 
+Locked files: when the task prompt lists test files as locked (written by an independent oracle
+agent), treat them and the shared test setup (`tests/Pest.php`, `tests/TestCase.php`,
+`phpunit.xml`) as read-only. Never edit, delete, skip or work around them, also not through Bash.
+If a locked test looks wrong, that is a STOP condition: stop and report why. The orchestrator
+decides whether the contract or your code is at fault.
+
 Before reporting, check every claim against a real tool result from this session; name any failed
 or skipped verification explicitly. Also run a same-diff duplication self-check on your own diff
 at block level: if the same method/logic sequence, or the same guard/resolver/error-mapping

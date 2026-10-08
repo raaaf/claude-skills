@@ -69,6 +69,8 @@ Do NOT trust the executor's report — verify it yourself (all commands in `{WOR
 3. **Read the complete diff** and judge it against the plan's "Problem"/"Goal" and the conventions section.
 4. **Read new tests:** A test that asserts nothing meaningful passes `npm test` and proves nothing — executors game criteria.
 
+The independent oracle step of `/delegate` (Phase 3.5, tests from a contract) is not applied in worktree execution (v1).
+
 **Judge documented deviations on merit, don't block reflexively.** "Do not improvise" prevents silent drift; an executor that minimally works around a real obstacle and explains it in NOTES acted correctly — approve if it serves the plan's goal and stays in scope. UNDOCUMENTED deviations are review fails.
 
 ### Verdict

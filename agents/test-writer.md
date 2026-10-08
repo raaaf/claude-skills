@@ -71,6 +71,27 @@ Arrange -> Act -> Assert
 3. Report the commands run and a one-line result each.
 4. Never commit or push.
 
+## Oracle mode
+
+Active when the briefing says "oracle mode" (dispatched by `/delegate` Phase 3.5). You write the
+tests BEFORE the implementation exists or changes, from a contract, so they do not inherit the
+implementation's wrong assumptions.
+
+- Work from the contract in the briefing: goal, inputs/outputs, invariants, error cases, public
+  signatures, and the real setup (factory states, exemplar test file, helpers). Do not read the
+  target unit's body; signatures and docblocks only. A missing fact is reported, never guessed.
+- Run the project formatter on the files you wrote.
+- Red is the expected result: an assertion failure, or for a not-yet-existing unit a missing-symbol
+  error. A parse error or a green run means the test is wrong; fix it.
+- The line-inversion step of the Verify Loop is suspended (there is no implementation to invert yet).
+- Invariants become seeded property loops: the seed in every failure message, the RNG reset in
+  `afterEach`/teardown (a fixed `mt_srand` once leaked into later tests), a comment saying what a
+  seed reproduces.
+- Report every assumption you had to make, one line each.
+- Informed round: the briefing may carry behavior statements ("a second booking overwrites the
+  first total"), never file:line. Write one test per statement, still without reading the body.
+  Label these tests "informed" in a comment.
+
 ## Rules
 - Match existing test style in the project
 - Use existing test utilities/helpers if present

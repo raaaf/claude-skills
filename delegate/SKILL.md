@@ -2,7 +2,7 @@
 name: delegate
 description: "Default working mode for implementation tasks: the expensive session model (currently Opus 5.5) analyzes the task, asks clarifying questions on genuine ambiguities, writes an executor-ready mini-spec, and hands off implementation to a Sonnet executor. Afterward the expensive model reviews the result like a tech lead (reads the diff, re-runs criteria itself) and renders a verdict. Use when the user asks to implement, build, fix, change, or refactor code (even without typing /delegate). NOT for: questions/explanations (answer directly), planning discussions or large features needing a written plan (use /plan-it), audits (/audit), pure test writing (test-writer agent)."
 when_to_use: "/delegate, implementiere, baue, aendere, fixe, setz das um, refactor this, build this feature"
-argument-hint: "[Task in your own words; optional --worktree]"
+argument-hint: "[Task in your own words; optional --worktree, --no-oracle]"
 effort: high
 allowed-tools:
   - Agent
@@ -26,7 +26,7 @@ Economics of this skill: the expensive model does the work where intelligence ma
 
 ## Phase 0: Scope Gate
 
-The task is `$ARGUMENTS` (free text, plus an optional `--worktree` flag; empty when the user described the task in conversation instead). Classify it before any work happens:
+The task is `$ARGUMENTS` (free text, plus optional `--worktree` and `--no-oracle` flags; empty when the user described the task in conversation instead). `--no-oracle` skips Phase 3.5. Classify it before any work happens:
 
 | Classification | Signal | Action |
 |---|---|---|
@@ -74,8 +74,27 @@ Inline (no file; when a plan's `## Delegate spec` exists, reuse it verbatim, see
 1. {concrete, file + what} → verify: {command → expected result}
 2. ...
 **Bugfix?** Step 1 is ALWAYS: write a repro test that's red. Fix afterward, test green.
+**Logic test steps:** mark every step whose verify names a new or changed test for a calculation, parsing, validation, date, status or matching rule, or a bugfix repro, with `[logic test]`. Rendering, wiring and mock-call tests never qualify.
 **Done criteria (all):** {test command → exit 0; new tests only where a step names one, 0 is a valid count; lint/typecheck → exit 0; git status: only affected files}
 **STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
+```
+
+## Phase 3.5: Oracle tests (working-tree mode only)
+
+Skip with a one-line note (report `oracle=skipped`) when: the mini-spec has no `[logic test]` step, `--no-oracle` was given, or the run uses `--worktree` (a worktree holds only committed files; `/plan-it execute` keeps its own flow). Otherwise the tests come from a separate agent that sees the contract, not the implementation. Detail, contract rules, triage: `references/oracle.md`.
+
+1. Write the **contract** from the mini-spec, the user's request and public signatures/docblocks only, never from implementation bodies read in Phase 1. Every line carries its source (`spec`, `request`, `docblock`). Include the real project setup (factory states, exemplar test file, helpers).
+2. Dispatch `Agent(subagent_type: test-writer, run_in_background: false)` with "oracle mode", the contract, and an output cap (files written plus assumptions, under 150 words).
+3. Red check: run each oracle file through `test-lock.sh`. Accepted: assertion failure, or a missing-symbol error for a not-yet-existing unit. Parse error or green: one retry with the error text. Still wrong: fall back to the old flow (executor writes the tests, Phase 5 step 4), report `oracle=fallback`. Never BLOCK here.
+4. On success snapshot the files and save the run id:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root
+ORACLE_RUN_ID="delegate-$(date +%s)-$$"
+ORACLE_EXPECTED=1
+bash "$AUDIT_BIN/oracle-lock.sh" snapshot --run "$ORACLE_RUN_ID" {ORACLE_FILES}
+orch_state_save ORACLE_RUN_ID ORACLE_EXPECTED
 ```
 
 ## Phase 4: Dispatch the executor (Sonnet)
@@ -89,6 +108,8 @@ Agent(
     {MINI_SPEC inline}"
 )
 ```
+
+When Phase 3.5 produced oracle tests, the briefing lists them as **locked, read-only** (with `tests/Pest.php`, `tests/TestCase.php`, `phpunit.xml`) and adds the STOP condition "a locked test looks wrong: stop and report why". Contract gap: test-writer amends and the orchestrator re-snapshots. Executor error: REVISE.
 
 The executor runs in the background (the default) and its report arrives as a completion notification. That is fine here, but **test authority follows the executor**: while it runs, the orchestrator does not start its own test run. Phase 5 verification begins after the report has arrived, not alongside it.
 
@@ -111,6 +132,8 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 3. Scope: `git diff --stat` against the affected-files list. A file outside it = fail.
 4. READ new tests: does the test assert something meaningful, or does it game the criterion? For new classification/status tests (draft-vs-invited, state predicates): check BRANCH coverage, not just the happy path — mutation-check the target line of every new test (invert it, the test must go red; a happy-path test stays green while the new branch ships untested). A test that only asserts mock calls, mounts a component, or has no assertion = fail.
 5. Judge documented deviation in NOTES on its merits; undocumented deviation = fail.
+6. **Oracle check** (only when `ORACLE_EXPECTED=1`): `bash "$AUDIT_BIN/oracle-lock.sh" check --run "$ORACLE_RUN_ID"`. `ORACLE_RESULT=CHANGED` = review fail (name the `ORACLE_CHANGED=` files; for a shared setup file check `git log` first, another session may have edited it). `NONE` while expected = review fail (a lost snapshot is not a pass). Also run `bash "$AUDIT_BIN/check-silencing.sh"` (catches `skip`/`markTestSkipped` workarounds).
+7. **Mutation run** (only when the diff touches a file matched by the project's `.claude/mutation-targets`): `bash "$AUDIT_BIN/mutate.sh" "$PWD" "$BASE_REF" --oracle-files "{ORACLE_FILES}"`. Triage the survivors and run at most one informed test round, then one confirmation run; procedure in `references/oracle.md`. `SKIP` and `TIMEOUT` never block.
 
 **Verdict:**
 
@@ -124,8 +147,11 @@ Do NOT trust the executor report — verify it yourself (checklist = execute-rev
 
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
+orch_resolve_audit_root
+orch_state_load
+bash "$AUDIT_BIN/oracle-lock.sh" clear --run "${ORACLE_RUN_ID:-none}"   # drop the snapshot at every terminal verdict
 orch_run_log --skill delegate --outcome "{APPROVE|BLOCK}" \
-  --counts "revision_rounds={N}"
+  --counts "revision_rounds={N},oracle={used|fallback|skipped},mutate={OK|SKIP|TIMEOUT|none},survivors={N}"
 ```
 
 ## Phase 6: Live walkthrough (visual tasks only)
