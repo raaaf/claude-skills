@@ -183,7 +183,7 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   check "hint replaces the class-name match" "0" "$(printf '%s\n' "$ARGS" | grep -c 'SecretSantaMatchServiceTest')"
   has "hint-missing note" "MUTATE_NOTE=hint-missing:GhostTest" "$OUT"
   printf 'app/Services/*.php :: GhostTest\n' > .claude/mutation-targets
-  check "hint without any file -> SKIP no-tests" "MUTATE_RESULT=SKIP MUTATE_REASON=no-tests" "$(run | tr '\n' ' ' | sed 's/ $//')"
+  has "hint without any file -> SKIP no-tests" "MUTATE_RESULT=SKIP MUTATE_REASON=no-tests" "$(run | tr '\n' ' ')"
   # Infection gets the selected tests as a PHPUnit filter, not the whole suite
   printf 'app/Services/*.php :: IndirectTest|SecretSantaMatchServiceTest\n' > .claude/mutation-targets
   printf '#!/bin/sh\n[ "$1" = "-m" ] && { printf "[PHP Modules]\\nCore\\npcov\\n"; exit 0; }\nexec sh "$@"\n' > bin/php
@@ -203,6 +203,37 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   has "infection red suite: ERROR" "MUTATE_RESULT=ERROR" "$OUT"
   has "infection red suite: reason" "MUTATE_REASON=initial-tests-failed" "$OUT"
   has "infection red suite: names the failing test file" "MUTATE_ERROR=tests/Feature/Tax/MissingReceiptServiceTest.php:88" "$OUT"
+  # every generated mutant exceeded the per-mutant timeout: nothing was tested, never OK
+  cat > "$TMP/infection-skipped.phar" <<'STUB'
+#!/bin/sh
+echo "27 mutations were generated:"
+echo "       0 mutants were killed by Test Framework"
+echo "      27 mutants required more time than configured"
+echo "Metrics:"
+echo "         Mutation Code Coverage: 0%"
+echo "         Covered Code MSI: 0%"
+STUB
+  OUT=$(INFECTION_PHAR="$TMP/infection-skipped.phar" run | tr '\n' ' ')
+  has "all mutants skipped -> SKIP all-mutants-skipped" "MUTATE_RESULT=SKIP MUTATE_REASON=all-mutants-skipped" "$OUT"
+  has "all mutants skipped -> note" "MUTATE_NOTE=skipped-mutants:app/Services/SecretSantaMatchService.php:27" "$OUT"
+  # a normal run reports only Covered Code MSI; the escaped mutant comes from the text log; config carries the timeout
+  cat > "$TMP/infection-ok.phar" <<'STUB'
+#!/bin/sh
+cfg=${1#--configuration=}
+cp "$cfg" "$INF_CFG_COPY"
+printf 'Escaped mutants:\n===\n\n1) %s/app/Services/SecretSantaMatchService.php:112    [M] TrueToFalse [ID] abc\n' "$(pwd -P)" > "$(dirname "$cfg")/infection-text.log"
+echo "27 mutations were generated:"
+echo "      22 mutants were killed by Test Framework"
+echo "       5 mutants were not covered by tests"
+echo "         Covered Code MSI: 81%"
+STUB
+  OUT=$(INF_CFG_COPY="$TMP/inf-config" INFECTION_PHAR="$TMP/infection-ok.phar" run)
+  has "infection normal run: OK" "MUTATE_RESULT=OK" "$OUT"
+  has "infection normal run: Covered Code MSI is the score" "MUTATE_SCORE=app/Services/SecretSantaMatchService.php:81" "$OUT"
+  has "infection normal run: escaped mutant is a survivor" "SURVIVOR=app/Services/SecretSantaMatchService.php:112:TrueToFalse" "$OUT"
+  has "infection config: default per-mutant timeout" '"timeout": 120,' "$(cat "$TMP/inf-config")"
+  INF_CFG_COPY="$TMP/inf-config" MUTATE_INFECTION_TIMEOUT=400 INFECTION_PHAR="$TMP/infection-ok.phar" run >/dev/null
+  has "infection config: timeout override via MUTATE_INFECTION_TIMEOUT" '"timeout": 400,' "$(cat "$TMP/inf-config")"
   mv "$TMP/pest-off" vendor/bin/pest
   rm -f phpunit.xml
   cp "$TMP/targets-match" .claude/mutation-targets

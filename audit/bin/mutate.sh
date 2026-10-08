@@ -9,7 +9,8 @@
 # Output (KEY=value, exit 0 always):
 #   MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR
 #   MUTATE_REASON=<why>                          with SKIP: no-targets, no-match, no-coverage,
-#                                                no-runner, no-tests, no-timeout, no-mutations;
+#                                                no-runner, no-tests, no-timeout, no-mutations,
+#                                                all-mutants-skipped (Infection per-mutant timeout, MUTATE_INFECTION_TIMEOUT, default 120 s);
 #                                                with ERROR: runner-failed, initial-tests-failed
 #   MUTATE_ERROR=<line>                          only with ERROR: first error line of the runner log
 # Test discovery with a hint: oracle files plus the hinted test classes only (MUTATE_NOTE=hint-missing:<Name>
@@ -267,6 +268,7 @@ while IFS=$'\t' read -r f hint; do
 {
   "source": {"directories": ["$ROOT/$srcdir"]},
   "phpUnit": {"configDir": "$ROOT"},
+  "timeout": ${MUTATE_INFECTION_TIMEOUT:-120},
   "tmpDir": "$WORK/infection-tmp",
   "logs": {"text": "$WORK/infection-text.log"},
   "mutators": {"@default": true}
@@ -280,7 +282,8 @@ EOF
       --only-covering-test-cases --threads=1 --no-interaction --no-progress || { TIMED_OUT=1; break; }
     {
       parse_infection "$WORK/infection-text.log" "$ROOT"
-      strip_ansi "$LOG" | sed -n "s|.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" | head -1
+      strip_ansi "$LOG" | sed -n -e "s|.*Mutation Score Indicator (MSI): \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" \
+        -e "s|.*Covered Code MSI: \([0-9.]*\)%.*|MUTATE_SCORE=$f:\1|p" | head -1
     } > "$WORK/parsed"
   fi
   strip_ansi "$LOG" > "$WORK/stripped"
@@ -294,7 +297,7 @@ EOF
       # Anchored: a failing test can dump JS that contains the text `Mutations:` mid-line.
       INITIAL_FAILED=0
       grep -q 'Project tests must be in a passing state' "$WORK/stripped" && INITIAL_FAILED=1
-      if [ "$INITIAL_FAILED" -eq 1 ] || ! grep -qE '^[[:space:]]*Mutations:[[:space:]]+[0-9]|Mutation Score Indicator \(MSI\):[[:space:]]*[0-9]' "$WORK/stripped"; then
+      if [ "$INITIAL_FAILED" -eq 1 ] || ! grep -qE '^[[:space:]]*Mutations:[[:space:]]+[0-9]|Mutation Score Indicator \(MSI\):[[:space:]]*[0-9]|Covered Code MSI:[[:space:]]*[0-9]' "$WORK/stripped"; then
         RUN_ERROR=""
         if [ "$INITIAL_FAILED" -eq 1 ]; then
           RUN_REASON=initial-tests-failed
@@ -307,6 +310,15 @@ EOF
         break
       fi ;;
   esac
+  if [ "$RUNNER" = infection ]; then
+    # Mutants that exceeded the per-mutant timeout are skipped, not tested: a file where every
+    # generated mutant was skipped (or none generated) has no result.
+    gen=$(sed -n 's/^[[:space:]]*\([0-9][0-9]*\) mutations were generated.*/\1/p' "$WORK/stripped" | head -1)
+    skipped=$(sed -n 's/^[[:space:]]*\([0-9][0-9]*\) mutants required more time than configured.*/\1/p' "$WORK/stripped" | head -1)
+    skipped=${skipped:-0}
+    [ "$skipped" -gt 0 ] && echo "MUTATE_NOTE=skipped-mutants:$f:$skipped" >> "$WORK/notes"
+    if [ -n "$gen" ] && [ "$skipped" -ge "$gen" ]; then LAST_REASON=all-mutants-skipped; continue; fi
+  fi
   EXECUTED=$((EXECUTED + 1))
   case "$RUN_STATUS" in 124|137) TIMED_OUT=1 ;; esac
 
@@ -323,7 +335,7 @@ if [ "$RUN_FAILED" -eq 1 ]; then
   echo "MUTATE_RESULT=ERROR"; echo "MUTATE_REASON=$RUN_REASON"; echo "MUTATE_ERROR=$RUN_ERROR"
   exit 0
 fi
-if [ "$EXECUTED" -eq 0 ]; then skip "$LAST_REASON"; fi
+if [ "$EXECUTED" -eq 0 ]; then echo "MUTATE_RESULT=SKIP"; echo "MUTATE_REASON=$LAST_REASON"; cat "$WORK/notes"; exit 0; fi
 if [ "$TIMED_OUT" -eq 1 ]; then echo "MUTATE_RESULT=TIMEOUT"; else echo "MUTATE_RESULT=OK"; fi
 cat "$WORK/scores" "$WORK/notes"
 filter_survivors "$WORK/changed-lines" < "$WORK/raw"
