@@ -2,7 +2,7 @@
 #
 # Pins check-silencing.sh: the planted-bug cases still produce their hit, and a
 # prose change that merely mentions assertions, skips, suppressions and empty
-# catches in Markdown, text or docs/ produces none (false positive of 2026-10-08
+# catches in Markdown, text or reStructuredText produces none (false positive of 2026-10-08
 # on a delegate/SKILL.md line containing "assertion failure").
 set -euo pipefail
 
@@ -27,18 +27,41 @@ expect_ok() {
   printf 'PASS %s\n' "$2"
 }
 
-# Prose: every rule's words in Markdown, text and docs/, plus a removed line that
-# mentions assertions. Must stay silent.
+# Prose (by extension only): every rule's words in Markdown, text, reStructuredText
+# and an uppercase README.MD, plus a removed line that mentions assertions. Must
+# stay silent.
 new_repo
 mkdir docs
 printf '%s\n' 'Fails on assertion failure.' 'expect(x) is explained here.' > SKILL.md
 printf '%s\n' 'assert the result' > notes.txt
 printf '%s\n' 'it.skip(' > docs/guide.md
+printf '%s\n' 'expect(x) works' > README.MD
+printf '%s\n' 'assert the result' > docs/guide.rst
 commit_base
 printf '%s\n' 'Reports a skip and an eslint-disable comment.' 'Do not write catch (e) {} or test.skip(.' > SKILL.md
 printf '%s\n' 'it.only(' 'markTestSkipped' > notes.txt
 printf '%s\n' '# noqa' 'except: pass' > docs/guide.md
+printf '%s\n' 'Nothing asserted here, test.skip( mentioned.' > README.MD
+printf '%s\n' 'it.skip( and eslint-disable' > docs/guide.rst
 expect_ok "$(run)" 'prose that mentions every pattern is OK'
+
+# A docs/ directory does not exempt source or test files.
+new_repo
+mkdir docs
+printf '%s\n' "it('adds', () => {})" > docs/example.test.js
+commit_base
+printf '%s\n' "it.skip('adds', () => {})" > docs/example.test.js
+expect_has "$(run)" 'test-disabled' 'it.skip in docs/example.test.js hits'
+
+# Mixed diff: a .md losing an assertion-like line is ignored, a source test that
+# keeps its assertions is fine.
+new_repo
+printf '%s\n' 'expect(x) is explained here.' > notes.md
+printf '%s\n' "it('adds', () => {" '  expect(add(1, 2)).toBe(3)' '})' > a.test.js
+commit_base
+printf '%s\n' 'Prose without the word.' > notes.md
+printf '%s\n' "it('adds', () => {" '  expect(add(1, 2)).toBe(3)' '  expect(add(2, 2)).toBe(4)' '})' > a.test.js
+expect_ok "$(run)" 'mixed diff: prose removal plus intact test is OK'
 
 # Planted bugs in source and test files still hit.
 new_repo

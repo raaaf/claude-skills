@@ -7,6 +7,8 @@
 #   3. a newly added empty catch / except-pass that swallows an error
 #   4. assertions removed from a file without new ones added
 #   5. a threshold key moved DOWN (coverage, budget, max-warnings, ...)
+# Rules 1 to 4 skip prose files (by extension only, see the 2026-10-09 note
+# below); rule 5 does not.
 #
 # Any of these makes a check pass without the underlying problem being fixed,
 # which is why they are worth a deterministic pass rather than an LLM judgment.
@@ -27,7 +29,10 @@
 # that keeps its declaration and silently loses every check) is real and is
 # caught by the planted-bug test; delete it with evidence, not with impatience.
 #
-# 2026-10-09: rules 1 to 4 skip *.md, *.mdx, *.txt and docs/ (prose about assertions fired on a SKILL.md line); rule 5 is unchanged.
+# 2026-10-09: rules 1 to 4 skip prose files, matched by extension only (md,
+# mdx, markdown, txt, rst, adoc, case-insensitive). Prose about assertions fired
+# on a SKILL.md line. A docs/ directory exempts nothing by itself: source and
+# test files under it are still read. Rule 5 is unchanged.
 #
 # Usage: bash check-silencing.sh [root]
 #
@@ -149,7 +154,7 @@ function flush_file() {
   if (skip) skipfile[file] = 1
   # Prose paths: documentation says "assertion", "skip" and "eslint-disable"
   # without doing any of it, so rules 1 to 4 never read them.
-  is_prose = (file ~ /\.(md|mdx|txt)$/ || file ~ /(^|\/)docs\//)
+  is_prose = (tolower(file) ~ /\.(md|mdx|markdown|txt|rst|adoc)$/)
   # Config-shaped paths, excluding anything under a test directory.
   is_config = (file ~ /\.(json|ya?ml|toml|ini|cfg|conf|xml|properties)$/ ||
                file ~ /(^|\/)(\.[a-z]+rc|CONSTRAINTS\.md)$/ ||
@@ -165,12 +170,13 @@ function flush_file() {
 /^-/ {
   if (skip) next
   body = substr($0, 2)
-  if (is_prose) { old_num[file] = body; next }
-  if (body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) {
-    removed_asserts++
-    if (first_removed_assert == 0) first_removed_assert = newline
+  if (!is_prose) {
+    if (body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) {
+      removed_asserts++
+      if (first_removed_assert == 0) first_removed_assert = newline
+    }
+    if (body ~ /((^|[^A-Za-z_])(it|test|describe|context)[ \t]*\(|func[ \t]+test[A-Z]|def[ \t]+test_|public[ \t]+function[ \t]+test)/) removed_test_decls++
   }
-  if (body ~ /((^|[^A-Za-z_])(it|test|describe|context)[ \t]*\(|func[ \t]+test[A-Z]|def[ \t]+test_|public[ \t]+function[ \t]+test)/) removed_test_decls++
   # A removed line does not advance the new-file line counter.
   old_num[file] = body
   next
@@ -183,23 +189,26 @@ function flush_file() {
   # A single added line this long is a bundle, not source anyone wrote.
   if (length(body) > 400) next
 
-  if (!is_prose && body ~ /(@ts-ignore|@ts-expect-error|eslint-disable|#[ \t]*noqa|type:[ \t]*ignore|phpcs:ignore|@phpstan-ignore|psalm-suppress|swiftlint:disable|pylint:[ \t]*disable|@SuppressWarnings|nolint|#pragma[ \t]+warning[ \t]+disable)/) {
-    emit("suppression-added", "a check is silenced at this line rather than satisfied")
+  # Rules 1 to 4 never read prose; rule 5 below does.
+  if (!is_prose) {
+    if (body ~ /(@ts-ignore|@ts-expect-error|eslint-disable|#[ \t]*noqa|type:[ \t]*ignore|phpcs:ignore|@phpstan-ignore|psalm-suppress|swiftlint:disable|pylint:[ \t]*disable|@SuppressWarnings|nolint|#pragma[ \t]+warning[ \t]+disable)/) {
+      emit("suppression-added", "a check is silenced at this line rather than satisfied")
+    }
+    if (body ~ /(\.skip\(|\.only\(|\.skip[ \t]*$|xit\(|xdescribe\(|pytest\.mark\.skip|@Disabled|\.xfail)/) {
+      emit("test-disabled", "a test is disabled or narrowed to .only at declaration level")
+    }
+    # A runtime skip is often a legitimate precondition (`if (count <= 8)
+    # markTestSkipped(...)`), and one added line carries no reliable evidence
+    # either way. Reported as its own weaker kind rather than dropped: the caller
+    # treats it as Minor and reads the guard above it.
+    if (body ~ /(markTestSkipped|markTestIncomplete|XCTSkip|t\.Skip\()/) {
+      emit("test-skipped-at-runtime", "a test skips itself at runtime, check whether the guard above it is a real precondition")
+    }
+    if (body ~ /catch[^{]*\{[ \t]*\}/ || body ~ /except[^:]*:[ \t]*pass[ \t]*$/ || body ~ /rescue[ \t]+nil/) {
+      emit("error-swallowed", "an empty catch/except discards the error")
+    }
+    if (body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) added_asserts++
   }
-  if (!is_prose && body ~ /(\.skip\(|\.only\(|\.skip[ \t]*$|xit\(|xdescribe\(|pytest\.mark\.skip|@Disabled|\.xfail)/) {
-    emit("test-disabled", "a test is disabled or narrowed to .only at declaration level")
-  }
-  # A runtime skip is often a legitimate precondition (`if (count <= 8)
-  # markTestSkipped(...)`), and one added line carries no reliable evidence
-  # either way. Reported as its own weaker kind rather than dropped: the caller
-  # treats it as Minor and reads the guard above it.
-  if (!is_prose && body ~ /(markTestSkipped|markTestIncomplete|XCTSkip|t\.Skip\()/) {
-    emit("test-skipped-at-runtime", "a test skips itself at runtime, check whether the guard above it is a real precondition")
-  }
-  if (!is_prose && (body ~ /catch[^{]*\{[ \t]*\}/ || body ~ /except[^:]*:[ \t]*pass[ \t]*$/ || body ~ /rescue[ \t]+nil/)) {
-    emit("error-swallowed", "an empty catch/except discards the error")
-  }
-  if (!is_prose && body ~ /(assert|expect\(|XCTAssert|should\.|\$this->assert)/) added_asserts++
 
   # Rule 5: a threshold key whose number moved down in the same hunk. Config
   # files ONLY. In source and test files the same shape is ordinary data
