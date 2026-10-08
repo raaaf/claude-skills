@@ -43,7 +43,8 @@ PRICE_JSON='{
   "claude-opus-5-5":  {"input": 4,    "cache_write": 8,    "cache_read": 0.2,  "output": 20},
   "claude-opus-5":    {"input": 5,    "cache_write": 10,   "cache_read": 0.5,  "output": 25},
   "claude-sonnet-5":  {"input": 2,    "cache_write": 4,    "cache_read": 0.2,  "output": 10},
-  "claude-haiku-4-5": {"input": 1,    "cache_write": 2,    "cache_read": 0.1,  "output": 5}
+  "claude-haiku-4-5": {"input": 1,    "cache_write": 2,    "cache_read": 0.1,  "output": 5},
+  "claude-haiku-5-5": {"input": 0.1,  "cache_write": 0.2,  "cache_read": 0.01, "output": 0.5}
 }'
 
 JQ_DEFS='
@@ -53,6 +54,7 @@ def prefix($m):
   elif ($m | test("^claude-opus-5")) then "claude-opus-5"
   elif ($m | test("^claude-sonnet-5")) then "claude-sonnet-5"
   elif ($m | test("^claude-haiku-4-5")) then "claude-haiku-4-5"
+  elif ($m | test("^claude-haiku-5-5")) then "claude-haiku-5-5"
   else "unknown:" + $m end;
 def ts_epoch: try (.timestamp | sub("\\.[0-9]+"; "") | fromdateiso8601) catch 0;
 def sum_models:
