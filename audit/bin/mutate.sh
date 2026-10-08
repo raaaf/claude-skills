@@ -152,7 +152,11 @@ ROOT=$(pwd -P)
 skip() { echo "MUTATE_RESULT=SKIP"; echo "MUTATE_REASON=$1"; exit 0; }
 
 TARGETS="$ROOT/.claude/mutation-targets"
-[ -f "$TARGETS" ] || skip no-targets
+# --files measures the given files even without a targets file (all count as not-a-target)
+if [ ! -f "$TARGETS" ]; then
+  [ -n "$FILES" ] || skip no-targets
+  TARGETS=/dev/null
+fi
 
 # git prints tracked (--name-only) and untracked paths relative to different bases inside a
 # subdirectory; work from the top level so both share one.
@@ -163,12 +167,13 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Changed PHP files (tracked changes against the base plus untracked files) that match a target glob.
 if [ -n "$FILES" ]; then
-  for f in $FILES; do echo "$f"; done | sort -u > "$WORK/changed"
+  # entries may be ./relative or absolute: normalize to repo-relative before matching
+  for f in $FILES; do f=${f#./}; f=${f#"$ROOT"/}; echo "$f"; done | sort -u > "$WORK/changed"
 else
   { git diff --name-only "$BASE" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u > "$WORK/changed"
 fi
 : > "$WORK/matched"
-: > "$WORK/pre-notes"
+: > "$WORK/nontarget"
 while IFS= read -r f; do
   case "$f" in *.php) ;; *) continue ;; esac
   [ -f "$f" ] || continue
@@ -185,7 +190,7 @@ while IFS= read -r f; do
   done < "$TARGETS"
   if [ -n "$FILES" ] && [ "$found" -eq 0 ]; then
     printf '%s\t\n' "$f" >> "$WORK/matched"
-    echo "MUTATE_NOTE=not-a-target:$f" >> "$WORK/pre-notes"
+    echo "$f" >> "$WORK/nontarget"
   fi
 done < "$WORK/changed"
 [ -s "$WORK/matched" ] || skip no-match
@@ -204,7 +209,7 @@ RUN_REASON=runner-failed
 : > "$WORK/raw"
 : > "$WORK/changed-lines"
 : > "$WORK/scores"
-cat "$WORK/pre-notes" > "$WORK/notes"
+: > "$WORK/notes"
 
 resolve_timeout() {
   if command -v timeout >/dev/null 2>&1; then TIMEOUT_BIN=timeout
@@ -341,11 +346,13 @@ EOF
     if [ -n "$gen" ] && [ "$skipped" -ge "$gen" ]; then LAST_REASON=all-mutants-skipped; continue; fi
   fi
   EXECUTED=$((EXECUTED + 1))
+  # the not-a-target note only counts for a file that produced a result
+  grep -qxF -- "$f" "$WORK/nontarget" && echo "MUTATE_NOTE=not-a-target:$f" >> "$WORK/notes"
   case "$RUN_STATUS" in 124|137) TIMED_OUT=1 ;; esac
 
   grep '^SURVIVOR_RAW=' "$WORK/parsed" >> "$WORK/raw"
   grep '^MUTATE_SCORE=' "$WORK/parsed" >> "$WORK/scores"
-  if [ -f "$f" ]; then
+  if [ -f "$f" ] && [ -z "$FILES" ]; then
     if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then git diff -U0 "$BASE" -- "$f" > "$WORK/diff"
     else git diff -U0 --no-index -- /dev/null "$f" > "$WORK/diff"; fi
     changed_lines "$WORK/diff" >> "$WORK/changed-lines"

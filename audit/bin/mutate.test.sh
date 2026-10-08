@@ -125,13 +125,30 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   check "without --files an unchanged target gives SKIP no-match" "MUTATE_RESULT=SKIP MUTATE_REASON=no-match" "$(run | tr '\n' ' ' | sed 's/ $//')"
   OUT=$(run --files app/Unchanged/Unc.php)
   has "--files measures an unchanged target" "MUTATE_RESULT=OK" "$OUT"
-  has "--files keeps a survivor far from every changed line" ":63:" "$OUT"
+  has "--files keeps a survivor far from every changed line" "SURVIVOR=app/Services/SecretSantaMatchService.php:63:RemoveEarlyReturn" "$OUT"
   has "--files runs the tests of that file" "tests/Unit/UncTest.php" "$(cat "$TMP/pest-args")"
   check "--files on a target prints no not-a-target note" "0" "$(printf '%s\n' "$OUT" | grep -c 'not-a-target')"
   printf 'app/Services/*.php\n' > .claude/mutation-targets
   OUT=$(run --files app/Unchanged/Unc.php)
   has "--files on a non-target is measured with a note" "MUTATE_NOTE=not-a-target:app/Unchanged/Unc.php" "$OUT"
   has "--files on a non-target still runs" "MUTATE_RESULT=OK" "$OUT"
+  # entries are normalized: ./relative and absolute paths match like the plain relative one
+  OUT=$(run --files ./app/Unchanged/Unc.php)
+  has "--files accepts a ./relative path" "MUTATE_NOTE=not-a-target:app/Unchanged/Unc.php" "$OUT"
+  OUT=$(run --files "$(pwd -P)/app/Unchanged/Unc.php")
+  has "--files accepts an absolute path" "MUTATE_NOTE=not-a-target:app/Unchanged/Unc.php" "$OUT"
+  # without a targets file --files still measures (all non-targets); without --files it stays SKIP no-targets
+  mv .claude/mutation-targets "$TMP/targets-bak"
+  OUT=$(run --files app/Unchanged/Unc.php)
+  has "--files without a targets file is measured" "MUTATE_RESULT=OK" "$OUT"
+  check "no targets file and no --files stays SKIP no-targets" "MUTATE_RESULT=SKIP MUTATE_REASON=no-targets" "$(run | tr '\n' ' ' | sed 's/ $//')"
+  mv "$TMP/targets-bak" .claude/mutation-targets
+  # the not-a-target note belongs to a file that produced a result: a no-tests SKIP carries none
+  mv tests/Unit/UncTest.php "$TMP/unc-test-bak"
+  OUT=$(run --files app/Unchanged/Unc.php)
+  has "--files non-target without tests is SKIP no-tests" "MUTATE_REASON=no-tests" "$OUT"
+  check "no not-a-target note when the file produced no result" "0" "$(printf '%s\n' "$OUT" | grep -c 'not-a-target')"
+  mv "$TMP/unc-test-bak" tests/Unit/UncTest.php
   # Browser suites need Playwright and are far too slow for mutation: never passed to the runner
   mkdir -p tests/Browser/Event
   printf '<?php\n// SecretSantaMatchService in a browser test\n' > tests/Browser/Event/SantaCardTest.php

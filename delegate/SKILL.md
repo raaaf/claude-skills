@@ -85,7 +85,7 @@ Skip with a one-line note (report `oracle=skipped`, run the reset block below) w
 
 1. Write the **contract** from the mini-spec, the user's request and public signatures/docblocks only, never from implementation bodies read in Phase 1. Every line carries its source (`spec`, `request`, `docblock`). Include the real project setup (factory states, exemplar test file, helpers).
 2. Dispatch `Agent(subagent_type: test-writer, run_in_background: false)` with "oracle mode", the contract, and an output cap (files written plus assumptions, under 150 words).
-3. Red check: run each oracle file through `test-lock.sh`. Accepted: assertion failure, or a missing-symbol error for a not-yet-existing unit. Parse error or green: one retry with the error text. Still wrong: fall back to the old flow (executor writes the tests, Phase 5 step 4), report `oracle=fallback`. Never BLOCK here. **Pin mode** (the mini-spec adds tests for existing behavior and plans no production change): the oracle tests are expected GREEN, a red invariant is a suspected bug in existing code: STOP and report it to the user with the inputs, never weaken the test. Detail: `references/oracle.md`.
+3. Red check: run each oracle file through `test-lock.sh`. Accepted: assertion failure, or a missing-symbol error for a not-yet-existing unit. Parse error or green: one retry with the error text. Still wrong: fall back to the old flow (executor writes the tests, Phase 5 step 4), report `oracle=fallback`. Never BLOCK here. **Pin mode** (the mini-spec adds tests for existing behavior and plans no production change): the oracle tests are expected GREEN, a red invariant is first checked against the contract: a wrong test (contract misread) goes back to the test-writer once; only a test that matches the contract and is red is a suspected bug in existing code: STOP and report it to the user with the inputs, never weaken the test. This is not a BLOCK of the oracle step. Detail: `references/oracle.md`.
 4. On success snapshot the files and save the run id. A snapshot that fails (exit 1, `ORACLE_SNAPSHOT_MISSING=<file>`: an oracle file does not exist) is a fallback too, report `oracle=fallback`:
 
 ```bash
@@ -157,8 +157,13 @@ if [ "${ORACLE_EXPECTED:-0}" = 1 ]; then
   bash "$AUDIT_BIN/check-silencing.sh"
 fi
 # --oracle-files and --files each take ONE quoted string that mutate.sh splits itself
-# pin mode (tests only, no production diff): add --files "{TARGET_FILES}" to measure the pinned production files
-[ -f .claude/mutation-targets ] && bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --oracle-files "{ORACLE_FILES}"
+# pin mode (tests only, no production diff): set PIN_FILES to measure the pinned production files, else leave it empty
+PIN_FILES="{TARGET_FILES}"
+if [ -n "$PIN_FILES" ]; then   # explicit if/else: zsh does not word-split ${VAR:+--files "$VAR"}
+  bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --files "$PIN_FILES" --oracle-files "{ORACLE_FILES}"
+elif [ -f .claude/mutation-targets ]; then
+  bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --oracle-files "{ORACLE_FILES}"
+fi
 ```
 
 **Verdict:**

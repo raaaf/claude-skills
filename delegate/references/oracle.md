@@ -29,8 +29,10 @@ tests, Phase 5 step 4 line-inversion check) and say so in the report. A failed `
 
 A task is in pin mode when the mini-spec adds tests for existing behavior and plans no production change. The red check inverts:
 the oracle tests are expected GREEN, because the behavior already exists. A red invariant is a suspected
-bug in existing code: STOP and report it to the user with the inputs that fail, never weaken or delete
-the test. Phase 4 (executor) is skipped since nothing in production changes. Phase 5 runs
+bug in existing code. Before reporting, check the failing assertion against the contract: a wrong test
+(contract misread) goes back to the test-writer once with the finding. Only a test that matches the
+contract and is red is reported: STOP and report it to the user as a suspected bug with the inputs that
+fail, never weaken or delete the test. This is not a BLOCK of the oracle step. Phase 4 (executor) is skipped since nothing in production changes. Phase 5 runs
 `mutate.sh "$PWD" HEAD --files "<target files>" --oracle-files "<test files>"`: `--files` measures
 exactly the pinned production files regardless of the diff (only tests changed, so the diff-based
 selection would always SKIP `no-match`) and keeps survivors on any line, not just changed ones. A file
@@ -48,7 +50,7 @@ wrong: contract gap, then test-writer amends and the orchestrator re-snapshots; 
 REVISE. A CHANGED report for a setup file another session may have edited: check `git log` for that
 file before failing.
 
-## Mutation run (Phase 5, conditional)
+## Mutation run (Phase 5, conditional; in pin mode also via `--files`)
 
 Only when `.claude/mutation-targets` (one glob per line, `#` comments, optional `<glob> :: TestA|TestB` test hint) matches a changed file.
 `bash "$AUDIT_BIN/mutate.sh" "$PWD" HEAD --oracle-files "<oracle files>"` prints
@@ -71,7 +73,9 @@ Behavior-changing survivors become **behavior statements** ("a second booking ov
 total"), never file:line. Send them to `test-writer` in oracle mode for ONE round. Those tests are
 labelled "informed" in the report and snapshotted like the rest (`oracle-lock.sh snapshot` again with
 all oracle files). A red informed test on the executor's code: REVISE to the executor (counts against
-the 2 rounds); after the fix run `mutate.sh` once more for confirmation.
+the 2 rounds); after the fix run `mutate.sh` once more for confirmation. In pin mode there is no executor:
+a red informed test is a suspected bug in existing code, STOP and report it to the user (after the
+contract check above), not REVISE.
 
 ## Telemetry values
 
