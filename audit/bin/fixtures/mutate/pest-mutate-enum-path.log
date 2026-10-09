@@ -1,0 +1,215 @@
+
+  [90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m
+
+  [90mTests:[39m    [32;1m22 passed[39;22m[90m (64 assertions)[39m
+  [90mDuration:[39m [39m1.01s[39m
+
+  Mutating application files...
+  [90m70 Mutations for 1 Files created[39m
+
+  [39;100;1m RUN [39;49;22m app/Enums/ExampleStatus.php
+  [32;1m✓[39;22m [90mLine 48: IdenticalToNotIdentical[39m
+  [32;1m✓[39;22m [90mLine 48: IdenticalToNotIdentical[39m
+  [31;1m⨯[39;22m [90mLine 48: BooleanOrToBooleanAnd[39m
+  [32;1m✓[39;22m [90mLine 59: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 59: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 59: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 59: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 59: AlwaysReturnEmptyArray[39m
+  [32;1m✓[39;22m [90mLine 70: AlwaysReturnEmptyArray[39m
+  [32;1m✓[39;22m [90mLine 71: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 72: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 72: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 73: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 73: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 73: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 74: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 74: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 74: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 74: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 85: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 85: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 97: AlwaysReturnEmptyArray[39m
+  [32;1m✓[39;22m [90mLine 98: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 99: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 100: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 101: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 102: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 113: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 113: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 113: AlwaysReturnEmptyArray[39m
+  [32;1m✓[39;22m [90mLine 126: AlwaysReturnEmptyArray[39m
+  [32;1m✓[39;22m [90mLine 127: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 128: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 129: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 130: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 145: IfNegated[39m
+  [32;1m✓[39;22m [90mLine 151: IfNegated[39m
+  [32;1m✓[39;22m [90mLine 151: IdenticalToNotIdentical[39m
+  [32;1m✓[39;22m [90mLine 151: IdenticalToNotIdentical[39m
+  [31;1m⨯[39;22m [90mLine 151: BooleanOrToBooleanAnd[39m
+  [31;1m⨯[39;22m [90mLine 155: RemoveArrayItem[39m
+  [31;1m⨯[39;22m [90mLine 155: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 155: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 155: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 155: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 155: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 155: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 156: TernaryNegated[39m
+  [32;1m✓[39;22m [90mLine 156: IdenticalToNotIdentical[39m
+  [32;1m✓[39;22m [90mLine 157: TrueToFalse[39m
+  [31;1m⨯[39;22m [90mLine 158: UnwrapArraySlice[39m
+  [32;1m✓[39;22m [90mLine 158: IdenticalToNotIdentical[39m
+  [31;1m⨯[39;22m [90mLine 158: DecrementInteger[39m
+  [31;1m⨯[39;22m [90mLine 158: IncrementInteger[39m
+  [32;1m✓[39;22m [90mLine 159: IdenticalToNotIdentical[39m
+  [31;1m⨯[39;22m [90mLine 159: FalseToTrue[39m
+  [32;1m✓[39;22m [90mLine 160: PlusToMinus[39m
+  [32;1m✓[39;22m [90mLine 160: UnwrapArraySlice[39m
+  [32;1m✓[39;22m [90mLine 160: DecrementInteger[39m
+  [32;1m✓[39;22m [90mLine 160: IncrementInteger[39m
+  [31;1m⨯[39;22m [90mLine 163: UnwrapArrayFilter[39m
+  [31;1m⨯[39;22m [90mLine 163: UnwrapArrayValues[39m
+  [32;1m✓[39;22m [90mLine 163: AlwaysReturnEmptyArray[39m
+  [32;1m✓[39;22m [90mLine 164: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 164: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 164: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 164: RemoveArrayItem[39m
+  [31;1m⨯[39;22m [90mLine 165: NotIdenticalToIdentical[39m
+  [32;1m✓[39;22m [90mLine 165: NotIdenticalToIdentical[39m
+  [32;1m✓[39;22m [90mLine 165: BooleanOrToBooleanAnd[39m
+  [39;41;1m UNTESTED [39;49;22m [39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 48: BooleanOrToBooleanAnd - ID: 18e13f5e5294a838[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 151: BooleanOrToBooleanAnd - ID: 045ade94320531e6[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 155: RemoveArrayItem - ID: c9f990e15b5435d2[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 155: RemoveArrayItem - ID: 5c16396a5a9fe508[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 158: UnwrapArraySlice - ID: 80b43cc75c8ef18c[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 158: DecrementInteger - ID: eeccbf56f4252eea[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 158: IncrementInteger - ID: 46329b4111bdd657[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 159: FalseToTrue - ID: 663b4237d06ef2c0[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 163: UnwrapArrayFilter - ID: 17256544e05ade1d[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 163: UnwrapArrayValues - ID: 2946ad275fc6afb1[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Enums/ExampleStatus.php [39;22m[90m > Line 165: NotIdenticalToIdentical - ID: 85d35ab7e4df8642[39m
+[39;1m
+  [39;22m[90m    /** Closed and Failed: nothing can happen any more. */[39m[39;1m
+  [39;22m[90m    public function isTerminal(): bool[39m[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[31m-       return $this === self::Closed || $this === self::Failed;[39m[39;1m
+  [39;22m[32m+       return $this === self::Closed && $this === self::Failed;[39m[39;1m
+  [39;22m[90m    }[39m[39;1m
+  [39;22m[90m    public function label(): string[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[90mMutations:[39m[39;1m [39;22m[31;1m11 untested[39;22m[90m,[39m[39m [39m[32;1m59 tested[39;22m
+[39m  [39m[90mScore:[39m[39m     [39m[39m84.29%[39m
+[39m  [39m[90mDuration:[39m[39m  [39m[39m35.45s[39m
+

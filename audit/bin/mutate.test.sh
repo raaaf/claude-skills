@@ -3,6 +3,8 @@
 # logs (fixtures/mutate/), the changed-line filter and cap, and a full Pest flow with a stub runner.
 # Usage: bash audit/bin/mutate.test.sh
 set -u
+# the pao test must see mutate.sh set PAO_DISABLE itself, not inherit it
+unset PAO_DISABLE
 HERE=$(cd "$(dirname "$0")" && pwd)
 MUT="$HERE/mutate.sh"
 FIX="$HERE/fixtures/mutate"
@@ -22,6 +24,18 @@ PEST=$("$BASH_BIN" "$MUT" --parse-pest "$FIX/pest-mutate-secretsanta.log" --root
 has "pest: line 112 TrueToFalse is an UNTESTED survivor" "SURVIVOR_RAW=app/Services/SecretSantaMatchService.php:112:TrueToFalse" "$PEST"
 has "pest: 46 survivors before filtering" "MUTATE_UNFILTERED=46" "$PEST"
 has "pest: score line" "MUTATE_SCORE=app/Services/SecretSantaMatchService.php:71.95" "$PEST"
+
+# Score line: the plain log (Score: 84.09%) and the same run as laravel/pao prints it in an agent session,
+# ONE json line. The json used to give MUTATE_SCORE=<file>:application (second word of "Mutating application files..").
+for fx in pest-mutate-service.log pest-mutate-service-pao.log; do
+  OUT=$("$BASH_BIN" "$MUT" --parse-pest "$FIX/$fx" --root /nowhere --file app/Services/Example/InvoiceBuilder.php)
+  has "pest $fx: real score" "MUTATE_SCORE=app/Services/Example/InvoiceBuilder.php:84.09" "$OUT"
+  has "pest $fx: untested survivor" "SURVIVOR_RAW=app/Services/Example/InvoiceBuilder.php:92:RemoveIntegerCast" "$OUT"
+  has "pest $fx: seven survivors" "MUTATE_UNFILTERED=7" "$OUT"
+done
+# an enum run (--path=<file>): same output shape, score belongs to the enum file
+OUT=$("$BASH_BIN" "$MUT" --parse-pest "$FIX/pest-mutate-enum-path.log" --root /nowhere --file app/Enums/ExampleStatus.php)
+has "pest enum --path log: score" "MUTATE_SCORE=app/Enums/ExampleStatus.php:84.29" "$OUT"
 
 INF_ROOT=$(grep -m1 -o '^1) .*snap-bew' "$FIX/infection-bewirtung.txt" | cut -c4-)
 INF=$("$BASH_BIN" "$MUT" --parse-infection "$FIX/infection-bewirtung.txt" --root "$INF_ROOT")
@@ -90,6 +104,7 @@ cat > vendor/bin/pest <<EOF
 #!/bin/sh
 echo "\$@" > "$TMP/pest-args"
 echo run >> "$TMP/pest-runs"
+echo "\$PAO_DISABLE" > "$TMP/pest-pao"
 case "\$(cat "$TMP/pest-mode" 2>/dev/null)" in
   stdin) cat >/dev/null ;;
   fail) echo "  Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException"; exit 1 ;;
@@ -112,6 +127,24 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   check "full flow: no survivor far from the changed line" "0" "$(printf '%s\n' "$OUT" | grep -c ':63:')"
   has "FQCN is namespace plus basename, test file found by class name" \
     '--mutate --covered-only --class=App\Services\SecretSantaMatchService tests/Unit/SecretSantaMatchServiceTest.php' "$(cat "$TMP/pest-args")"
+  check "pest runs with laravel/pao disabled (json output breaks the score parser)" "1" "$(cat "$TMP/pest-pao")"
+  # an enum is no class or trait for Pest's --class filter ("No mutations created"): it is selected by --path
+  mkdir -p app/Enums
+  printf '<?php\n\nnamespace App\\Enums;\n\nenum Status: string\n{\n    case Open = "open";\n}\n' > app/Enums/Status.php
+  printf '<?php\n' > tests/Unit/StatusTest.php
+  OUT=$(run --files app/Enums/Status.php)
+  has "enum: selected with --path=<file>" '--mutate --covered-only --path=app/Enums/Status.php tests/Unit/StatusTest.php' "$(cat "$TMP/pest-args")"
+  check "enum: no --class filter" "0" "$(grep -c -e '--class' "$TMP/pest-args")"
+  has "enum: result OK with a score for the enum file" "MUTATE_SCORE=app/Enums/Status.php:71.95" "$OUT"
+  # a class whose comment merely mentions an enum is still a class
+  printf '<?php\n\nnamespace App\\Services;\n\n/**\n * Not an\n * enum Status: string\n */\nclass Mention\n{\n}\n' > app/Services/Mention.php
+  printf '<?php\n' > tests/Unit/MentionTest.php
+  run --files app/Services/Mention.php >/dev/null
+  has "class: a comment mentioning an enum does not select --path" '--class=App\Services\Mention' "$(cat "$TMP/pest-args")"
+  rm -f app/Services/Mention.php tests/Unit/MentionTest.php
+  run --files app/Services/SecretSantaMatchService.php >/dev/null
+  has "class: still selected with --class" '--class=App\Services\SecretSantaMatchService' "$(cat "$TMP/pest-args")"
+  rm -f app/Enums/Status.php tests/Unit/StatusTest.php
   # oracle files join the test list even when they never mention the class
   printf '<?php\n' > tests/Unit/OracleTest.php
   run --oracle-files tests/Unit/OracleTest.php >/dev/null

@@ -1,0 +1,142 @@
+
+  [90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m[90;1m.[39;22m
+
+  [90mTests:[39m    [32;1m5 passed[39;22m[90m (21 assertions)[39m
+  [90mDuration:[39m [39m0.73s[39m
+
+  Mutating application files...
+  [90m44 Mutations for 1 Files created[39m
+
+  [39;100;1m RUN [39;49;22m app/Services/Example/InvoiceBuilder.php
+  [32;1m✓[39;22m [90mLine 32: IfNegated[39m
+  [32;1m✓[39;22m [90mLine 32: BooleanAndToBooleanOr[39m
+  [31;1m⨯[39;22m [90mLine 32: RemoveNot[39m
+  [32;1m✓[39;22m [90mLine 42: ForeachEmptyIterable[39m
+  [32;1m✓[39;22m [90mLine 43: RemoveMethodCall[39m
+  [32;1m✓[39;22m [90mLine 44: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 45: MultiplicationToDivision[39m
+  [32;1m✓[39;22m [90mLine 45: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 46: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 56: DecrementInteger[39m
+  [32;1m✓[39;22m [90mLine 56: IncrementInteger[39m
+  [32;1m✓[39;22m [90mLine 58: WhileAlwaysFalse[39m
+  [32;1m✓[39;22m [90mLine 58: TrueToFalse[39m
+  [32;1m✓[39;22m [90mLine 63: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 64: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 64: EmptyStringToNotEmpty[39m
+  [32;1m✓[39;22m [90mLine 65: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 66: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 67: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 68: DecrementInteger[39m
+  [32;1m✓[39;22m [90mLine 68: IncrementInteger[39m
+  [31;1m⨯[39;22m [90mLine 68: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 69: PlusToMinus[39m
+  [32;1m✓[39;22m [90mLine 69: RemoveArrayItem[39m
+  [31;1m⨯[39;22m [90mLine 70: RemoveArrayItem[39m
+  [32;1m✓[39;22m [90mLine 71: TernaryNegated[39m
+  [31;1m⨯[39;22m [90mLine 71: RemoveArrayItem[39m
+  [31;1m⨯[39;22m [90mLine 72: TernaryNegated[39m
+  [31;1m⨯[39;22m [90mLine 72: RemoveArrayItem[39m
+  [33;1mt[39;22m [90mLine 75: PreIncrementToPreDecrement[39m
+  [32;1m✓[39;22m [90mLine 75: IfNegated[39m
+  [32;1m✓[39;22m [90mLine 75: GreaterOrEqualToGreater[39m
+  [32;1m✓[39;22m [90mLine 75: GreaterOrEqualToSmaller[39m
+  [32;1m✓[39;22m [90mLine 91: TernaryNegated[39m
+  [32;1m✓[39;22m [90mLine 92: PlusToMinus[39m
+  [32;1m✓[39;22m [90mLine 92: PlusToMinus[39m
+  [31;1m⨯[39;22m [90mLine 92: RemoveIntegerCast[39m
+  [32;1m✓[39;22m [90mLine 92: DecrementInteger[39m
+  [32;1m✓[39;22m [90mLine 92: DecrementInteger[39m
+  [32;1m✓[39;22m [90mLine 92: IncrementInteger[39m
+  [32;1m✓[39;22m [90mLine 92: IncrementInteger[39m
+  [32;1m✓[39;22m [90mLine 92: UnwrapSubstr[39m
+  [32;1m✓[39;22m [90mLine 93: DecrementInteger[39m
+  [32;1m✓[39;22m [90mLine 93: IncrementInteger[39m
+  [39;41;1m UNTESTED [39;49;22m [39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 32: RemoveNot - ID: c77e22b9e92054a2[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 68: RemoveArrayItem - ID: 4ffc817a8055e07b[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 70: RemoveArrayItem - ID: 364f199e95c3e40b[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 71: RemoveArrayItem - ID: 3f3823664a6d23f5[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 72: TernaryNegated - ID: 074bf6ed3470337b[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 72: RemoveArrayItem - ID: 89cf07331523f98b[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[39;41;1m UNTESTED [39;49;22m[39;1m [39;22m[39;1mapp/Services/Example/InvoiceBuilder.php [39;22m[90m > Line 92: RemoveIntegerCast - ID: 71941c3ba57b7ec5[39m
+[39;1m
+  [39;22m[90m    {[39m[39;1m
+  [39;22m[90m        $items = $source->items();[39m[39;1m
+  [39;22m[90m        $limit = Limit::forItems($items);[39m[39;1m
+  [39;22m[31m-       if ($limit && !$flag) {[39m[39;1m
+  [39;22m[32m+       if ($limit && $flag) {[39m[39;1m
+  [39;22m[90m            throw new LimitExceeded();[39m[39;1m
+  [39;22m[90m        }[39m[39;1m
+  [39;22m[90m        $total = $source->total();[39m[39;1m
+  [39;22m[39;1m
+[39;22m
+[39;1m  [39;22m[90mMutations:[39m[39;1m [39;22m[31;1m7 untested[39;22m[90m,[39m[39m [39m[32;1m1 timeout[39;22m[90m,[39m[39m [39m[32;1m36 tested[39;22m
+[39m  [39m[90mScore:[39m[39m     [39m[39m84.09%[39m
+[39m  [39m[90mDuration:[39m[39m  [39m[39m26.03s[39m
+

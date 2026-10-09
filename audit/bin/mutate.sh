@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 # Targeted mutation run for /delegate Phase 5. Mutates only the changed files that the project lists
 # in `.claude/mutation-targets` (one glob per line, `#` comments; optional test hint
-# `<glob> :: NameTest|OtherTest` names the test classes to run for indirectly tested classes) and reports the survivors on
-# lines the diff touched (+-3). A finding source for one extra test round, never a score target.
+# `<glob> :: NameTest|OtherTest` names the test classes to run for indirectly tested classes)
+# and reports the survivors on lines the diff touched (+-3). A finding source for one extra
+# test round, never a score target.
 #
 # Usage:
 #   mutate.sh <root> <base-ref> [--oracle-files "<f1> <f2>"] [--files "<f1> <f2>"]
 # --files (one string, split here) measures exactly those files, independent of the diff, and keeps
 # every survivor (no changed-line filter; cap still applies). For pin mode: tests change, production
-# code does not. A file matching no target glob is measured without a hint plus MUTATE_NOTE=not-a-target:<file>.
+# code does not. A file matching no target glob is measured without a hint plus
+# MUTATE_NOTE=not-a-target:<file>.
 # Output (KEY=value, exit 0 always):
 #   MUTATE_RESULT=OK|SKIP|TIMEOUT|ERROR
 #   MUTATE_REASON=<why>                          with SKIP: no-targets, no-match, no-coverage,
 #                                                no-runner, no-tests, no-timeout, no-mutations,
-#                                                all-mutants-skipped (Infection per-mutant timeout, MUTATE_INFECTION_TIMEOUT, default 120 s);
+#                                                all-mutants-skipped (Infection per-mutant timeout,
+#                                                MUTATE_INFECTION_TIMEOUT, default 120 s);
 #                                                with ERROR: runner-failed, initial-tests-failed
 #   MUTATE_ERROR=<line>                          only with ERROR: first error line of the runner log
 # Test discovery with a hint: oracle files plus the hinted test classes only (MUTATE_NOTE=hint-missing:<Name>
-# for a name without a file). Without a hint: oracle files plus tests/ files whose basename starts with the class basename
+# for a name without a file). Without a hint: oracle files plus tests/ files whose basename starts with
+# the class basename
 # (MoneyTest.php for Money). Only when that set is empty: files that merely mention the class, Unit
 # first, at most MUTATE_MAX_TEST_FILES (5), plus MUTATE_NOTE=fallback-test-selection:<n>. Skips any
 # Browser/ directory (Playwright, far too slow for mutation). A runner that
@@ -25,13 +29,19 @@
 # (Pest resolved the class to another project's file, e.g. symlinked vendor/ in a worktree) makes
 # that file a SKIP no-mutations. ERROR and SKIP never block the caller.
 #   MUTATE_SCORE=<relpath>:<pct>                 when the runner reports one
-#   SURVIVOR=<relpath>:<line>:<mutator>          changed lines +-3 (any line with --files), at most MUTATE_CAP (15)
+#   SURVIVOR=<relpath>:<line>:<mutator>          changed lines +-3 (any line with --files), at most
+#                                                MUTATE_CAP (15)
 #   SURVIVORS_TRUNCATED=<n>                      survivors beyond the cap
 #
-# Runners per PHP file: Pest when vendor/bin/pest exists and composer.json requires pestphp/pest
-# (`--mutate --covered-only --class=<FQCN>`; covered-only still lists UNTESTED mutants on covered
-# code, `--everything` hangs); else Infection when phpunit.xml(.dist) exists and $INFECTION_PHAR
-# (default ~/.local/share/claude/infection.phar) is present. A pcov or xdebug driver is required.
+# Runners per PHP file:
+#   Pest when vendor/bin/pest exists and composer.json requires pestphp/pest:
+#     `--mutate --covered-only --class=<FQCN>`, or `--path=<file>` for an enum (--class matches only
+#     classes and traits). covered-only still lists UNTESTED mutants on covered code; `--everything`
+#     hangs. PAO_DISABLE=1, set for the Pest command only, keeps laravel/pao from rewriting the
+#     output as json.
+#   Infection otherwise, when phpunit.xml(.dist) exists and $INFECTION_PHAR (default
+#     ~/.local/share/claude/infection.phar) is present.
+# A pcov or xdebug driver is required.
 #
 # Time: ONE total budget MUTATE_BUDGET (default 600 s) across all files. `timeout` or `gtimeout`
 # is resolved here; neither present -> SKIP, never an unbounded run (unlike check-outdated.sh, which
@@ -56,8 +66,31 @@ BUDGET=${MUTATE_BUDGET:-600}
 ESC=$(printf '\033')
 strip_ansi() { sed "s/${ESC}\\[[0-9;]*[A-Za-z]//g" "$1"; }
 
+# laravel/pao (a Pest plugin) replaces the whole test output with ONE json line when it detects an
+# agent session (AI_AGENT, CLAUDECODE, ...): {"tool":"pest",...,"raw":["line","line",...]}. mutate.sh
+# disables it (PAO_DISABLE), but a log captured elsewhere may still be json: unwrap `raw` to one line
+# per element. Plain logs stream through unbuffered.
+pest_lines() { # log
+  strip_ansi "$1" | awk '
+    NR == 1 { json = ($0 ~ /^\{/) }
+    !json { print; next }
+    { buf = buf $0 "\n" }
+    END {
+      if (!json) exit
+      i = index(buf, "\"raw\":[")
+      if (i > 0 && match(buf, /(^|\n)\{"tool":/)) {
+        s = substr(buf, i + 7)
+        sub(/\][}][[:space:]]*$/, "", s)
+        gsub(/","/, "\n", s)
+        sub(/^"/, "", s); sub(/"$/, "", s)
+        gsub(/\\\\/, "\001", s); gsub(/\\"/, "\"", s); gsub(/\\\//, "/", s); gsub(/\001/, "\\", s)
+        print s
+      } else printf "%s", buf
+    }'
+}
+
 parse_pest() { # log root [file]
-  strip_ansi "$1" | awk -v root="${2%/}" -v file="${3:-}" '
+  pest_lines "$1" | awk -v root="${2%/}" -v file="${3:-}" '
     function rel(p) { if (root != "" && index(p, root "/") == 1) return substr(p, length(root) + 2); return p }
     $1 == "UNTESTED" {
       i = index($0, "> Line ")
@@ -70,7 +103,7 @@ parse_pest() { # log root [file]
       print "SURVIVOR_RAW=" p ":" n ":" m
       count++
     }
-    /Score:/ { s = $2; sub(/%/, "", s); score = s }
+    $1 == "Score:" { s = $2; sub(/%/, "", s); score = s }
     END {
       print "MUTATE_UNFILTERED=" count + 0
       if (score != "") { f = (file != "" ? file : (first != "" ? first : "-")); print "MUTATE_SCORE=" f ":" score }
@@ -279,7 +312,13 @@ while IFS=$'\t' read -r f hint; do
     fqcn=${ns:+$ns\\}$base
     TESTS=()
     while IFS= read -r t; do TESTS+=("$t"); done < "$WORK/tests"
-    run_budgeted "$LOG" vendor/bin/pest --mutate --covered-only "--class=$fqcn" "${TESTS[@]}" || { TIMED_OUT=1; break; }
+    # --class matches classes and traits only (MutationGenerator greps `class|trait <Name>`), never an enum:
+    # an enum is selected by --path=<file> instead, which mutates exactly that file.
+    # Declaration line only: modifiers, `enum Name`, then `: type`, `implements`, `{` or end of line.
+    if grep -qE '^[[:space:]]*((final|readonly)[[:space:]]+)*enum[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(:|implements[[:space:]]|\{|$)' "$f"; then SELECT="--path=$f"; else SELECT="--class=$fqcn"; fi
+    # laravel/pao turns Pest's output into one json line inside an agent session (the score parser
+    # would read a wrong word); a plain log is what the parser was written against.
+    PAO_DISABLE=1 run_budgeted "$LOG" vendor/bin/pest --mutate --covered-only "$SELECT" "${TESTS[@]}" || { TIMED_OUT=1; break; }
     parse_pest "$LOG" "$ROOT" "$f" > "$WORK/parsed"
   else
     srcdir=${f%%/*}
@@ -312,7 +351,7 @@ EOF
       [ -z "$score" ] || echo "MUTATE_SCORE=$f:$score"
     } > "$WORK/parsed"
   fi
-  strip_ansi "$LOG" > "$WORK/stripped"
+  pest_lines "$LOG" > "$WORK/stripped"
   # Pest creates no mutations when it resolves the class to another project's file (a worktree whose
   # vendor/ is a symlink to the main project): nothing was tested, so this file is a SKIP.
   if grep -q 'No mutations created' "$WORK/stripped"; then LAST_REASON=no-mutations; continue; fi
