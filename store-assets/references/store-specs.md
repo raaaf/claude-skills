@@ -1,6 +1,6 @@
 # Store specs
 
-Stand: 2026-09-27. Re-verify against the source URLs below before any full render once this date
+Stand: 2026-10-07. Re-verify against the source URLs below before any full render once this date
 is older than 6 months (`SKILL.md` Ablauf, step 4).
 
 ## iOS App Store (App Store Connect)
@@ -8,7 +8,13 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
 - Format id `ios-6.9`: 1320 x 2868 px, portrait, iPhone 6.9" display class (iPhone 16 Pro Max and
   successors). JPEG or PNG, no alpha channel, sRGB or Display P3.
 - Up to 10 screenshots per locale.
-- Source: https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
+- Format id `ios-ipad-13`: 2064 x 2752 px, portrait, iPad 13" display class. Same file rules (JPEG
+  or PNG, no alpha, sRGB or Display P3), up to 10 per locale. Apple also accepts 2752 x 2064,
+  2048 x 2732 and 2732 x 2048 for 13" displays; the skill renders the first (portrait) size only,
+  a project may set another accepted portrait size in its `formats` entry. Device frame: none, the
+  screenshot is drawn frameless (see "Devices", `ipad`).
+- Source (both iOS formats): https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
+  (verified 2026-10-07).
 
 ## Google Play (Play Console)
 
@@ -56,6 +62,12 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
     "status_bar_path_pattern": "~/.cache/store-assets/statusbar/android-37-statusbar-{theme}.png",
     "status_bar_band_height": 140,
     "width_pct": 74
+  },
+  "ipad": {
+    "frameless": true,
+    "corner_radius_pct": 3.5,
+    "width_pct": 80,
+    "shadow": "0 calc(var(--w) * 0.015) calc(var(--w) * 0.04) rgba(0, 0, 0, 0.3)"
   }
 }
 ```
@@ -85,6 +97,16 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
   (brand) -> Glacier. Any other background falls back to the first entry of `colors` above
   (Black). A `single` scene's own `ios_color` field overrides the lookup; a combo layout
   (`config-schema.md` "layout: combo") overrides it per phone via each part's `ios_color`. Android has no color variants (one `back.webp`).
+
+- `ipad` (`ios-ipad-13`) — `frameless: true`: no bezel PNG, no status-bar overlay, no mask, no
+  asset cache needed (`bin/render.mjs` pre-flight skips the asset checks for it). The source
+  screenshot is drawn as a rounded rectangle: `corner_radius_pct` is the corner radius as a percent
+  of the device width, `width_pct` the device width as a percent of the canvas, `shadow` a CSS
+  `box-shadow` value (may use `var(--w)`, the canvas width). Same vertical grid as `ios-6.9` (top
+  edge at 40%, runs off the bottom). The iPad source keeps its own status bar (capture it with
+  `xcrun simctl status_bar <udid> override`, as for iPhone sources); `crop_top_px_ipad` (default
+  0) can hide a top strip. iPad sources come from the scene's `source_ipad`, never the iPhone
+  `source`.
 
 ### Asset provenance (rebuilding on another machine)
 

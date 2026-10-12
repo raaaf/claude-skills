@@ -40,5 +40,10 @@ pre-flight fails with the missing path before any render if the cache is not the
   compositional constants (rotation angles, overlap offsets, margins) are the one exception: they
   are skill-level art-direction, not project config, and live as named constants in `scene.html`'s
   own combo branch.
+- **`ios-ipad-13` is frameless.** `DEVICE_BY_FORMAT` maps it to the `ipad` Devices entry
+  (`frameless: true`); pre-flight skips bezel/status-bar checks for it and instead requires
+  `source_ipad` per scene (front part for `combo`, which renders as one single device). Rounded
+  corner, width and shadow constants live in the Devices JSON, `scene.html`'s frameless branch only
+  reads them from `deviceSpec`.
 - **Milestone B (video, `templates/preview.html` + `bin/render-video.mjs`) is not built.** Nothing
   in `SKILL.md`'s Ablauf beyond stills is implemented yet; see the plan's Step 10.

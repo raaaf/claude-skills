@@ -43,11 +43,13 @@
     subline                   subline copy (optional, omitted entirely when empty)
     pill1, pill2               optional badge copy (both omitted when empty)
     layout                    single | combo (default single)
-    device                    iphone | android (device kind, shared by both phones in combo)
+    device                    iphone | android | ipad (device kind, shared by both phones in combo)
     deviceSpec                JSON: {w,h,sx,sy,sw,sh,r,sb,widthPct} from store-specs.md "Devices"
                                (w/h = bezel pixel size, sx/sy/sw/sh = screen rect, r = corner
                                radius, sb = status-bar band height, widthPct = device width as a
                                percent of the canvas)
+    deviceSpec (frameless, ipad): {frameless, widthPct, cornerRadiusPct, shadow}; only
+                               screenSrc + cropTopPx are used, no bezel/status bar, always single
     screenSrc/cropTopPx/topColor/statusBarTheme/bezelSrc/statusBarSrc/maskSrc
                                layout=single: this phone's resolved asset paths + sampled state
     front / back              layout=combo: JSON blobs with the same 7 fields per phone
@@ -470,6 +472,37 @@
         const shift = marginX + (available - (fitted.right - fitted.left)) / 2 - fitted.left;
         frontSlot.style.left = parseFloat(frontSlot.style.left) + shift + 'px';
         backSlot.style.left = parseFloat(backSlot.style.left) + shift + 'px';
+      } else if (deviceSpec.frameless) {
+        // Frameless device (iPad): the source screenshot itself as a rounded
+        // rectangle with a drop shadow, no bezel/status-bar overlay. Width,
+        // corner radius and shadow come from store-specs.md "Devices"; the
+        // top edge sits at 40% and the image runs off the bottom edge like
+        // any single device. cropTopPx (source pixels, default 0) shifts the
+        // screenshot up inside the rounded box.
+        const boxW = width * (deviceSpec.widthPct / 100);
+        const slot = document.createElement('div');
+        slot.className = 'phone-slot';
+        slot.style.left = '50%';
+        slot.style.transform = 'translateX(-50%)';
+        slot.style.filter = 'none';
+        const box = document.createElement('div');
+        box.style.width = boxW + 'px';
+        box.style.borderRadius = (boxW * deviceSpec.cornerRadiusPct) / 100 + 'px';
+        box.style.overflow = 'hidden';
+        box.style.boxShadow = deviceSpec.shadow;
+        const shot = document.createElement('img');
+        shot.src = get('screenSrc', '');
+        shot.style.display = 'block';
+        shot.style.width = '100%';
+        const cropTopPx = Number(get('cropTopPx', 0));
+        if (cropTopPx) {
+          shot.addEventListener('load', () => {
+            shot.style.marginTop = -cropTopPx * (boxW / shot.naturalWidth) + 'px';
+          });
+        }
+        box.appendChild(shot);
+        slot.appendChild(box);
+        devicesEl.appendChild(slot);
       } else {
         const single = {
           screenSrc: get('screenSrc', ''),

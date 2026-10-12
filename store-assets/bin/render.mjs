@@ -28,8 +28,10 @@ const STORE_SPECS_PATH = path.join(SKILL_DIR, 'references', 'store-specs.md');
 // Device choice follows the store format, never the scene: ios-6.9 always
 // shows an iPhone screen, play-phone always an Android screen, play-feature
 // never shows a device at all (scene.html's own `format === 'play-feature'`
-// branch drops it).
-const DEVICE_BY_FORMAT = { 'ios-6.9': 'iphone', 'play-phone': 'android' };
+// branch drops it). ios-ipad-13 shows a frameless iPad screenshot (the
+// "ipad" Devices entry has `frameless: true`: no bezel, no status-bar
+// overlay, rounded corners + shadow instead).
+const DEVICE_BY_FORMAT = { 'ios-6.9': 'iphone', 'play-phone': 'android', 'ios-ipad-13': 'ipad' };
 
 // iPhone bezel color by scene background (store-specs.md "Devices"), a
 // skill-level rule. A scene's own `ios_color` (single scene) or a combo
@@ -106,10 +108,19 @@ function loadConfig(projectRoot) {
   return config;
 }
 
-function scenePartSources(scene) {
+// The part that supplies a scene's iPad source: the scene itself, or a
+// `combo` scene's front part (the iPad renders only that one device).
+function ipadPart(scene) {
+  return scene.layout === 'combo' ? scene.combo.front : scene;
+}
+
+function scenePartSources(scene, { ipad = false } = {}) {
   // Every (locale, theme, path) a scene references, whether a `single`
   // scene's own `source` or a `combo` scene's `front`/`back` sources.
-  const sourceMaps = scene.layout === 'combo' ? [scene.combo.front.source, scene.combo.back.source] : [scene.source];
+  // `ipad`: the iPad-only `source_ipad` map instead (ios-ipad-13).
+  const sourceMaps = ipad
+    ? [ipadPart(scene).source_ipad]
+    : scene.layout === 'combo' ? [scene.combo.front.source, scene.combo.back.source] : [scene.source];
   const entries = [];
   for (const sourceMap of sourceMaps) {
     for (const [locale, byTheme] of Object.entries(sourceMap || {})) {
@@ -132,17 +143,24 @@ function preflight(projectRoot, config, devicesSpec) {
     if (!existsSync(logoPath)) problems.push(`logo not found: ${config.brand.logo}`);
   }
 
-  for (const scene of config.scenes) {
-    const parts = scenePartSources(scene);
-    for (const locale of config.locales) {
-      const forLocale = parts.filter((p) => p.locale === locale);
-      if (forLocale.length === 0) {
-        missingSources.push(`${scene.id} ${locale} (no source entry)`);
-        continue;
-      }
-      for (const { theme, relPath } of forLocale) {
-        const abs = path.join(projectRoot, relPath);
-        if (!existsSync(abs)) missingSources.push(`${scene.id} ${locale}/${theme}: ${relPath}`);
+  // Phone sources are needed by every format except the iPad one, which
+  // reads `source_ipad` instead.
+  const sourceChecks = [];
+  if (Object.keys(config.formats).some((id) => id !== 'ios-ipad-13')) sourceChecks.push({ ipad: false, label: 'source' });
+  if ('ios-ipad-13' in config.formats) sourceChecks.push({ ipad: true, label: 'source_ipad' });
+  for (const { ipad, label } of sourceChecks) {
+    for (const scene of config.scenes) {
+      const parts = scenePartSources(scene, { ipad });
+      for (const locale of config.locales) {
+        const forLocale = parts.filter((p) => p.locale === locale);
+        if (forLocale.length === 0) {
+          missingSources.push(`${scene.id} ${locale} (no ${label} entry)`);
+          continue;
+        }
+        for (const { theme, relPath } of forLocale) {
+          const abs = path.join(projectRoot, relPath);
+          if (!existsSync(abs)) missingSources.push(`${scene.id} ${locale}/${theme}: ${relPath}`);
+        }
       }
     }
   }
@@ -159,6 +177,7 @@ function preflight(projectRoot, config, devicesSpec) {
       problems.push(`devices spec missing entry for "${deviceKind}"`);
       continue;
     }
+    if (spec.frameless) continue; // no bezel/status-bar/mask assets
     const colors = spec.colors || [null];
     for (const color of colors) {
       const bezelPath = resolveHome(color ? spec.bezel_path_pattern.replace('{color}', color) : spec.bezel_path_pattern);
@@ -241,8 +260,27 @@ function buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part, locale, io
   };
 }
 
+// Frameless device (no bezel): the source screenshot itself, cropped by an
+// optional `crop_top_px_ipad`, no status-bar overlay or sampled color.
+function buildFramelessSpec({ projectRoot, part, locale }) {
+  const byTheme = part.source_ipad[locale];
+  const theme = byTheme.light ? 'light' : Object.keys(byTheme)[0];
+  return {
+    screenSrc: absFileUrl(path.join(projectRoot, byTheme[theme])),
+    cropTopPx: part.crop_top_px_ipad ?? 0,
+  };
+}
+
 function deviceSpecParam(devicesSpec, deviceKind) {
   const spec = devicesSpec[deviceKind];
+  if (spec.frameless) {
+    return JSON.stringify({
+      frameless: true,
+      widthPct: spec.width_pct,
+      cornerRadiusPct: spec.corner_radius_pct,
+      shadow: spec.shadow,
+    });
+  }
   return JSON.stringify({
     w: spec.bezel_size.width,
     h: spec.bezel_size.height,
@@ -334,8 +372,16 @@ async function renderOne({ projectRoot, config, devicesSpec, scene, format, loca
   const foreground = backgroundOverride ? '#ffffff' : scene.foreground;
   const effectiveScene = { ...scene, background, foreground };
 
-  const params = { ...baseParams(projectRoot, config, format, effectiveScene, locale), layout: scene.layout || 'single', device: deviceKind };
+  const frameless = !!devicesSpec[deviceKind].frameless;
+  // Frameless (iPad) renders one device: a combo scene shows its front part only.
+  const params = { ...baseParams(projectRoot, config, format, effectiveScene, locale), layout: frameless ? 'single' : scene.layout || 'single', device: deviceKind };
   params.deviceSpec = deviceSpecParam(devicesSpec, deviceKind);
+
+  if (frameless) {
+    const shot = buildFramelessSpec({ projectRoot, part: ipadPart(scene), locale });
+    Object.assign(params, { screenSrc: shot.screenSrc, cropTopPx: String(shot.cropTopPx) });
+    return { sceneUrl: sceneUrlFor(params) };
+  }
 
   const pickColor = (explicit) =>
     deviceKind === 'iphone'

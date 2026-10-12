@@ -63,7 +63,7 @@ a Chromium copy under this skill's own directory or the project's `node_modules`
 
 ## Layout
 
-Every portrait format (`ios-6.9`, `play-phone`) renders the same fixed three-band grid, no
+Every portrait format (`ios-6.9`, `ios-ipad-13`, `play-phone`) renders the same fixed three-band grid, no
 panorama, no per-format layout branch:
 
 - **Text zone, 0-30% of the canvas height.** The headline/subline/pills block itself centers inside
@@ -85,6 +85,10 @@ panorama, no per-format layout branch:
   (`IPHONE_COLOR_BY_BG`: navy `#04081f` -> Silver, light `#f7f7f7` -> Black, brand-red `#e0452f` ->
   Glacier); a `combo` scene's own `ios_color` per phone overrides that. Android has no bezel color
   variants.
+- **ios-ipad-13 (2064x2752)** uses the same grid but a frameless device: the iPad screenshot as a
+  rounded rectangle with a shadow, no bezel/status bar (`ipad` in `references/store-specs.md`
+  "Devices"). Sources come from the scene's `source_ipad`; a `combo` scene renders only its front
+  part's `source_ipad` as a single device (`references/config-schema.md`).
 - **play-feature (landscape, 1024x500)** is not part of this grid: logo + headline only (no
   subline, no device) in the left ~55-70% column, and optionally one device on the right (the
   hero's own front phone, Pixel-framed, sized off canvas height) when the hero scene is `combo`.

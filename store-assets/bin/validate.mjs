@@ -16,6 +16,7 @@ import { reviewedHash, parseArgs, outputRoot } from './lib.mjs';
 
 const LIMITS = {
   'ios-6.9': { maxCount: 10 },
+  'ios-ipad-13': { maxCount: 10 },
   'play-phone': { maxCount: 8 },
   'play-feature': { maxCount: 1 },
 };

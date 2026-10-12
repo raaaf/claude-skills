@@ -13,6 +13,7 @@ here). One config per project.
   "locales": ["de", "en"],
   "formats": {
     "ios-6.9": { "width": 1320, "height": 2868 },
+    "ios-ipad-13": { "width": 2064, "height": 2752 },
     "play-phone": { "width": 1440, "height": 2560 },
     "play-feature": { "width": 1024, "height": 500 }
   },
@@ -93,7 +94,8 @@ here). One config per project.
   truth for which format ids exist and their exact sizes; this list mirrors it for the given
   project (a project may render a subset, never a size store-specs.md does not list). Device choice
   follows the format, not the scene: `ios-6.9` always renders an iPhone screen, `play-phone` always
-  an Android screen (`bin/render.mjs`'s `DEVICE_BY_FORMAT`), `play-feature` never shows a device.
+  an Android screen, `ios-ipad-13` a frameless iPad screenshot (`bin/render.mjs`'s
+  `DEVICE_BY_FORMAT`), `play-feature` never shows a device.
 - `scenes[]` — one entry per screen in the store screenshot sequence.
   - `id` — stable scene id, also the output filename prefix (`<id>.jpg`).
   - `source.<locale>.<theme>` — project-relative path to the source screen PNG for that
@@ -124,6 +126,14 @@ here). One config per project.
     has the same `<locale>.<theme>` shape as a `single` scene's own `source` field. `ios_color` is
     ignored on `play-phone` (Android has no bezel color variants); on Play the same two-device
     composition renders with Pixel frames instead of iPhone frames.
+  - `source_ipad.<locale>.<theme>` — required for every scene when `formats` has `ios-ipad-13`;
+    same shape as `source`, but pointing at iPad screenshots (the iPhone `source` is never
+    stretched onto the iPad canvas). On a `combo` scene it goes on `combo.front` instead: the iPad
+    renders only the front part's `source_ipad` as one frameless device (the back part is
+    ignored). `source` is then only needed if another format is configured.
+  - `crop_top_px_ipad` (optional, scene or `combo.front`) — source pixels to hide from the top of
+    the iPad screenshot, default `0` (the iPad source keeps its own status bar). Separate from
+    `crop_top_px` because that value is tuned for the iPhone source.
   - `pills` (optional, any layout) — `{ "<locale>": [pill1, pill2] }`, up to two short badges
     below the subline (`08-expenses` only, so far). Absent on every other scene; the template
     renders nothing when absent (Edge Cases).
