@@ -217,16 +217,16 @@ One commit per stage in the skills repo (the repo pushes to `main`, no PRs): (a)
 - Re-confirmation on changed commands costs one question after every config edit.
 
 ## Done Criteria
-- [ ] `node --test screens/bin/` → exit 0, ≥ 17 tests
+- [x] `node --test screens/bin/` → exit 0, ≥ 17 tests
 - [ ] `apps/zeit/app`: `/delegate` on one Blade view yields before/after pairs only for that view's entries
-- [ ] `bash audit/bin/check-fresh-shell.sh .` → no hit under `screens/`
-- [ ] `ls ~/.claude/skills/screens/SKILL.md` resolves after one session Stop (sync hook)
+- [x] `bash audit/bin/check-fresh-shell.sh .` → no hit under `screens/`
+- [x] `ls ~/.claude/skills/screens/SKILL.md` resolves after one session Stop (sync hook)
 - [ ] `apps/zeit/app`: first run PNG count == planned count; run 2a planned=0, run 2b `--full` `updated=0`; edited-view run recaptures only that entry; dev DB row count unchanged
 - [ ] `apps/zeit/app`: marketing drafts at exact store size; reviewed headline moves render out of `_draft`
 - [ ] `apps/topf-secret/ios` and `apps/mail-guard`: PNGs for every manifest entry
 - [ ] `apps/events/native`: Android + iOS PNGs per manifest entry in de and en for marketing entries, or `SKIP (tool missing: …)` with install hint
 - [ ] `git -C <pilot> status --porcelain` shows no `.env*` change and no file outside the per-project list
-- [ ] `grep -rn "—" screens/` → no matches
+- [x] `grep -rn "—" screens/` → no matches
 - [ ] Skills repo: no files outside the Affected Files list changed (`git status`, ignoring the unrelated pre-existing modifications present at `3f7a134`)
 
 ## STOP Conditions

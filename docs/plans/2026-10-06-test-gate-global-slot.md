@@ -158,11 +158,11 @@ kills only by process group, never by name (`deploy:90-92`). events: Pest 4, `te
 - Hand-started `composer test` runs still bypass the slot.
 
 ## Done Criteria
-- [ ] `bash ~/Developer/claude/skills/audit/bin/test-gate.test.sh` → exit 0
-- [ ] `bash ~/Developer/claude/skills/audit/bin/test-lock.test.sh` → exit 0
+- [x] `bash ~/Developer/claude/skills/audit/bin/test-gate.test.sh` → exit 0
+- [x] `bash ~/Developer/claude/skills/audit/bin/test-lock.test.sh` → exit 0
 - [ ] Steps 3 and 4 verify output pasted into the report (executor: `deploy shop test` only, 44 s)
 - [ ] Steps 5d and 7: run by the orchestrator after the executor's report, not by the executor
-- [ ] `bash -n ~/.local/bin/deploy` → exit 0
+- [x] `bash -n ~/.local/bin/deploy` → exit 0
 - [ ] `git status` in skills and events: only the affected files
 
 ## STOP Conditions

@@ -1,6 +1,6 @@
 # Audit-Pipeline pro Dimension (Umbau von /audit und /full-audit)
 
-Current status (2026-09-08): integrated into main and installed from the regular checkout for both runtimes. See the final integration section for current behavior; earlier runtime and temporary-source decisions below are historical.
+Current status (2026-10-13): done and superseded. /audit was rebuilt on 2026-10-03 (built-in /code-review pipeline) and /full-audit was removed; remaining unchecked boxes below refer to artifacts that no longer exist or were never measured. Earlier status (2026-09-08): integrated into main and installed from the regular checkout for both runtimes. See the final integration section for current behavior; earlier runtime and temporary-source decisions below are historical.
 
 > **Executor instruction:** Schritt für Schritt abarbeiten, jedes Verify-Kriterium prüfen, bevor es weitergeht. Bei einer STOP-Bedingung: anhalten und berichten, nicht improvisieren.
 >
@@ -314,10 +314,10 @@ L (3 bis 5 Tage Arbeit; Kalenderzeit bis zum validierten Ergebnis inklusive Verg
 
 Alle müssen gelten:
 - [ ] Async-Function-Wrapper-Syntaxcheck (Schritt 4) → `ok` für beide Skripte; `Workflow({scriptPath: find.js})` wird vom Tool angenommen (kein "Invalid workflow script")
-- [ ] `wc -l audit/SKILL.md full-audit/SKILL.md` → unter 250 bzw. 120
-- [ ] `grep -rn "AUDIT_STATUS\|FULL_AUDIT_STATUS\|RUNDE\|MAX_RUNDEN\|round-state\|batch-[0-9]" audit/ full-audit/` → keine Treffer
+- [x] `wc -l audit/SKILL.md full-audit/SKILL.md` → unter 250 bzw. 120
+- [x] `grep -rn "AUDIT_STATUS\|FULL_AUDIT_STATUS\|RUNDE\|MAX_RUNDEN\|round-state\|batch-[0-9]" audit/ full-audit/` → keine Treffer
 - [ ] `ls audit/agents/` → exakt die Liste aus Schritt 2
-- [ ] `test ! -e full-audit/bin/status-line.sh -a ! -e full-audit/references/state-file.md` → exit 0
+- [x] `test ! -e full-audit/bin/status-line.sh -a ! -e full-audit/references/state-file.md` → exit 0
 - [ ] Vergleichslauf (Schritt 11): neues Log enthält mindestens 6 der 7 Criticals aus `.claude/audits/2026-09-05-full-audit.md` des Theme-Repos; Run-Ledger `duration_s < 3600`
 - [ ] `bash skills-personal/hooks/audit-loop.sh <<< '{"last_assistant_message":"AUDIT_STATUS: FIXES_APPLIED | RUNDE 1/3"}'` → exit 0
 - [ ] `git status --short` zeigt nur Dateien aus "Betroffene Dateien"

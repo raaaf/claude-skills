@@ -163,13 +163,13 @@ Schräglage und Panorama per CSS-Transform; Panorama = eine doppelt breite Leinw
   Vollrender das `Stand`-Datum prüfen: älter als 6 Monate → Specs gegen die Quell-URLs neu verifizieren.
 
 ## Done Criteria
-- [ ] `node store-assets/bin/validate.mjs --project /Users/rafael/Developer/apps/events` → Exit 0
-- [ ] `ls events/native/store-assets/generated/ios-6.9/de | wc -l` ≥ 6, ebenso en und play-phone de/en; `play-feature/{de,en}` je 1
-- [ ] `sips -g pixelWidth -g pixelHeight -g hasAlpha` je Format: 1320×2868 / 1440×2560 / 1024×500, `hasAlpha: no`
+- [x] `node store-assets/bin/validate.mjs --project /Users/rafael/Developer/apps/events` → Exit 0
+- [x] `ls events/native/store-assets/generated/ios-6.9/de | wc -l` ≥ 6, ebenso en und play-phone de/en; `play-feature/{de,en}` je 1
+- [x] `sips -g pixelWidth -g pixelHeight -g hasAlpha` je Format: 1320×2868 / 1440×2560 / 1024×500, `hasAlpha: no`
 - [ ] Meilenstein B: `ffprobe` auf Preview: h264, 15–30 s
 - [ ] `grep -rniE "holdstone|events" store-assets/templates store-assets/bin` → keine Treffer
 - [ ] Rafael hat Gate 1, Gate 2 und Video freigegeben
-- [ ] Folgeplan-Stub für /screens Phase 6 existiert (Step 12)
+- [x] Folgeplan-Stub für /screens Phase 6 existiert (Step 12)
 
 ## STOP Conditions
 - Spike Step 3: HyperFrames rendert `scene.html` nicht als Sub-Komposition oder nicht pixelgleich.
