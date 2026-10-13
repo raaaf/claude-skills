@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
-# Helper of `deploy <app> test` (~/.local/bin/deploy): one machine-wide slot for full suites plus a
-# run wrapper that reruns flaky browser tests once. All logic lives here so it can be tested; deploy
-# only calls it.
+# Helper of `deploy <app> test` (~/.local/bin/deploy): admission of full suites plus a run wrapper that
+# reruns flaky browser tests once. All logic lives here so it can be tested; deploy only calls it.
 #
-# Usage: test-gate.sh slot-acquire <app> [owner-pid]   wait for the slot, then take it (exit 75 after SLOT_WAIT_MAX)
-#        test-gate.sh slot-release <pid>               release the slot if <pid> owns it, else no-op
+# Usage: test-gate.sh slot-acquire <app> [owner-pid]   wait for admission as a `suite` run (exit 75 after SLOT_WAIT_MAX)
+#        test-gate.sh slot-release <pid>               release the run owned by <pid>, else no-op
 #        test-gate.sh run <test-cmd> <file-cmd>        run <test-cmd>; on red browser failures rerun each file once
 # Env:   TEST_GATE_APP (app name for the flake log), TEST_GATE_STATE_DIR (default ~/.local/state/claude),
-#        SLOT_WAIT_MAX (900), SLOT_NOTICE_SECONDS (30), SLOT_POLL_SECONDS (2)
+#        SLOT_WAIT_MAX (900), SLOT_NOTICE_SECONDS (30), SLOT_POLL_SECONDS (2); the lib's own TESTRUN_* variables apply too
 #
-# Slot: mkdir at $STATE_DIR/full-suite.slot, NOT under $TMPDIR (a sandboxed Claude Code shell sees a
-# different TMPDIR, the failure test-lock.sh documents) and not per repo (test-lock.sh is per repo, so
-# two projects' suites ran at the same time and overbooked the Mac, 2026-10-05). The slot stores pid,
-# app, acquisition time and the owner's process start time (`ps -o lstart=`): a holder counts as alive
-# only if the PID exists AND its start time matches, which survives PID reuse. The wait cap (900 s)
-# stays below test-lock.sh's 960 s because /audit wraps `deploy events test` in test-lock.sh and
-# holds the repo lock while this script waits. Without an owner-pid argument the owner is the caller
-# ($PPID), so deploy's `slot-release $$` matches.
+# Admission: lib-testrun.sh (sibling file). Two suites of different apps run at once, a third waits; the
+# global budget, the memory-pressure rule and the stale-holder handling (pid + `ps -o lstart=`, so PID
+# reuse is survived) are documented there. Before 2026-10-13 a single machine-wide `full-suite.slot`
+# serialized all suites (test-lock.sh is per repo, so two projects' suites overbooked the Mac, 2026-10-05).
+# The wait cap (900 s) stays below test-lock.sh's 960 s because /audit wraps `deploy events test` in
+# test-lock.sh and holds the repo lock while this script waits. Without an owner-pid argument the owner is
+# the caller ($PPID), so deploy's `slot-release $$` matches. A missing lib or TESTRUN_DISABLE=1 admits at once.
 #
 # Run: the first pass and the reruns share the caller's one test-lock, gtimeout and watchdog, and all
 # output goes to the caller's log. A rerun happens only if all of these hold: the Pest summary
@@ -32,70 +30,24 @@
 
 set -u
 
+# shellcheck disable=SC1091
+. "$(dirname "$0")/lib-testrun.sh" 2>/dev/null || TESTRUN_DISABLE=1
+if ! command -v tr_admit >/dev/null 2>&1; then tr_admit() { return 0; }; tr_release_pid() { return 0; }; fi
+
 STATE_DIR="${TEST_GATE_STATE_DIR:-$HOME/.local/state/claude}"
-SLOT="$STATE_DIR/full-suite.slot"
 FLAKES="$STATE_DIR/test-flakes.jsonl"
-SLOT_WAIT_MAX=${SLOT_WAIT_MAX:-900}
-SLOT_NOTICE_SECONDS=${SLOT_NOTICE_SECONDS:-30}
-SLOT_POLL_SECONDS=${SLOT_POLL_SECONDS:-2}
+export TESTRUN_WAIT_MAX=${SLOT_WAIT_MAX:-${TESTRUN_WAIT_MAX:-900}}
+export TESTRUN_NOTICE=${SLOT_NOTICE_SECONDS:-${TESTRUN_NOTICE:-30}}
+export TESTRUN_ADMIT_POLL=${SLOT_POLL_SECONDS:-${TESTRUN_ADMIT_POLL:-2}}
 FLAKE_DAYS=14
 APP="${TEST_GATE_APP:-unknown}"
 CAP=""
 
-slot_reap() {  # atomic rename first, so two reapers never delete a slot the other has recreated
-  local reap="$SLOT.reap.$$.$RANDOM"
-  mv "$SLOT" "$reap" 2>/dev/null && rm -rf "$reap"
+slot_acquire() {  # <app> [owner]
+  tr_admit suite "${1:-unknown}" "${2:-$PPID}"
 }
 
-slot_holder_alive() {
-  local pid start cur
-  pid=$(cat "$SLOT/pid" 2>/dev/null || true)
-  start=$(cat "$SLOT/start" 2>/dev/null || true)
-  [ -n "$pid" ] && [ -n "$start" ] || return 1
-  cur=$(ps -o lstart= -p "$pid" 2>/dev/null || true)
-  [ -n "$cur" ] && [ "$cur" = "$start" ]
-}
-
-slot_acquire() {
-  local app=${1:-unknown} owner=${2:-$PPID} t0 now waited next_notice=0 holder happ since
-  mkdir -p "$STATE_DIR" 2>/dev/null || {
-    echo "[deploy] Slot-Verzeichnis nicht schreibbar ($STATE_DIR): Testlauf ohne globalen Slot" >&2
-    return 0
-  }
-  t0=$(date +%s)
-  while ! mkdir "$SLOT" 2>/dev/null; do
-    [ -d "$SLOT" ] || continue   # released between our mkdir and now
-    holder=$(cat "$SLOT/pid" 2>/dev/null || true)
-    [ -n "$holder" ] || { sleep 1; holder=$(cat "$SLOT/pid" 2>/dev/null || true); }   # holder is still writing its files
-    if [ -z "$holder" ] || ! slot_holder_alive; then
-      echo "[deploy] Verwaister Slot (PID ${holder:-?} tot oder wiederverwendet), uebernehme"
-      slot_reap
-      continue
-    fi
-    now=$(date +%s); waited=$((now - t0))
-    happ=$(cat "$SLOT/app" 2>/dev/null || echo "?")
-    if [ "$waited" -ge "$SLOT_WAIT_MAX" ]; then
-      echo "[deploy] Slot nach ${waited}s nicht frei, belegt: $happ (PID $holder). Gebe auf." >&2
-      return 75
-    fi
-    if [ "$waited" -ge "$next_notice" ]; then
-      since=$((now - $(cat "$SLOT/since" 2>/dev/null || echo "$now")))
-      echo "[deploy] Slot belegt: $happ (PID $holder, seit ${since}s), warte"
-      next_notice=$((waited + SLOT_NOTICE_SECONDS))
-    fi
-    sleep "$SLOT_POLL_SECONDS"
-  done
-  echo "$owner" > "$SLOT/pid"
-  echo "$app" > "$SLOT/app"
-  date +%s > "$SLOT/since"
-  ps -o lstart= -p "$owner" 2>/dev/null > "$SLOT/start" || true
-}
-
-slot_release() {
-  local pid=${1:-}
-  [ -n "$pid" ] && [ "$(cat "$SLOT/pid" 2>/dev/null || true)" = "$pid" ] || return 0
-  slot_reap
-}
+slot_release() { tr_release_pid "${1:-}"; }
 
 strip_ansi() { sed "s/$(printf '\033')\[[0-9;]*[A-Za-z]//g"; }
 

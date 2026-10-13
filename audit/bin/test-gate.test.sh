@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pins test-gate.sh: the machine-wide slot (free, taken, handover, dead holder, PID reuse, non-owner
-# release, wait timeout) and `run` (green, browser flake with rerun, repeated flake within 14 days,
+# Pins test-gate.sh: admission through lib-testrun.sh (two suites at once, a third waits, handover, dead holder,
+# PID reuse, non-owner release, wait timeout) and `run` (green, browser flake with rerun, repeated flake within 14 days,
 # no rerun on count mismatch / non-browser failure / more than 5 files, signal exit passthrough).
 # The parse fixtures are the FAILED and summary lines of a real parallel Pest run (Pest 4, events,
 # 2026-10-06, one assertion deliberately broken), ANSI codes kept as <ESC>; the class name and the
@@ -20,38 +20,41 @@ check() { # name expected actual
   if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; FAIL=$((FAIL + 1)); fi
 }
 sleeper() { sleep 300 & SLEEPERS="$SLEEPERS $!"; LAST=$!; }
-slot_pid() { cat "$TEST_GATE_STATE_DIR/full-suite.slot/pid" 2>/dev/null || echo none; }
+export TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_ADMIT_POLL=0.2
+unset TESTRUN_STATE_DIR TESTRUN_DISABLE TESTRUN_ID
+runs() { ls "$TEST_GATE_STATE_DIR/runs" 2>/dev/null | grep -vc '\.' ; }
+holders() { cat "$TEST_GATE_STATE_DIR"/runs/*-* 2>/dev/null | sed -n 's/^pid=//p' | sort | tr '\n' ' '; }
 
-# --- slot ---
-sleeper; A=$LAST
-check "a free slot is acquired" "0 $A" "$(bash "$GATE" slot-acquire events "$A" >/dev/null 2>&1; echo "$? $(slot_pid)")"
-sleeper; B=$LAST
-OUT=$(SLOT_WAIT_MAX=2 bash "$GATE" slot-acquire shop "$B" 2>&1); RC=$?
-check "a taken slot times out with exit 75" "75" "$RC"
-check "a waiter names the holder app" "yes" "$(printf '%s' "$OUT" | grep -q 'Slot belegt: events (PID '"$A" && echo yes || echo no)"
-check "a failed waiter does not take the slot" "$A" "$(slot_pid)"
-bash "$GATE" slot-release "$B"
-check "release by a non-owner is a no-op" "$A" "$(slot_pid)"
+# --- admission (two suites of different apps run at once, a third waits) ---
+sleeper; A=$LAST; sleeper; B=$LAST; sleeper; C=$LAST
+check "a free machine admits the first suite" "0 1" "$(bash "$GATE" slot-acquire events "$A" >/dev/null 2>&1; echo "$? $(runs)")"
+check "a second suite of another app is admitted at once" "0 2" "$(bash "$GATE" slot-acquire zeit "$B" >/dev/null 2>&1; echo "$? $(runs)")"
+OUT=$(SLOT_WAIT_MAX=2 bash "$GATE" slot-acquire shop "$C" 2>&1); RC=$?
+check "a third suite waits and gives up with exit 75" "75" "$RC"
+check "a waiter names the holders" "yes" "$(printf '%s' "$OUT" | grep -q 'events (suite, pid '"$A" && echo yes || echo no)"
+check "a failed waiter leaves no ticket" "2" "$(runs)"
+bash "$GATE" slot-release "$C"
+check "release by a non-owner is a no-op" "2" "$(runs)"
 
-SLOT_WAIT_MAX=20 bash "$GATE" slot-acquire shop "$B" >/dev/null 2>&1 &
+SLOT_WAIT_MAX=20 bash "$GATE" slot-acquire shop "$C" >/dev/null 2>&1 &
 WAITER=$!
 sleep 2
 bash "$GATE" slot-release "$A"
 wait "$WAITER"
-check "a waiter takes the slot after the owner releases" "0 $B" "$? $(slot_pid)"
+check "a waiter takes the freed place" "0 $(echo "$B $C" | tr ' ' '\n' | sort | tr '\n' ' ')" "$? $(holders)"
 
 kill "$B"; wait "$B" 2>/dev/null
-sleeper; C=$LAST
-OUT=$(bash "$GATE" slot-acquire zeit "$C" 2>&1)
-check "a dead holder is reclaimed" "$C" "$(slot_pid)"
-check "reclaiming says so" "yes" "$(printf '%s' "$OUT" | grep -q Verwaister && echo yes || echo no)"
-
-echo "Thu Jan  1 00:00:00 1970" > "$TEST_GATE_STATE_DIR/full-suite.slot/start"   # live PID, wrong start time
 sleeper; D=$LAST
-OUT=$(bash "$GATE" slot-acquire shop "$D" 2>&1)
-check "a live PID with a different start time (PID reuse) is reclaimed" "$D" "$(slot_pid)"
-bash "$GATE" slot-release "$D"
-check "release by the owner frees the slot" "none" "$(slot_pid)"
+OUT=$(bash "$GATE" slot-acquire zeit "$D" 2>&1)
+check "a dead holder no longer counts" "0" "$?"
+check "its ticket is gone, the new owner is registered" "yes" "$(holders | grep -q "$D" && ! holders | grep -q "$B" && echo yes || echo no)"
+
+for f in "$TEST_GATE_STATE_DIR"/runs/*-"$C"; do sed -i '' 's/^start=.*/start=Thu Jan  1 00:00:00 1970/' "$f"; done
+sleeper; E=$LAST
+bash "$GATE" slot-acquire shop "$E" >/dev/null 2>&1
+check "a live PID with a different start time (PID reuse) no longer counts" "yes" "$(holders | grep -q "$E" && ! holders | grep -q "$C" && echo yes || echo no)"
+bash "$GATE" slot-release "$E"; bash "$GATE" slot-release "$D"
+check "release by the owner frees its place" "0" "$(runs)"
 
 # --- run ---
 ESC=$(printf '\033')

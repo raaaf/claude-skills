@@ -4,12 +4,18 @@
 # corrupt each other's fixtures — this is a semaphore, not a convention.
 #
 # Usage: test-lock.sh <command...>
-#        test-lock.sh --cmd "<command string>"
+#        test-lock.sh [--cached] --cmd "<command string>"
 #   bash "$AUDIT_BIN/test-lock.sh" php artisan test --compact tests/Unit/FooTest.php
 #   bash "$AUDIT_BIN/test-lock.sh" --cmd "$TEST_COMMAND"
 # `--cmd` is for a command held in a variable: zsh (the Bash tool's shell) does not
 # word-split `$TEST_COMMAND`, so the string is handed over whole and run via `bash -c`.
 # The lock key still sees its `-destination` id.
+# `--cached` marks a FULL, unfiltered run (/audit Phase 4, /ship Phase 2b): a green run on an identical
+# tree is remembered for 30 min and a repeat prints `TEST_CACHE_HIT <key>` instead of running (lib-testrun.sh,
+# tr_cache_*). It also runs the command as a `suite` run: admission (two suites at once, memory-pressure
+# rule), stall watchdog and one restart. TESTRUN_CLASS=suite (set by deploy) does the same without the cache.
+# Env: TEST_LOCK_KEY=common forces the common-dir lock key (mutate.sh); TESTRUN_DISABLE=1 restores the
+# pre-lib behaviour (lock only).
 #
 # Portable mkdir spinlock (flock is not available on stock macOS). Lock is
 # per-repo, TTL 15 min against stale locks from killed runs.
@@ -40,6 +46,10 @@
 
 set -u
 
+# shellcheck disable=SC1091
+. "$(dirname "$0")/lib-testrun.sh" 2>/dev/null || TESTRUN_DISABLE=1
+command -v tr_run >/dev/null 2>&1 || TESTRUN_DISABLE=1
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 HASH=$(printf '%s' "$REPO_ROOT" | { md5 2>/dev/null || md5sum | cut -d' ' -f1; })
 
@@ -59,8 +69,10 @@ dest_key_of() {
 }
 
 CMD_STRING=""
+CACHED=0
+if [ "${1:-}" = "--cached" ]; then CACHED=1; shift; fi
 if [ "${1:-}" = "--cmd" ]; then
-  [ $# -eq 2 ] || { echo "usage: test-lock.sh --cmd \"<command string>\"" >&2; exit 64; }
+  [ $# -eq 2 ] || { echo "usage: test-lock.sh [--cached] --cmd \"<command string>\"" >&2; exit 64; }
   CMD_STRING=$2
   set -- bash -c "$CMD_STRING"
 fi
@@ -80,8 +92,18 @@ fi
 [ -n "$DEST_KEY" ] && DEST_KEY="-$(printf '%s' "$DEST_KEY" | tr -c 'A-Za-z0-9' '-')"
 
 GIT_COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
-if [ -n "$GIT_COMMON" ] && [ -d "$GIT_COMMON" ] && [ -w "$GIT_COMMON" ]; then
-  LOCK_DIR="$GIT_COMMON/claude-audit-test-lock${DEST_KEY}"
+# A linked worktree whose .claude/ship.md says `test-isolation: worktree` has its own test database
+# (the project's test bootstrap suffixes it), so it locks on its own git dir instead of the shared one.
+# The main checkout, worktrees without the flag and mutate.sh (TEST_LOCK_KEY=common) keep the common dir.
+LOCK_BASE=$GIT_COMMON
+if [ "${TEST_LOCK_KEY:-}" != common ] && [ "${TESTRUN_DISABLE:-}" != 1 ] && [ -n "$GIT_COMMON" ]; then
+  GIT_OWN=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null || true)
+  if [ -n "$GIT_OWN" ] && [ "$GIT_OWN" != "$GIT_COMMON" ] && [ "$(tr_ship_value test-isolation "$REPO_ROOT")" = worktree ]; then
+    LOCK_BASE=$GIT_OWN
+  fi
+fi
+if [ -n "$LOCK_BASE" ] && [ -d "$LOCK_BASE" ] && [ -w "$LOCK_BASE" ]; then
+  LOCK_DIR="$LOCK_BASE/claude-audit-test-lock${DEST_KEY}"
 else
   LOCK_DIR="${TMPDIR:-/tmp}/claude-audit-test-lock-${HASH}${DEST_KEY}"
 fi
@@ -179,6 +201,15 @@ release() {
   kill "$HB_PID" 2>/dev/null
 }
 
+# Cache hit: nothing to run, nothing to lock.
+[ "$CACHED" = 1 ] && [ -z "$CMD_STRING" ] && CMD_STRING="$*"
+if [ "$CACHED" = 1 ] && tr_cache_hit "$REPO_ROOT" "$CMD_STRING"; then exit 0; fi
+RUN_T0=$(date +%s)
+RUN_CLASS=${TESTRUN_CLASS:-}
+[ "$CACHED" = 1 ] && RUN_CLASS=suite
+[ "${TESTRUN_DISABLE:-}" = 1 ] && RUN_CLASS=""
+run_cmd() { if [ -n "$RUN_CLASS" ]; then tr_run "$RUN_CLASS" "${TESTRUN_PROJECT:-$(tr_project "$REPO_ROOT")}" "$@"; else "$@"; fi; }
+
 acquire
 export TEST_LOCK_HELD="$LOCK_DIR"
 HB_PID=""
@@ -208,8 +239,9 @@ HB_PID=$!
 # back to running the command directly exactly as before.
 ENV_CHECK=$(mktemp "${TMPDIR:-/tmp}/audit-test-lock-output.XXXXXX" 2>/dev/null) || ENV_CHECK=""
 if [ -n "$ENV_CHECK" ]; then
-  "$@" 2>&1 | tee "$ENV_CHECK"
+  run_cmd "$@" 2>&1 | tee "$ENV_CHECK"
   STATUS=${PIPESTATUS[0]}
+  [ "$STATUS" -eq 0 ] && [ "$CACHED" = 1 ] && tr_cache_put "$REPO_ROOT" "$CMD_STRING" "$RUN_T0" "$ENV_CHECK"
   if [ "$STATUS" -ne 0 ] && grep -qiE 'never finished bootstrapping|crashed with signal kill|Early unexpected exit' "$ENV_CHECK" 2>/dev/null; then
     echo "TEST_LOCK_COLLISION: the test runner was killed before it connected, which is what a second concurrent run against the same simulator looks like -- not a product crash and not a failing test. Re-run once the other run has finished; the lock at $LOCK_DIR only serializes callers that go through this wrapper." >&2
   elif [ "$STATUS" -ne 0 ] && grep -qiE 'simdiskimaged|CoreSimulatorService|unable to boot device|no devices are booted|could not find.*(simulator|runtime)|no runtimes discoverable|xcresult.*(operation not permitted|permission denied)' "$ENV_CHECK" 2>/dev/null; then
@@ -217,7 +249,7 @@ if [ -n "$ENV_CHECK" ]; then
   fi
   rm -f "$ENV_CHECK" 2>/dev/null
 else
-  "$@"
+  run_cmd "$@"
   STATUS=$?
 fi
 exit "$STATUS"
