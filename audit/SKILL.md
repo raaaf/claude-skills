@@ -137,10 +137,12 @@ orch_resolve_audit_root || { echo "Abgebrochen: audit-Root nicht gefunden."; orc
 ROOT="$(git rev-parse --show-toplevel)"
 TEST_COMMAND=$(orch_test_command "$ROOT") || TEST_COMMAND=""   # .claude/ship.md test-command:, else the manifest's own
 echo "TEST_COMMAND=${TEST_COMMAND:-<none>}"
-if [ -n "$TEST_COMMAND" ]; then bash "$AUDIT_BIN/test-lock.sh" --cmd "$TEST_COMMAND"; echo "TESTS_EXIT=$?"; fi   # every test run goes through the lock, also a hand-assembled xcodebuild
+if [ -n "$TEST_COMMAND" ]; then bash "$AUDIT_BIN/test-lock.sh" --cached --cmd "$TEST_COMMAND"; echo "TESTS_EXIT=$?"; fi   # every test run goes through the lock, also a hand-assembled xcodebuild; --cached = full suite, a green run on an identical tree is reused
 bash "$AUDIT_BIN/pre-checks.sh" | grep -E '^(SECRET|SECRET_SCAN_RESULT)'; bash "$AUDIT_BIN/check-silencing.sh" "$ROOT"   # the fix may have added a secret or silenced a check
 orch_progress_touch
 ```
+
+The run is the full suite, cached: a green, flake-free run on an identical tree within 30 minutes (same test command, tool versions and lockfiles; `/ship` and `deploy <app> test` write the same entries) prints `TEST_CACHE_HIT <key>` instead of running again. A hang is killed and restarted once by the lib (`TEST_RESTART`, then `TEST_STALLED_TWICE` and exit 124). `test-status` lists running tests.
 
 Red: one REVISE round to the same executor, then re-run. Still red: those findings stay open and no marker is written. A `SECRET` or `SILENCING_HIT` on a line the executor wrote is an open Critical/Important.
 
