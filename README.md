@@ -43,7 +43,7 @@ Symlinks, not copies: an edit in the clone is live in the next session. Needs Cl
 - `.claude/audit-guidelines.md`: project rules the audit reads during triage.
 - `.claude/plan-guidelines.md`: rules every plan challenger gets.
 
-Audit logs land in `.claude/audits/`, plans in `docs/plans/`. Logs reference `file:line`, never file contents, so they are safe to commit.
+/audit reports in chat and stores deliberately accepted tradeoffs in `.claude/audits/suppressions.json`; plans still land in `docs/plans/`.
 
 ## Development
 

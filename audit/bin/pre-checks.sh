@@ -48,7 +48,7 @@ CHANGED=$(
 # unified diff, not committed history.
 #
 # Findings never reproduce the matched value or the surrounding line: this
-# script's output feeds the audit log under .claude/audits/, which is
+# script's output feeds the audit report under .claude/audits/, which is
 # committed to a public repo. Only the file, the real line number in that
 # file, and the pattern's name/type are emitted.
 SECRET_PATTERN_NAMES=(

@@ -96,7 +96,7 @@ Projects can override globals by adding files to their own `.claude/`:
 - `.claude/plan-guidelines.md` — read in `plan-it` Phase 0.7, threaded to all challenge agents
 - `.claude/ship.md` — `/ship`'s per-project config: `deploy-command:`, `test-command:` (also read by `/audit` Phase 3), `health-check:`; a repo-supplied command surface (see Gotchas)
 - `.claude/mutation-targets`: one glob per line (`#` comments, optional `<glob> :: TestA|TestB` names the test classes to run for indirectly tested classes) of files `/delegate` Phase 5 mutation-tests when a diff touches them (`audit/bin/mutate.sh`); no file, no mutation run
-- `.claude/audits/suppressions.json` — per-project accepted tradeoffs, maintained by hand
+- `.claude/audits/suppressions.json` — per-project accepted tradeoffs, appended by /audit Phase 3 for durable discards, editable by hand
 
 ## Gotchas
 

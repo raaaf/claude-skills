@@ -57,8 +57,8 @@ Only when `orch_sensitive_paths` returned paths. ONE `Agent` call, `subagent_typ
 ## Reply handling
 
 1. A reply that is not the JSON, a failed dispatch, a failed worktree creation or a missing Skill tool:
-   the review is incomplete. Log it under `## Not completed` with the reason; it blocks the marker.
+   the review is incomplete. Report it as not completed in the Phase 5 chat report, with the reason; it blocks the marker.
 2. `severity: null` is the orchestrator's call in Phase 3 (Critical, Important or Minor).
 3. A finding from (a) and one from (b) that name the same file within 20 lines and the same problem are
    one finding; keep the one with the clearer description.
-4. Source tags in the log: `[code_review]` for (a), `[sensitive]` for (b), `[pre-check]` for scripts.
+4. Source tags in the report: `[code_review]` for (a), `[sensitive]` for (b), `[pre-check]` for scripts.

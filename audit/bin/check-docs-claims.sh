@@ -53,7 +53,7 @@
 #   - MAX_FINDINGS_PER_DOC  20  findings recorded per document
 #   - MAX_FINDINGS_TOTAL    50  findings recorded across the whole run
 # A cap that fires is never silent: it is reported as its own DOCSCLAIM
-# line (same contract as a real finding, so it survives into the audit log
+# line (same contract as a real finding, so it survives into the audit report
 # instead of being swallowed) naming which bound was hit. Coverage under a
 # hit cap is genuinely partial — say so rather than claim a clean scan.
 #
@@ -353,7 +353,7 @@ if [ -f "CLAUDE.md" ] && [ "$TOTAL_CAPPED" -eq 0 ]; then
         # unmodified input line. Plain `sed 's/.../\1/'` prints the whole
         # original row verbatim when the pattern does not match, which
         # turned a false doc claim into a false-positive finding that
-        # quoted raw repo table text into the (committed) audit log.
+        # quoted raw repo table text into the (committed) audit report.
         r_name=$(printf '%s' "$r_rest" | sed -nE 's/^\| `\/([a-zA-Z0-9_-]+)`.*/\1/p')
         [ -n "$r_name" ] || continue
         if [ ! -f "${r_name}/SKILL.md" ]; then

@@ -90,7 +90,7 @@ collect_changed_files() {
   } | sort -u
 }
 
-# The root under which the per-repo audit store lives (.claude/audits: logs,
+# The root under which the per-repo audit store lives (.claude/audits:
 # suppressions.json, run markers). Derived from
 # `--git-common-dir`, not `--show-toplevel`: in a linked worktree the toplevel
 # is the worktree's own root, so every store would fork per worktree

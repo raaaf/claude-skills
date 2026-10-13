@@ -67,7 +67,7 @@ Every test is a single script; there is no wrapper that runs all of them.
 ## Audit Context (auditing this repo itself)
 
 - Markdown + Bash skills repo, no runtime, no dependencies. Findings about missing package manifests, test frameworks, or CI configs for the skills themselves are noise.
-- **Public repo on GitHub.** Secrets/keys/tokens anywhere in the diff are always Critical. Audit logs under `.claude/audits/` are committed, so they reference `file:line` and never reproduce file content.
+- **Public repo on GitHub.** Secrets/keys/tokens anywhere in the diff are always Critical. There are no per-run audit logs; `suppressions.json` under `.claude/audits/` may be committed, so its entries never contain secrets or file content.
 - `audit/bin/*.sh` and every hook must stay **bash 3.2 compatible** (macOS default): no `declare -A`, no `readarray`, no `${var,,}`.
 - German-named contract identifiers (`ALLE_DATEIEN`, ...) are deliberate cross-file contracts, NOT English-migration violations.
 - Deliberate decision: orchestrator writes, subagents return (subagents cannot write under `.claude/`); `exit 2` blocking in the audit Stop hook is intentional, `additionalContext` would not block.
@@ -80,7 +80,7 @@ Every test is a single script; there is no wrapper that runs all of them.
 - **Pre-push marker and `git push` must be separate Bash calls.** The PreToolUse hook scans the command string for `git push` and blocks before a marker write in the same call would execute.
 - **Review worktree helpers by name only.** `hooks/block-worktree-wide-git.sh` denies the forced worktree-remove git command whenever it appears in a Bash call (it also blocks a heredoc that merely contains it); use `orch_review_worktree_create`/`orch_review_worktree_remove`.
 - **The prose gate is the audit's stopping rule.** Fixing what an audit finds in prose creates the next diff that deserves an audit, a loop with no exit (2026-08-05). `classify-diff.sh` emits `DIFF_CLASS`; a `prose` diff runs the deterministic checks only. `references/prose-gate.md`.
-- **The audit log's finding-line format is a contract.** `- [Severity][source] file:line: description` on ONE physical line (`references/audit-log-template.md`); humans grep it.
+- **The finding-line format of the chat report is a contract.** `- [Severity][source] file:line: description` on ONE physical line (SKILL.md Phase 5, "Report format"); humans grep it.
 - **"Which files are frontend?" has one definition, `FRONTEND_EXT_RE` in `lib-git-base.sh`.** `collect-scope.sh` reads it with an inline literal fallback so a missing lib does not collapse to "nothing is frontend".
 - **`SOURCE_DIRS` from `detect-framework.sh` is quoted per element, not as a whole string.** Each directory is individually `%q`-quoted, joined by plain spaces. Capture stdout as text, extract the value after `SOURCE_DIRS=`, rebuild the array with `eval "SOURCE_DIRS_ARR=($SOURCE_DIRS)"`; never one blanket `eval "$(...)"` over the three lines. The safety against attacker-controlled directory names comes entirely from the per-element `printf %q`. A directory name with a literal newline cannot round-trip.
 - **`TEST_COMMAND` is a repo-supplied command string** (`.claude/ship.md` `test-command:`, else the manifest's own). Every test run, also a hand-assembled `xcodebuild test`, goes through `test-lock.sh`; two concurrent runs on one simulator kill each other ("Early unexpected exit, operation never finished bootstrapping").

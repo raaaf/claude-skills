@@ -13,7 +13,7 @@
 # Any of these makes a check pass without the underlying problem being fixed,
 # which is why they are worth a deterministic pass rather than an LLM judgment.
 # Each is legitimate sometimes: the output is a finding to justify, not a
-# verdict. Severity guidance for the caller is in the audit log section that
+# verdict. Severity guidance for the caller is in the audit report section that
 # consumes this (Important by default, Minor when the same commit also removes
 # the code the suppression covered).
 #
