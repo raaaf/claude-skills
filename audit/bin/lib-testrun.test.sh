@@ -145,7 +145,8 @@ unset TESTRUN_DISABLE TESTRUN_CAP_SUITE
 
 # ===== Part 1b: watchdog, kill, restart, orphans =====================================================
 cd "$TMP" || exit 1
-trap 'for p in $SLEEPERS; do kill "$p" 2>/dev/null; done; pkill -f "$TMP/" 2>/dev/null; rm -rf "$TMP"' EXIT
+# Only PIDs this test started are killed: sleepers, plus every detached fake that records its pid in $TMP/pid.*
+trap 'for p in $SLEEPERS $(cat "$TMP"/pid.* 2>/dev/null); do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
 wd_env() {
   fresh_state
   export TESTRUN_WATCH_POLL=1 TEST_STALL_SECONDS=4 TEST_STALL_SECONDS_XCODE=4 TESTRUN_CPU_DELTA=1 TESTRUN_KILL_GRACE=1
@@ -228,23 +229,29 @@ sleeper; GP2=$LAST
 run xcode bash -c 'sleep 2; echo "Channel disconnected" >&2; exit 1' build >/dev/null
 check "the same error in a solo run does not pin the ceiling" "2" "$(lib tr_cap xcode)"
 
-# orphans: scoped, aged, not while a pest/phpunit run shares the cwd
+# orphans: scoped, aged, not while a real pest/phpunit run shares the cwd
 wd_env
 export TESTRUN_ORPHAN_AGE=0
 mkdir -p "$TMP/wt/bin" "$TMP/other"
 SCOPE=$(cd "$TMP/wt" && pwd -P); OTHER=$(cd "$TMP/other" && pwd -P)
 printf '#!/bin/bash\nsleep 300\n' > "$SCOPE/playwright"; cp "$SCOPE/playwright" "$OTHER/playwright"
-# orphan <dir> cmd...: start cmd in dir, detached so launchd (pid 1) becomes its parent
-orphan() { local d=$1; shift; ( cd "$d" && perl -e 'exit if fork; exec @ARGV' "$@" >/dev/null 2>&1 </dev/null ); }
-orphan "$SCOPE" bash "$SCOPE/playwright" run-server
-orphan "$OTHER" bash "$OTHER/playwright" run-server
+cp "$(command -v bash)" "$TMP/php"   # a process whose comm is `php`
+# orphan <pidfile-name> <dir> cmd...: start cmd in dir, detached so launchd (pid 1) becomes its parent;
+# the command records its own pid in $TMP/pid.<name> before it execs
+orphan() { local n=$1 d=$2; shift 2; ( cd "$d" && PF="$TMP/pid.$n" perl -e 'exit if fork; exec "bash","-c","echo \$\$ > \"\$PF\"; exec \"\$@\"","x",@ARGV' "$@" >/dev/null 2>&1 </dev/null ); }
+orphan pw1 "$SCOPE" bash "$SCOPE/playwright" run-server
+orphan pw2 "$OTHER" bash "$OTHER/playwright" run-server
 sleep 1
 check "an orphan server in scope is listed, one outside the scope is not" "1" "$(lib tr_reap_orphans "$SCOPE" --dry | grep -c "cwd=$SCOPE")"
-orphan "$SCOPE" bash -c 'sleep 300; :' "$SCOPE/bin/phpunit"
+check "scope / means everywhere (not the pattern //*)" "1" "$(lib tr_reap_orphans / --dry | grep -c "cwd=$SCOPE")"
+orphan wrap "$SCOPE" bash -c 'sleep 300; :' "artisan test"
+sleep 0.5
+check "a wrapper that merely carries 'artisan test' does not keep the orphan alive" "1" "$(lib tr_reap_orphans "$SCOPE" --dry | grep -c orphan)"
+orphan php "$SCOPE" "$TMP/php" -c 'sleep 300; :' "$SCOPE/bin/phpunit"
 sleep 1
-check "an orphan next to a live phpunit process is left alone" "0" "$(lib tr_reap_orphans "$SCOPE" --dry | grep -c orphan)"
-pkill -f "$SCOPE/bin/phpunit"; sleep 0.5
-check "without phpunit the orphan is found again" "1" "$(lib tr_reap_orphans "$SCOPE" --dry | grep -c orphan)"
+check "an orphan next to a live php/phpunit process is left alone" "0" "$(lib tr_reap_orphans "$SCOPE" --dry | grep -c orphan)"
+kill "$(cat "$TMP/pid.php")"; sleep 0.5
+check "without the php process the orphan is found again" "1" "$(lib tr_reap_orphans "$SCOPE" --dry | grep -c orphan)"
 lib tr_reap_orphans "$SCOPE" >/dev/null 2>&1
 sleep 0.5
 check "reaping kills the in-scope orphan only" "0 1" "$(pgrep -f "$SCOPE/playwright" | grep -c .) $(lib tr_reap_orphans "$OTHER" --dry | grep -c orphan)"
@@ -252,13 +259,50 @@ check "reaping kills the in-scope orphan only" "0 1" "$(pgrep -f "$SCOPE/playwri
 # dead wrapper, live group
 wd_env
 mkdir -p "$TESTRUN_STATE_DIR/runs"
-perl -e 'setpgrp(0,0); exec "sleep","300"' & DG=$!
+perl -e 'setpgrp(0,0); exec "sleep","300"' & DG=$!; SLEEPERS="$SLEEPERS $DG"
 sleep 0.5
 printf 'pid=999999\nstart=Thu Jan  1 00:00:00 1970\nclass=suite\nstate=running\nproject=ghost\ncwd=/x\nsince=1\npgid=%s\npgid_start=%s\n' "$DG" "$(ps -o lstart= -p "$DG" | sed 's/^ *//;s/ *$//')" > "$TESTRUN_STATE_DIR/runs/0000000000000001-999999"
 check "a group whose wrapper died stays a live ticket" "1" "$(lib _tr_prune; tickets)"
 check "the dead-wrapper group is listed" "1" "$(lib tr_reap_dead_groups --dry | grep -c ghost)"
 lib tr_reap_dead_groups >/dev/null 2>&1
 check "reaping kills the group and drops the ticket" "dead 0" "$(kill -0 "$DG" 2>/dev/null && echo alive || echo dead) $(tickets)"
+
+# an orphaned xcode group must not keep its slot: the waiter reaps it during admission (cap 1)
+wd_env
+export TESTRUN_CAP_XCODE=1
+mkdir -p "$TESTRUN_STATE_DIR/runs" "$TESTRUN_STATE_DIR/slots/xcode.1"
+perl -e 'setpgrp(0,0); exec "sleep","300"' & DG2=$!; SLEEPERS="$SLEEPERS $DG2"
+sleep 0.5
+GID=0000000000000009-999998
+printf 'pid=999998\nstart=Thu Jan  1 00:00:00 1970\nclass=xcode\nstate=running\nproject=ghost\ncwd=/x\nsince=1\nadmitted_at=1\npgid=%s\npgid_start=%s\n' "$DG2" "$(ps -o lstart= -p "$DG2" | sed 's/^ *//;s/ *$//')" > "$TESTRUN_STATE_DIR/runs/$GID"
+echo "$GID" > "$TESTRUN_STATE_DIR/slots/xcode.1/id"
+sleeper; WAITER=$LAST
+check "a waiter reaps an orphaned group and takes its slot" "0 dead" "$(R=$(TESTRUN_WAIT_MAX=8 adm xcode real "$WAITER"); echo "$(rc_of "$R") $(kill -0 "$DG2" 2>/dev/null && echo alive || echo dead)")"
+unset TESTRUN_CAP_XCODE
+
+# pruning a dead ticket also removes its output files
+wd_env
+mkdir -p "$TESTRUN_STATE_DIR/runs"
+printf 'pid=999997\nstart=Thu Jan  1 00:00:00 1970\nclass=suite\nstate=running\nproject=x\ncwd=/x\nsince=1\n' > "$TESTRUN_STATE_DIR/runs/0000000000000007-999997"
+: > "$TESTRUN_STATE_DIR/runs/0000000000000007-999997.out"; : > "$TESTRUN_STATE_DIR/runs/0000000000000007-999997.out.1"
+lib _tr_prune
+check "pruning a dead ticket removes its .out and fifo files" "0" "$(ls "$TESTRUN_STATE_DIR/runs" | wc -l | tr -d ' ')"
+
+# the watch loop notices an exit within a tick, not after a full sample interval
+wd_env
+export TESTRUN_WATCH_POLL=15
+T0=$(date +%s); R=$(run suite sleep 2); T1=$(date +%s)
+check "a short run returns long before one sample interval (15 s) has passed" "0 yes" "$R $([ $((T1 - T0)) -lt 8 ] && echo yes || echo "no ($((T1 - T0)) s)")"
+export TESTRUN_WATCH_POLL=1
+
+# extra CPU is attributed to the run's own device: A idles, B burns, so counting B for A would show
+unset TESTRUN_XCODE_EXTRA_RE
+bash -c 'sleep 8; :' "CoreSimulator/Devices/AAAA-A/launchd_sim" & SLEEPERS="$SLEEPERS $!"
+bash -c 'end=$((SECONDS+8)); while [ $SECONDS -lt $end ]; do :; done; :' "CoreSimulator/Devices/BBBB-B/launchd_sim" & SLEEPERS="$SLEEPERS $!"
+sleep 4
+EA=$(lib tr_extra_cpu AAAA-A); EB=$(lib tr_extra_cpu BBBB-B); EN=$(lib tr_extra_cpu)
+check "extra CPU counts the run's own device only (A idle, B busy; no UDID counts nothing)" "yes yes 0" "$([ "$EA" -le 1 ] && echo yes || echo "no $EA") $([ "$EB" -ge 2 ] && echo yes || echo "no $EB") $EN"
+export TESTRUN_XCODE_EXTRA_RE='no-such-process-xyz'
 
 # ===== Part 1c: cache, database names, cleanup ========================================================
 export TESTRUN_TOOL_VERSIONS="php-fixed xcode-fixed"

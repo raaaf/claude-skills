@@ -109,14 +109,31 @@ else
 fi
 OWNER_FILE="$LOCK_DIR/owner"
 
+# Cache hit: nothing to run, nothing to lock. This also holds for a reentrant call (deploy inside
+# /audit or /ship): its own entry, keyed TESTRUN_CACHE_CMD, is what deploy's push gate looks up later.
+# The cache key is the command string, or TESTRUN_CACHE_CMD when a wrapper (deploy) runs a longer
+# command for the same suite, so /audit, /ship and deploy share one entry.
+CACHE_CMD=${TESTRUN_CACHE_CMD:-${CMD_STRING:-$*}}
+if [ "$CACHED" = 1 ] && tr_cache_hit "$REPO_ROOT" "$CACHE_CMD"; then exit 0; fi
+# The tree is hashed BEFORE the run: a command that writes into the tree must not cache its own output.
+RUN_TREE=""; [ "$CACHED" = 1 ] && RUN_TREE=$(tr_tree "$REPO_ROOT")
+RUN_T0=$(date +%s)
+RUN_CLASS=${TESTRUN_CLASS:-}
+[ "$CACHED" = 1 ] && RUN_CLASS=suite
+[ "${TESTRUN_DISABLE:-}" = 1 ] && RUN_CLASS=""
+# A command that is or calls xcodebuild (the string, or a script file among the words) runs as class
+# `xcode` (900 s stall limit, ceiling 2): as `suite` its 300 s limit would kill a quiet UI test, and the
+# xcodebuild shim inside is nested and cannot apply the xcode rules on its own.
+if [ -n "$RUN_CLASS" ] && ( set -f; tr_calls_xcodebuild $CMD_STRING "$@" ); then RUN_CLASS=xcode; fi
+run_cmd() { if [ -n "$RUN_CLASS" ]; then TESTRUN_RESTARTABLE=1 tr_run "$RUN_CLASS" "${TESTRUN_PROJECT:-$(tr_project "$REPO_ROOT")}" "$@"; else "$@"; fi; }
+
 # Reentrant for children of the holder: a wrapped command that calls this script again (deploy's
 # test gate wraps its suite, and /ship or /audit wrap `deploy <app> test`) runs under the lock its
 # parent already holds. Without this the inner call waited WAIT_MAX on its own parent and aborted
 # without running a test (2026-10-03). Only descendants inherit TEST_LOCK_HELD, and the lock dir
 # must still exist, so an unrelated run never skips the lock.
-if [ "${TEST_LOCK_HELD:-}" = "$LOCK_DIR" ] && [ -d "$LOCK_DIR" ]; then
-  exec "$@"
-fi
+HELD_BY_PARENT=0
+if [ "${TEST_LOCK_HELD:-}" = "$LOCK_DIR" ] && [ -d "$LOCK_DIR" ]; then HELD_BY_PARENT=1; fi
 TTL_SECONDS=900
 WAIT_MAX=960
 NOTICE_SECONDS=${TEST_LOCK_NOTICE_SECONDS:-60}   # progress line interval while waiting (even number: WAITED steps by 2)
@@ -201,23 +218,10 @@ release() {
   kill "$HB_PID" 2>/dev/null
 }
 
-# Cache hit: nothing to run, nothing to lock.
-# The cache key is the command string, or TESTRUN_CACHE_CMD when a wrapper (deploy) runs a longer
-# command for the same suite, so /audit, /ship and deploy share one entry.
-CACHE_CMD=${TESTRUN_CACHE_CMD:-${CMD_STRING:-$*}}
-if [ "$CACHED" = 1 ] && tr_cache_hit "$REPO_ROOT" "$CACHE_CMD"; then exit 0; fi
-RUN_T0=$(date +%s)
-RUN_CLASS=${TESTRUN_CLASS:-}
-[ "$CACHED" = 1 ] && RUN_CLASS=suite
-[ "${TESTRUN_DISABLE:-}" = 1 ] && RUN_CLASS=""
-# xcodebuild admits itself as class `xcode` through its shim (900 s stall limit, simulator-aware); a
-# `suite` ticket around it would shadow that with the 300 s suite limit.
-case "$CMD_STRING $*" in *xcodebuild*) RUN_CLASS="" ;; esac
-run_cmd() { if [ -n "$RUN_CLASS" ]; then tr_run "$RUN_CLASS" "${TESTRUN_PROJECT:-$(tr_project "$REPO_ROOT")}" "$@"; else "$@"; fi; }
-
+HB_PID=""
+if [ "$HELD_BY_PARENT" = 0 ]; then
 acquire
 export TEST_LOCK_HELD="$LOCK_DIR"
-HB_PID=""
 trap release EXIT INT TERM
 
 # Heartbeat: refresh the lock dir mtime periodically so a live, slow run is
@@ -236,6 +240,7 @@ trap release EXIT INT TERM
   done
 ) &
 HB_PID=$!
+fi
 
 # Run the wrapped command through tee so a failure can be classified without
 # changing the caller-visible behavior: STATUS is still the wrapped command's
@@ -246,7 +251,7 @@ ENV_CHECK=$(mktemp "${TMPDIR:-/tmp}/audit-test-lock-output.XXXXXX" 2>/dev/null) 
 if [ -n "$ENV_CHECK" ]; then
   run_cmd "$@" 2>&1 | tee "$ENV_CHECK"
   STATUS=${PIPESTATUS[0]}
-  [ "$STATUS" -eq 0 ] && [ "$CACHED" = 1 ] && tr_cache_put "$REPO_ROOT" "$CACHE_CMD" "$RUN_T0" "$ENV_CHECK"
+  [ "$STATUS" -eq 0 ] && [ "$CACHED" = 1 ] && tr_cache_put "$REPO_ROOT" "$CACHE_CMD" "$RUN_T0" "$ENV_CHECK" "$RUN_TREE"
   if [ "$STATUS" -ne 0 ] && grep -qiE 'never finished bootstrapping|crashed with signal kill|Early unexpected exit' "$ENV_CHECK" 2>/dev/null; then
     echo "TEST_LOCK_COLLISION: the test runner was killed before it connected, which is what a second concurrent run against the same simulator looks like -- not a product crash and not a failing test. Re-run once the other run has finished; the lock at $LOCK_DIR only serializes callers that go through this wrapper." >&2
   elif [ "$STATUS" -ne 0 ] && grep -qiE 'simdiskimaged|CoreSimulatorService|unable to boot device|no devices are booted|could not find.*(simulator|runtime)|no runtimes discoverable|xcresult.*(operation not permitted|permission denied)' "$ENV_CHECK" 2>/dev/null; then

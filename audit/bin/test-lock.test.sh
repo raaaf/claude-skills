@@ -71,11 +71,15 @@ rm -rf "$TMP/.claude" "$TMP/wt/.claude"
 # Admission: TESTRUN_CLASS=suite runs the command as an admitted suite run, TESTRUN_DISABLE=1 does not.
 export TESTRUN_STATE_DIR="$TMP/trstate" TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_TOOL_VERSIONS=fixed
 COUNT_CMD='ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc "\\." ; :'
-check "a suite run is admitted for the duration of the command" "1" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | head -1)"
+check "a suite run is admitted for the duration of the command" "1" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | grep -v '^TESTRUN' | head -1)"
 check "the ticket is gone afterwards" "0" "$(ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc '\.')"
-check "an xcodebuild command is left to the shim's xcode admission" "0" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD # xcodebuild test" 2>/dev/null | head -1)"
+CLASS_CMD='for f in "$TESTRUN_STATE_DIR"/runs/*; do case "${f##*/}" in *.*) ;; *) sed -n "s/^class=//p" "$f" ;; esac; done | head -1'
+check "a plain suite command runs as class suite" "suite" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$CLASS_CMD" 2>/dev/null)"
+check "a command string that calls xcodebuild runs as class xcode" "xcode" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$CLASS_CMD # xcodebuild test" 2>/dev/null)"
+printf '#!/bin/bash\n# runs the UI tests: xcodebuild test -scheme X\n%s\n' "$CLASS_CMD" > "$TMP/ui-tests.sh"
+check "a script file that calls xcodebuild runs as class xcode (stall limit 900 s, not 300 s)" "xcode" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "bash $TMP/ui-tests.sh" 2>/dev/null)"
 rm -rf "$TESTRUN_STATE_DIR"
-check "TESTRUN_DISABLE=1 admits nothing" "0" "$(TESTRUN_DISABLE=1 TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | head -1)"
+check "TESTRUN_DISABLE=1 admits nothing" "0" "$(TESTRUN_DISABLE=1 TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | grep -v '^TESTRUN' | head -1)"
 
 # --cached: a green full run on an identical tree is not repeated; a red one is never cached.
 CR="$TMP/cr"; mkdir -p "$CR"; git -C "$CR" init -q; echo a > "$CR/a"
@@ -91,6 +95,21 @@ rm -rf "$TESTRUN_STATE_DIR"; : > "$TMP/runs.count"
 for i in 1 2; do ( cd "$CR" && bash "$LOCK" --cached --cmd "echo run >> '$TMP/runs.count'; exit 1" >/dev/null 2>&1 ); done
 check "a red full run is not cached" "2" "$(grep -c run "$TMP/runs.count")"
 check "a red full run keeps its exit code" "1" "$(cd "$CR" && bash "$LOCK" --cached --cmd "exit 1" >/dev/null 2>&1; echo $?)"
+
+# A reentrant call (deploy inside /audit or /ship, both hold the lock) still reads and writes the cache, under
+# TESTRUN_CACHE_CMD: that is the key deploy's push gate looks up. Before, the exec shortcut skipped both.
+rm -rf "$TESTRUN_STATE_DIR"; : > "$TMP/runs.count"; echo a > "$CR/a"
+INNER="bash '$LOCK' --cached --cmd \"echo run >> '$TMP/runs.count'\""
+( cd "$CR" && TESTRUN_CACHE_CMD="composer test" bash "$LOCK" --cmd "$INNER" >/dev/null 2>&1 )
+check "a reentrant --cached call runs once and stores the entry under TESTRUN_CACHE_CMD" "1 hit" \
+  "$(grep -c run "$TMP/runs.count") $(cd "$CR" && bash -c '. "$1"; tr_cache_lookup "$2" "composer test" && echo hit || echo miss' _ "$HERE/lib-testrun.sh" "$CR")"
+( cd "$CR" && TESTRUN_CACHE_CMD="composer test" bash "$LOCK" --cmd "$INNER" >/dev/null 2>&1 )
+check "the same wrapped call again is answered from that entry" "1" "$(grep -c run "$TMP/runs.count")"
+
+# The tree is hashed before the run: a command that writes into the tree does not cache its own output.
+rm -rf "$TESTRUN_STATE_DIR"; : > "$TMP/runs.count"; echo a > "$CR/a"
+for i in 1 2; do ( cd "$CR" && bash "$LOCK" --cached --cmd "echo changed-\$RANDOM >> '$CR/a'; echo run >> '$TMP/runs.count'" >/dev/null 2>&1 ); done
+check "a run that modifies the tree is not served from its own post-run state" "2" "$(grep -c run "$TMP/runs.count")"
 unset TESTRUN_STATE_DIR
 
 [ "$FAIL" -eq 0 ] && echo "TEST_LOCK_TEST=OK" || { echo "TEST_LOCK_TEST=FAIL ($FAIL)"; exit 1; }

@@ -57,8 +57,10 @@ tr_event() {
   tr_enabled || return 0
   local name=$1 kv k v line="" extra="" state
   shift
+  local proj=${TESTRUN_PROJECT:-}
   for kv in "$@"; do
     k=${kv%%=*}; v=${kv#*=}
+    if [ "$k" = project ]; then proj=$v; line="$line project=$v"; continue; fi
     v=${v//\\/\\\\}; v=${v//\"/\\\"}; v=$(printf '%s' "$v" | tr '\n\t' '  ')
     extra="$extra,\"$k\":\"$v\""
     line="$line $k=$v"
@@ -67,7 +69,7 @@ tr_event() {
   state=$(_tr_state)
   mkdir -p "$state" 2>/dev/null || return 0
   printf '{"ts":%s,"date":"%s","event":"%s","id":"%s","project":"%s"%s}\n' \
-    "$(_tr_now)" "$(date +%Y-%m-%d)" "$name" "${TESTRUN_ID:-}" "${TESTRUN_PROJECT:-}" "$extra" \
+    "$(_tr_now)" "$(date +%Y-%m-%d)" "$name" "${TESTRUN_ID:-}" "$proj" "$extra" \
     >> "$state/test-events.jsonl" 2>/dev/null || true
 }
 
@@ -106,7 +108,7 @@ _tr_prune() {
     [ -f "$f" ] || continue
     name=${f##*/}
     case "$name" in *.*) continue ;; esac
-    _tr_alive "$f" || { mv "$f" "$f.dead.$$" 2>/dev/null && rm -f "$f.dead.$$"; }
+    _tr_alive "$f" || { mv "$f" "$f.dead.$$" 2>/dev/null && rm -f "$f.dead.$$" "$f.out" "$f.out.1" "$f.out.2"; }
   done
 }
 
@@ -294,6 +296,7 @@ tr_admit() {
   _tr_install_traps
   t0=$(_tr_now)
   while :; do
+    tr_reap_dead_groups >/dev/null   # an orphaned group (wrapper died) must not keep its slot for good
     _tr_prune
     if _tr_gate_enter; then
       active=$(_tr_active heavy "$id")
@@ -365,7 +368,7 @@ _tr_install_traps() {
 # ==================================================================================================
 # Part 1b: process tree, watchdog, kill, restart
 # Env: TEST_STALL_SECONDS (300, suites) TEST_STALL_SECONDS_XCODE (900) TEST_WARN_SECONDS_XCODE (600)
-#      TESTRUN_WATCH_POLL (15) TESTRUN_CPU_DELTA (5) TESTRUN_KILL_GRACE (10)
+#      TESTRUN_WATCH_POLL (15, sampling interval) TESTRUN_TICK (1, exit detection) TESTRUN_CPU_DELTA (5) TESTRUN_KILL_GRACE (10)
 #      TESTRUN_XCODE_EXTRA_RE (extra processes whose CPU counts as xcode progress)
 #      TESTRUN_ORPHAN_AGE (600) TESTRUN_PSQL (psql) TESTRUN_PG_HOST (127.0.0.1) TESTRUN_SIMCTL (xcrun simctl)
 # ==================================================================================================
@@ -386,13 +389,23 @@ _tr_ps_tree() {
 tr_group_cpu() { _tr_ps_tree "$1" | awk '{ s += $2 } END { print s + 0 }'; }
 tr_tree_pids() { _tr_ps_tree "$1" | awk '{ print $1 }'; }
 
-# CPU seconds of testmanagerd and the processes of the target simulator: xctest runs under the
-# simulator's launchd, outside the xcodebuild group, so a quiet UI test looks dead without them.
+# CPU seconds of the target simulator: the processes whose command line mentions
+# CoreSimulator/Devices/<UDID> (its launchd_sim) and all their descendants, which includes the testmanagerd
+# and the xctest runner of THAT device. xctest runs under the simulator's launchd, outside the xcodebuild
+# group, so a quiet UI test looks dead without it. A machine-wide `testmanagerd` match is NOT used: it
+# would count other devices' test runs as progress. Without a UDID there is nothing to attribute: 0.
+# TESTRUN_XCODE_EXTRA_RE replaces the root pattern (tests).
 tr_extra_cpu() {
-  local re=${TESTRUN_XCODE_EXTRA_RE:-testmanagerd${1:+|CoreSimulator/Devices/$1}}
-  ps -ax -o pid=,cputime=,command= 2>/dev/null | awk -v re="$re" '
+  local re=${TESTRUN_XCODE_EXTRA_RE:-}
+  [ -n "$re" ] || { [ -n "${1:-}" ] || { echo 0; return; }; re="CoreSimulator/Devices/$1"; }
+  ps -ax -o pid=,ppid=,cputime=,command= 2>/dev/null | awk -v re="$re" '
     function sec(t,  a, n, i, s) { n = split(t, a, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + a[i]; return s }
-    $0 !~ /awk -v re=/ && $0 ~ re { s += sec($2) } END { print int(s) }'
+    { pid[NR] = $1; ppid[NR] = $2; cpu[NR] = sec($3); if ($0 !~ /awk -v re=/ && $0 ~ re) mem[$1] = 1 }
+    END {
+      do { ch = 0; for (i = 1; i <= NR; i++) if (!mem[pid[i]] && mem[ppid[i]]) { mem[pid[i]] = 1; ch = 1 } } while (ch)
+      for (i = 1; i <= NR; i++) if (mem[pid[i]]) s += cpu[i]
+      print int(s)
+    }'
 }
 
 # tr_kill_tree <pgid> [reason]: group plus descendants, TERM, KILL after the grace period
@@ -427,13 +440,17 @@ _tr_etime_s() {  # ps etime [[dd-]hh:]mm:ss -> seconds
 # cwd inside <scope-dir> and no pest/phpunit process with the same cwd. Never per name, never global.
 tr_reap_orphans() {
   local scope=$1 dry=${2:-} pid cwd age pc busy found=0
+  scope=${scope%/}   # "/" or "" means everywhere
   for pid in $(pgrep -f 'playwright.*run-server' 2>/dev/null); do
     [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')" = 1 ] || continue
     age=$(_tr_etime_s "$pid"); [ "${age:-0}" -ge "${TESTRUN_ORPHAN_AGE:-600}" ] || continue
     cwd=$(_tr_cwd "$pid"); [ -n "$cwd" ] || continue
     case "$cwd/" in "$scope"/*) ;; *) continue ;; esac
     busy=0
+    # Only real test binaries count: the wrappers (test-lock --cmd "... artisan test", gtimeout, deploy) carry
+    # the same words on their command line and sit in the same cwd, which would keep every orphan alive.
     for pc in $(pgrep -f 'bin/(pest|phpunit)|artisan test' 2>/dev/null); do
+      case "$(ps -o comm= -p "$pc" 2>/dev/null)" in php|*/php|php[0-9]*|*/php[0-9]*|pest|*/pest|phpunit|*/phpunit) ;; *) continue ;; esac
       [ "$(_tr_cwd "$pc")" = "$cwd" ] && busy=1
     done
     [ "$busy" = 0 ] || continue
@@ -501,7 +518,7 @@ _tr_xcode_guard() {
 # Output goes through two FIFOs and tee into $runs/<id>.out, so growth of that file is the output signal.
 _tr_attempt() {
   local class=$1 udid=$2; shift 2
-  local out pid t1 t2 stall warn now size lastsize=0 cpu maxcpu=0 extra maxextra=0 last_prog outchg warned=0 delta
+  local out pid t1 t2 next_sample stall warn now size lastsize=0 cpu maxcpu=0 extra maxextra=0 last_prog outchg warned=0 delta
   out="$(_tr_ticket "$TESTRUN_ID").out"
   delta=${TESTRUN_CPU_DELTA:-5}
   if [ "$class" = xcode ]; then stall=${TEST_STALL_SECONDS_XCODE:-900}; else stall=${TEST_STALL_SECONDS:-300}; fi
@@ -515,10 +532,13 @@ _tr_attempt() {
   _TR_CHILD_PGID=$pid
   _tr_set "$TESTRUN_ID" pgid "$pid"; _tr_set "$TESTRUN_ID" pgid_start "$(_tr_lstart "$pid")"
   last_prog=$(_tr_now); outchg=$last_prog
+  next_sample=$(( $(_tr_now) + ${TESTRUN_WATCH_POLL:-15} ))
   while kill -0 "$pid" 2>/dev/null; do
-    _tr_nap "${TESTRUN_WATCH_POLL:-15}"
+    _tr_nap "${TESTRUN_TICK:-1}"   # exit detection every tick; the expensive sampling only every WATCH_POLL
     kill -0 "$pid" 2>/dev/null || break
     now=$(_tr_now)
+    [ "$now" -ge "$next_sample" ] || continue
+    next_sample=$((now + ${TESTRUN_WATCH_POLL:-15}))
     size=$(wc -c < "$out" | tr -d ' ')
     if [ "$size" -gt "$lastsize" ]; then lastsize=$size; last_prog=$now; outchg=$now; warned=0; fi
     cpu=$(tr_group_cpu "$pid")
@@ -562,6 +582,9 @@ tr_exec() {
     prev=$a
   done
   [ "$class" = suite ] && restartable=1
+  # test-lock.sh sets TESTRUN_RESTARTABLE=1 for what it wraps: a test command by construction, also when a
+  # script around xcodebuild hides the `test` word. A direct xcodebuild build/archive never restarts.
+  [ "${TESTRUN_RESTARTABLE:-}" = 1 ] && restartable=1
   top=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
   [ "$class" = suite ] && tr_reap_orphans "$top" >/dev/null
   _TR_PARALLEL=0; _TR_SIG=0
@@ -610,8 +633,10 @@ tr_run() {
 # versions, lockfiles and the built asset manifest. A lookup hits on the same tree and envkey inside
 # the TTL; a different tree only hits when the delta since the cached tree touches nothing but files
 # matching `test-cache-ignore:` globs, or, with `test-cache-prose: true`, is prose-only by classify-diff.sh.
-_tr_cache_file() { printf '%s/test-cache/%s' "$(_tr_state)" "$(printf '%s' "$1" | shasum | cut -c1-16)"; }
-_tr_tree() { ( cd "$1" && bash "$_TR_LIB_DIR/tree-hash.sh" 2>/dev/null ); }
+# keyed on the physical toplevel: git reports /private/var/..., a caller may pass /var/... or a symlinked path
+_tr_cache_file() { printf '%s/test-cache/%s' "$(_tr_state)" "$(cd "$1" 2>/dev/null && pwd -P | shasum | cut -c1-16)"; }
+tr_tree() { ( cd "$1" && bash "$_TR_LIB_DIR/tree-hash.sh" 2>/dev/null ); }
+_tr_tree() { tr_tree "$@"; }
 
 tr_cache_envkey() {  # <toplevel> <command>
   local top=$1 f
@@ -665,16 +690,18 @@ tr_cache_hit() {
   tr_event cache_hit key="$TR_CACHE_KEY" project="$(tr_project "$1")"
 }
 
-# tr_cache_put <toplevel> <command> <run-start-ts> [logfile]: remember a green run unless it flaked
+# tr_cache_put <toplevel> <command> <run-start-ts> [logfile] [tree-before-the-run]: remember a green run unless it flaked
 tr_cache_put() {
   tr_enabled || return 0
-  local top=$1 file tree env flakes since=$3 log=${4:-}
+  local top=$1 file tree env flakes since=$3 log=${4:-} pre=${5:-}
   [ -n "$log" ] && grep -q '^FLAKY: ' "$log" 2>/dev/null && { tr_event cache_skip reason=flaky; return 0; }
   flakes="$(_tr_state)/test-flakes.jsonl"
   if [ -f "$flakes" ] && sed -n 's/.*"ts":\([0-9]*\).*/\1/p' "$flakes" | awk -v s="$since" '$1 >= s { f = 1 } END { exit f ? 0 : 1 }'; then
     tr_event cache_skip reason=flaky; return 0
   fi
-  tree=$(_tr_tree "$top") && [ -n "$tree" ] || return 0
+  tree=$pre
+  [ -n "$tree" ] || tree=$(_tr_tree "$top")
+  [ -n "$tree" ] || return 0
   env=$(tr_cache_envkey "$top" "$2")
   file=$(_tr_cache_file "$top")
   mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
@@ -725,3 +752,13 @@ tr_db_drop_listed() {
 # tr_worktree_cleanup <toplevel>: at the end of a worktree. Drops its test databases. The per-project
 # simulator (<project>-test) is shared by all worktrees of the project and stays.
 tr_worktree_cleanup() { tr_db_drop_listed "$1"; }
+
+# tr_calls_xcodebuild <word...>: any word mentions xcodebuild, or is a script file (<= 256 KB) that does
+tr_calls_xcodebuild() {
+  local w
+  for w in "$@"; do
+    case "$w" in *xcodebuild*) return 0 ;; esac
+    [ -f "$w" ] && [ "$(wc -c < "$w" 2>/dev/null | tr -d ' ')" -le 262144 ] && grep -q xcodebuild "$w" 2>/dev/null && return 0
+  done
+  return 1
+}
