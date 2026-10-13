@@ -7,7 +7,8 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 STATUS="$HERE/test-status.sh"
 TMP=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/test-status-test.XXXXXX")" && pwd -P)
-trap 'for p in $PIDS; do kill "$p" 2>/dev/null; done; pkill -f "$TMP/" 2>/dev/null; rm -rf "$TMP"' EXIT
+# Only PIDs this test started are killed (the detached fakes record theirs in $TMP/pid.*)
+trap 'for p in $PIDS $(cat "$TMP"/pid.* 2>/dev/null); do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
 export TESTRUN_STATE_DIR="$TMP/state" TESTRUN_ORPHAN_AGE=0 TESTRUN_KILL_GRACE=1
 FAIL=0; PIDS=""
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; FAIL=$((FAIL + 1)); fi; }
@@ -15,7 +16,7 @@ mkdir -p "$TESTRUN_STATE_DIR/runs" "$TMP/scope" "$TMP/other"
 NOW=$(date +%s)
 ls_start() { ps -o lstart= -p "$1" | sed 's/^ *//;s/ *$//'; }
 
-check "an empty store says so" "no test runs" "$(bash "$STATUS")"
+check "an empty store says so" "no test runs" "$(bash "$STATUS" --scope "$TMP/scope")"
 
 # a live fake run
 sleep 300 & LIVE=$!; PIDS="$PIDS $LIVE"
@@ -33,13 +34,17 @@ printf 'pid=999999\nstart=Thu Jan  1 00:00:00 1970\nclass=xcode\nstate=running\n
   "$NOW" "$GRP" "$(ls_start "$GRP")" > "$TESTRUN_STATE_DIR/runs/0000000000000003-999999"
 # playwright orphans: one in the scope, one outside
 printf '#!/bin/bash\nsleep 300\n' > "$TMP/scope/playwright"; cp "$TMP/scope/playwright" "$TMP/other/playwright"
-orphan() { ( cd "$1" && perl -e 'exit if fork; exec @ARGV' bash "$1/playwright" run-server >/dev/null 2>&1 </dev/null ); }
-orphan "$TMP/scope"; orphan "$TMP/other"
+orphan() { local n=$1 d=$2; shift 2; ( cd "$d" && PF="$TMP/pid.$n" perl -e 'exit if fork; exec "bash","-c","echo \$\$ > \"\$PF\"; exec \"\$@\"","x",@ARGV' "$@" >/dev/null 2>&1 </dev/null ); }
+orphan scope "$TMP/scope" bash "$TMP/scope/playwright" run-server
+orphan other "$TMP/other" bash "$TMP/other/playwright" run-server
 sleep 1
 OUT=$(bash "$STATUS" --scope "$TMP/scope")
 check "the group without a wrapper is shown as orphan" "yes" "$(printf '%s\n' "$OUT" | grep -q '^ghost .*orphan' && echo yes || echo no)"
 check "both reapable things are listed" "1 1" "$(printf '%s\n' "$OUT" | grep -c 'dead-wrapper group') $(printf '%s\n' "$OUT" | grep -c "orphan playwright-server.*cwd=$TMP/scope")"
 check "the orphan outside the scope is not listed" "0" "$(printf '%s\n' "$OUT" | grep -c "cwd=$TMP/other")"
+check "the default scope (/) finds the in-scope orphan too" "1" "$(bash "$STATUS" | grep -c "orphan playwright-server.*cwd=$TMP/scope")"
+LINK="$TMP/bin/test-status"; mkdir -p "$TMP/bin"; ln -s "$STATUS" "$LINK"
+check "invoked through a symlink (~/.local/bin/test-status) it still finds the lib" "yes" "$(bash "$LINK" 2>&1 | grep -q '^zeit ' && echo yes || echo no)"
 check "listing alone kills nothing" "alive" "$(kill -0 "$GRP" 2>/dev/null && echo alive || echo dead)"
 
 bash "$STATUS" --reap --scope "$TMP/scope" >/dev/null 2>&1

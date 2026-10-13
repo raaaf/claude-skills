@@ -13,7 +13,13 @@
 # Playwright servers behind (2026-10-13: two orphans in apps/events and a worktree). bash 3.2 compatible.
 
 set -u
-. "$(dirname "$0")/lib-testrun.sh" || { echo "test-status: lib-testrun.sh not found" >&2; exit 1; }
+# Resolve ~/.local/bin/test-status (a symlink) to the real script: the lib sits next to that, not next to the link.
+SELF=$0
+while [ -L "$SELF" ]; do
+  t=$(readlink "$SELF")
+  case "$t" in /*) SELF=$t ;; *) SELF=$(dirname "$SELF")/$t ;; esac
+done
+. "$(cd "$(dirname "$SELF")" && pwd)/lib-testrun.sh" || { echo "test-status: lib-testrun.sh not found" >&2; exit 1; }
 
 REAP=0; SCOPE=/
 while [ $# -gt 0 ]; do
