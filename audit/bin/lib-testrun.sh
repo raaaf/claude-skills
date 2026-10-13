@@ -361,3 +361,240 @@ _tr_install_traps() {
   trap '_tr_on_signal 15' TERM
   trap '_tr_on_signal 1' HUP
 }
+
+# ==================================================================================================
+# Part 1b: process tree, watchdog, kill, restart
+# Env: TEST_STALL_SECONDS (300, suites) TEST_STALL_SECONDS_XCODE (900) TEST_WARN_SECONDS_XCODE (600)
+#      TESTRUN_WATCH_POLL (15) TESTRUN_CPU_DELTA (5) TESTRUN_KILL_GRACE (10)
+#      TESTRUN_XCODE_EXTRA_RE (extra processes whose CPU counts as xcode progress)
+#      TESTRUN_ORPHAN_AGE (600) TESTRUN_PSQL (psql) TESTRUN_PG_HOST (127.0.0.1) TESTRUN_SIMCTL (xcrun simctl)
+# ==================================================================================================
+
+tr_slug() { printf '%s' "$1" | shasum 2>/dev/null | cut -c1-8; }
+
+# <pgid>: "pid cpu-seconds" for the group's members and all their descendants (children that left
+# the group via setsid or set -m stay found through the parent chain).
+_tr_ps_tree() {
+  ps -ax -o pid=,ppid=,pgid=,cputime= 2>/dev/null | awk -v g="$1" '
+    function sec(t,  a, n, i, s) { n = split(t, a, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + a[i]; return s }
+    { pid[NR] = $1; ppid[NR] = $2; cpu[NR] = sec($4); if ($3 == g) mem[$1] = 1 }
+    END {
+      do { ch = 0; for (i = 1; i <= NR; i++) if (!mem[pid[i]] && mem[ppid[i]]) { mem[pid[i]] = 1; ch = 1 } } while (ch)
+      for (i = 1; i <= NR; i++) if (mem[pid[i]]) printf "%s %d\n", pid[i], cpu[i]
+    }'
+}
+tr_group_cpu() { _tr_ps_tree "$1" | awk '{ s += $2 } END { print s + 0 }'; }
+tr_tree_pids() { _tr_ps_tree "$1" | awk '{ print $1 }'; }
+
+# CPU seconds of testmanagerd and the processes of the target simulator: xctest runs under the
+# simulator's launchd, outside the xcodebuild group, so a quiet UI test looks dead without them.
+tr_extra_cpu() {
+  local re=${TESTRUN_XCODE_EXTRA_RE:-testmanagerd${1:+|CoreSimulator/Devices/$1}}
+  ps -ax -o pid=,cputime=,command= 2>/dev/null | awk -v re="$re" '
+    function sec(t,  a, n, i, s) { n = split(t, a, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + a[i]; return s }
+    $0 !~ /awk -v re=/ && $0 ~ re { s += sec($2) } END { print int(s) }'
+}
+
+# tr_kill_tree <pgid> [reason]: group plus descendants, TERM, KILL after the grace period
+tr_kill_tree() {
+  local g=$1 pids t=0 own p alive
+  own=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+  [ -n "$g" ] && [ "$g" -gt 1 ] 2>/dev/null && [ "$g" != "$own" ] || return 0
+  pids=$(tr_tree_pids "$g")
+  tr_event kill pgid="$g" reason="${2:-}" pids="$(echo $pids)"
+  # shellcheck disable=SC2086
+  kill -TERM -- "-$g" $pids 2>/dev/null
+  while [ "$t" -lt "$(( ${TESTRUN_KILL_GRACE:-10} * 5 ))" ]; do
+    alive=0
+    for p in $pids; do kill -0 "$p" 2>/dev/null && alive=1; done
+    kill -0 -- "-$g" 2>/dev/null && alive=1
+    [ "$alive" = 0 ] && return 0
+    sleep 0.2; t=$((t + 1))
+  done
+  # shellcheck disable=SC2086
+  kill -KILL -- "-$g" $pids 2>/dev/null
+  return 0
+}
+
+# --- orphans -----------------------------------------------------------------------------------
+_tr_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1; }
+_tr_etime_s() {  # ps etime [[dd-]hh:]mm:ss -> seconds
+  ps -o etime= -p "$1" 2>/dev/null | tr -d ' ' | awk '{ d = 0; t = $0; if (index(t, "-")) { split(t, x, "-"); d = x[1]; t = x[2] }
+    n = split(t, a, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + a[i]; print d * 86400 + s }'
+}
+
+# tr_reap_orphans <scope-dir> [--dry]: `playwright run-server` with ppid 1, older than TESTRUN_ORPHAN_AGE,
+# cwd inside <scope-dir> and no pest/phpunit process with the same cwd. Never per name, never global.
+tr_reap_orphans() {
+  local scope=$1 dry=${2:-} pid cwd age pc busy found=0
+  for pid in $(pgrep -f 'playwright.*run-server' 2>/dev/null); do
+    [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')" = 1 ] || continue
+    age=$(_tr_etime_s "$pid"); [ "${age:-0}" -ge "${TESTRUN_ORPHAN_AGE:-600}" ] || continue
+    cwd=$(_tr_cwd "$pid"); [ -n "$cwd" ] || continue
+    case "$cwd/" in "$scope"/*) ;; *) continue ;; esac
+    busy=0
+    for pc in $(pgrep -f 'bin/(pest|phpunit)|artisan test' 2>/dev/null); do
+      [ "$(_tr_cwd "$pc")" = "$cwd" ] && busy=1
+    done
+    [ "$busy" = 0 ] || continue
+    found=$((found + 1))
+    echo "orphan playwright-server pid=$pid cwd=$cwd age=${age}s"
+    if [ "$dry" != --dry ]; then tr_event reap kind=playwright pid="$pid" cwd="$cwd"; tr_kill_tree "$pid" orphan-playwright >/dev/null 2>&1; kill -KILL "$pid" 2>/dev/null; fi
+  done
+  return 0
+}
+
+# tr_reap_dead_groups [--dry]: tickets whose wrapper died while the process group still runs
+tr_reap_dead_groups() {
+  local id f
+  for id in $(_tr_live_ids); do
+    f=$(_tr_ticket "$id")
+    _tr_wrapper_alive "$f" && continue
+    _tr_group_alive "$(_tr_field pgid "$f")" "$(_tr_field pgid_start "$f")" || continue
+    echo "dead-wrapper group id=$id project=$(_tr_field project "$f") pgid=$(_tr_field pgid "$f")"
+    if [ "${1:-}" != --dry ]; then tr_event reap kind=group id="$id"; tr_kill_tree "$(_tr_field pgid "$f")" dead-wrapper; tr_release "$id"; fi
+  done
+  return 0
+}
+
+# --- restart cleanup ---------------------------------------------------------------------------
+_tr_psql() { "${TESTRUN_PSQL:-psql}" -h "${TESTRUN_PG_HOST:-127.0.0.1}" -d postgres -Atq "$@"; }
+_tr_dbs_of() {  # <toplevel>: exact names from the registry that belong to that worktree
+  local slug; slug=$(tr_slug "$1")
+  grep -E "_${slug}(_|\$)" "$(_tr_state)/test-dbs.list" 2>/dev/null | grep -E '^[A-Za-z0-9_]+$'
+}
+
+# Sessions of this worktree's own test databases (and their paratest workers <name>_test_N)
+_tr_pg_sessions_kill() {
+  local db
+  for db in $(_tr_dbs_of "$1"); do
+    _tr_psql -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db' or datname ~ '^${db}_test_[0-9]+\$'" >/dev/null 2>&1
+  done
+  return 0
+}
+
+_tr_restart_cleanup() {  # <class> <udid> <resultBundlePath> <toplevel>
+  tr_reap_orphans "$4" >/dev/null
+  _tr_pg_sessions_kill "$4"
+  [ -n "$3" ] && rm -rf "$3"
+  if [ "$1" = xcode ] && [ -n "$2" ]; then
+    ${TESTRUN_SIMCTL:-xcrun simctl} shutdown "$2" >/dev/null 2>&1
+    ${TESTRUN_SIMCTL:-xcrun simctl} boot "$2" >/dev/null 2>&1
+  fi
+  return 0
+}
+
+# --- xcode helpers -----------------------------------------------------------------------------
+# -jobs for a build: 6 alone, 3 when a second xcode run is active. If the new build system ignores
+# -jobs, set TESTRUN_COMPILE_TASKS=1 and the shim also passes the concurrent-compile-task default.
+tr_xcode_jobs() { if [ "$(_tr_active xcode)" -ge 2 ]; then echo 3; else echo 6; fi; }
+
+# After a failed xcode run that overlapped another one: simulator-bootstrap errors pin the ceiling to 1 for 24 h.
+_tr_xcode_guard() {
+  grep -qE 'testmanagerd.*invalidated|Channel disconnected|never finished bootstrapping' "$1" 2>/dev/null || return 0
+  echo $(( $(_tr_now) + 86400 )) > "$(_tr_state)/xcode-cap-until" 2>/dev/null || return 0
+  tr_event guard reason=simulator-error cap=1 until=24h
+}
+
+# --- the run -----------------------------------------------------------------------------------
+# _tr_attempt <class> <udid> cmd...: one try in its own process group; sets _TR_RC, _TR_STALLED.
+# Output goes through two FIFOs and tee into $runs/<id>.out, so growth of that file is the output signal.
+_tr_attempt() {
+  local class=$1 udid=$2; shift 2
+  local out pid t1 t2 stall warn now size lastsize=0 cpu maxcpu=0 extra maxextra=0 last_prog outchg warned=0 delta
+  out="$(_tr_ticket "$TESTRUN_ID").out"
+  delta=${TESTRUN_CPU_DELTA:-5}
+  if [ "$class" = xcode ]; then stall=${TEST_STALL_SECONDS_XCODE:-900}; else stall=${TEST_STALL_SECONDS:-300}; fi
+  warn=${TEST_WARN_SECONDS_XCODE:-600}
+  _TR_STALLED=0
+  : > "$out"; rm -f "$out.1" "$out.2"
+  if ! mkfifo "$out.1" "$out.2" 2>/dev/null; then "$@"; _TR_RC=$?; return; fi
+  tee -a "$out" < "$out.1" & t1=$!
+  tee -a "$out" < "$out.2" >&2 & t2=$!
+  { set -m; "$@" > "$out.1" 2> "$out.2" & pid=$!; set +m; } 2>/dev/null
+  _TR_CHILD_PGID=$pid
+  _tr_set "$TESTRUN_ID" pgid "$pid"; _tr_set "$TESTRUN_ID" pgid_start "$(_tr_lstart "$pid")"
+  last_prog=$(_tr_now); outchg=$last_prog
+  while kill -0 "$pid" 2>/dev/null; do
+    _tr_nap "${TESTRUN_WATCH_POLL:-15}"
+    kill -0 "$pid" 2>/dev/null || break
+    now=$(_tr_now)
+    size=$(wc -c < "$out" | tr -d ' ')
+    if [ "$size" -gt "$lastsize" ]; then lastsize=$size; last_prog=$now; outchg=$now; warned=0; fi
+    cpu=$(tr_group_cpu "$pid")
+    if [ $((cpu - maxcpu)) -gt "$delta" ]; then maxcpu=$cpu; last_prog=$now; fi
+    if [ "$class" = xcode ]; then
+      extra=$(tr_extra_cpu "$udid")
+      if [ $((extra - maxextra)) -gt "$delta" ]; then maxextra=$extra; last_prog=$now; fi
+      [ "$(_tr_active xcode)" -ge 2 ] && _TR_PARALLEL=1
+      if [ $((now - outchg)) -ge "$warn" ] && [ "$warned" = 0 ]; then
+        warned=1; tr_event warn silent_s="$((now - outchg))" class=xcode
+      fi
+    fi
+    [ "$last_prog" = "$now" ] && _tr_set "$TESTRUN_ID" progress_at "$now"
+    if [ $((now - last_prog)) -ge "$stall" ]; then
+      _TR_STALLED=1
+      tr_event stall idle_s="$((now - last_prog))" class="$class" pgid="$pid"
+      echo "[testrun] no progress for $((now - last_prog)) s, last output:" >&2
+      tail -n 3 "$out" >&2
+      tr_kill_tree "$pid" stall
+      break
+    fi
+  done
+  { wait "$pid"; } 2>/dev/null; _TR_RC=$?
+  wait "$t1" "$t2" 2>/dev/null
+  _TR_CHILD_PGID=""
+  rm -f "$out.1" "$out.2"
+}
+
+# tr_exec <class> <project> cmd...: run under the watchdog; the run must already be admitted.
+# A stalled test run is cleaned up and restarted exactly once (TEST_RESTART); a second stall ends
+# with exit 124 and TEST_STALLED_TWICE. build/archive runs are killed, never restarted.
+tr_exec() {
+  local class=$1 project=$2; shift 2
+  local attempt=1 rc a prev udid="" bundle="" restartable=0 top
+  if ! tr_enabled || [ -z "${TESTRUN_ID:-}" ]; then "$@"; return $?; fi
+  prev=""
+  for a in "$@"; do
+    case "$a" in *id=*) [ -z "$udid" ] && udid=$(printf '%s' "$a" | grep -oE 'id=[0-9A-Fa-f-]+' | head -1 | cut -c4-) ;; esac
+    [ "$prev" = -resultBundlePath ] && bundle=$a
+    case "$a" in test|test-without-building) [ "$class" = xcode ] && restartable=1 ;; esac
+    prev=$a
+  done
+  [ "$class" = suite ] && restartable=1
+  top=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  [ "$class" = suite ] && tr_reap_orphans "$top" >/dev/null
+  _TR_PARALLEL=0; _TR_SIG=0
+  while :; do
+    _tr_attempt "$class" "$udid" "$@"
+    rc=$_TR_RC
+    if [ "$_TR_SIG" != 0 ]; then rc=$((128 + _TR_SIG)); break; fi
+    if [ "$_TR_STALLED" = 1 ]; then
+      if [ "$restartable" = 1 ] && [ "$attempt" = 1 ]; then
+        echo TEST_RESTART >&2
+        tr_event restart class="$class" project="$project"
+        _tr_restart_cleanup "$class" "$udid" "$bundle" "$top"
+        attempt=2; continue
+      fi
+      [ "$restartable" = 1 ] && { echo TEST_STALLED_TWICE >&2; tr_event stalled_twice class="$class" project="$project"; }
+      rc=124
+    fi
+    break
+  done
+  if [ "$class" = xcode ] && [ "$rc" -ne 0 ] && [ "${_TR_PARALLEL:-0}" = 1 ]; then
+    _tr_xcode_guard "$(_tr_ticket "$TESTRUN_ID").out"
+  fi
+  return "$rc"
+}
+
+# tr_run <class> <project> cmd...: admit, run under the watchdog, release. Inner layers under a live
+# TESTRUN_ID just run the command and refresh progress.
+tr_run() {
+  local class=$1 project=$2 rc; shift 2
+  tr_enabled || { "$@"; return $?; }
+  if _tr_nested; then tr_progress; "$@"; return $?; fi
+  tr_admit "$class" "$project" || return $?
+  tr_exec "$class" "$project" "$@"; rc=$?
+  tr_release
+  return "$rc"
+}
