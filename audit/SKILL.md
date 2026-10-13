@@ -105,13 +105,26 @@ orch_resolve_audit_root || { echo "Abgebrochen: audit-Root nicht gefunden."; orc
 . "$AUDIT_BIN/lib-git-base.sh"
 SUPP="$(audit_store_root)/.claude/audits/suppressions.json"; mkdir -p "$(dirname "$SUPP")"; [ -f "$SUPP" ] || echo '{"suppressions": []}' > "$SUPP"
 AUDIT_BRANCH=$(git branch --show-current); AUDIT_BRANCH="${AUDIT_BRANCH:-detached}"
-python3 - "$SUPP" "<pattern>" "<reason>" "audit $AUDIT_BRANCH $(git rev-parse --short HEAD)" <<'PY'
-import json, sys, datetime
-p, pattern, reason, source = sys.argv[1:5]
-d = json.load(open(p))
+# Finding text is repo-authored: it goes through a quoted heredoc, never into a shell argument
+ENTRY=$(mktemp); cat > "$ENTRY" <<'ENTRY_EOF'
+<pattern, one line>
+<reason, one line>
+ENTRY_EOF
+python3 - "$SUPP" "$ENTRY" "audit $AUDIT_BRANCH $(git rev-parse --short HEAD)" <<'PY'
+import json, os, sys, datetime, tempfile
+p, entry, source = sys.argv[1:4]
+pattern, reason = [l.strip() for l in open(entry, encoding="utf-8").read().splitlines()[:2]]
+try:
+    d = json.load(open(p, encoding="utf-8"))
+except json.JSONDecodeError as e:
+    sys.exit(f"suppressions.json is not valid JSON ({e}); not touched, fix it by hand")
 d.setdefault("suppressions", []).append({"pattern": pattern, "reason": reason, "added": datetime.date.today().isoformat(), "source": source})
-json.dump(d, open(p, "w"), indent=2, ensure_ascii=False); open(p, "a").write("\n")
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p))
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    json.dump(d, f, indent=2, ensure_ascii=False); f.write("\n")
+os.replace(tmp, p)   # atomic: a crash never leaves a truncated file
 PY
+rm -f "$ENTRY"
 ```
 
 ## Phase 4: Fix and test
