@@ -56,6 +56,8 @@
 #   mutate.sh --changed-lines <diff-file>     zero-context unified diff -> <path>:<line> per added line
 #                                             (a deletion-only hunk emits its anchor line once)
 #   mutate.sh --filter <changed-lines-file>   SURVIVOR_RAW lines on stdin -> SURVIVOR=/SURVIVORS_TRUNCATED=
+# Lock and database: every runner call keeps the common-dir test lock (TEST_LOCK_KEY=common, also in a
+# worktree with `test-isolation: worktree`) and runs with DB_DATABASE=<phpunit.xml's test DB>_mut.
 # bash 3.2 compatible.
 set -u
 
@@ -196,6 +198,16 @@ fi
 if TOP=$(git rev-parse --show-toplevel 2>/dev/null); then cd "$TOP" && ROOT=$(pwd -P); fi
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/mutate.XXXXXX") || exit 1
+# Mutation runs keep the common-dir lock (never the per-worktree key) and get their own database
+# <base>_mut: the project's test bootstrap leaves any value other than the fixed base name unchanged, so
+# a mutation run cannot collide with the worktree's normal runs. The base is the test DB phpunit.xml names.
+MUT_DB=""
+for _x in phpunit.xml phpunit.xml.dist; do
+  [ -f "$_x" ] || continue
+  _b=$(sed -n 's/.*name="DB_DATABASE"[^>]*value="\([^"]*\)".*/\1/p' "$_x" | head -1)
+  case "$_b" in *_test|*_testing) MUT_DB="${_b}_mut" ;; esac
+  break
+done
 trap 'rm -rf "$WORK"' EXIT
 
 # Changed PHP files (tracked changes against the base plus untracked files) that match a target glob.
@@ -260,7 +272,7 @@ run_budgeted() { # log cmd...
   if [ "$remaining" -le 0 ]; then RUN_STATUS=124; : > "$log"; return 1; fi
   cmd=$(printf '%q ' "$TIMEOUT_BIN" -k 10 "$remaining" "$@")
   # </dev/null: the runner must not read the caller's `while read` file list.
-  bash "$HERE/test-lock.sh" --cmd "$cmd" > "$log" 2>&1 </dev/null
+  env TEST_LOCK_KEY=common ${MUT_DB:+DB_DATABASE=$MUT_DB} bash "$HERE/test-lock.sh" --cmd "$cmd" > "$log" 2>&1 </dev/null
   RUN_STATUS=$?
 }
 

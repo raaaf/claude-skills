@@ -105,6 +105,7 @@ cat > vendor/bin/pest <<EOF
 echo "\$@" > "$TMP/pest-args"
 echo run >> "$TMP/pest-runs"
 echo "\$PAO_DISABLE" > "$TMP/pest-pao"
+echo "\$DB_DATABASE \$TEST_LOCK_KEY" > "$TMP/pest-env"
 case "\$(cat "$TMP/pest-mode" 2>/dev/null)" in
   stdin) cat >/dev/null ;;
   fail) echo "  Pest\\Browser\\Exceptions\\PlaywrightNotInstalledException"; exit 1 ;;
@@ -128,6 +129,14 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   has "FQCN is namespace plus basename, test file found by class name" \
     '--mutate --covered-only --class=App\Services\SecretSantaMatchService tests/Unit/SecretSantaMatchServiceTest.php' "$(cat "$TMP/pest-args")"
   check "pest runs with laravel/pao disabled (json output breaks the score parser)" "1" "$(cat "$TMP/pest-pao")"
+  check "without a phpunit.xml database the runner gets no DB_DATABASE, but the common lock key" " common" "$(cat "$TMP/pest-env")"
+  printf '<phpunit><php><env name="DB_DATABASE" value="app_testing"/></php></phpunit>\n' > phpunit.xml
+  run >/dev/null
+  check "the runner gets DB_DATABASE=<base>_mut and the common lock key" "app_testing_mut common" "$(cat "$TMP/pest-env")"
+  printf '<phpunit><php><env name="DB_DATABASE" value="app_production"/></php></phpunit>\n' > phpunit.xml
+  run >/dev/null
+  check "a base that is not a test database is not touched" " common" "$(cat "$TMP/pest-env")"
+  rm -f phpunit.xml
   # an enum is no class or trait for Pest's --class filter ("No mutations created"): it is selected by --path
   mkdir -p app/Enums
   printf '<?php\n\nnamespace App\\Enums;\n\nenum Status: string\n{\n    case Open = "open";\n}\n' > app/Enums/Status.php
