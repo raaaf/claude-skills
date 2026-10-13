@@ -260,6 +260,103 @@ check "the dead-wrapper group is listed" "1" "$(lib tr_reap_dead_groups --dry | 
 lib tr_reap_dead_groups >/dev/null 2>&1
 check "reaping kills the group and drops the ticket" "dead 0" "$(kill -0 "$DG" 2>/dev/null && echo alive || echo dead) $(tickets)"
 
+# ===== Part 1c: cache, database names, cleanup ========================================================
+export TESTRUN_TOOL_VERSIONS="php-fixed xcode-fixed"
+REPO="$TMP/repo"
+mkdir -p "$REPO/docs" "$REPO/src" "$REPO/.claude"
+git -C "$REPO" init -q
+printf 'a\n' > "$REPO/src/a.php"; printf 'doc\n' > "$REPO/docs/readme.md"
+git -C "$REPO" add -A; git -C "$REPO" -c user.email=t@t -c user.name=t commit -q -m init
+chit() { ( . "$LIB"; tr_cache_hit "$REPO" "${1:-composer test}" ); }
+cput() { ( . "$LIB"; tr_cache_put "$REPO" "${1:-composer test}" "${2:-0}" "${3:-}" ) 2>/dev/null; }
+cfile() { ls "$TESTRUN_STATE_DIR"/test-cache/* 2>/dev/null | head -1; }
+reset_files() { printf 'a\n' > "$REPO/src/a.php"; printf 'doc\n' > "$REPO/docs/readme.md"; rm -f "$REPO/.claude/ship.md"; }
+
+fresh_state
+check "an empty cache misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+cput
+check "an identical tree and command hit" "TEST_CACHE_HIT" "$(chit | cut -d' ' -f1)"
+check "a hit is logged as an event" "yes" "$(grep -q '"event":"cache_hit"' "$TESTRUN_STATE_DIR/test-events.jsonl" && echo yes || echo no)"
+check "a different test command misses" "miss" "$(chit 'composer test:parallel' >/dev/null && echo hit || echo miss)"
+printf 'b\n' > "$REPO/src/a.php"
+check "an edited file misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+reset_files
+check "restoring the tree hits again" "hit" "$(chit >/dev/null && echo hit || echo miss)"
+mkdir -p "$REPO/vendor/composer"; echo '{}' > "$REPO/vendor/composer/installed.json"
+check "a changed lockfile misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+rm -rf "$REPO/vendor"
+check "a changed tool version misses" "miss" "$(TESTRUN_TOOL_VERSIONS="php-other" chit >/dev/null && echo hit || echo miss)"
+
+# expiry: the stored timestamp is 31 minutes old
+F=$(cfile); awk '{ $1 = $1 - 1860; print }' "$F" > "$F.x" && mv "$F.x" "$F"
+check "an entry older than 30 minutes misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+
+# flaky runs are never cached
+fresh_state
+printf 'FLAKY: Tests.Browser.X (rerun green)\n' > "$TMP/flaky.log"
+cput "composer test" 0 "$TMP/flaky.log"
+check "a run with a FLAKY line is not cached" "none" "$([ -n "$(cfile)" ] && echo some || echo none)"
+mkdir -p "$TESTRUN_STATE_DIR"; printf '{"ts":%s,"app":"x","test":"t"}\n' "$(( $(date +%s) + 5 ))" > "$TESTRUN_STATE_DIR/test-flakes.jsonl"
+cput "composer test" "$(date +%s)"
+check "a flake recorded since the run started is not cached" "none" "$([ -n "$(cfile)" ] && echo some || echo none)"
+cput "composer test" "$(( $(date +%s) + 60 ))"
+check "an older flake record does not block caching" "some" "$([ -n "$(cfile)" ] && echo some || echo none)"
+
+# opt-in delta rules
+fresh_state
+printf 'test-cache-ignore: docs/*\n' > "$REPO/.claude/ship.md"
+cput
+printf 'changed\n' >> "$REPO/docs/readme.md"
+check "a delta inside test-cache-ignore still hits" "hit" "$(chit >/dev/null && echo hit || echo miss)"
+printf 'changed\n' >> "$REPO/src/a.php"
+check "a delta outside the ignore globs misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+reset_files
+printf 'test-cache-prose: true\n' > "$REPO/.claude/ship.md"; printf 'changed\n' >> "$REPO/docs/readme.md"
+check "a prose-only delta hits with test-cache-prose" "hit" "$(chit >/dev/null && echo hit || echo miss)"
+printf 'changed\n' >> "$REPO/src/a.php"
+check "a code delta misses with test-cache-prose" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+reset_files; printf 'changed\n' >> "$REPO/docs/readme.md"
+check "without opt-in a prose delta misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+reset_files
+F=$(cfile); awk '{ $2 = "0000000000000000000000000000000000000000"; print }' "$F" > "$F.x" && mv "$F.x" "$F"
+printf 'test-cache-prose: true\n' > "$REPO/.claude/ship.md"; printf 'x\n' >> "$REPO/docs/readme.md"
+check "a cached tree that no longer exists misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
+reset_files
+
+# disable switch
+fresh_state; cput
+check "TESTRUN_DISABLE turns the cache off" "miss" "$(TESTRUN_DISABLE=1 chit >/dev/null && echo hit || echo miss)"
+
+# database names
+fresh_state
+TOP="$TMP/some-worktree"; mkdir -p "$TOP"
+SLUG2=$(lib tr_slug "$TOP")
+check "a test database name gets the worktree slug" "zeit_testing_$SLUG2" "$(lib tr_db_name zeit_testing "$TOP")"
+check "an already suffixed name is not suffixed twice" "zeit_testing_$SLUG2" "$(lib tr_db_name "zeit_testing_$SLUG2" "$TOP")"
+check "a name that is not a test database aborts" "1" "$(lib tr_db_name zeit_production "$TOP" >/dev/null 2>&1; echo $?)"
+check "a production-like name never gets a suffix" "1" "$(lib tr_db_name events "$TOP" >/dev/null 2>&1; echo $?)"
+lib tr_db_register "zeit_testing_$SLUG2"; lib tr_db_register "zeit_testing_$SLUG2"; lib tr_db_register "other_testing_aaaaaaaa"
+check "registering is idempotent" "2" "$(grep -c . "$TESTRUN_STATE_DIR/test-dbs.list")"
+check "a name with odd characters is refused" "1" "$(lib tr_db_register 'a";drop' >/dev/null 2>&1; echo $?)"
+
+# cleanup drops only listed names and their paratest workers
+cat > "$TMP/fake-psql" <<'FEOF'
+#!/bin/bash
+echo "$*" >> "$(dirname "$0")/psql.log"
+case "$*" in
+  *"from pg_database"*) printf '%s\n' $FAKE_PG_ROWS ;;
+esac
+FEOF
+: > "$TMP/psql.log"
+export TESTRUN_PSQL="$TMP/fake-psql"
+export FAKE_PG_ROWS="zeit_testing_$SLUG2 zeit_testing_${SLUG2}_test_1 zeit_testing_${SLUG2}_test_2 zeit_testing_${SLUG2}_testing_x zeit_production"
+lib tr_worktree_cleanup "$TOP"
+check "cleanup drops the listed database and its two workers only" "3" "$(grep -c 'DROP DATABASE' "$TMP/psql.log")"
+check "the drop uses WITH (FORCE) and quotes the name" "yes" "$(grep -q "DROP DATABASE IF EXISTS \"zeit_testing_$SLUG2\" WITH (FORCE)" "$TMP/psql.log" && echo yes || echo no)"
+check "a database the registry does not list is never dropped" "0" "$(grep 'DROP' "$TMP/psql.log" | grep -c 'zeit_production\|testing_x\|other_testing')"
+check "the cleaned names leave the registry, other worktrees stay" "other_testing_aaaaaaaa" "$(cat "$TESTRUN_STATE_DIR/test-dbs.list")"
+unset FAKE_PG_ROWS
+
 # @@PARTS@@
 
 [ "$FAIL" -eq 0 ] && echo "LIB_TESTRUN_TEST=OK" || { echo "LIB_TESTRUN_TEST=FAIL ($FAIL)"; exit 1; }

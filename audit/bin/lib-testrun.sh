@@ -598,3 +598,130 @@ tr_run() {
   tr_release
   return "$rc"
 }
+
+# ==================================================================================================
+# Part 1c: result cache, test database registry, worktree cleanup
+# Env: TESTRUN_CACHE_TTL (1800) TESTRUN_TOOL_VERSIONS (fixed string instead of `php -v`/`xcodebuild -version`)
+# ==================================================================================================
+
+# --- result cache ------------------------------------------------------------------------------
+# A green, unfiltered, flake-free run is remembered per repo as "<ts> <tree> <envkey>". tree is
+# tree-hash.sh (working tree incl. untracked files), envkey is sha1 over the test command, tool
+# versions, lockfiles and the built asset manifest. A lookup hits on the same tree and envkey inside
+# the TTL; a different tree only hits when the delta since the cached tree touches nothing but files
+# matching `test-cache-ignore:` globs, or, with `test-cache-prose: true`, is prose-only by classify-diff.sh.
+_tr_cache_file() { printf '%s/test-cache/%s' "$(_tr_state)" "$(printf '%s' "$1" | shasum | cut -c1-16)"; }
+_tr_tree() { ( cd "$1" && bash "$_TR_LIB_DIR/tree-hash.sh" 2>/dev/null ); }
+
+tr_cache_envkey() {  # <toplevel> <command>
+  local top=$1 f
+  {
+    printf '%s\n' "$2"
+    if [ -n "${TESTRUN_TOOL_VERSIONS+x}" ]; then printf '%s\n' "$TESTRUN_TOOL_VERSIONS"
+    else
+      command -v php >/dev/null 2>&1 && php -v 2>/dev/null | head -1
+      command -v xcodebuild >/dev/null 2>&1 && xcodebuild -version 2>/dev/null
+    fi
+    for f in vendor/composer/installed.json package-lock.json bun.lock public/build/manifest.json; do
+      [ -f "$top/$f" ] && cat "$top/$f"
+    done
+  } | shasum | cut -d' ' -f1
+}
+
+_tr_cache_delta_ok() {  # <toplevel> <cached tree> <tree>
+  local top=$1 files rest g ignore keep="" f skip
+  ( cd "$top" && git cat-file -e "$2^{tree}" 2>/dev/null ) || return 1
+  files=$(cd "$top" && git diff-tree -r --name-only "$2" "$3" 2>/dev/null) || return 1
+  ignore=$(tr_ship_value test-cache-ignore "$top") || ignore=""
+  for f in $files; do
+    skip=0
+    for g in $ignore; do case "$f" in $g) skip=1 ;; esac; done
+    [ "$skip" = 1 ] || keep="$keep$f
+"
+  done
+  [ -n "$keep" ] || return 0
+  [ "$(tr_ship_value test-cache-prose "$top")" = true ] || return 1
+  [ "$(printf '%s' "$keep" | ( cd "$top" && bash "$_TR_LIB_DIR/classify-diff.sh" --paths ) | sed -n 's/^DIFF_CLASS=//p')" = prose ]
+}
+
+# tr_cache_lookup <toplevel> <command>: rc 0 on hit and sets TR_CACHE_KEY, silent
+tr_cache_lookup() {
+  tr_enabled || return 1
+  local top=$1 file tree env ts ct ce now
+  file=$(_tr_cache_file "$top"); [ -f "$file" ] || return 1
+  tree=$(_tr_tree "$top") && [ -n "$tree" ] || return 1
+  env=$(tr_cache_envkey "$top" "$2"); now=$(_tr_now)
+  while read -r ts ct ce; do
+    [ "$ce" = "$env" ] && [ $((now - ts)) -lt "${TESTRUN_CACHE_TTL:-1800}" ] || continue
+    if [ "$ct" = "$tree" ] || _tr_cache_delta_ok "$top" "$ct" "$tree"; then TR_CACHE_KEY="${tree}:${env}"; return 0; fi
+  done < "$file"
+  return 1
+}
+
+# tr_cache_hit <toplevel> <command>: lookup, then announce `TEST_CACHE_HIT <key>` on stdout
+tr_cache_hit() {
+  tr_cache_lookup "$@" || return 1
+  echo "TEST_CACHE_HIT $TR_CACHE_KEY"
+  tr_event cache_hit key="$TR_CACHE_KEY" project="$(tr_project "$1")"
+}
+
+# tr_cache_put <toplevel> <command> <run-start-ts> [logfile]: remember a green run unless it flaked
+tr_cache_put() {
+  tr_enabled || return 0
+  local top=$1 file tree env flakes since=$3 log=${4:-}
+  [ -n "$log" ] && grep -q '^FLAKY: ' "$log" 2>/dev/null && { tr_event cache_skip reason=flaky; return 0; }
+  flakes="$(_tr_state)/test-flakes.jsonl"
+  if [ -f "$flakes" ] && sed -n 's/.*"ts":\([0-9]*\).*/\1/p' "$flakes" | awk -v s="$since" '$1 >= s { f = 1 } END { exit f ? 0 : 1 }'; then
+    tr_event cache_skip reason=flaky; return 0
+  fi
+  tree=$(_tr_tree "$top") && [ -n "$tree" ] || return 0
+  env=$(tr_cache_envkey "$top" "$2")
+  file=$(_tr_cache_file "$top")
+  mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
+  { printf '%s %s %s\n' "$(_tr_now)" "$tree" "$env"; tail -n 19 "$file" 2>/dev/null || true; } > "$file.tmp.$$" && mv "$file.tmp.$$" "$file"
+  tr_event cache_put key="${tree}:${env}" project="$(tr_project "$top")"
+}
+
+# --- test database registry ----------------------------------------------------------------------
+# $STATE/test-dbs.list holds one exact database name per line. Cleanup drops only listed names plus
+# their paratest workers <name>_test_<N>, matched by an exact regex, never by LIKE.
+
+# tr_db_name <base> <toplevel>: <base>_<slug>; refuses a base that is not a test database
+tr_db_name() {
+  local slug base; slug=$(tr_slug "$2")
+  base=${1%_"$slug"}
+  case "$base" in
+    *_test|*_testing) ;;
+    *) echo "testrun: refusing database '$1': a test database name must end in _test or _testing" >&2; return 1 ;;
+  esac
+  printf '%s_%s' "$base" "$slug"
+}
+
+tr_db_register() {
+  local list="$(_tr_state)/test-dbs.list"
+  printf '%s' "$1" | grep -qE '^[A-Za-z0-9_]+$' || return 1
+  mkdir -p "$(dirname "$list")" 2>/dev/null || return 1
+  grep -qxF "$1" "$list" 2>/dev/null || echo "$1" >> "$list"
+}
+
+# tr_db_drop_listed <toplevel>: DROP the worktree's listed databases and their workers, unlist them
+tr_db_drop_listed() {
+  local db found d list keep
+  list="$(_tr_state)/test-dbs.list"
+  for db in $(_tr_dbs_of "$1"); do
+    found=$(_tr_psql -c "select datname from pg_database where datname = '$db' or datname ~ '^${db}_test_[0-9]+\$'" 2>/dev/null)
+    for d in $found; do
+      if [ "$d" = "$db" ] || printf '%s' "$d" | grep -qE "^${db}_test_[0-9]+\$"; then
+        _tr_psql -c "DROP DATABASE IF EXISTS \"$d\" WITH (FORCE)" >/dev/null 2>&1
+        tr_event db_drop name="$d"
+      fi
+    done
+    keep=$(grep -vxF "$db" "$list" 2>/dev/null)
+    printf '%s\n' "$keep" | sed '/^$/d' > "$list.tmp.$$" && mv "$list.tmp.$$" "$list"
+  done
+  return 0
+}
+
+# tr_worktree_cleanup <toplevel>: at the end of a worktree. Drops its test databases. The per-project
+# simulator (<project>-test) is shared by all worktrees of the project and stays.
+tr_worktree_cleanup() { tr_db_drop_listed "$1"; }
