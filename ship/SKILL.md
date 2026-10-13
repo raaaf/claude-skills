@@ -352,11 +352,7 @@ Never silently skip the audit. The bypass must be an explicit user choice. Each 
 
 Only when `test-command:` is set in `.claude/ship.md`. Skip silently otherwise (`SHIP_TESTS=not_configured`).
 
-Whatever you run, run it through `bash "$AUDIT_BIN/test-lock.sh" <command...>` (a command held in a variable: `[--cached] --cmd "$TEST_COMMAND"`, since zsh does not word-split it), and that holds for
-any test command you assemble yourself when the repo declares none. The lock keys on the repo plus
-the `-destination` id, so two `xcodebuild test` runs against one simulator serialize instead of
-killing each other with "Early unexpected exit ... signal kill", a failure that reads like a product
-crash and is not one.
+Whatever you run, run it through `bash "$AUDIT_BIN/test-lock.sh" [--cached] --cmd "$TEST_COMMAND"` (zsh does not word-split the variable), also a test command you assemble yourself. Why the lock and the cache: `references/test-gate.md`.
 Re-derived here, not carried over from Phase 0: every block is a fresh shell.
 
 ```bash
@@ -371,10 +367,7 @@ orch_state_save SHIP_TESTS; echo "SHIP_TESTS=$SHIP_TESTS"
 Green → `SHIP_TESTS=passed`, continue to push. Red → `SHIP_TESTS=failed`, run the log call (`outcome=test_failed`), then STOP. Report the failing tests and do not push. Fixing them is
 new work: the user commits the fixes, then re-runs `/ship` (which re-audits and re-tests).
 
-Why this phase exists: `/audit` deliberately runs only the *affected* tests, on the assumption
-that CI runs the full suite on every push. That assumption does not hold for repos whose CI only
-runs on pull requests while work is pushed straight to `main` — there, nothing would ever run the
-full suite before production. `TEST_COMMAND` closes that hole.
+Why this phase exists: `references/test-gate.md`.
 
 Never silently skip a red suite. A bypass must be an explicit user choice, logged like the audit
 bypass.
