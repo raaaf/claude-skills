@@ -176,8 +176,13 @@ check "a finished run leaves no ticket and no slot" "0 0" "$(tickets) $(ls "$TES
 wd_env
 check "a second stall ends with 124 and TEST_STALLED_TWICE after exactly one restart" "124 1 1" "$(R=$(run suite sleep 300); echo "$R $(count '^TEST_RESTART' "$TMP/err") $(count '^TEST_STALLED_TWICE' "$TMP/err")")"
 
+# burn <seconds>: a command string with 16 parallel busy loops. One loop gets too little CPU to cross the stall
+# window's CPU delta when the machine is heavily loaded (load ~170 on 12 cores, 2026-10-13); the sum of sixteen does.
+burn() { echo 'end=$((SECONDS+'"$1"')); for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do (while [ $SECONDS -lt $end ]; do :; done) & done; wait'; }
+
 wd_env
-check "a silent run that burns CPU is not a stall" "0 0" "$(R=$(run suite bash -c 'end=$((SECONDS+9)); while [ $SECONDS -lt $end ]; do :; done'); echo "$R $(count '^TEST_RESTART' "$TMP/err")")"
+export TESTRUN_CPU_DELTA=0 TEST_STALL_SECONDS=12   # any whole CPU second counts as progress, over a wider window; wd_env resets both
+check "a silent run that burns CPU is not a stall" "0 0" "$(R=$(run suite bash -c "$(burn 16)"); echo "$R $(count '^TEST_RESTART' "$TMP/err")")"
 
 wd_env; rm -f "$TMP/pf"
 R=$(run xcode bash -c "set -m; sleep 302 & echo \$! > $TMP/pf; set +m; sleep 300" build)
@@ -195,8 +200,8 @@ check "a nested tr_run adds no ticket and no second watchdog" "0 1" "$R $(tr -d 
 
 # xcode: testmanagerd/simulator CPU counts as progress; the warning comes before the kill
 wd_env
-export TEST_WARN_SECONDS_XCODE=3 TESTRUN_XCODE_EXTRA_RE='fake-sim-busy'
-bash -c 'end=$((SECONDS+11)); while [ $SECONDS -lt $end ]; do :; done' fake-sim-busy "$TMP/" &
+export TEST_WARN_SECONDS_XCODE=3 TESTRUN_XCODE_EXTRA_RE='fake-sim-busy' TESTRUN_CPU_DELTA=0
+bash -c "$(burn 11)" fake-sim-busy "$TMP/" &
 BUSY=$!
 check "a quiet xcode run survives while the simulator side is busy" "0" "$(run xcode bash -c 'sleep 9' build)"
 check "an xcode run silent for the warn threshold logs a warning, not a kill" "1 0" "$(count 'TESTRUN warn' "$TMP/err") $(count 'TESTRUN stall' "$TMP/err")"
@@ -298,7 +303,7 @@ export TESTRUN_WATCH_POLL=1
 # extra CPU is attributed to the run's own device: A idles, B burns, so counting B for A would show
 unset TESTRUN_XCODE_EXTRA_RE
 bash -c 'sleep 8; :' "CoreSimulator/Devices/AAAA-A/launchd_sim" & SLEEPERS="$SLEEPERS $!"
-bash -c 'end=$((SECONDS+8)); while [ $SECONDS -lt $end ]; do :; done; :' "CoreSimulator/Devices/BBBB-B/launchd_sim" & SLEEPERS="$SLEEPERS $!"
+bash -c "$(burn 8); :" "CoreSimulator/Devices/BBBB-B/launchd_sim" & SLEEPERS="$SLEEPERS $!"
 sleep 4
 EA=$(lib tr_extra_cpu AAAA-A); EB=$(lib tr_extra_cpu BBBB-B); EN=$(lib tr_extra_cpu)
 check "extra CPU counts the run's own device only (A idle, B busy; no UDID counts nothing)" "yes yes 0" "$([ "$EA" -le 1 ] && echo yes || echo "no $EA") $([ "$EB" -ge 2 ] && echo yes || echo "no $EB") $EN"
