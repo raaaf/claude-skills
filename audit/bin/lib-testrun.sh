@@ -413,13 +413,12 @@ tr_kill_tree() {
   local g=$1 pids t=0 own p alive
   own=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
   [ -n "$g" ] && [ "$g" -gt 1 ] 2>/dev/null && [ "$g" != "$own" ] || return 0
-  pids=$(tr_tree_pids "$g")
-  tr_event kill pgid="$g" reason="${2:-}" pids="$(echo $pids)"
-  # shellcheck disable=SC2086
-  kill -TERM -- "-$g" $pids 2>/dev/null
+  pids=$(tr_tree_pids "$g" | tr '\n' ' ')   # one line: zsh does not split an unquoted $var, $(echo "$pids") does in both
+  tr_event kill pgid="$g" reason="${2:-}" pids="${pids% }"
+  kill -TERM -- "-$g" $(echo "$pids") 2>/dev/null
   while [ "$t" -lt "$(( ${TESTRUN_KILL_GRACE:-10} * 5 ))" ]; do
     alive=0
-    for p in $pids; do kill -0 "$p" 2>/dev/null && alive=1; done
+    for p in $(echo "$pids"); do kill -0 "$p" 2>/dev/null && alive=1; done
     kill -0 -- "-$g" 2>/dev/null && alive=1
     [ "$alive" = 0 ] && return 0
     sleep 0.2; t=$((t + 1))
@@ -658,12 +657,18 @@ _tr_cache_delta_ok() {  # <toplevel> <cached tree> <tree>
   ( cd "$top" && git cat-file -e "$2^{tree}" 2>/dev/null ) || return 1
   files=$(cd "$top" && git diff-tree -r --name-only "$2" "$3" 2>/dev/null) || return 1
   ignore=$(tr_ship_value test-cache-ignore "$top") || ignore=""
-  for f in $files; do
+  if [ -n "${ZSH_VERSION:-}" ]; then setopt localoptions globsubst; fi   # zsh: a case pattern from $g is literal otherwise
+  ignore=$(printf '%s' "$ignore" | tr ' ' '\n')   # one pattern per line; read, not for, so no glob expansion either
+  while IFS= read -r f; do   # here-string: zsh does not split an unquoted $var
+    [ -n "$f" ] || continue
     skip=0
-    for g in $ignore; do case "$f" in $g) skip=1 ;; esac; done
+    while IFS= read -r g; do
+      [ -n "$g" ] || continue
+      case "$f" in $g) skip=1 ;; esac
+    done <<<"$ignore"
     [ "$skip" = 1 ] || keep="$keep$f
 "
-  done
+  done <<<"$files"
   [ -n "$keep" ] || return 0
   [ "$(tr_ship_value test-cache-prose "$top")" = true ] || return 1
   [ "$(printf '%s' "$keep" | ( cd "$top" && bash "$_TR_LIB_DIR/classify-diff.sh" --paths ) | sed -n 's/^DIFF_CLASS=//p')" = prose ]
@@ -737,12 +742,13 @@ tr_db_drop_listed() {
   list="$(_tr_state)/test-dbs.list"
   for db in $(_tr_dbs_of "$1"); do
     found=$(_tr_psql -c "select datname from pg_database where datname = '$db' or datname ~ '^${db}_test_[0-9]+\$'" 2>/dev/null)
-    for d in $found; do
+    while IFS= read -r d; do   # here-string: zsh does not split an unquoted $found
+      [ -n "$d" ] || continue
       if [ "$d" = "$db" ] || printf '%s' "$d" | grep -qE "^${db}_test_[0-9]+\$"; then
         _tr_psql -c "DROP DATABASE IF EXISTS \"$d\" WITH (FORCE)" >/dev/null 2>&1
         tr_event db_drop name="$d"
       fi
-    done
+    done <<<"$found"
     keep=$(grep -vxF "$db" "$list" 2>/dev/null)
     printf '%s\n' "$keep" | sed '/^$/d' > "$list.tmp.$$" && mv "$list.tmp.$$" "$list"
   done
