@@ -208,6 +208,9 @@ RUN_T0=$(date +%s)
 RUN_CLASS=${TESTRUN_CLASS:-}
 [ "$CACHED" = 1 ] && RUN_CLASS=suite
 [ "${TESTRUN_DISABLE:-}" = 1 ] && RUN_CLASS=""
+# xcodebuild admits itself as class `xcode` through its shim (900 s stall limit, simulator-aware); a
+# `suite` ticket around it would shadow that with the 300 s suite limit.
+case "$CMD_STRING $*" in *xcodebuild*) RUN_CLASS="" ;; esac
 run_cmd() { if [ -n "$RUN_CLASS" ]; then tr_run "$RUN_CLASS" "${TESTRUN_PROJECT:-$(tr_project "$REPO_ROOT")}" "$@"; else "$@"; fi; }
 
 acquire

@@ -73,6 +73,7 @@ export TESTRUN_STATE_DIR="$TMP/trstate" TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 T
 COUNT_CMD='ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc "\\." ; :'
 check "a suite run is admitted for the duration of the command" "1" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | head -1)"
 check "the ticket is gone afterwards" "0" "$(ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc '\.')"
+check "an xcodebuild command is left to the shim's xcode admission" "0" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD # xcodebuild test" 2>/dev/null | head -1)"
 rm -rf "$TESTRUN_STATE_DIR"
 check "TESTRUN_DISABLE=1 admits nothing" "0" "$(TESTRUN_DISABLE=1 TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | head -1)"
 
