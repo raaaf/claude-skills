@@ -14,7 +14,7 @@
 # tree is remembered for 30 min and a repeat prints `TEST_CACHE_HIT <key>` instead of running (lib-testrun.sh,
 # tr_cache_*). It also runs the command as a `suite` run: admission (two suites at once, memory-pressure
 # rule), stall watchdog and one restart. TESTRUN_CLASS=suite (set by deploy) does the same without the cache.
-# Env: TEST_LOCK_KEY=common forces the common-dir lock key (mutate.sh); TESTRUN_DISABLE=1 restores the
+# Env: TESTRUN_CACHE_CMD overrides the cache key command; TEST_LOCK_KEY=common forces the common-dir lock key (mutate.sh); TESTRUN_DISABLE=1 restores the
 # pre-lib behaviour (lock only).
 #
 # Portable mkdir spinlock (flock is not available on stock macOS). Lock is
@@ -202,8 +202,10 @@ release() {
 }
 
 # Cache hit: nothing to run, nothing to lock.
-[ "$CACHED" = 1 ] && [ -z "$CMD_STRING" ] && CMD_STRING="$*"
-if [ "$CACHED" = 1 ] && tr_cache_hit "$REPO_ROOT" "$CMD_STRING"; then exit 0; fi
+# The cache key is the command string, or TESTRUN_CACHE_CMD when a wrapper (deploy) runs a longer
+# command for the same suite, so /audit, /ship and deploy share one entry.
+CACHE_CMD=${TESTRUN_CACHE_CMD:-${CMD_STRING:-$*}}
+if [ "$CACHED" = 1 ] && tr_cache_hit "$REPO_ROOT" "$CACHE_CMD"; then exit 0; fi
 RUN_T0=$(date +%s)
 RUN_CLASS=${TESTRUN_CLASS:-}
 [ "$CACHED" = 1 ] && RUN_CLASS=suite
@@ -244,7 +246,7 @@ ENV_CHECK=$(mktemp "${TMPDIR:-/tmp}/audit-test-lock-output.XXXXXX" 2>/dev/null) 
 if [ -n "$ENV_CHECK" ]; then
   run_cmd "$@" 2>&1 | tee "$ENV_CHECK"
   STATUS=${PIPESTATUS[0]}
-  [ "$STATUS" -eq 0 ] && [ "$CACHED" = 1 ] && tr_cache_put "$REPO_ROOT" "$CMD_STRING" "$RUN_T0" "$ENV_CHECK"
+  [ "$STATUS" -eq 0 ] && [ "$CACHED" = 1 ] && tr_cache_put "$REPO_ROOT" "$CACHE_CMD" "$RUN_T0" "$ENV_CHECK"
   if [ "$STATUS" -ne 0 ] && grep -qiE 'never finished bootstrapping|crashed with signal kill|Early unexpected exit' "$ENV_CHECK" 2>/dev/null; then
     echo "TEST_LOCK_COLLISION: the test runner was killed before it connected, which is what a second concurrent run against the same simulator looks like -- not a product crash and not a failing test. Re-run once the other run has finished; the lock at $LOCK_DIR only serializes callers that go through this wrapper." >&2
   elif [ "$STATUS" -ne 0 ] && grep -qiE 'simdiskimaged|CoreSimulatorService|unable to boot device|no devices are booted|could not find.*(simulator|runtime)|no runtimes discoverable|xcresult.*(operation not permitted|permission denied)' "$ENV_CHECK" 2>/dev/null; then
