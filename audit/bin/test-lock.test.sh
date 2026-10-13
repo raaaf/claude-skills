@@ -74,10 +74,10 @@ COUNT_CMD='ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc "\\." ; :'
 check "a suite run is admitted for the duration of the command" "1" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | grep -v '^TESTRUN' | head -1)"
 check "the ticket is gone afterwards" "0" "$(ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc '\.')"
 CLASS_CMD='for f in "$TESTRUN_STATE_DIR"/runs/*; do case "${f##*/}" in *.*) ;; *) sed -n "s/^class=//p" "$f" ;; esac; done | head -1'
-check "a plain suite command runs as class suite" "suite" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$CLASS_CMD" 2>/dev/null)"
-check "a command string that calls xcodebuild runs as class xcode" "xcode" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$CLASS_CMD # xcodebuild test" 2>/dev/null)"
+check "a plain suite command runs as class suite" "suite" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$CLASS_CMD" 2>/dev/null | grep -v '^TESTRUN ')"
+check "a command string that calls xcodebuild runs as class xcode" "xcode" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "$CLASS_CMD # xcodebuild test" 2>/dev/null | grep -v '^TESTRUN ')"
 printf '#!/bin/bash\n# runs the UI tests: xcodebuild test -scheme X\n%s\n' "$CLASS_CMD" > "$TMP/ui-tests.sh"
-check "a script file that calls xcodebuild runs as class xcode (stall limit 900 s, not 300 s)" "xcode" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "bash $TMP/ui-tests.sh" 2>/dev/null)"
+check "a script file that calls xcodebuild runs as class xcode (stall limit 900 s, not 300 s)" "xcode" "$(TESTRUN_CLASS=suite bash "$LOCK" --cmd "bash $TMP/ui-tests.sh" 2>/dev/null | grep -v '^TESTRUN ')"
 rm -rf "$TESTRUN_STATE_DIR"
 check "TESTRUN_DISABLE=1 admits nothing" "0" "$(TESTRUN_DISABLE=1 TESTRUN_CLASS=suite bash "$LOCK" --cmd "$COUNT_CMD" 2>/dev/null | grep -v '^TESTRUN' | head -1)"
 

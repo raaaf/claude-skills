@@ -15,6 +15,20 @@ check() { # name expected actual
   if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; FAIL=$((FAIL + 1)); fi
 }
 sleeper() { sleep 300 & SLEEPERS="$SLEEPERS $!"; LAST=$!; }
+# load_ok <label>: gate for cases whose verdict depends on wall-clock vs CPU timing. Waits up to 120 s for the
+# 1-minute load average to drop below 4 x cores; otherwise prints SKIP (counted, reported in the summary line).
+SKIPPED=0
+load_ok() {
+  local max n i=0 load
+  max=$(( 4 * $(sysctl -n hw.ncpu 2>/dev/null || echo 4) ))
+  while :; do
+    load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{ print $2 }')
+    awk -v l="${load:-0}" -v m="$max" 'BEGIN { exit !(l < m) }' && return 0
+    [ "$i" -ge 120 ] && break
+    sleep 1; i=$((i + 1))
+  done
+  echo "SKIP $1 (load $load)"; SKIPPED=$((SKIPPED + 1)); return 1
+}
 
 fresh_state() {
   rm -rf "$TMP/state"
@@ -66,6 +80,7 @@ check "a slot whose holder died is reclaimed" "0" "$(rc_of "$(adm suite events "
 unset TESTRUN_CAP_SUITE
 
 # --- FIFO: the older waiter goes first -------------------------------------------------------------
+if load_ok "FIFO: the older waiter goes first"; then
 fresh_state
 export TESTRUN_CAP_SUITE=1 TESTRUN_WAIT_MAX=12
 sleeper; F1=$LAST; sleeper; F2=$LAST; sleeper; F3=$LAST
@@ -82,6 +97,7 @@ check "the older waiter is admitted first" "yes" "$([ -s "$TMP/w2" ] && [ ! -s "
 lib tr_release "$(id_of "$(cat "$TMP/w2")")"
 wait "$W2" "$W3"
 check "the younger waiter follows" "0" "$(rc_of "$(cat "$TMP/w3")")"
+fi
 unset TESTRUN_CAP_SUITE; export TESTRUN_WAIT_MAX=2
 
 # --- stagger: a later candidate waits after an admission --------------------------------------------
@@ -180,9 +196,11 @@ check "a second stall ends with 124 and TEST_STALLED_TWICE after exactly one res
 # window's CPU delta when the machine is heavily loaded (load ~170 on 12 cores, 2026-10-13); the sum of sixteen does.
 burn() { echo 'end=$((SECONDS+'"$1"')); for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do (while [ $SECONDS -lt $end ]; do :; done) & done; wait'; }
 
+if load_ok "a silent run that burns CPU is not a stall"; then
 wd_env
 export TESTRUN_CPU_DELTA=0 TEST_STALL_SECONDS=12   # any whole CPU second counts as progress, over a wider window; wd_env resets both
 check "a silent run that burns CPU is not a stall" "0 0" "$(R=$(run suite bash -c "$(burn 16)"); echo "$R $(count '^TEST_RESTART' "$TMP/err")")"
+fi
 
 wd_env; rm -f "$TMP/pf"
 R=$(run xcode bash -c "set -m; sleep 302 & echo \$! > $TMP/pf; set +m; sleep 300" build)
@@ -199,6 +217,7 @@ R=$(run suite bash "$TMP/nested.sh")
 check "a nested tr_run adds no ticket and no second watchdog" "0 1" "$R $(tr -d ' \n' < "$TMP/out")"
 
 # xcode: testmanagerd/simulator CPU counts as progress; the warning comes before the kill
+if load_ok "xcode runs with a busy simulator side"; then
 wd_env
 export TEST_WARN_SECONDS_XCODE=3 TESTRUN_XCODE_EXTRA_RE='fake-sim-busy' TESTRUN_CPU_DELTA=0
 bash -c "$(burn 11)" fake-sim-busy "$TMP/" &
@@ -206,6 +225,7 @@ BUSY=$!
 check "a quiet xcode run survives while the simulator side is busy" "0" "$(run xcode bash -c 'sleep 9' build)"
 check "an xcode run silent for the warn threshold logs a warning, not a kill" "1 0" "$(count 'TESTRUN warn' "$TMP/err") $(count 'TESTRUN stall' "$TMP/err")"
 kill "$BUSY" 2>/dev/null; wait "$BUSY" 2>/dev/null
+fi
 wd_env
 check "the same quiet run without simulator activity is stalled" "124" "$(run xcode bash -c 'sleep 30' build)"
 
@@ -294,19 +314,23 @@ lib _tr_prune
 check "pruning a dead ticket removes its .out and fifo files" "0" "$(ls "$TESTRUN_STATE_DIR/runs" | wc -l | tr -d ' ')"
 
 # the watch loop notices an exit within a tick, not after a full sample interval
+if load_ok "a short run returns long before one sample interval"; then
 wd_env
 export TESTRUN_WATCH_POLL=15
 T0=$(date +%s); R=$(run suite sleep 2); T1=$(date +%s)
 check "a short run returns long before one sample interval (15 s) has passed" "0 yes" "$R $([ $((T1 - T0)) -lt 8 ] && echo yes || echo "no ($((T1 - T0)) s)")"
+fi
 export TESTRUN_WATCH_POLL=1
 
 # extra CPU is attributed to the run's own device: A idles, B burns, so counting B for A would show
 unset TESTRUN_XCODE_EXTRA_RE
+if load_ok "extra CPU counts the run's own device only"; then
 bash -c 'sleep 8; :' "CoreSimulator/Devices/AAAA-A/launchd_sim" & SLEEPERS="$SLEEPERS $!"
 bash -c "$(burn 8); :" "CoreSimulator/Devices/BBBB-B/launchd_sim" & SLEEPERS="$SLEEPERS $!"
 sleep 4
 EA=$(lib tr_extra_cpu AAAA-A); EB=$(lib tr_extra_cpu BBBB-B); EN=$(lib tr_extra_cpu)
 check "extra CPU counts the run's own device only (A idle, B busy; no UDID counts nothing)" "yes yes 0" "$([ "$EA" -le 1 ] && echo yes || echo "no $EA") $([ "$EB" -ge 2 ] && echo yes || echo "no $EB") $EN"
+fi
 export TESTRUN_XCODE_EXTRA_RE='no-such-process-xyz'
 
 # ===== Part 1c: cache, database names, cleanup ========================================================
@@ -408,4 +432,5 @@ unset FAKE_PG_ROWS
 
 # @@PARTS@@
 
-[ "$FAIL" -eq 0 ] && echo "LIB_TESTRUN_TEST=OK" || { echo "LIB_TESTRUN_TEST=FAIL ($FAIL)"; exit 1; }
+SKIPNOTE=""; [ "$SKIPPED" -eq 0 ] || SKIPNOTE=" ($SKIPPED skipped under load)"
+[ "$FAIL" -eq 0 ] && echo "LIB_TESTRUN_TEST=OK$SKIPNOTE" || { echo "LIB_TESTRUN_TEST=FAIL ($FAIL)"; exit 1; }
