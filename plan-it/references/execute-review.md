@@ -56,9 +56,12 @@ The prompt MUST include:
 > instead of writing local component CSS. Web: after building, run the screenshot helper once
 > (`~/.claude/skills/screens/bin/ui-shots.mjs`, through the test-lock admission; use the repo's
 > documented login recipe for auth) and report the three image paths, the final URL and the page
-> title; a login page as final URL means `SELF-CHECK: unreachable`. Native: no screenshot loop;
-> review the code against the guide and report `SELF-CHECK: code review only`. Do not re-shoot
-> after fixes. Add the fields `SELF-CHECK` and `DEVIATIONS` to the report.
+> title; a login page as final URL means `SELF-CHECK: unreachable`. Then open all three images
+> (Read tool) and walk the guide's checklist against them: clipped or overflowing text, edges,
+> spacing order, hierarchy, dark mode. Fix what fails and re-shoot exactly once; never a third run.
+> Native: no screenshot loop; review the code against the guide and report
+> `SELF-CHECK: code review only`. Add the fields `SELF-CHECK` (paths, URL, title, what the images
+> showed) and `DEVIATIONS` to the report.
 
 3. The report format:
 
