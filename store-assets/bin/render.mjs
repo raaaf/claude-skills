@@ -244,18 +244,21 @@ function buildPhoneSpec({ projectRoot, devicesSpec, deviceKind, part, locale, io
   const byTheme = part.source[locale];
   const theme = byTheme.light ? 'light' : Object.keys(byTheme)[0];
   const screenPath = path.join(projectRoot, byTheme[theme]);
-  const topColor = sampleTopColor(screenPath, part.crop_top_px ?? 0);
+  const native = !!part.native_status_bar;
+  const cropTopPx = native ? 0 : part.crop_top_px ?? 0;
+  const topColor = native ? '' : sampleTopColor(screenPath, cropTopPx);
   const barTheme = luminance(topColor) < 0.5 ? 'light' : 'dark';
   const { bezelPath, statusBarPath, maskPath } = devicePaths(devicesSpec, deviceKind, {
     color: deviceKind === 'iphone' ? iosColor : undefined,
-    theme: barTheme,
+    theme: native ? 'light' : barTheme,
   });
   return {
     screenSrc: absFileUrl(screenPath),
-    cropTopPx: part.crop_top_px ?? 0,
+    cropTopPx,
     topColor,
+    native,
     bezelSrc: absFileUrl(bezelPath),
-    statusBarSrc: absFileUrl(statusBarPath),
+    statusBarSrc: native ? '' : absFileUrl(statusBarPath),
     maskSrc: maskPath ? absFileUrl(maskPath) : '',
   };
 }
@@ -314,6 +317,14 @@ function baseParams(projectRoot, config, format, scene, locale) {
     subline: text.subline || '',
     logoSrc: projectFileUrl(projectRoot, config.brand.logo),
   };
+  if (scene.sheen) params.sheen = '1';
+  // Optional, default off: `format_options.<format-id>` = { edge: bool, headline_scale: number }
+  // and per-scene `device_dy_pct` (shifts the device vertically, % of canvas height).
+  const fmtOpts = config.format_options?.[format.id];
+  if (fmtOpts?.edge) params.edge = '1';
+  if (fmtOpts?.headline_scale) params.headlineScale = String(fmtOpts.headline_scale);
+  if (scene.device_dy_pct) params.deviceDy = String(scene.device_dy_pct);
+  if (scene.layout === 'combo' && scene.combo.geometry) params.comboGeometry = JSON.stringify(scene.combo.geometry);
   if (scene.pills?.[locale]) {
     params.pill1 = scene.pills[locale][0] || '';
     params.pill2 = scene.pills[locale][1] || '';
@@ -401,6 +412,7 @@ async function renderOne({ projectRoot, config, devicesSpec, scene, format, loca
       screenSrc: single.screenSrc,
       cropTopPx: String(single.cropTopPx),
       topColor: single.topColor,
+      nativeStatusBar: single.native ? '1' : '',
       bezelSrc: single.bezelSrc,
       statusBarSrc: single.statusBarSrc,
       maskSrc: single.maskSrc,

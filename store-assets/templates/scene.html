@@ -93,7 +93,7 @@
         text-align: center;
         text-wrap: balance;
         margin: 0 7%;
-        font-size: calc(var(--w) * 0.12);
+        font-size: calc(var(--w) * 0.12 * var(--hs, 1));
       }
       #subline {
         font-weight: 500;
@@ -225,6 +225,9 @@
 
       document.documentElement.style.setProperty('--w', width + 'px');
       document.documentElement.style.setProperty('--h', height + 'px');
+      document.documentElement.style.setProperty('--hs', get('headlineScale', '1'));
+      // Optional vertical device shift (% of canvas height), default 0.
+      const deviceDy = (Number(get('deviceDy', 0)) / 100) * height;
       document.documentElement.style.width = width + 'px';
       document.documentElement.style.height = height + 'px';
       document.body.style.width = width + 'px';
@@ -232,6 +235,8 @@
       document.body.style.color = fg;
       document.body.style.background = isLandscape
         ? bg
+        : get('sheen', '') === '1'
+        ? `linear-gradient(160deg, color-mix(in oklch, ${bg}, white 8%) 0%, ${bg} 55%, color-mix(in oklch, ${bg}, black 3%) 100%)`
         : `radial-gradient(85% 40% at 50% 60%, color-mix(in oklch, ${bg}, white 12%) 0%, transparent 70%), ` +
           `linear-gradient(180deg, color-mix(in oklch, ${bg}, white 5%) 0%, ${bg} 50%, color-mix(in oklch, ${bg}, black 14%) 100%)`;
       if (isLandscape) document.body.classList.add('landscape');
@@ -320,24 +325,26 @@
           screen.style.width = deviceSpec.sw + 'px';
           screen.style.height = deviceSpec.sh + 'px';
           screen.style.borderRadius = deviceSpec.r + 'px';
-          screen.style.background = spec.topColor;
+          if (!spec.native) screen.style.background = spec.topColor;
 
           const shot = document.createElement('img');
           shot.className = 'shot';
           shot.src = spec.screenSrc;
-          shot.style.top = deviceSpec.sb - spec.cropTopPx + 'px';
+          shot.style.top = spec.native ? '0px' : deviceSpec.sb - spec.cropTopPx + 'px';
           screen.appendChild(shot);
 
-          const band = document.createElement('div');
-          band.className = 'band';
-          band.style.height = deviceSpec.sb + 'px';
-          band.style.background = spec.topColor;
-          screen.appendChild(band);
+          if (!spec.native) {
+            const band = document.createElement('div');
+            band.className = 'band';
+            band.style.height = deviceSpec.sb + 'px';
+            band.style.background = spec.topColor;
+            screen.appendChild(band);
 
-          const statusBar = document.createElement('img');
-          statusBar.className = 'statusbar';
-          statusBar.src = spec.statusBarSrc;
-          screen.appendChild(statusBar);
+            const statusBar = document.createElement('img');
+            statusBar.className = 'statusbar';
+            statusBar.src = spec.statusBarSrc;
+            screen.appendChild(statusBar);
+          }
 
           const mask = spec.maskSrc
             ? (() => {
@@ -399,10 +406,12 @@
         // the fit search below lands on. Order matters: back appended
         // first (painted behind), front second (painted on top), matching
         // the approved prototype.
-        const ROTATE_FRONT = -4;
-        const ROTATE_BACK = 5;
-        const OFFSET_X = 0.5; // back's left, past front's left, in device widths
-        const OFFSET_Y = 0.05; // back's top, past front's top, in device heights
+        // Optional per-scene override (`combo.geometry`), default unchanged.
+        const geo = getJSON('comboGeometry') || {};
+        const ROTATE_FRONT = geo.rotate_front ?? -4;
+        const ROTATE_BACK = geo.rotate_back ?? 5;
+        const OFFSET_X = geo.offset_x ?? 0.5; // back's left, past front's left, in device widths
+        const OFFSET_Y = geo.offset_y ?? 0.05; // back's top, past front's top, in device heights
         // Round 8: dropped the full-visibility bottom constraint (the pair
         // may now run off the canvas bottom like a single-device scene),
         // widened the side margin, sized as large as that margin allows.
@@ -490,6 +499,14 @@
         box.style.borderRadius = (boxW * deviceSpec.cornerRadiusPct) / 100 + 'px';
         box.style.overflow = 'hidden';
         box.style.boxShadow = deviceSpec.shadow;
+        if (get('edge', '') === '1') {
+          // Optional device edge: 12% foreground hairline plus the soft shadow.
+          const m = /^#?([0-9a-f]{6})$/i.exec(fg);
+          const rgb = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [128, 128, 128];
+          const hair = Math.max(2, Math.round(width * 0.0012));
+          box.style.boxShadow = `0 0 0 ${hair}px rgba(${rgb.join(',')}, 0.12), 0 ${width * 0.012}px ${width * 0.04}px rgba(0, 0, 0, 0.22), ${deviceSpec.shadow}`;
+        }
+        slot.style.top = height * 0.4 + 'px';
         const shot = document.createElement('img');
         shot.src = get('screenSrc', '');
         shot.style.display = 'block';
@@ -508,6 +525,7 @@
           screenSrc: get('screenSrc', ''),
           cropTopPx: Number(get('cropTopPx', 0)),
           topColor: get('topColor', '#000000'),
+          native: get('nativeStatusBar', '') === '1',
           bezelSrc: get('bezelSrc', ''),
           statusBarSrc: get('statusBarSrc', ''),
           maskSrc: get('maskSrc', '') || null,
@@ -517,6 +535,7 @@
         slot.className = 'phone-slot';
         slot.style.left = '50%';
         slot.style.transform = `translateX(-50%) scale(${scale})`;
+        slot.style.top = height * 0.4 + deviceDy + 'px';
         slot.appendChild(buildDeviceBox(single, device, deviceSpec));
         devicesEl.appendChild(slot);
       }

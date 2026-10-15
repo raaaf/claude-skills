@@ -116,6 +116,8 @@ here). One config per project.
     `<theme>` is normally `light`; a scene can point at `dark` instead (e.g. `07-tasks`, "uses the
     dark source") to render that screen's dark-mode capture. A scene without a source for a
     configured locale/theme fails pre-flight (Edge Cases).
+  - `sheen` (optional, boolean, portrait formats) — replaces the default background glow with a diagonal 160deg brand sheen (18% white wash top-left to the background color to 6% black).
+  - `native_status_bar` (optional, boolean, `single` scene or combo part, iPhone) — the source already shows a native status bar: no crop, no sampled-color band, no status-bar overlay; the shot sits at the top of the screen.
   - `crop_top_px` (layout `single`) — how many pixels to hide from the top of the source
     screenshot (its own page header), in the device's own native pixel space (the whole device,
     screenshot included, is later scaled down as one unit, so this number is canvas-size
@@ -154,6 +156,16 @@ here). One config per project.
 `play-feature` is not scene-driven: `bin/render.mjs` always renders it once per locale from
 `scenes[0]` (the config's hero scene), reusing that scene's `background`/`foreground`/`headline`
 plus the project logo, since Play accepts exactly one Feature Graphic (`store-specs.md`).
+
+## Optional presentation fields (all default off)
+
+- `format_options.<format-id>` (top level) — `{ "edge": true, "headline_scale": 0.85 }`. `edge` draws a
+  hairline (12% of the scene foreground) plus a soft shadow around the frameless iPad screenshot;
+  `headline_scale` multiplies the headline font size (shrink-to-fit still applies).
+- `device_dy_pct` (scene) — shifts the single phone device (not the frameless iPad) vertically by this percent of the canvas
+  height (negative = up), e.g. to make the bottom crop fall between rows.
+- `combo.geometry` (combo scene) — `{ offset_x, offset_y, rotate_front, rotate_back }` overriding the
+  back phone's offset (device widths/heights) and the rotations.
 
 ## CLI flags (`bin/render.mjs`)
 
