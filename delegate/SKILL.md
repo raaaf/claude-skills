@@ -195,11 +195,11 @@ silently, no note in the report.
 
 Load the needed tools via `ToolSearch` in one batch before starting: for a web project,
 `mcp__claude-in-chrome__*` (`tabs_context_mcp`, `tabs_create_mcp`, `navigate`, `computer`,
-`read_page`); for an iOS project, `mcp__Claude_Code_iOS_Simulator__control`.
+`read_page`); an iOS project needs no browser tools.
 
 - **Web:** start the dev server via the project's own mechanism (`.claude/launch.json` or the
   project's run command) if nothing is serving, and confirm the URL responds before opening a tab.
-- **iOS:** `attach` to the booted simulator, then navigate via `open_url`/`tap`.
+- **iOS:** build for the owner's own iPhone and install via `xcrun devicectl` (global CLAUDE.md, "Native live walkthroughs"); never Device Hub. Tell the owner which screen to open.
 
 Step by step, one completed item at a time, with the user's approval before moving to the next:
 
