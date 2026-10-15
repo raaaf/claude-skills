@@ -14,7 +14,8 @@
 //   --creds-file <path>             two lines: user, then password (never pass credentials as arguments)
 //
 // Prints the image paths, the final URL and the page title. If the final URL looks like a login page
-// the result is "SELF-CHECK: unreachable" and the exit code is 2. One retry per shot, no re-shoot loop.
+// the result is "SELF-CHECK: unreachable" and the exit code is 2. Every shot's final URL is checked, plus a
+// visible password input as a second login signal; a login that does not succeed also exits 2. One retry per shot, no re-shoot loop.
 //
 // Playwright comes from the private cache shared with store-assets (~/.cache/store-assets): the pinned
 // version is installed there once if missing. Nothing is ever installed into the project being checked.
@@ -32,34 +33,51 @@ const SHOTS = [
   { name: '375-dark', width: 375, height: 812, scheme: 'dark' },
   { name: '1280-light', width: 1280, height: 800, scheme: 'light' },
 ];
-const LOGIN_PATH = /\/(login|signin|sign-in|auth)(\/|$|\?)/i;
+const LOGIN_PATH = /\/(login|log-in|signin|sign-in|sign_in|anmelden|session\/new|auth)(\/|$)/i;
 
-function fail(message) {
-  console.error(`ERROR: ${message}`);
-  process.exit(1);
-}
+const VALUE_FLAGS = { '--url': 'url', '--out': 'out', '--login-url': 'loginUrl', '--creds-file': 'credsFile' };
 
+/** Parses and validates all arguments. Throws on anything unknown or incomplete; credentials are never accepted from argv. */
 export function parseArgs(argv) {
   const opts = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--url' || arg === '--out' || arg === '--login-url' || arg === '--creds-file') {
-      opts[arg.slice(2).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = argv[++i];
+    if (arg in VALUE_FLAGS) {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
+      opts[VALUE_FLAGS[arg]] = value;
     } else if (arg === '--form-login') {
-      opts.formLogin = { url: argv[++i], userField: argv[++i], passField: argv[++i] };
+      const [url, userField, passField] = argv.slice(i + 1, i + 4);
+      if (!url || !userField || !passField || [url, userField, passField].some((v) => v.startsWith('--'))) {
+        throw new Error('--form-login needs <url> <user-field> <pass-field>');
+      }
+      opts.formLogin = { url, userField, passField };
+      i += 3;
     } else {
-      fail(`unknown argument ${arg}`);
+      throw new Error(`unknown argument ${arg}`);
     }
   }
+  if (!opts.url) throw new Error('--url is required');
+  if (opts.formLogin && opts.loginUrl) throw new Error('use either --login-url or --form-login');
+  if (opts.formLogin && !opts.credsFile) throw new Error('--form-login needs --creds-file');
+  if (opts.credsFile && !opts.formLogin) throw new Error('--creds-file only belongs to --form-login');
+  if (opts.credsFile && !existsSync(opts.credsFile)) throw new Error(`creds file not found: ${opts.credsFile}`);
   return opts;
 }
 
+/** A URL path that names a login page. */
 export function isLoginUrl(url) {
   try {
     return LOGIN_PATH.test(new URL(url).pathname + '/');
   } catch {
     return false;
   }
+}
+
+/** Login page by URL, or by a visible password input as a second signal. */
+async function isLoginPage(page) {
+  if (isLoginUrl(page.url())) return true;
+  return (await page.locator('input[type="password"]:visible').count()) > 0;
 }
 
 async function loadPlaywright() {
@@ -81,21 +99,23 @@ async function loadPlaywright() {
 
 async function login(browser, opts) {
   const context = await browser.newContext();
-  const page = await context.newPage();
-  if (opts.loginUrl) {
-    await page.goto(opts.loginUrl, { waitUntil: 'networkidle' });
-  } else {
-    if (!opts.credsFile) fail('--form-login needs --creds-file');
-    const [user, pass] = readFileSync(opts.credsFile, 'utf8').split('\n');
-    const { url, userField, passField } = opts.formLogin;
-    await page.goto(url, { waitUntil: 'networkidle' });
-    await page.fill(`[name="${userField}"]`, user);
-    await page.fill(`[name="${passField}"]`, pass);
-    await Promise.all([page.waitForLoadState('networkidle'), page.press(`[name="${passField}"]`, 'Enter')]);
+  try {
+    const page = await context.newPage();
+    if (opts.loginUrl) {
+      await page.goto(opts.loginUrl, { waitUntil: 'networkidle' });
+    } else {
+      const [user, pass] = readFileSync(opts.credsFile, 'utf8').split('\n');
+      const { url, userField, passField } = opts.formLogin;
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.fill(`[name="${userField}"]`, user);
+      await page.fill(`[name="${passField}"]`, pass);
+      await Promise.all([page.waitForLoadState('networkidle'), page.press(`[name="${passField}"]`, 'Enter')]);
+    }
+    if (await isLoginPage(page)) return null;
+    return await context.storageState();
+  } finally {
+    await context.close();
   }
-  const state = await context.storageState();
-  await context.close();
-  return state;
 }
 
 async function shoot(browser, shot, opts, state, outDir) {
@@ -109,15 +129,21 @@ async function shoot(browser, shot, opts, state, outDir) {
     await page.goto(opts.url, { waitUntil: 'networkidle' });
     const file = path.join(outDir, `${shot.name}.png`);
     await page.screenshot({ path: file, fullPage: true });
-    return { file, finalUrl: page.url(), title: await page.title() };
+    return { file, finalUrl: page.url(), title: await page.title(), loginPage: await isLoginPage(page) };
   } finally {
     await context.close();
   }
 }
 
+/** Returns the exit code: 0 ok, 1 error, 2 unreachable (login not possible or a shot landed on a login page). */
 async function main() {
-  const opts = parseArgs(process.argv.slice(2));
-  if (!opts.url) fail('--url is required');
+  let opts;
+  try {
+    opts = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(`ERROR: ${error.message}`);
+    return 1;
+  }
   const outDir = opts.out ? path.resolve(opts.out) : mkdtempSync(path.join(os.tmpdir(), 'ui-shots-'));
   mkdirSync(outDir, { recursive: true });
 
@@ -125,7 +151,14 @@ async function main() {
   const browser = await chromium.launch();
   const results = [];
   try {
-    const state = opts.loginUrl || opts.formLogin ? await login(browser, opts) : null;
+    let state = null;
+    if (opts.loginUrl || opts.formLogin) {
+      state = await login(browser, opts);
+      if (!state) {
+        console.log('SELF-CHECK: unreachable (login did not succeed)');
+        return 2;
+      }
+    }
     for (const shot of SHOTS) {
       try {
         results.push(await shoot(browser, shot, opts, state, outDir));
@@ -134,20 +167,22 @@ async function main() {
         results.push(await shoot(browser, shot, opts, state, outDir));
       }
     }
+  } catch (error) {
+    console.error(`ERROR: ${error.message}`);
+    return 1;
   } finally {
     await browser.close();
   }
 
-  for (const r of results) console.log(r.file);
-  const { finalUrl, title } = results[0];
-  console.log(`final URL: ${finalUrl}`);
-  console.log(`title: ${title}`);
-  if (isLoginUrl(finalUrl)) {
-    console.log('SELF-CHECK: unreachable (final URL is a login page)');
-    process.exit(2);
+  for (const r of results) console.log(`${r.file}  ${r.finalUrl}`);
+  console.log(`title: ${results[0].title}`);
+  if (results.some((r) => r.loginPage)) {
+    console.log('SELF-CHECK: unreachable (a shot landed on a login page)');
+    return 2;
   }
+  return 0;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => fail(error.message));
+  process.exitCode = await main();
 }

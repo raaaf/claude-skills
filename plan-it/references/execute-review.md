@@ -4,6 +4,15 @@ Follow-through for written plans. Core rule stays: the orchestrator never edits 
 
 **Two callers, two workspaces:** `/plan-it execute` ALWAYS dispatches into an isolated worktree (`{WORKDIR}` = worktree path, executor commits there). `/delegate` dispatches into the working tree by default (`{WORKDIR}` = repo root, executor does NOT commit — review happens before every commit; worktree only with `--worktree`/risk, then like plan-it). Substitute the spots marked `{WORKDIR}`/`{COMMIT_RULE}` below accordingly.
 
+## Contents
+
+- [`/plan-it execute <plan-file>`: Dispatch + Review Executor](#plan-it-execute-plan-file--dispatch--review-executor)
+- [Preconditions](#preconditions-check-all-otherwise-stop-and-say-why)
+- [Dispatch](#dispatch)
+- [Review](#review-the-orchestrators-actual-work)
+- [Verdict](#verdict)
+- [`/plan-it reconcile`: Maintain the Plan Backlog](#plan-it-reconcile--maintain-the-plan-backlog)
+
 ## `/plan-it execute <plan-file>` — Dispatch + Review Executor
 
 ### Preconditions (check all, otherwise stop and say why)
@@ -53,15 +62,17 @@ The prompt MUST include:
 > UI task. Before building, follow the repo's DESIGN.md link chain to a composition guide, if any
 > (none: follow sibling screens) and write a one-line-per-block hierarchy sketch. Use the design
 > system's layout primitives and components only; when nothing fits, stop and propose an addition
-> instead of writing local component CSS. Web: after building, run the screenshot helper once
-> (`~/.claude/skills/screens/bin/ui-shots.mjs`, through the test-lock admission; use the repo's
-> documented login recipe for auth) and report the three image paths, the final URL and the page
-> title; a login page as final URL means `SELF-CHECK: unreachable`. Then open all three images
-> (Read tool) and walk the guide's checklist against them: clipped or overflowing text, edges,
-> spacing order, hierarchy, dark mode. Fix what fails and re-shoot exactly once; never a third run.
-> Native: no screenshot loop; review the code against the guide and report
-> `SELF-CHECK: code review only`. Add the fields `SELF-CHECK` (paths, URL, title, what the images
-> showed) and `DEVIATIONS` to the report.
+> instead of writing local component CSS. Web: after building, run the screenshot helper once,
+> exactly in this form (the lock admits one run at a time):
+> `bash <skills>/audit/bin/test-lock.sh --cmd "node <skills>/screens/bin/ui-shots.mjs --url <url> --out <dir> [--login-url <dev login GET> | --form-login <url> <user-field> <pass-field> --creds-file <path>]"`
+> with the repo's documented login recipe for auth. Credentials only via `--creds-file`, never on
+> the command line. Report the three image paths, the final URL and the page title. On
+> `SELF-CHECK: unreachable` (exit 2) report it as is: no workaround, no other login route; the
+> reviewer pass still runs. Otherwise open all three images (Read tool) and walk the guide's
+> checklist against them: clipped or overflowing text, edges, spacing order, hierarchy, dark mode.
+> Fix what fails and re-shoot exactly once; never a third run. Native: no screenshot loop; review
+> the code against the guide and report `SELF-CHECK: code review only`. Add the fields
+> `SELF-CHECK` (paths, URL, title, what the images showed) and `DEVIATIONS` to the report.
 
 3. The report format:
 
