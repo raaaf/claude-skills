@@ -79,6 +79,8 @@ Inline (no file; when a plan's `## Delegate spec` exists, reuse it verbatim, see
 **STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
 ```
 
+**Visual task** (Phase 6's test): the briefing also carries the UI block from `plan-it/references/execute-review.md` (Dispatch), and the executor's report adds `SELF-CHECK` and `DEVIATIONS`. Review views the shots once and runs a `ui-ux-reviewer` pass against the composition guide.
+
 ## Phase 3.5: Oracle tests (working-tree mode only)
 
 Skip with a one-line note (report `oracle=skipped`, run the reset block below) when: the mini-spec has no `[logic test]` step, `--no-oracle` was given, or the run uses `--worktree` (a worktree holds only committed files; `/plan-it execute` keeps its own flow). Otherwise the tests come from a separate agent that sees the contract, not the implementation. Detail, contract rules, triage: `references/oracle.md`.

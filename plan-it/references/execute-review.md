@@ -48,6 +48,18 @@ The prompt MUST include:
 > as a STOP condition and report instead of building it.
 > Answer exactly in the report format.
 
+**UI tasks** (the affected files contain a frontend file, or the task names a screen, page or component): add this block to the prompt after the preamble.
+
+> UI task. Before building, follow the repo's DESIGN.md link chain to a composition guide, if any
+> (none: follow sibling screens) and write a one-line-per-block hierarchy sketch. Use the design
+> system's layout primitives and components only; when nothing fits, stop and propose an addition
+> instead of writing local component CSS. Web: after building, run the screenshot helper once
+> (`~/.claude/skills/screens/bin/ui-shots.mjs`, through the test-lock admission; use the repo's
+> documented login recipe for auth) and report the three image paths, the final URL and the page
+> title; a login page as final URL means `SELF-CHECK: unreachable`. Native: no screenshot loop;
+> review the code against the guide and report `SELF-CHECK: code review only`. Do not re-shoot
+> after fixes. Add the fields `SELF-CHECK` and `DEVIATIONS` to the report.
+
 3. The report format:
 
 ```
@@ -56,6 +68,8 @@ STEPS: per step — done/skipped + verify result
 STOPPED BECAUSE: (only if STOPPED) which STOP condition, what was observed
 FILES CHANGED: list
 NOTES: deviations, surprises, judgment calls
+SELF-CHECK: (UI tasks only) image paths, final URL, page title, or unreachable / code review only
+DEVIATIONS: (UI tasks only) each guide rule not followed with the reason, or none
 ```
 
 Note on fresh worktrees (not applicable in the working-tree case): git history yes, `node_modules`/build artifacts no — the executor must install dependencies first. That's expected, not a deviation.

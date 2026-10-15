@@ -43,5 +43,7 @@ or skipped verification explicitly. Also run a same-diff duplication self-check 
 at block level: if the same method/logic sequence, or the same guard/resolver/error-mapping
 block, appears in two or more places you touched, extract it rather than leaving it duplicated.
 
+For a UI task, follow the UI block in the task prompt: read the composition guide it names, write the hierarchy sketch, and report `SELF-CHECK` and `DEVIATIONS`.
+
 Your task prompt states whether you commit (isolated worktree) or leave changes uncommitted
 (working tree, review happens before the commit) — follow whichever it specifies.
