@@ -83,6 +83,7 @@ subagents, see Conventions).
 | `/plan-it` | inherit (session model) | Iterative plan builder, parallel challenges |
 | `/delegate` | inherits session model (see `delegate/CLAUDE.md`) | Default implementation flow: the expensive model analyzes and reviews, Sonnet implements |
 | `/screens` | inherit (session model) | Screenshot catalog of every view in every applicable state plus App-Store marketing renders |
+| `/readiness` | inherit (session model) | Read-only production-readiness audit: Explore agents per checklist group, orchestrator verifies and writes one collection + plan per app and an index |
 | `/store-assets` | inherit (session model) | App Store / Play Store screenshot stills from a project's own app screens + config: real device bezels, fixed headline/device grid, two-phone hero composition |
 
 ## Effort levels
