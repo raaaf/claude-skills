@@ -13,7 +13,7 @@ Built and maintained by [Rafael Alex](https://rafaelalex.de).
 | `/delegate` | Default way to implement: the session model writes a mini-spec, Sonnet builds it, the session model reviews the diff. |
 | `/ship` | Docs sync, commit, audit gate, push, deploy, verify. |
 | `/screens` | Builds and maintains a complete screenshot catalog of every view in every state, plus App-Store marketing renders. Incremental after the first run. |
-| `/readiness` | Read-only production-readiness audit of one or more repos against a grouped checklist: parallel Explore agents per area, high-severity claims verified by the orchestrator, one collection-and-plan file per app plus an index. Fixes come later per package via `/delegate`. |
+| `/readiness` | Read-only production-readiness audit of one or more repos against a grouped checklist (auth, data, security, ops, tests, billing, AI, UX, legal pages, metadata and sharing images): parallel Explore agents per area, high-severity claims verified by the orchestrator, one collection-and-plan file per app plus an index. Fixes come later per package via `/delegate`. |
 | `/store-assets` | Renders App Store / Play Store screenshot stills from a project's own app screens and a project-local config: real device bezels, a fixed headline/device grid, a two-phone hero composition. |
 
 Archived skills: /full-audit and /design-audit were removed on 2026-10-02; restore with `git checkout archive/pre-slim-2026-10-02 -- full-audit design-audit`.
