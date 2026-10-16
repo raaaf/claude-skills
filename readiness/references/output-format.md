@@ -120,7 +120,7 @@ Nicht geprüft (<reason>): <list>.
 
 ## Checkliste (gruppiert)
 
-<Sections A to K from checklist.md as one paragraph each, in the user's language.>
+<Sections A to L from checklist.md as one paragraph each, in the user's language.>
 ```
 
 "Dringend" lists only `hoch` gaps that are exploitable now or touch children's, health or payment

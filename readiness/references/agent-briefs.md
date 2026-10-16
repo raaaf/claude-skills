@@ -16,10 +16,10 @@ are N.a. for the app are dropped from the group, not handed to the agent with "s
 
 | Stack | Group 1 | Group 2 | Group 3 |
 |---|---|---|---|
-| Laravel / PHP web app | A Auth, F Billing, G Integrations | B Data, C Security | D Operations, E Tests, I UX, J Code, K Legal |
-| Native app + own backend (Bun/Hono, Node, Workers) | Backend: A, B, C, G, H, plus "Native and device-backend additions" (server side) | D Operations, E Tests, iOS/macOS client: I, J, K, plus the additions (client side) | - |
-| Worker / serverless only | A, B, C, G, H | D, E, I, J, K | - |
-| Light check (small app) | A, C, D, H, K in one agent | - | - |
+| Laravel / PHP web app | A Auth, F Billing, G Integrations | B Data, C Security | D Operations, E Tests, I UX, J Code, K Legal, L Web presence |
+| Native app + own backend (Bun/Hono, Node, Workers) | Backend: A, B, C, G, H, plus "Native and device-backend additions" (server side) | D Operations, E Tests, iOS/macOS client: I, J, K, L, plus the additions (client side) | - |
+| Worker / serverless only | A, B, C, G, H | D, E, I, J, K, L | - |
+| Light check (small app) | A, C, D, H, K, L in one agent | - | - |
 
 A Laravel app with AI features adds H to group 2. An app with a public API adds the API rows of G
 to group 1. More than three groups costs more than it finds; split a group only when the repo is

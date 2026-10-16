@@ -1,6 +1,6 @@
 # Production-readiness checklist
 
-The areas every app is checked against. Each area letter (A to K) is the `Bereich` column in the
+The areas every app is checked against. Each area letter (A to L) is the `Bereich` column in the
 app file and the unit an Explore agent gets in its brief.
 
 ## Contents
@@ -18,6 +18,7 @@ app file and the unit an Explore agent gets in its brief.
 - I. UX
 - J. Code and organisation
 - K. Legal: privacy policy and imprint
+- L. Web presence: metadata, sharing images, icons
 - Native and device-backend additions
 
 ## Rating scale
@@ -50,7 +51,7 @@ agent spends turns on it.
   impersonation are N.a.; device binding, token rotation and per-device deletion become relevant.
 - Local tools without a server or users (menu bar utilities, CLIs, static sites): skip the app
   entirely and list it under "Nicht geprüft" in the index.
-- A light check (one agent, sections A, C, D, H, K only) is enough for small apps with few users and
+- A light check (one agent, sections A, C, D, H, K, L only) is enough for small apps with few users and
   no payments.
 
 ## A. Auth and access
@@ -234,6 +235,35 @@ that should link to them.
 - App Store privacy labels, Play data-safety form and privacy manifest match the policy
 - Date of the policy is current after the last change to data flows
 - Client projects: the client is named as controller, not the developer
+
+## L. Web presence: metadata, sharing images, icons
+
+Relevant for every publicly reachable web page (marketing site, app login, public share links,
+invite pages). For native-only apps, check the store listing and the landing page instead. Check
+the layout templates and the generated HTML, not only one page.
+
+- `<title>` and meta description per page, unique, not the framework default ("Laravel", "Vite
+  App")
+- `<html lang>` set to the page language; `hreflang` alternates on multilingual pages
+- Canonical URL per page; no indexable duplicates (www and apex, trailing slash, query strings)
+- Open Graph tags (`og:title`, `og:description`, `og:image`, `og:url`, `og:type`) and
+  `twitter:card` on every shareable page
+- Sharing image (1200x630, absolute HTTPS URL, under about 5 MB); per-entity images for shared
+  content (an event, an invite, a quote link) instead of one generic image; private content shows
+  no private data in the preview
+- Pages behind a share link that should stay private send `noindex` and leak nothing via OG tags
+- Favicon set: `favicon.ico` or SVG favicon, 32px PNG, `apple-touch-icon` 180px, all served with
+  200 and the right content type; no framework default icon left in `public/`
+- Web app manifest with name, icons (192, 512, maskable), `theme_color`, `background_color` where
+  the app is installable or a PWA
+- `theme-color` meta for light and dark
+- `robots.txt` that matches intent (staging and admin disallowed, production allowed) and a
+  `sitemap.xml` for public pages, referenced from `robots.txt`
+- Structured data (JSON-LD) where it helps search results (organisation, product, event, FAQ)
+- Custom 404 and 500 pages with the same branding and a way back
+- Native: app icon in all required sizes without alpha, store listing texts and screenshots
+  current, universal links / app links with `apple-app-site-association` and `assetlinks.json`
+  served correctly, `apple-itunes-app` smart banner on the landing page where it applies
 
 ## Native and device-backend additions
 

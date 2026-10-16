@@ -1,6 +1,6 @@
 ---
 name: readiness
-description: "Read-only production-readiness audit of one or more app repos against a grouped checklist (auth, data, security, operations, tests, billing, integrations, AI, UX, code, privacy policy and imprint). Detects the stack, marks irrelevant sections N.a., dispatches parallel Explore agents per area group with explicit repo paths, verifies every high-severity claim itself, then writes one collection-and-plan file per app plus an index with urgent gaps, cross-cutting gaps and open decisions. Fixes nothing; each plan package is a later /delegate run. Use when the user asks whether an app is production ready, wants a readiness or launch check across apps, or asks what an app needs beyond a prototype."
+description: "Read-only production-readiness audit of one or more app repos against a grouped checklist (auth, data, security, operations, tests, billing, integrations, AI, UX, code, privacy policy and imprint, metadata and sharing images). Detects the stack, marks irrelevant sections N.a., dispatches parallel Explore agents per area group with explicit repo paths, verifies every high-severity claim itself, then writes one collection-and-plan file per app plus an index with urgent gaps, cross-cutting gaps and open decisions. Fixes nothing; each plan package is a later /delegate run. Use when the user asks whether an app is production ready, wants a readiness or launch check across apps, or asks what an app needs beyond a prototype."
 when_to_use: "/readiness, ist die App produktionsreif, Production-Readiness prüfen, was fehlt bis Produktion, Launch-Check, alle Apps gegen die Checkliste prüfen, was braucht die App jenseits vom Prototyp"
 argument-hint: "<repo path> [<repo path> ...] [--light] [--out <dir>]"
 model: inherit
@@ -48,7 +48,7 @@ end and stop.
 ## Phase 0: Scope
 
 1. Parse args: one or more repo paths (relative to the cwd or absolute), `--light` (one agent per
-   app, sections A, C, D, H, K), `--out <dir>` (default: `docs/plans` under the cwd). No path given:
+   app, sections A, C, D, H, K, L), `--out <dir>` (default: `docs/plans` under the cwd). No path given:
    use the cwd when it is a git repo, otherwise ask which repos to check.
 2. Resolve every path to an absolute path and confirm it exists (`test -d`). A missing path is
    reported and skipped, never guessed.
