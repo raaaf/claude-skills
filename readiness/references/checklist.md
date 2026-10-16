@@ -1,6 +1,6 @@
 # Production-readiness checklist
 
-The areas every app is checked against. Each area letter (A to J) is the `Bereich` column in the
+The areas every app is checked against. Each area letter (A to K) is the `Bereich` column in the
 app file and the unit an Explore agent gets in its brief.
 
 ## Contents
@@ -17,6 +17,7 @@ app file and the unit an Explore agent gets in its brief.
 - H. AI features
 - I. UX
 - J. Code and organisation
+- K. Legal: privacy policy and imprint
 - Native and device-backend additions
 
 ## Rating scale
@@ -49,7 +50,7 @@ agent spends turns on it.
   impersonation are N.a.; device binding, token rotation and per-device deletion become relevant.
 - Local tools without a server or users (menu bar utilities, CLIs, static sites): skip the app
   entirely and list it under "Nicht geprüft" in the index.
-- A light check (one agent, sections A, C, D, H only) is enough for small apps with few users and
+- A light check (one agent, sections A, C, D, H, K only) is enough for small apps with few users and
   no payments.
 
 ## A. Auth and access
@@ -203,9 +204,36 @@ agent spends turns on it.
 - Handover documentation
 - Admin panel; support tools
 - Changelog for customers
-- Terms and privacy policy match what the code does
+- Terms of service match what the code does (privacy policy: section K)
 - Accounts, domains, repos owned by the company, not a person
 - Bus factor above one
+
+## K. Legal: privacy policy and imprint
+
+Relevant for every app with users in the EU, including free and private ones that are publicly
+reachable. Check the source of the pages (route, view, static file, CMS export) and every place
+that should link to them.
+
+- Imprint (Impressum, § 5 DDG) exists with name, postal address, e-mail, and for businesses the
+  register and VAT id; reachable in one click from every page, including login, error and mail
+  footers
+- Native apps link imprint and privacy policy in the app (settings or about screen) and in the
+  store listing
+- Privacy policy (Datenschutzerklärung) exists and is reachable in one click from every page, from
+  the signup form and from the app
+- Every processor the code actually calls is named (hosting, mail, payment, error tracking,
+  analytics, AI providers, push, CDN, fonts); grep the code and the dependency manifests for
+  third-party hosts and SDKs and compare against the policy text
+- Purpose and legal basis per processing; third-country transfers (US providers) with their basis
+- Retention periods in the policy match the deletion code (section B), and the deletion and export
+  rights described are actually implemented
+- Data processing agreements (AV-Vertrag) with each processor, at least listed
+- Consent banner only where non-essential cookies, tracking or external embeds load; nothing
+  non-essential loads before consent; no banner needed when nothing non-essential exists
+- Fonts, maps, videos and scripts from third-party hosts either self-hosted or behind consent
+- App Store privacy labels, Play data-safety form and privacy manifest match the policy
+- Date of the policy is current after the last change to data flows
+- Client projects: the client is named as controller, not the developer
 
 ## Native and device-backend additions
 
