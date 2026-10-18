@@ -38,7 +38,7 @@ const DEVICE_BY_FORMAT = { 'ios-6.9': 'iphone', 'play-phone': 'android', 'ios-ip
 // part's `ios_color` overrides this, except under --background (variant
 // renders want one uniform color across the whole strip). Backgrounds not
 // listed here fall back to the first color in store-specs.md "Devices".
-const IPHONE_COLOR_BY_BG = { '#04081f': 'Silver', '#f7f7f7': 'Black', '#e0452f': 'Glacier' };
+const IPHONE_COLOR_BY_BG = { '#04081f': 'Silver', '#f7f7f7': 'Black', '#f7f2ea': 'Black', '#e0452f': 'Glacier' };
 
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -316,6 +316,11 @@ function baseParams(projectRoot, config, format, scene, locale) {
     headline: text.headline,
     subline: text.subline || '',
     logoSrc: projectFileUrl(projectRoot, config.brand.logo),
+    pillAccent: config.brand.pill_accent ?? '',
+    // Data URL, not file://: Chromium blocks CSS mask-image from file:// (CORS-mode fetch).
+    iconSrc: scene.icon
+      ? `data:image/svg+xml;base64,${readFileSync(path.join(projectRoot, scene.icon)).toString('base64')}`
+      : '',
   };
   if (scene.sheen) params.sheen = '1';
   // Optional, default off: `format_options.<format-id>` = { edge: bool, headline_scale: number }
@@ -422,9 +427,14 @@ async function renderOne({ projectRoot, config, devicesSpec, scene, format, loca
   return { sceneUrl: sceneUrlFor(params) };
 }
 
-async function renderFeatureGraphic({ projectRoot, config, devicesSpec, format, locale }) {
+async function renderFeatureGraphic({ projectRoot, config, devicesSpec, format, locale, backgroundOverride }) {
   const heroScene = config.scenes[0];
   const params = baseParams(projectRoot, config, format, heroScene, locale);
+  // --background applies here too, so a light store set can keep a brand-colored Feature Graphic.
+  if (backgroundOverride) {
+    params.bg = backgroundOverride;
+    params.fg = '#ffffff';
+  }
   // Fills play-feature's otherwise-empty right half with the hero's own
   // front phone (Pixel-framed, config-schema.md "CLI flags" neighbor
   // section "Devices"); a project whose hero isn't a combo scene simply
@@ -508,7 +518,7 @@ async function main() {
 
     if (formatId === 'play-feature') {
       for (const locale of locales) {
-        const { sceneUrl } = await renderFeatureGraphic({ projectRoot, config, devicesSpec, format, locale });
+        const { sceneUrl } = await renderFeatureGraphic({ projectRoot, config, devicesSpec, format, locale, backgroundOverride });
         const out = await shootScene(sceneUrl, format, outDirFor(locale), 'feature-graphic', chromium);
         console.log(`WROTE ${out}`);
         written.push(out);

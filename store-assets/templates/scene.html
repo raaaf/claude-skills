@@ -87,6 +87,33 @@
         align-items: center;
         justify-content: center;
       }
+      /* Optional per-scene icon (scene.icon, a single-color SVG) on a rounded
+         tile, like an icon-badge (shape square) in a settings list: accent
+         icon on an accent tint, sitting above the headline. */
+      #icon {
+        display: none;
+        flex: none;
+        position: relative;
+        width: calc(var(--w) * 0.1);
+        height: calc(var(--w) * 0.1);
+        margin-bottom: calc(var(--w) * 0.06);
+        border-radius: calc(var(--w) * 0.024);
+        background: color-mix(in srgb, var(--pill-accent, currentColor) var(--pill-fill, 20%), transparent);
+      }
+      /* With an icon the text block starts higher and gets the extra room,
+         so the tile never pushes the headline into shrink-to-fit. */
+      body.has-icon #hd {
+        top: calc(var(--h) * 0.03);
+        height: calc(var(--h) * 0.29);
+      }
+      #icon::before {
+        content: '';
+        position: absolute;
+        inset: 22%;
+        background: var(--pill-accent, currentColor);
+        mask: var(--icon-src) center / contain no-repeat;
+        -webkit-mask: var(--icon-src) center / contain no-repeat;
+      }
       #headline {
         font-weight: 400;
         line-height: 1.02;
@@ -114,13 +141,16 @@
       /* events' own atoms.status-badge :on-image variant (rounded-full,
          border-white/30, bg-white/20, text-xs font-medium, backdrop-blur-sm),
          scaled x3.17 for App-Store-screenshot resolution. */
+      /* Tinted from the scene foreground (inherited), so the pill stays
+         visible on light backgrounds too; white foreground keeps the
+         original white/20 + white/30 look. */
       .pill {
-        color: #fff;
+        color: var(--pill-accent, currentColor);
         font-weight: 500;
         line-height: 1.33;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.2);
-        border: calc(var(--w) * 0.0024) solid rgba(255, 255, 255, 0.3);
+        background: color-mix(in srgb, var(--pill-accent, currentColor) var(--pill-fill, 20%), transparent);
+        border: calc(var(--w) * 0.0024) solid color-mix(in srgb, var(--pill-accent, currentColor) 30%, transparent);
         backdrop-filter: blur(calc(var(--w) * 0.0096));
         padding: calc(var(--w) * 0.0048) calc(var(--w) * 0.024);
         font-size: calc(var(--w) * 0.0288);
@@ -194,6 +224,10 @@
         text-align: left;
         font-size: calc(var(--h) * 0.16);
       }
+      body.landscape .pills {
+        justify-content: flex-start;
+        margin-left: 6%;
+      }
       #logo {
         display: none;
       }
@@ -202,6 +236,7 @@
   <body>
     <div id="hd">
       <img id="logo" alt="" />
+      <div id="icon"></div>
       <h1 id="headline"></h1>
       <p id="subline"></p>
       <div class="pills" id="pills"></div>
@@ -222,6 +257,13 @@
       const layout = get('layout', 'single');
       const bg = get('bg', '#04081f');
       const fg = get('fg', '#ffffff');
+      // Optional brand.pill_accent: pills take the project's own tinted badge look
+      // (accent text, accent/10 fill, accent/30 border) instead of the foreground tint.
+      const pillAccent = get('pillAccent', '');
+      if (pillAccent) {
+        document.documentElement.style.setProperty('--pill-accent', pillAccent);
+        document.documentElement.style.setProperty('--pill-fill', /^#?f{6}$/i.test(fg) ? '15%' : '10%');
+      }
 
       document.documentElement.style.setProperty('--w', width + 'px');
       document.documentElement.style.setProperty('--h', height + 'px');
@@ -369,6 +411,14 @@
           }
           return box;
         }
+
+      const iconSrc = get('iconSrc', '');
+      if (iconSrc && !isLandscape) {
+        const iconEl = document.getElementById('icon');
+        iconEl.style.setProperty('--icon-src', `url("${iconSrc}")`);
+        iconEl.style.display = 'block';
+        document.body.classList.add('has-icon');
+      }
 
       const device = get('device', 'iphone');
       const deviceSpec = getJSON('deviceSpec');
