@@ -710,7 +710,8 @@ tr_cache_put() {
   env=$(tr_cache_envkey "$top" "$2")
   file=$(_tr_cache_file "$top")
   mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
-  { printf '%s %s %s\n' "$(_tr_now)" "$tree" "$env"; tail -n 19 "$file" 2>/dev/null || true; } > "$file.tmp.$$" && mv "$file.tmp.$$" "$file"
+  # newest first: keep the 19 newest old lines (head), tail dropped the previous put once the file was full
+  { printf '%s %s %s\n' "$(_tr_now)" "$tree" "$env"; head -n 19 "$file" 2>/dev/null || true; } > "$file.tmp.$$" && mv "$file.tmp.$$" "$file"
   tr_event cache_put key="${tree}:${env}" project="$(tr_project "$top")"
 }
 

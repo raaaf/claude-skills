@@ -396,6 +396,15 @@ printf 'test-cache-prose: true\n' > "$REPO/.claude/ship.md"; printf 'x\n' >> "$R
 check "a cached tree that no longer exists misses" "miss" "$(chit >/dev/null && echo hit || echo miss)"
 reset_files
 
+# a full cache keeps the newest entries: /ship wraps `deploy <app> test`, the inner and the outer put land
+# a second apart, and the outer one must not push out the inner one (2026-10-18, deploy gate missed)
+fresh_state
+for i in $(seq 1 20); do cput "old-command-$i"; done
+cput "./vendor/bin/pest"
+cput "deploy shop test"
+check "a full cache keeps the entry written just before the newest" "hit" "$(chit './vendor/bin/pest' >/dev/null && echo hit || echo miss)"
+check "a full cache stays capped at 20 entries" "20" "$(wc -l < "$(cfile)" | tr -d ' ')"
+
 # disable switch
 fresh_state; cput
 check "TESTRUN_DISABLE turns the cache off" "miss" "$(TESTRUN_DISABLE=1 chit >/dev/null && echo hit || echo miss)"
