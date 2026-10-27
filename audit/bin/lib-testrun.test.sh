@@ -115,7 +115,9 @@ pok() { ( . "$LIB"; tr_pressure_ok "$1" && echo yes || echo no ); }
 fresh_state
 check "level 1 admits with two heavy runs active" "yes" "$(TESTRUN_PRESSURE=1 pok 2)"
 check "level 2 with 40% free admits next to one heavy run" "yes" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=40 pok 1)"
-check "level 2 with 40% free refuses next to two heavy runs" "no" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=40 pok 2)"
+check "level 2 with 30% free refuses next to two heavy runs" "no" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=30 pok 2)"
+check "level 2 with 35% free admits next to two heavy runs" "yes" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=35 pok 2)"
+check "level 2 with 40% free refuses next to three heavy runs" "no" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=40 pok 3)"
 check "level 2 with 10% free refuses next to one heavy run" "no" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=10 pok 1)"
 check "level 2 with 10% free admits into an idle machine" "yes" "$(TESTRUN_PRESSURE=2 TESTRUN_FREE_PCT=10 pok 0)"
 check "level 4 refuses even on an idle machine" "no" "$(TESTRUN_PRESSURE=4 pok 0)"

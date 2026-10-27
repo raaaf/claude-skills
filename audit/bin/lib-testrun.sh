@@ -145,15 +145,18 @@ _tr_free_pct() {  # integer percent, 0 when unreadable
 }
 
 # tr_pressure_ok <heavy runs already active>. Level 1 admits; level 2 (flips with level 1 every minute on
-# this Mac) admits with >= 25 % free and at most one active heavy run, otherwise only into an idle
-# machine; level 4 and above waits; unreadable behaves like level 2 with 0 % free.
+# this Mac, even with 39 % free and no simulator booted) admits next to two active heavy runs with
+# >= 35 % free, next to one with >= 25 % free, otherwise only into an idle machine; level 4 and above
+# waits; unreadable behaves like level 2 with 0 % free. 35 % was set 2026-10-27 after 14 days without a
+# swap incident, when 1.646 of 2.258 wait/admit events fell on level 2.
 tr_pressure_ok() {
   local level free active=${1:-0} max
   level=$(_tr_pressure_level)
   case "$level" in
     1) return 0 ;;
     '') max=0 ;;
-    2|3) free=$(_tr_free_pct); if [ "${free:-0}" -ge 25 ]; then max=1; else max=0; fi ;;
+    2|3) free=$(_tr_free_pct)
+         if [ "${free:-0}" -ge 35 ]; then max=2; elif [ "${free:-0}" -ge 25 ]; then max=1; else max=0; fi ;;
     *) return 1 ;;
   esac
   [ "$active" -le "$max" ]
@@ -305,7 +308,7 @@ tr_admit() {
         _tr_set "$id" admitted_at "$now"; _tr_set "$id" progress_at "$now"; _tr_set "$id" state running
         _tr_gate_leave
         level=$(_tr_pressure_level)
-        [ "$now" -gt "$t0" ] && tr_event admit waited="$((now - t0))" class="$class" pressure="${level:-unreadable}"
+        [ "$now" -gt "$t0" ] && tr_event admit waited="$((now - t0))" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)"
         return 0
       fi
       _tr_gate_leave
@@ -320,7 +323,7 @@ tr_admit() {
     fi
     if [ "$waited" -ge "$next_notice" ]; then
       level=$(_tr_pressure_level)
-      tr_event wait waited="$waited" class="$class" pressure="${level:-unreadable}" heavy="$(_tr_active heavy "$id")"
+      tr_event wait waited="$waited" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)" heavy="$(_tr_active heavy "$id")"
       next_notice=$((waited + ${TESTRUN_NOTICE:-30}))
     fi
     _tr_nap "${TESTRUN_ADMIT_POLL:-2}"
