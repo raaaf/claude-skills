@@ -23,6 +23,11 @@
 #   TESTRUN_WAIT_MAX (900) TESTRUN_NOTICE (30) TESTRUN_ADMIT_POLL (2)    waiting
 #   TESTRUN_STAGGER (30)        seconds a later candidate waits after any admission
 #   TESTRUN_PRESSURE, TESTRUN_FREE_PCT   override kern.memorystatus_vm_pressure_level / `memory_pressure -Q`
+#   TESTRUN_WORKERS_ALONE (8)   worker budget of a heavy run that runs alone; see tr_workers
+#   TESTRUN_NICE (10)           nice increment for admitted `suite` runs (0 = off); TESTRUN_NICE_XCODE (0) for `xcode`
+# Exported to the admitted command: TESTRUN_WORKERS (parallel test processes), TESTRUN_BROWSER_WORKERS (browser
+# processes, at most 6). Pest/Paratest has no env var for the process count, so a project script passes them on
+# (`--processes=${TESTRUN_WORKERS:-...}`); TESTRUN_BAIL=1 (set by the deploy gate) asks for stop-on-first-failure.
 
 _TR_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -175,6 +180,20 @@ tr_cap() {
   esac
 }
 
+# tr_workers <heavy runs active, this one included>: parallel test processes for a run, decided once at admission.
+# 12 cores: 8 alone, 4 with two heavy runs, 3 with three, never below 2 (a full-suite --parallel run used all 12
+# cores per suite, so two suites oversubscribed the Mac).
+tr_workers() {
+  local n=${1:-1}
+  if [ "$n" -le 1 ]; then echo "${TESTRUN_WORKERS_ALONE:-8}"
+  elif [ "$n" -eq 2 ]; then echo 4
+  elif [ "$n" -eq 3 ]; then echo 3
+  else echo 2; fi
+}
+tr_browser_workers() {  # <workers>: browser processes are heavier (Playwright), capped at 6
+  if [ "${1:-8}" -gt 6 ]; then echo 6; else echo "${1:-8}"; fi
+}
+
 _tr_active() {  # <class|"heavy"> [exclude id]: running tickets of a class (heavy = xcode + suite)
   local id f c n=0
   for id in $(_tr_live_ids); do
@@ -306,6 +325,8 @@ tr_admit() {
       if _tr_is_head "$id" "$class" && ! _tr_staggered "$id" && tr_pressure_ok "$active" && _tr_slot_take "$class" "$id"; then
         now=$(_tr_now)
         _tr_set "$id" admitted_at "$now"; _tr_set "$id" progress_at "$now"; _tr_set "$id" state running
+        TESTRUN_WORKERS=$(tr_workers "$(_tr_active heavy)"); TESTRUN_BROWSER_WORKERS=$(tr_browser_workers "$TESTRUN_WORKERS")
+        export TESTRUN_WORKERS TESTRUN_BROWSER_WORKERS
         _tr_gate_leave
         level=$(_tr_pressure_level)
         [ "$now" -gt "$t0" ] && tr_event admit waited="$((now - t0))" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)"
@@ -431,6 +452,42 @@ tr_kill_tree() {
   return 0
 }
 
+# <pid>: the pid and all its descendants, one per line (parent chain, so children that left the group stay found)
+_tr_descendants() {
+  ps -ax -o pid=,ppid= 2>/dev/null | awk -v r="$1" '
+    { pid[NR] = $1; ppid[NR] = $2 }
+    END {
+      mem[r] = 1
+      do { ch = 0; for (i = 1; i <= NR; i++) if (mem[pid[i]] != 1 && mem[ppid[i]] == 1) { mem[pid[i]] = 1; ch = 1 } } while (ch)
+      for (i = 1; i <= NR; i++) if (mem[pid[i]] == 1) print pid[i]
+    }'
+}
+
+# tr_kill_orphan <pid> [reason]: end one orphaned process. Its process group is killed only when the process leads
+# it (pgid == pid): `Shell.run` and plain shells put children into the caller's group, so a group kill could hit the
+# daemon or another session. Otherwise the pid and its descendants are signalled one by one, TERM then KILL.
+tr_kill_orphan() {
+  local pid=$1 g pids p t=0 alive own
+  [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null || return 0
+  g=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+  [ -n "$g" ] || return 0
+  if [ "$g" = "$pid" ]; then tr_kill_tree "$pid" "${2:-orphan}"; return 0; fi
+  own=$$
+  pids=$(_tr_descendants "$pid" | grep -vx "$own" | tr '\n' ' ')
+  tr_event kill pid="$pid" reason="${2:-orphan}" pids="${pids% }"
+  # shellcheck disable=SC2086
+  kill -TERM $pids 2>/dev/null
+  while [ "$t" -lt "$(( ${TESTRUN_KILL_GRACE:-10} * 5 ))" ]; do
+    alive=0
+    for p in $(echo "$pids"); do kill -0 "$p" 2>/dev/null && alive=1; done
+    [ "$alive" = 0 ] && return 0
+    sleep 0.2; t=$((t + 1))
+  done
+  # shellcheck disable=SC2086
+  kill -KILL $pids 2>/dev/null
+  return 0
+}
+
 # --- orphans -----------------------------------------------------------------------------------
 _tr_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1; }
 _tr_etime_s() {  # ps etime [[dd-]hh:]mm:ss -> seconds
@@ -458,7 +515,7 @@ tr_reap_orphans() {
     [ "$busy" = 0 ] || continue
     found=$((found + 1))
     echo "orphan playwright-server pid=$pid cwd=$cwd age=${age}s"
-    if [ "$dry" != --dry ]; then tr_event reap kind=playwright pid="$pid" cwd="$cwd"; tr_kill_tree "$pid" orphan-playwright >/dev/null 2>&1; kill -KILL "$pid" 2>/dev/null; fi
+    if [ "$dry" != --dry ]; then tr_event reap kind=playwright pid="$pid" cwd="$cwd"; tr_kill_orphan "$pid" orphan-playwright >/dev/null 2>&1; fi
   done
   return 0
 }
@@ -515,12 +572,27 @@ _tr_xcode_guard() {
   tr_event guard reason=simulator-error cap=1 until=24h
 }
 
+# Admitted suites run niced so interactive work (editor, Orca, the owner's own tests) wins CPU contention.
+# `nice` and not `taskpolicy -b`: the background QoS confines a process to the efficiency cores on Apple Silicon
+# and throttles its I/O, which can slow a suite enough to look stalled to the watchdog below. nice only lowers the
+# scheduling priority; an idle machine still gives the suite every core, and the CPU time the watchdog samples keeps
+# growing. xcode runs stay at normal priority by default: the simulator and testmanagerd run outside this group
+# (under the simulator's launchd), so niceing xcodebuild alone would only slow the build half. TESTRUN_NICE_XCODE
+# switches it on.
+tr_nice_for() {
+  case "$1" in
+    suite) echo "${TESTRUN_NICE:-10}" ;;
+    xcode) echo "${TESTRUN_NICE_XCODE:-0}" ;;
+    *) echo 0 ;;
+  esac
+}
+
 # --- the run -----------------------------------------------------------------------------------
 # _tr_attempt <class> <udid> cmd...: one try in its own process group; sets _TR_RC, _TR_STALLED.
 # Output goes through two FIFOs and tee into $runs/<id>.out, so growth of that file is the output signal.
 _tr_attempt() {
   local class=$1 udid=$2; shift 2
-  local out pid t1 t2 next_sample stall warn now size lastsize=0 cpu maxcpu=0 extra maxextra=0 last_prog outchg warned=0 delta
+  local out pid t1 t2 nice next_sample stall warn now size lastsize=0 cpu maxcpu=0 extra maxextra=0 last_prog outchg warned=0 delta
   out="$(_tr_ticket "$TESTRUN_ID").out"
   delta=${TESTRUN_CPU_DELTA:-5}
   if [ "$class" = xcode ]; then stall=${TEST_STALL_SECONDS_XCODE:-900}; else stall=${TEST_STALL_SECONDS:-300}; fi
@@ -530,7 +602,12 @@ _tr_attempt() {
   if ! mkfifo "$out.1" "$out.2" 2>/dev/null; then "$@"; _TR_RC=$?; return; fi
   tee -a "$out" < "$out.1" & t1=$!
   tee -a "$out" < "$out.2" >&2 & t2=$!
-  { set -m; "$@" > "$out.1" 2> "$out.2" & pid=$!; set +m; } 2>/dev/null
+  nice=$(tr_nice_for "$class")
+  if [ "$nice" -gt 0 ]; then
+    { set -m; nice -n "$nice" "$@" > "$out.1" 2> "$out.2" & pid=$!; set +m; } 2>/dev/null
+  else
+    { set -m; "$@" > "$out.1" 2> "$out.2" & pid=$!; set +m; } 2>/dev/null
+  fi
   _TR_CHILD_PGID=$pid
   _tr_set "$TESTRUN_ID" pgid "$pid"; _tr_set "$TESTRUN_ID" pgid_start "$(_tr_lstart "$pid")"
   last_prog=$(_tr_now); outchg=$last_prog
@@ -742,20 +819,8 @@ tr_db_register() {
 
 # tr_db_drop_listed <toplevel>: DROP the worktree's listed databases and their workers, unlist them
 tr_db_drop_listed() {
-  local db found d list keep
-  list="$(_tr_state)/test-dbs.list"
-  for db in $(_tr_dbs_of "$1"); do
-    found=$(_tr_psql -c "select datname from pg_database where datname = '$db' or datname ~ '^${db}_test_[0-9]+\$'" 2>/dev/null)
-    while IFS= read -r d; do   # here-string: zsh does not split an unquoted $found
-      [ -n "$d" ] || continue
-      if [ "$d" = "$db" ] || printf '%s' "$d" | grep -qE "^${db}_test_[0-9]+\$"; then
-        _tr_psql -c "DROP DATABASE IF EXISTS \"$d\" WITH (FORCE)" >/dev/null 2>&1
-        tr_event db_drop name="$d"
-      fi
-    done <<<"$found"
-    keep=$(grep -vxF "$db" "$list" 2>/dev/null)
-    printf '%s\n' "$keep" | sed '/^$/d' > "$list.tmp.$$" && mv "$list.tmp.$$" "$list"
-  done
+  local db
+  for db in $(_tr_dbs_of "$1"); do tr_db_drop_name "$db"; done
   return 0
 }
 
@@ -771,4 +836,42 @@ tr_calls_xcodebuild() {
     [ -f "$w" ] && [ "$(wc -c < "$w" 2>/dev/null | tr -d ' ')" -le 262144 ] && grep -q xcodebuild "$w" 2>/dev/null && return 0
   done
   return 1
+}
+
+# tr_db_drop_name <name>: DROP one registered database and its paratest workers, unlist it. Refuses (rc 1) a name
+# the registry does not list, so a reconcile can never touch a dev database.
+tr_db_drop_name() {
+  local db=$1 list found d keep
+  list="$(_tr_state)/test-dbs.list"
+  printf '%s' "$db" | grep -qE '^[A-Za-z0-9_]+$' && grep -qxF "$db" "$list" 2>/dev/null || return 1
+  _tr_psql -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db' or datname ~ '^${db}_test_[0-9]+\$'" >/dev/null 2>&1
+  found=$(_tr_psql -c "select datname from pg_database where datname = '$db' or datname ~ '^${db}_test_[0-9]+\$'" 2>/dev/null)
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    if [ "$d" = "$db" ] || printf '%s' "$d" | grep -qE "^${db}_test_[0-9]+\$"; then
+      _tr_psql -c "DROP DATABASE IF EXISTS \"$d\" WITH (FORCE)" >/dev/null 2>&1
+      tr_event db_drop name="$d"
+    fi
+  done <<<"$found"
+  keep=$(grep -vxF "$db" "$list" 2>/dev/null)
+  printf '%s\n' "$keep" | sed '/^$/d' > "$list.tmp.$$" && mv "$list.tmp.$$" "$list"
+  return 0
+}
+
+# tr_is_full_run <word...>: true for a direct, unfiltered run of a whole suite (what an agent types when it skips
+# `deploy <app> test`), so test-lock.sh can answer a repeat from the result cache. Filters, test paths and test
+# names mean a partial run: never cached. Only commands whose runner is known are recognised.
+tr_is_full_run() {
+  local line=" $* "
+  # The configured gate scripts are full runs by definition: their partial-looking flags (--exclude-group=marketing, --testsuite)
+  # live inside composer.json, not on this command line.
+  case "$line" in *" composer test "|*" composer test:parallel ") return 0 ;; esac
+  case "$line" in
+    *" artisan test "*|*" composer test "*|*" composer test:parallel "*|*"vendor/bin/pest "*|*"vendor/bin/phpunit "*|*" swift test "*|*" bun test "*|*" npm test "*|*" npm run test "*|*" pnpm test "*|*" vitest run "*) ;;
+    *) return 1 ;;
+  esac
+  case "$line" in
+    *" --filter"*|*" --group"*|*" --testsuite"*|*" --only"*|*" --dirty"*|*" -k "*|*" -t "*|*" --test-name"*|*" tests/"*|*" test/"*|*".php "*|*".ts "*|*".tsx "*|*".js "*|*".swift "*|*"Test "*|*"Tests "*|*" --bail"*|*" --exclude-group"*|*" --grep"*|*" --testPathPattern"*|*" --shard"*|*" --changed"*|*" --mutate"*|*" --coverage"*|*" --class"*|*" --path"*) return 1 ;;
+  esac
+  return 0
 }

@@ -137,12 +137,13 @@ orch_resolve_audit_root || { echo "Abgebrochen: audit-Root nicht gefunden."; orc
 ROOT="$(git rev-parse --show-toplevel)"
 TEST_COMMAND=$(orch_test_command "$ROOT") || TEST_COMMAND=""   # .claude/ship.md test-command:, else the manifest's own
 echo "TEST_COMMAND=${TEST_COMMAND:-<none>}"
-if [ -n "$TEST_COMMAND" ]; then bash "$AUDIT_BIN/test-lock.sh" --cached --cmd "$TEST_COMMAND"; echo "TESTS_EXIT=$?"; fi   # every test run goes through the lock, also a hand-assembled xcodebuild; --cached = full suite, a green run on an identical tree is reused
+if [ "${AUDIT_SKIP_TESTS:-}" = 1 ]; then echo "TESTS_EXIT=skipped (AUDIT_SKIP_TESTS=1, the caller runs the suite)"
+elif [ -n "$TEST_COMMAND" ]; then bash "$AUDIT_BIN/test-lock.sh" --cached --cmd "$TEST_COMMAND"; echo "TESTS_EXIT=$?"; fi   # every test run goes through the lock, also a hand-assembled xcodebuild; --cached = full suite, a green run on an identical tree is reused
 bash "$AUDIT_BIN/pre-checks.sh" | grep -E '^(SECRET|SECRET_SCAN_RESULT)'; bash "$AUDIT_BIN/check-silencing.sh" "$ROOT"   # the fix may have added a secret or silenced a check
 orch_progress_touch
 ```
 
-The run is the full suite, cached: a green, flake-free run on an identical tree within 30 minutes (same test command, tool versions and lockfiles; `/ship` and `deploy <app> test` write the same entries) prints `TEST_CACHE_HIT <key>` instead of running again. A hang is killed and restarted once by the lib (`TEST_RESTART`, then `TEST_STALLED_TWICE` and exit 124). `test-status` lists running tests.
+`AUDIT_SKIP_TESTS=1` (set by the Feierabend daemon, which runs the suite itself after the audit) skips the run and counts as "tests handled by the caller" for the marker. Otherwise the run is the full suite, cached: a green, flake-free run on an identical tree within 30 minutes (same test command, tool versions and lockfiles; `/ship` and `deploy <app> test` write the same entries) prints `TEST_CACHE_HIT <key>` instead of running again. A hang is killed and restarted once by the lib (`TEST_RESTART`, then `TEST_STALLED_TWICE` and exit 124). `test-status` lists running tests.
 
 Red: one REVISE round to the same executor, then re-run. Still red: those findings stay open and no marker is written. A `SECRET` or `SILENCING_HIT` on a line the executor wrote is an open Critical/Important.
 
@@ -159,7 +160,7 @@ orch_usage_report   # AUDIT_COST_USD, AUDIT_COST_WEEK_PCT, WEEK_USD, WEEK_PCT_ES
 
 **Report format.** Severity is `Critical`, `Important` or `Minor`; source is `code_review`, `sensitive` or `pre-check`. Each finding is exactly one physical line, never wrapped, no numbered list, no table. Never reproduce a secret value or file content: name `file:line` and the type. Recompute every count by counting the itemized bullets right before writing the summary, never hand-tally; write `0` explicitly.
 
-**Marker** only when ALL hold: pre-checks clean (no open secret), every review that was dispatched completed (the sensitive one only if it ran), no open Critical/Important, tests green or no test command. Adapted counts: `selected` = reviews run (prose diff: 1), `incomplete` = failed reviews plus open Critical/Important findings. Run it as its own Bash call, never together with `git push`:
+**Marker** only when ALL hold: pre-checks clean (no open secret), every review that was dispatched completed (the sensitive one only if it ran), no open Critical/Important, tests green, handed to the caller (`AUDIT_SKIP_TESTS=1`) or no test command. Adapted counts: `selected` = reviews run (prose diff: 1), `incomplete` = failed reviews plus open Critical/Important findings. Run it as its own Bash call, never together with `git push`:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again

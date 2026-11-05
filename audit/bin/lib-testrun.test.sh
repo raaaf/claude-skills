@@ -441,6 +441,57 @@ check "a database the registry does not list is never dropped" "0" "$(grep 'DROP
 check "the cleaned names leave the registry, other worktrees stay" "other_testing_aaaaaaaa" "$(cat "$TESTRUN_STATE_DIR/test-dbs.list")"
 unset FAKE_PG_ROWS
 
+# --- orphans are ended by pid and descendants; the group only when the orphan leads it -----------------------
+fresh_state; export TESTRUN_KILL_GRACE=1
+{ set -m; bash -c 'bash -c "sleep 313 & wait" & sleep 312 & wait' & LEAD=$!; set +m; } 2>/dev/null
+sleep 0.7
+INNER=""; SURV=""
+for c in $(pgrep -P "$LEAD"); do case "$(ps -o command= -p "$c")" in "sleep 312"*) SURV=$c ;; *) INNER=$c ;; esac; done
+GRANDKID=$(pgrep -P "$INNER" | head -1)
+lib tr_kill_orphan "$INNER" test 2>/dev/null
+check "an orphan that shares a survivor's group dies with its child" "dead dead" "$(kill -0 "$INNER" 2>/dev/null && echo alive || echo dead) $(kill -0 "$GRANDKID" 2>/dev/null && echo alive || echo dead)"
+check "the survivors of that group stay alive (leader and sibling)" "alive alive" "$(kill -0 "$LEAD" 2>/dev/null && echo alive || echo dead) $(kill -0 "$SURV" 2>/dev/null && echo alive || echo dead)"
+lib tr_kill_orphan "$LEAD" test 2>/dev/null
+sleep 0.3
+check "an orphan that leads its group takes the whole group" "dead dead" "$(kill -0 "$LEAD" 2>/dev/null && echo alive || echo dead) $(kill -0 "$SURV" 2>/dev/null && echo alive || echo dead)"
+unset TESTRUN_KILL_GRACE
+
+# --- gate commands and partial runs ---------------------------------------------------------------------
+check "composer test and composer test:parallel are full runs, with extra arguments they are not" "yes yes no" "$(lib tr_is_full_run composer test && echo -n 'yes ' || echo -n 'no '; lib tr_is_full_run composer test:parallel && echo -n 'yes ' || echo -n 'no '; lib tr_is_full_run composer test -- --filter=x && echo yes || echo no)"
+check "exclude-group, grep, shard and changed mark a partial run" "no no no no" "$(for c in 'php artisan test --exclude-group=marketing' 'npx jest --grep x' 'php artisan test --shard=1/3' 'pest --changed'; do lib tr_is_full_run $c && echo -n 'yes ' || echo -n 'no '; done | sed 's/ $//')"
+
+# --- CPU budget, priority, partial-run detection, drop by name ----------------------------------------
+check "worker budget: 8 alone, 4 with two heavy runs, 3 with three, never below 2" "8 4 3 2 2" "$(lib tr_workers 1 | tr '\n' ' ' | sed 's/ $//' ; echo -n ' '; lib tr_workers 2 | tr '\n' ' '; lib tr_workers 3 | tr '\n' ' '; lib tr_workers 4 | tr '\n' ' '; lib tr_workers 9)"
+check "browser workers are capped at 6" "6 4 2" "$(lib tr_browser_workers 8) $(lib tr_browser_workers 4) $(lib tr_browser_workers 2)"
+fresh_state
+sleeper; W1=$LAST; sleeper; W2=$LAST
+check "a run admitted alone exports 8 workers and 6 browser processes" "8 6" "$( . "$LIB"; tr_admit suite a "$W1" 2>/dev/null; echo "$TESTRUN_WORKERS $TESTRUN_BROWSER_WORKERS")"
+check "the second heavy run is admitted with 4 workers and 4 browser processes" "4 4" "$( . "$LIB"; tr_admit suite b "$W2" 2>/dev/null; echo "$TESTRUN_WORKERS $TESTRUN_BROWSER_WORKERS")"
+
+fresh_state
+# nice is relative to the caller's own niceness (a background job starts at +5), so compare the increment
+BASE_NICE=$(ps -o nice= -p $$ | tr -d ' ')
+nice_of() { local got; got=$( . "$LIB"; TESTRUN_WATCH_POLL=1 tr_admit "$1" p "$$" 2>/dev/null; tr_exec "$1" p bash -c 'ps -o nice= -p $$' 2>/dev/null | tr -d ' '; tr_release ); echo $((got - BASE_NICE)); }
+check "an admitted suite runs niced by 10" "10" "$(nice_of suite)"
+check "an xcode run keeps normal priority by default" "0" "$(nice_of xcode)"
+check "TESTRUN_NICE=0 switches the priority drop off" "0" "$(TESTRUN_NICE=0 nice_of suite)"
+
+check "a bare full-suite command counts as a full run" "yes yes yes" "$(lib tr_is_full_run php artisan test && echo -n 'yes '; lib tr_is_full_run composer test && echo -n 'yes '; lib tr_is_full_run bun test && echo yes)"
+check "filters, paths and suites are partial runs" "no no no no" "$(for c in 'php artisan test --filter=Foo' 'php artisan test tests/Unit/FooTest.php' 'php artisan test --testsuite=Unit' 'bun test src/a.test.ts'; do lib tr_is_full_run $c && echo -n 'yes ' || echo -n 'no '; done | sed 's/ $//')"
+check "an unknown runner is never a full run" "no" "$(lib tr_is_full_run make check && echo yes || echo no)"
+
+fresh_state; mkdir -p "$TESTRUN_STATE_DIR"
+printf 'zeit_testing_aaaaaaaa\n' > "$TESTRUN_STATE_DIR/test-dbs.list"
+cat > "$TMP/fake-psql2" <<'FEOF'
+#!/bin/bash
+echo "$*" >> "$(dirname "$0")/psql2.log"
+case "$*" in *"from pg_database"*) printf '%s\n' $FAKE_PG_ROWS ;; esac
+FEOF
+chmod +x "$TMP/fake-psql2"; : > "$TMP/psql2.log"; export TESTRUN_PSQL="$TMP/fake-psql2" FAKE_PG_ROWS="zeit_testing_aaaaaaaa zeit_testing_dev"
+check "drop by name refuses a database the registry does not list" "1 0" "$(lib tr_db_drop_name zeit_testing_dev; echo -n "$? "; grep -c 'DROP' "$TMP/psql2.log")"
+check "drop by name drops a listed database and unlists it" "1 0" "$(lib tr_db_drop_name zeit_testing_aaaaaaaa; grep -c 'DROP DATABASE IF EXISTS "zeit_testing_aaaaaaaa"' "$TMP/psql2.log" | tr '\n' ' '; grep -c . "$TESTRUN_STATE_DIR/test-dbs.list")"
+unset TESTRUN_PSQL FAKE_PG_ROWS
+
 # @@PARTS@@
 
 SKIPNOTE=""; [ "$SKIPPED" -eq 0 ] || SKIPNOTE=" ($SKIPPED skipped under load)"

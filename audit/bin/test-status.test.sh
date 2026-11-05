@@ -8,7 +8,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 STATUS="$HERE/test-status.sh"
 TMP=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/test-status-test.XXXXXX")" && pwd -P)
 # Only PIDs this test started are killed (the detached fakes record theirs in $TMP/pid.*)
-trap 'for p in $PIDS $(cat "$TMP"/pid.* 2>/dev/null); do kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
+# (their `sleep 300` children are killed first: killing the bash alone leaves the sleep behind with parent 1)
+trap 'for p in $PIDS $(cat "$TMP"/pid.* 2>/dev/null); do for c in $(pgrep -P "$p" 2>/dev/null); do kill "$c" 2>/dev/null; done; kill "$p" 2>/dev/null; done; rm -rf "$TMP"' EXIT
 export TESTRUN_STATE_DIR="$TMP/state" TESTRUN_ORPHAN_AGE=0 TESTRUN_KILL_GRACE=1
 FAIL=0; PIDS=""
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; FAIL=$((FAIL + 1)); fi; }

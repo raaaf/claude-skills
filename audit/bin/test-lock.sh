@@ -14,6 +14,7 @@
 # tree is remembered for 30 min and a repeat prints `TEST_CACHE_HIT <key>` instead of running (lib-testrun.sh,
 # tr_cache_*). It also runs the command as a `suite` run: admission (two suites at once, memory-pressure
 # rule), stall watchdog and one restart. TESTRUN_CLASS=suite (set by deploy) does the same without the cache.
+# A direct unfiltered full run (`php artisan test`, `composer test`, ...) is treated as --cached too (tr_is_full_run).
 # Env: TESTRUN_CACHE_CMD overrides the cache key command; TEST_LOCK_KEY=common forces the common-dir lock key (mutate.sh); TESTRUN_DISABLE=1 restores the
 # pre-lib behaviour (lock only).
 #
@@ -75,6 +76,15 @@ if [ "${1:-}" = "--cmd" ]; then
   [ $# -eq 2 ] || { echo "usage: test-lock.sh [--cached] --cmd \"<command string>\"" >&2; exit 64; }
   CMD_STRING=$2
   set -- bash -c "$CMD_STRING"
+fi
+
+# A direct, unfiltered full run typed by an agent (`php artisan test`, `composer test`, `bun test`...) is cached
+# like --cached: 98 of 182 full runs repeated within 30 minutes. Filters, paths and unknown runners stay uncached
+# (lib tr_is_full_run). TEST_LOCK_NO_AUTOCACHE=1 opts out.
+if [ "$CACHED" = 0 ] && [ "${TESTRUN_DISABLE:-}" != 1 ] && [ "${TEST_LOCK_NO_AUTOCACHE:-}" != 1 ]; then
+  if [ -n "$CMD_STRING" ]; then FULL_WORDS=$CMD_STRING; else FULL_WORDS="$*"; fi
+  # shellcheck disable=SC2086
+  if ( set -f; tr_is_full_run $FULL_WORDS ); then CACHED=1; fi
 fi
 
 DEST_KEY=""

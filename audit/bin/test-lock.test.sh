@@ -96,6 +96,14 @@ for i in 1 2; do ( cd "$CR" && bash "$LOCK" --cached --cmd "echo run >> '$TMP/ru
 check "a red full run is not cached" "2" "$(grep -c run "$TMP/runs.count")"
 check "a red full run keeps its exit code" "1" "$(cd "$CR" && bash "$LOCK" --cached --cmd "exit 1" >/dev/null 2>&1; echo $?)"
 
+# A direct full run is cached without --cached; a filtered one never is.
+rm -rf "$TESTRUN_STATE_DIR"; : > "$TMP/runs.count"
+for i in 1 2; do ( cd "$CR" && bash "$LOCK" --cmd "echo run >> '$TMP/runs.count'; : composer test" >/dev/null 2>&1 ); done
+check "a repeated direct full run (composer test) is answered from the cache" "1" "$(grep -c run "$TMP/runs.count")"
+rm -rf "$TESTRUN_STATE_DIR"; : > "$TMP/runs.count"
+for i in 1 2; do ( cd "$CR" && bash "$LOCK" --cmd "echo run >> '$TMP/runs.count'; : php artisan test --filter=Foo" >/dev/null 2>&1 ); done
+check "a repeated filtered run is never cached" "2" "$(grep -c run "$TMP/runs.count")"
+
 # A reentrant call (deploy inside /audit or /ship, both hold the lock) still reads and writes the cache, under
 # TESTRUN_CACHE_CMD: that is the key deploy's push gate looks up. Before, the exec shortcut skipped both.
 rm -rf "$TESTRUN_STATE_DIR"; : > "$TMP/runs.count"; echo a > "$CR/a"
