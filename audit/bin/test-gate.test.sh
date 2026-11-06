@@ -21,7 +21,7 @@ check() { # name expected actual
   if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; FAIL=$((FAIL + 1)); fi
 }
 sleeper() { sleep 300 & SLEEPERS="$SLEEPERS $!"; LAST=$!; }
-export TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_ADMIT_POLL=0.2
+export TESTRUN_CAP_SUITE=2 TESTRUN_CAP_GLOBAL=3 TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_ADMIT_POLL=0.2
 unset TESTRUN_STATE_DIR TESTRUN_DISABLE TESTRUN_ID
 runs() { ls "$TEST_GATE_STATE_DIR/runs" 2>/dev/null | grep -vc '\.' ; }
 holders() { cat "$TEST_GATE_STATE_DIR"/runs/*-* 2>/dev/null | sed -n 's/^pid=//p' | sort | tr '\n' ' '; }

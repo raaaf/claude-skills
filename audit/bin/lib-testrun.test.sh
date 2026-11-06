@@ -34,7 +34,7 @@ fresh_state() {
   rm -rf "$TMP/state"
   export TESTRUN_STATE_DIR="$TMP/state"
   unset TEST_GATE_STATE_DIR TESTRUN_DISABLE TESTRUN_ID TESTRUN_PRESSURE TESTRUN_FREE_PCT
-  export TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_ADMIT_POLL=0.2 TESTRUN_WAIT_MAX=2 TESTRUN_NOTICE=1
+  export TESTRUN_CAP_SUITE=2 TESTRUN_CAP_GLOBAL=3 TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_ADMIT_POLL=0.2 TESTRUN_WAIT_MAX=2 TESTRUN_NOTICE=1
   export TESTRUN_SWAPUSAGE="total = 1000.00M  used = 0.00M  free = 1000.00M  (encrypted)" TESTRUN_SIM_GRACE=1   # not this Mac's swap, and short reapers
 }
 # adm <class> <project> <owner-pid>: admit in a subshell, print the exit code and the ticket id
@@ -99,7 +99,7 @@ lib tr_release "$(id_of "$(cat "$TMP/w2")")"
 wait "$W2" "$W3"
 check "the younger waiter follows" "0" "$(rc_of "$(cat "$TMP/w3")")"
 fi
-unset TESTRUN_CAP_SUITE; export TESTRUN_WAIT_MAX=2
+export TESTRUN_CAP_SUITE=2 TESTRUN_WAIT_MAX=2
 
 # --- stagger: a later candidate waits after an admission --------------------------------------------
 fresh_state
@@ -152,6 +152,11 @@ adm suite events "$V2" >/dev/null
 unset TESTRUN_CAP_SUITE
 EV="$TESTRUN_STATE_DIR/test-events.jsonl"
 check "waiting is logged as an event with project and pressure" "yes" "$(grep -q '"event":"wait".*"class":"suite".*"pressure":"1"' "$EV" && echo yes || echo no)"
+# Several projects test at once on this Mac: a third suite runs next to two others, and a long queue never ends in a
+# false red (a shop run gave up after 900 s behind two 20-minute suites, 2026-11-06).
+check "default ceilings admit three suites, four heavy runs" "3 4" "$(env -u TESTRUN_CAP_SUITE -u TESTRUN_CAP_GLOBAL bash -c '. "$0"; echo "$(tr_cap suite) $(tr_cap global)"' "$PWD/lib-testrun.sh")"
+check "a suite waits 45 minutes, an xcode run 15" "2700 900" "$(env -u TESTRUN_WAIT_MAX bash -c '. "$0"; echo "$(_tr_wait_max suite) $(_tr_wait_max xcode)"' "$PWD/lib-testrun.sh")"
+check "an explicit wait limit wins" "7" "$(TESTRUN_WAIT_MAX=7 bash -c '. "$0"; _tr_wait_max suite' "$PWD/lib-testrun.sh")"
 check "giving up is logged" "yes" "$(grep -q '"event":"giveup"' "$EV" && echo yes || echo no)"
 check "every event is also a TESTRUN line on stderr" "yes" "$(grep -q '^TESTRUN wait waited=0 class=suite' "$TMP/stderr" && echo yes || echo no)"
 

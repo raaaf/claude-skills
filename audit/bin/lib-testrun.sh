@@ -19,8 +19,8 @@
 # callers fall back to their pre-lib behaviour.
 #
 # Env (all optional, mostly for tests):
-#   TESTRUN_CAP_XCODE (2) TESTRUN_CAP_SUITE (2) TESTRUN_CAP_GLOBAL (3)   admission ceilings
-#   TESTRUN_WAIT_MAX (900) TESTRUN_NOTICE (30) TESTRUN_ADMIT_POLL (2)    waiting
+#   TESTRUN_CAP_XCODE (2) TESTRUN_CAP_SUITE (3) TESTRUN_CAP_GLOBAL (4)   admission ceilings
+#   TESTRUN_WAIT_MAX (suite 2700, xcode 900) TESTRUN_NOTICE (30) TESTRUN_ADMIT_POLL (2)    waiting
 #   TESTRUN_STAGGER (30)        seconds a later candidate waits after any admission
 #   TESTRUN_PRESSURE, TESTRUN_FREE_PCT   override kern.memorystatus_vm_pressure_level / `memory_pressure -Q`
 #   TESTRUN_WORKERS_ALONE (8)   worker budget of a heavy run that runs alone; see tr_workers
@@ -178,10 +178,17 @@ tr_cap() {
     xcode)
       until=$(cat "$(_tr_state)/xcode-cap-until" 2>/dev/null)
       if [ -n "$until" ] && [ "$until" -gt "$(_tr_now)" ] 2>/dev/null; then echo 1; else echo "${TESTRUN_CAP_XCODE:-2}"; fi ;;
-    suite)  echo "${TESTRUN_CAP_SUITE:-2}" ;;
-    global) echo "${TESTRUN_CAP_GLOBAL:-3}" ;;
+    suite)  echo "${TESTRUN_CAP_SUITE:-3}" ;;
+    global) echo "${TESTRUN_CAP_GLOBAL:-4}" ;;
     *)      echo 1 ;;
   esac
+}
+
+# Longest wait for admission. A suite can sit behind two 20-minute suites, so it waits longer than an xcode run.
+_tr_wait_max() {
+  if [ -n "${TESTRUN_WAIT_MAX:-}" ]; then echo "$TESTRUN_WAIT_MAX"
+  elif [ "$1" = suite ]; then echo 2700
+  else echo 900; fi
 }
 
 # tr_workers <heavy runs active, this one included>: parallel test processes for a run, decided once at admission.
@@ -522,7 +529,7 @@ tr_admit() {
       _tr_gate_leave
     fi
     now=$(_tr_now); waited=$((now - t0))
-    if [ "$waited" -ge "${TESTRUN_WAIT_MAX:-900}" ]; then
+    if [ "$waited" -ge "$(_tr_wait_max "$class")" ]; then
       tr_event giveup waited="$waited" class="$class"
       echo "testrun: no slot for $class after ${waited}s, running:" >&2
       _tr_holders >&2

@@ -36,7 +36,7 @@ if ! command -v tr_admit >/dev/null 2>&1; then tr_admit() { return 0; }; tr_rele
 
 STATE_DIR="${TEST_GATE_STATE_DIR:-$HOME/.local/state/claude}"
 FLAKES="$STATE_DIR/test-flakes.jsonl"
-export TESTRUN_WAIT_MAX=${SLOT_WAIT_MAX:-${TESTRUN_WAIT_MAX:-900}}
+[ -n "${SLOT_WAIT_MAX:-}" ] && export TESTRUN_WAIT_MAX=$SLOT_WAIT_MAX
 export TESTRUN_NOTICE=${SLOT_NOTICE_SECONDS:-${TESTRUN_NOTICE:-30}}
 export TESTRUN_ADMIT_POLL=${SLOT_POLL_SECONDS:-${TESTRUN_ADMIT_POLL:-2}}
 FLAKE_DAYS=14
