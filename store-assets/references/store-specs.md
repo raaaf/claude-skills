@@ -13,6 +13,10 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
   2048 x 2732 and 2732 x 2048 for 13" displays; the skill renders the first (portrait) size only,
   a project may set another accepted portrait size in its `formats` entry. Device frame: none, the
   screenshot is drawn frameless (see "Devices", `ipad`).
+- Format id `ios-ipad-13-landscape` (optional): 2752 x 2064 px, landscape, iPad 13" display class.
+  Same file rules as `ios-ipad-13`, counts toward the same up-to-10 limit per locale. Not rendered
+  unless the project lists it in `formats`; a scene opts in via its `formats` list
+  (`config-schema.md`). Device frame: none (see "Devices", `ipad-landscape`).
 - Source (both iOS formats): https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/
   (verified 2026-10-07).
 
@@ -67,6 +71,14 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
     "frameless": true,
     "corner_radius_pct": 3.5,
     "width_pct": 80,
+    "top_pct": 40,
+    "shadow": "0 calc(var(--w) * 0.015) calc(var(--w) * 0.04) rgba(0, 0, 0, 0.3)"
+  },
+  "ipad-landscape": {
+    "frameless": true,
+    "corner_radius_pct": 3.5,
+    "width_pct": 62,
+    "top_pct": 34,
     "shadow": "0 calc(var(--w) * 0.015) calc(var(--w) * 0.04) rgba(0, 0, 0, 0.3)"
   }
 }
@@ -102,11 +114,31 @@ is older than 6 months (`SKILL.md` Ablauf, step 4).
   asset cache needed (`bin/render.mjs` pre-flight skips the asset checks for it). The source
   screenshot is drawn as a rounded rectangle: `corner_radius_pct` is the corner radius as a percent
   of the device width, `width_pct` the device width as a percent of the canvas, `shadow` a CSS
-  `box-shadow` value (may use `var(--w)`, the canvas width). Same vertical grid as `ios-6.9` (top
-  edge at 40%, runs off the bottom). The iPad source keeps its own status bar (capture it with
+  `box-shadow` value (may use `var(--w)`, the canvas width). `top_pct` is the device's top edge in
+  percent of the canvas height. Default portrait grid is the same as `ios-6.9` (40%, runs off the
+  bottom). Both `width_pct` and `top_pct` can be overridden per project and per scene (see
+  "iPad overrides" below). The iPad source keeps its own status bar (capture it with
   `xcrun simctl status_bar <udid> override`, as for iPhone sources); `crop_top_px_ipad` (default
   0) can hide a top strip. iPad sources come from the scene's `source_ipad`, never the iPhone
   `source`.
+
+- `ipad-landscape` (`ios-ipad-13-landscape`) — same frameless device with landscape defaults:
+  `width_pct` 62 and `top_pct` 34 keep the whole landscape screenshot inside the canvas below the
+  text zone (0-30%). Headline and subline size off `height * 0.75` instead of the canvas width
+  (the portrait-equivalent width), so the text zone stays the same size as on portrait iPad.
+
+### iPad overrides
+
+Defaults above apply to every project that sets nothing, so existing output is unchanged. A
+project's `.store-assets/store-assets.json` may override them (ranges are checked in pre-flight,
+out of range fails before any render):
+
+- `format_options.<ios-ipad-13 | ios-ipad-13-landscape>.width_pct` — device width in percent of
+  the canvas, 40 to 100.
+- `format_options.<...>.top_pct` — device top edge in percent of the canvas height, 25 to 60
+  (the text zone ends at 30%, going below 30 trades headline room for device size).
+- Per scene `ipad_width_pct` / `ipad_top_pct` — same meaning and ranges, win over `format_options`
+  for that scene on either iPad format.
 
 ### Asset provenance (rebuilding on another machine)
 

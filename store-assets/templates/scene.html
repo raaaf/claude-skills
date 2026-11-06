@@ -120,7 +120,7 @@
         text-align: center;
         text-wrap: balance;
         margin: 0 7%;
-        font-size: calc(var(--w) * 0.12 * var(--hs, 1));
+        font-size: calc(var(--tw, var(--w)) * 0.12 * var(--hs, 1));
       }
       #subline {
         font-weight: 500;
@@ -128,8 +128,8 @@
         text-align: center;
         text-wrap: balance;
         opacity: 0.8;
-        margin: calc(var(--w) * 0.033) 10% 0;
-        font-size: calc(var(--w) * 0.048);
+        margin: calc(var(--tw, var(--w)) * 0.033) 10% 0;
+        font-size: calc(var(--tw, var(--w)) * 0.048);
       }
       .pills {
         display: flex;
@@ -267,6 +267,9 @@
 
       document.documentElement.style.setProperty('--w', width + 'px');
       document.documentElement.style.setProperty('--h', height + 'px');
+      // Text basis: landscape iPad canvases size headline/subline off the
+      // portrait-equivalent width (height * 0.75), everything else off --w.
+      if (width > height && !isLandscape) document.documentElement.style.setProperty('--tw', height * 0.75 + 'px');
       document.documentElement.style.setProperty('--hs', get('headlineScale', '1'));
       // Optional vertical device shift (% of canvas height), default 0.
       const deviceDy = (Number(get('deviceDy', 0)) / 100) * height;
@@ -556,7 +559,7 @@
           const hair = Math.max(2, Math.round(width * 0.0012));
           box.style.boxShadow = `0 0 0 ${hair}px rgba(${rgb.join(',')}, 0.12), 0 ${width * 0.012}px ${width * 0.04}px rgba(0, 0, 0, 0.22), ${deviceSpec.shadow}`;
         }
-        slot.style.top = height * 0.4 + 'px';
+        slot.style.top = height * (Number(deviceSpec.topPct ?? 40) / 100) + 'px';
         const shot = document.createElement('img');
         shot.src = get('screenSrc', '');
         shot.style.display = 'block';

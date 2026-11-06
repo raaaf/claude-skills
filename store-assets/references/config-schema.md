@@ -95,9 +95,15 @@ here). One config per project.
   project (a project may render a subset, never a size store-specs.md does not list). Device choice
   follows the format, not the scene: `ios-6.9` always renders an iPhone screen, `play-phone` always
   an Android screen, `ios-ipad-13` a frameless iPad screenshot (`bin/render.mjs`'s
-  `DEVICE_BY_FORMAT`), `play-feature` never shows a device.
+  `DEVICE_BY_FORMAT`), `ios-ipad-13-landscape` (2752x2064, optional) the same frameless iPad in a
+  landscape canvas, `play-feature` never shows a device.
 - `scenes[]` — one entry per screen in the store screenshot sequence.
   - `id` — stable scene id, also the output filename prefix (`<id>.jpg`).
+  - `formats` (optional) — array of format ids the scene renders in, default: every format in the
+    config's `formats`. Use `["ios-ipad-13-landscape"]` for a landscape-only iPad scene. Pre-flight
+    only requires the sources the listed formats need: an iPad-only scene needs `source_ipad` and
+    no iPhone `source`. Every id must exist in the config's `formats`. A stale file from an earlier
+    render in a format the scene no longer lists must be removed by hand.
   - `source.<locale>.<theme>` — project-relative path to the source screen PNG for that
     locale/theme combination. A scene without a source for a configured locale/theme fails
     pre-flight (Edge Cases).
@@ -133,6 +139,8 @@ here). One config per project.
     stretched onto the iPad canvas). On a `combo` scene it goes on `combo.front` instead: the iPad
     renders only the front part's `source_ipad` as one frameless device (the back part is
     ignored). `source` is then only needed if another format is configured.
+  - `ipad_width_pct` / `ipad_top_pct` (optional, scene) — per-scene iPad device width (40-100) and
+    top edge (25-60), both in percent (canvas width / height); win over `format_options`.
   - `crop_top_px_ipad` (optional, scene or `combo.front`) — source pixels to hide from the top of
     the iPad screenshot, default `0` (the iPad source keeps its own status bar). Separate from
     `crop_top_px` because that value is tuned for the iPhone source.
@@ -159,9 +167,11 @@ plus the project logo, since Play accepts exactly one Feature Graphic (`store-sp
 
 ## Optional presentation fields (all default off)
 
-- `format_options.<format-id>` (top level) — `{ "edge": true, "headline_scale": 0.85 }`. `edge` draws a
+- `format_options.<format-id>` (top level) — `{ "edge": true, "headline_scale": 0.85, "width_pct": 92, "top_pct": 30 }`. `edge` draws a
   hairline (12% of the scene foreground) plus a soft shadow around the frameless iPad screenshot;
-  `headline_scale` multiplies the headline font size (shrink-to-fit still applies).
+  `headline_scale` multiplies the headline font size (shrink-to-fit still applies); `width_pct` /
+  `top_pct` (iPad formats only) set the iPad device width (percent of canvas width, 40-100) and top
+  edge (percent of canvas height, 25-60), defaults in `store-specs.md` "Devices".
 - `device_dy_pct` (scene) — shifts the single phone device (not the frameless iPad) vertically by this percent of the canvas
   height (negative = up), e.g. to make the bottom crop fall between rows.
 - `combo.geometry` (combo scene) — `{ offset_x, offset_y, rotate_front, rotate_back }` overriding the

@@ -43,7 +43,9 @@ pre-flight fails with the missing path before any render if the cache is not the
 - **`ios-ipad-13` is frameless.** `DEVICE_BY_FORMAT` maps it to the `ipad` Devices entry
   (`frameless: true`); pre-flight skips bezel/status-bar checks for it and instead requires
   `source_ipad` per scene (front part for `combo`, which renders as one single device). Rounded
-  corner, width and shadow constants live in the Devices JSON, `scene.html`'s frameless branch only
-  reads them from `deviceSpec`.
+  corner, width, top edge and shadow constants live in the Devices JSON (`ipad`, and `ipad-landscape`
+  for `ios-ipad-13-landscape`), `scene.html`'s frameless branch only reads them from `deviceSpec`.
+  Config overrides (`format_options.<id>.width_pct/top_pct`, scene `ipad_*_pct`, scene `formats`)
+  are validated in `render.mjs`'s pre-flight; defaults keep existing projects' output unchanged.
 - **Milestone B (video, `templates/preview.html` + `bin/render-video.mjs`) is not built.** Nothing
   in `SKILL.md`'s Ablauf beyond stills is implemented yet; see the plan's Step 10.

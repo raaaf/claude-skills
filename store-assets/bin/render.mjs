@@ -31,7 +31,26 @@ const STORE_SPECS_PATH = path.join(SKILL_DIR, 'references', 'store-specs.md');
 // branch drops it). ios-ipad-13 shows a frameless iPad screenshot (the
 // "ipad" Devices entry has `frameless: true`: no bezel, no status-bar
 // overlay, rounded corners + shadow instead).
-const DEVICE_BY_FORMAT = { 'ios-6.9': 'iphone', 'play-phone': 'android', 'ios-ipad-13': 'ipad' };
+// ios-ipad-13-landscape is the optional landscape iPad format: same frameless
+// device, its own Devices entry ("ipad-landscape") with landscape defaults.
+const DEVICE_BY_FORMAT = {
+  'ios-6.9': 'iphone',
+  'play-phone': 'android',
+  'ios-ipad-13': 'ipad',
+  'ios-ipad-13-landscape': 'ipad-landscape',
+};
+const IPAD_FORMATS = ['ios-ipad-13', 'ios-ipad-13-landscape'];
+
+// Ranges for the optional iPad overrides (`format_options.<id>.width_pct` /
+// `top_pct`, scene `ipad_width_pct` / `ipad_top_pct`).
+const IPAD_WIDTH_PCT_RANGE = [40, 100];
+const IPAD_TOP_PCT_RANGE = [25, 60];
+
+// Format ids a scene renders in: its own `formats` list, else every
+// configured format (the default, so existing configs render unchanged).
+function sceneFormats(scene, config) {
+  return scene.formats ?? Object.keys(config.formats);
+}
 
 // iPhone bezel color by scene background (store-specs.md "Devices"), a
 // skill-level rule. A scene's own `ios_color` (single scene) or a combo
@@ -143,13 +162,44 @@ function preflight(projectRoot, config, devicesSpec) {
     if (!existsSync(logoPath)) problems.push(`logo not found: ${config.brand.logo}`);
   }
 
-  // Phone sources are needed by every format except the iPad one, which
-  // reads `source_ipad` instead.
-  const sourceChecks = [];
-  if (Object.keys(config.formats).some((id) => id !== 'ios-ipad-13')) sourceChecks.push({ ipad: false, label: 'source' });
-  if ('ios-ipad-13' in config.formats) sourceChecks.push({ ipad: true, label: 'source_ipad' });
-  for (const { ipad, label } of sourceChecks) {
+  const checkRange = (label, value, [min, max]) => {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+      problems.push(`${label} must be a number between ${min} and ${max}, got ${JSON.stringify(value)}`);
+    }
+  };
+  for (const [formatId, opts] of Object.entries(config.format_options ?? {})) {
+    for (const [key, range] of [['width_pct', IPAD_WIDTH_PCT_RANGE], ['top_pct', IPAD_TOP_PCT_RANGE]]) {
+      if (!(key in (opts ?? {}))) continue;
+      if (!IPAD_FORMATS.includes(formatId)) problems.push(`format_options.${formatId}.${key} only applies to iPad formats`);
+      else checkRange(`format_options.${formatId}.${key}`, opts[key], range);
+    }
+  }
+  for (const scene of config.scenes) {
+    for (const [key, range] of [['ipad_width_pct', IPAD_WIDTH_PCT_RANGE], ['ipad_top_pct', IPAD_TOP_PCT_RANGE]]) {
+      if (key in scene) checkRange(`${scene.id}.${key}`, scene[key], range);
+    }
+    if (scene.formats !== undefined) {
+      if (!Array.isArray(scene.formats) || scene.formats.length === 0) {
+        problems.push(`${scene.id}.formats must be a non-empty array of format ids`);
+      } else {
+        for (const id of scene.formats) {
+          if (!(id in config.formats)) problems.push(`${scene.id}.formats lists "${id}", which is not in the config's formats`);
+        }
+      }
+    }
+  }
+  if (problems.length) {
+    for (const p of problems) console.error(`FAIL: ${p}`);
+    process.exit(1);
+  }
+
+  // Phone sources are needed by every format except the iPad ones, which
+  // read `source_ipad` instead. Checked per scene: a scene limited to iPad
+  // formats (scene `formats`) needs no phone `source`.
+  for (const { ipad, label } of [{ ipad: false, label: 'source' }, { ipad: true, label: 'source_ipad' }]) {
     for (const scene of config.scenes) {
+      const wanted = sceneFormats(scene, config).filter((id) => id in config.formats && IPAD_FORMATS.includes(id) === ipad);
+      if (wanted.length === 0) continue;
       const parts = scenePartSources(scene, { ipad });
       for (const locale of config.locales) {
         const forLocale = parts.filter((p) => p.locale === locale);
@@ -274,12 +324,15 @@ function buildFramelessSpec({ projectRoot, part, locale }) {
   };
 }
 
-function deviceSpecParam(devicesSpec, deviceKind) {
+// `overrides`: { widthPct, topPct } for a frameless device (config
+// `format_options` / scene `ipad_*_pct`), falling back to the Devices entry.
+function deviceSpecParam(devicesSpec, deviceKind, overrides = {}) {
   const spec = devicesSpec[deviceKind];
   if (spec.frameless) {
     return JSON.stringify({
       frameless: true,
-      widthPct: spec.width_pct,
+      widthPct: overrides.widthPct ?? spec.width_pct,
+      topPct: overrides.topPct ?? spec.top_pct ?? 40,
       cornerRadiusPct: spec.corner_radius_pct,
       shadow: spec.shadow,
     });
@@ -382,6 +435,15 @@ function sceneUrlFor(params) {
   return pathToFileURL(path.join(SKILL_DIR, 'templates', 'scene.html')).href + '?' + new URLSearchParams(params).toString();
 }
 
+// Width/top overrides for a frameless device: scene beats `format_options`.
+function framelessOverrides(config, format, scene) {
+  const opts = config.format_options?.[format.id] ?? {};
+  return {
+    widthPct: scene.ipad_width_pct ?? opts.width_pct,
+    topPct: scene.ipad_top_pct ?? opts.top_pct,
+  };
+}
+
 async function renderOne({ projectRoot, config, devicesSpec, scene, format, locale, backgroundOverride }) {
   const deviceKind = DEVICE_BY_FORMAT[format.id];
   const background = backgroundOverride ?? scene.background;
@@ -391,7 +453,7 @@ async function renderOne({ projectRoot, config, devicesSpec, scene, format, loca
   const frameless = !!devicesSpec[deviceKind].frameless;
   // Frameless (iPad) renders one device: a combo scene shows its front part only.
   const params = { ...baseParams(projectRoot, config, format, effectiveScene, locale), layout: frameless ? 'single' : scene.layout || 'single', device: deviceKind };
-  params.deviceSpec = deviceSpecParam(devicesSpec, deviceKind);
+  params.deviceSpec = deviceSpecParam(devicesSpec, deviceKind, framelessOverrides(config, format, scene));
 
   if (frameless) {
     const shot = buildFramelessSpec({ projectRoot, part: ipadPart(scene), locale });
@@ -526,6 +588,7 @@ async function main() {
       continue;
     }
     for (const scene of scenes) {
+      if (!sceneFormats(scene, config).includes(formatId)) continue;
       for (const locale of locales) {
         const { sceneUrl } = await renderOne({ projectRoot, config, devicesSpec, scene, format, locale, backgroundOverride });
         const out = await shootScene(sceneUrl, format, outDirFor(locale), scene.id, chromium);
