@@ -25,6 +25,10 @@
 #   TESTRUN_PRESSURE, TESTRUN_FREE_PCT   override kern.memorystatus_vm_pressure_level / `memory_pressure -Q`
 #   TESTRUN_WORKERS_ALONE (8)   worker budget of a heavy run that runs alone; see tr_workers
 #   TESTRUN_NICE (10)           nice increment for admitted `suite` runs (0 = off); TESTRUN_NICE_XCODE (0) for `xcode`
+#   TESTRUN_SIM_CAP (2)         booted test simulators machine-wide; a third xcode run waits (see _tr_sim_cap_ok)
+#   TESTRUN_SIM_GRACE (300)     seconds a simulator stays booted after its last test run, then it is shut down
+#   TESTRUN_SWAP_LIMIT_PCT (80) TESTRUN_SWAP_WAIT (120)   swap gate, see _tr_extra_gate
+#   TESTRUN_SIMCTL (xcrun simctl)  TESTRUN_SIM_AGES, TESTRUN_SWAPUSAGE   test overrides
 # Exported to the admitted command: TESTRUN_WORKERS (parallel test processes), TESTRUN_BROWSER_WORKERS (browser
 # processes, at most 6). Pest/Paratest has no env var for the process count, so a project script passes them on
 # (`--processes=${TESTRUN_WORKERS:-...}`); TESTRUN_BAIL=1 (set by the deploy gate) asks for stop-on-first-failure.
@@ -264,6 +268,183 @@ _tr_holders() {  # one line per running heavy ticket, for the give-up message
   done
 }
 
+# --- simulators and swap -------------------------------------------------------------------------
+# A booted simulator costs 1-5 GB. Three things keep them from piling up: the cap below (a third xcode run waits),
+# the shutdown after the last run (tr_sim_release), and mac-cleanup.sh --reconcile as the safety net. All three
+# read the same registry (the tickets): a device with any live ticket is in use and is never shut down. When the
+# registry cannot be read, nothing is shut down.
+
+# tr_udid_of <word...>: the simulator id of a `-destination ...id=<UDID>` argument, empty when there is none
+tr_udid_of() {
+  local a u
+  for a in "$@"; do
+    case "$a" in *id=*) u=$(printf '%s' "$a" | grep -oE 'id=[0-9A-Fa-f-]+' | head -1 | cut -c4-); [ -n "$u" ] && { printf '%s' "$u"; return 0; } ;; esac
+  done
+  return 0
+}
+
+# _tr_simctl <timeout seconds> args...: simctl under an alarm (a stuck CoreSimulatorService must not stall the
+# admission loop or a reaper). TESTRUN_SIMCTL is a path only: zsh does not word-split.
+_tr_simctl() {
+  local t=$1; shift
+  if [ -n "${TESTRUN_SIMCTL:-}" ]; then perl -e 'alarm shift; exec @ARGV or exit 127' "$t" "$TESTRUN_SIMCTL" "$@"
+  else perl -e 'alarm shift; exec @ARGV or exit 127' "$t" xcrun simctl "$@"; fi
+}
+# _tr_devices: "name|udid|state" for every simulator; rc 1 when simctl failed or timed out (TESTRUN_SIMCTL_TIMEOUT, 15)
+_tr_devices() {
+  local out
+  out=$(_tr_simctl "${TESTRUN_SIMCTL_TIMEOUT:-15}" list devices 2>/dev/null) || return 1
+  printf '%s\n' "$out" | sed -n 's/^ *\(.*\) (\([0-9A-Fa-f-]\{36\}\)) (\([A-Za-z ]*\)) *$/\1|\2|\3/p'
+}
+_tr_booted_sims() { _tr_devices | awk -F'|' '$3 == "Booted" { print $2 "|" $1 }'; }
+_tr_sim_name() { _tr_devices | awk -F'|' -v u="$1" '$2 == u { print $1; exit }'; }
+_tr_sim_is_test() { case "$1" in *-test|*-test-[0-9]|*-test-[0-9][0-9]) return 0 ;; esac; return 1; }
+_tr_registry_ok() { local d; d=$(_tr_runs); [ -d "$d" ] && [ -r "$d" ] && [ -x "$d" ]; }
+
+# The device of a ticket: its `udid` field, else the id in the wrapper's own command line (tickets written before the
+# field existed, or by a layer that never saw the arguments).
+_tr_ticket_udid() {
+  local u
+  u=$(_tr_field udid "$1")
+  [ -n "$u" ] || u=$(tr_udid_of "$(ps -o command= -p "$(_tr_field pid "$1")" 2>/dev/null)")
+  printf '%s' "$u"
+}
+
+# tr_sim_owner <udid> [exclude id]: "<project> pid <pid>" of the first live run on that device, rc 0 when there is one
+tr_sim_owner() {
+  local id f
+  for id in $(_tr_live_ids); do
+    [ "$id" = "${2:-}" ] && continue
+    f=$(_tr_ticket "$id")
+    _tr_alive "$f" || continue
+    [ "$(_tr_ticket_udid "$f")" = "$1" ] || continue
+    printf '%s pid %s' "$(_tr_field project "$f")" "$(_tr_field pid "$f")"; return 0
+  done
+  return 1
+}
+
+# A running xcode run whose destination carried no id (by name, or hidden in a script): it may use any device.
+_tr_sim_unknown_run() {
+  local id f
+  for id in $(_tr_live_ids); do
+    [ "$id" = "${1:-}" ] && continue
+    f=$(_tr_ticket "$id")
+    _tr_alive "$f" || continue
+    [ "$(_tr_field class "$f")" = xcode ] && [ "$(_tr_field state "$f")" = running ] && [ -z "$(_tr_ticket_udid "$f")" ] || continue
+    # a script-wrapped run hides its device; it blocks shutdowns only for TESTRUN_UNKNOWN_RUN_MAX (3600) s, so a stuck
+    # ticket cannot keep every simulator booted for good. Until then mac-cleanup.sh --reconcile is the fallback.
+    [ $(( $(_tr_now) - $(_tr_field since "$f") )) -lt "${TESTRUN_UNKNOWN_RUN_MAX:-3600}" ] && return 0
+  done
+  return 1
+}
+tr_sim_busy() { tr_sim_owner "$@" >/dev/null || _tr_sim_unknown_run "${2:-}"; }
+
+# tr_sim_age <udid>: seconds the simulator has been booted (age of its launchd_sim), empty when unknown
+tr_sim_age() {
+  local pid
+  if [ -n "${TESTRUN_SIM_AGES+x}" ]; then printf '%s\n' "$TESTRUN_SIM_AGES" | awk -v u="$1" '$1 == u { print $2 }'; return 0; fi
+  pid=$(pgrep -f "launchd_sim.*Devices/$1/" 2>/dev/null | head -1)
+  [ -n "$pid" ] && _tr_etime_s "$pid"
+  return 0
+}
+
+# tr_sim_shutdown_if_idle <udid> <reason> [exclude id]: shut the device down unless the registry is unreadable or a run uses it
+tr_sim_shutdown_if_idle() {
+  _tr_registry_ok || { tr_event sim_keep udid="$1" reason=registry-unreadable; return 1; }
+  _tr_prune
+  if tr_sim_busy "$1" "${3:-}"; then tr_event sim_keep udid="$1" reason=in-use; return 1; fi
+  _tr_simctl "${TESTRUN_SIMCTL_SHUTDOWN_TIMEOUT:-30}" shutdown "$1" >/dev/null 2>&1 || return 1
+  tr_event sim_shutdown udid="$1" reason="$2"
+}
+
+_tr_sim_reaper() {  # <udid> [exclude id]: wait out the grace period (a newer run end extends it), then shut down if idle
+  local dir ended wait
+  dir="$(_tr_state)/sims"
+  while :; do
+    ended=$(cat "$dir/$1.ended" 2>/dev/null); [ -n "$ended" ] || break
+    wait=$(( ended + ${TESTRUN_SIM_GRACE:-300} - $(_tr_now) ))
+    [ "$wait" -gt 0 ] || { tr_sim_shutdown_if_idle "$1" after-run "${2:-}"; break; }
+    _tr_nap "$wait"
+  done
+  rm -f "$dir/$1.reaper"
+}
+
+# tr_sim_release <udid> [exclude id]: a test run on that device ended. One detached reaper per device shuts it
+# down after TESTRUN_SIM_GRACE seconds unless a run uses it by then, so an agent's next filtered run reuses the
+# booted device and only an idle one is paid for. Its output is closed: it must not hold the caller's pipe.
+tr_sim_release() {
+  tr_enabled && [ -n "${1:-}" ] || return 0
+  local dir pid
+  _tr_sim_is_test "$(_tr_sim_name "$1")" || return 0   # only -test devices get a reaper; the others are left to mac-cleanup.sh --reconcile
+  dir="$(_tr_state)/sims"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  _tr_now > "$dir/$1.ended"
+  pid=$(cat "$dir/$1.reaper" 2>/dev/null)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && return 0
+  { set -m; ( _tr_sim_reaper "$1" "${2:-}" ) >/dev/null 2>&1 </dev/null & pid=$!; set +m; } 2>/dev/null
+  echo "$pid" > "$dir/$1.reaper"
+}
+
+# _tr_sim_cap_check <udid> <own id>: sets _TR_CAP_BLOCK=1 when a run on that device would be the third booted test
+# simulator (TESTRUN_SIM_CAP, 2). Runs before the admission mutex, so a slow simctl never holds it up. Counted are
+# booted "*-test" / "*-test-<n>" devices plus those of running xcode tickets (a device that is still booting). No cap
+# for a device simctl does not list (a physical iPhone), one that is already booted, or when simctl fails or times out.
+# Idle booted test devices that no ticket uses are shut down first to make room.
+_tr_sim_cap_check() {
+  local devs n u st running others="" cnt=0 listed=0 mine=0 id f
+  _TR_CAP_BLOCK=0
+  devs=$(_tr_devices) && [ -n "$devs" ] || return 0
+  running=""
+  for id in $(_tr_live_ids); do
+    [ "$id" = "$2" ] && continue
+    f=$(_tr_ticket "$id")
+    [ "$(_tr_field class "$f")" = xcode ] && [ "$(_tr_field state "$f")" = running ] && running="$running $(_tr_ticket_udid "$f")"
+  done
+  while IFS='|' read -r n u st; do
+    [ -n "$u" ] || continue
+    if [ "$u" = "$1" ]; then listed=1; [ "$st" = Booted ] && mine=1; continue; fi
+    _tr_sim_is_test "$n" || continue
+    case " $running " in *" $u "*) others="$others$u:$st "; cnt=$((cnt + 1)); continue ;; esac
+    [ "$st" = Booted ] && { others="$others$u:$st "; cnt=$((cnt + 1)); }
+  done <<<"$devs"
+  [ "$listed" = 1 ] && [ "$mine" = 0 ] && [ "$cnt" -ge "${TESTRUN_SIM_CAP:-2}" ] || return 0
+  for n in $others; do
+    [ "$cnt" -ge "${TESTRUN_SIM_CAP:-2}" ] || break
+    [ "${n#*:}" = Booted ] || continue
+    tr_sim_shutdown_if_idle "${n%%:*}" cap-room "$2" && cnt=$((cnt - 1))
+  done
+  [ "$cnt" -ge "${TESTRUN_SIM_CAP:-2}" ] && _TR_CAP_BLOCK=1
+  return 0
+}
+
+_tr_swap_raw() { if [ -n "${TESTRUN_SWAPUSAGE+x}" ]; then printf '%s' "$TESTRUN_SWAPUSAGE"; else sysctl -n vm.swapusage 2>/dev/null; fi; }
+_SWAP_AWK='{ for (i = 1; i < NF; i++) { if ($i == "total") t = $(i + 2) + 0; if ($i == "used") u = $(i + 2) + 0 } }'
+_tr_swap_pct() { _tr_swap_raw | awk "$_SWAP_AWK END { if (t > 0) printf \"%d\", u * 100 / t }"; }
+_tr_swap_over() { _tr_swap_raw | awk -v lim="${TESTRUN_SWAP_LIMIT_PCT:-80}" "$_SWAP_AWK END { exit !(t > 0 && u * 100 > t * lim) }"; }
+
+# _tr_extra_gate <class> <udid> <other heavy runs active> <seconds waited>: the two admission rules on top of the
+# slots. Sets _TR_WHY (sim-cap | swap) when it says wait, _TR_OVERRIDE=1 when it lets a run through despite swap.
+#  - sim-cap: _TR_CAP_BLOCK from _tr_sim_cap_check (xcode runs with a known simulator id only).
+#  - swap: swap use above TESTRUN_SWAP_LIMIT_PCT (80) % of the current swap total plus memory stress holds a heavy run back, but only
+#    while another heavy run is active (waiting helps only when something will finish: this Mac sits near 95 %
+#    swap even when idle) and only for TESTRUN_SWAP_WAIT (120) seconds, far below TESTRUN_WAIT_MAX, so swap alone
+#    never ends in a give-up.
+# Swap alone is not a reason to wait (it stays high on a calm Mac): memory pressure level 2 or above, or free memory
+# under TESTRUN_SWAP_FREE_PCT (25) %, has to say so too.
+_tr_swap_stress() {
+  case "$(_tr_pressure_level)" in ''|1) [ "$(_tr_free_pct)" -lt "${TESTRUN_SWAP_FREE_PCT:-25}" ] ;; *) return 0 ;; esac
+}
+
+_tr_extra_gate() {
+  case "$1" in xcode|suite) ;; *) return 0 ;; esac
+  if [ "$1" = xcode ] && [ "${_TR_CAP_BLOCK:-0}" = 1 ]; then _TR_WHY=sim-cap; return 1; fi
+  if [ "${3:-0}" -ge 1 ] && _tr_swap_over && _tr_swap_stress; then
+    if [ "${4:-0}" -lt "${TESTRUN_SWAP_WAIT:-120}" ]; then _TR_WHY=swap; return 1; fi
+    _TR_OVERRIDE=1
+  fi
+  return 0
+}
+
 # --- admission ---------------------------------------------------------------------------------
 # One decision at a time: the check-and-take below runs under a short mkdir mutex, otherwise two
 # candidates both pass the stagger test and start together.
@@ -282,6 +463,8 @@ _tr_is_head() {  # <id> <class>: oldest live waiting ticket of the class (FIFO b
   for id in $(_tr_live_ids); do
     f=$(_tr_ticket "$id")
     [ "$(_tr_field state "$f")" = waiting ] && [ "$(_tr_field class "$f")" = "$2" ] || continue
+    # a waiter held back by the simulator cap does not block the FIFO for runs on booted devices (capblocked, see tr_admit)
+    [ "$id" != "$1" ] && [ "$(_tr_field capblocked "$f")" = 1 ] && continue
     [ "$id" = "$1" ]; return $?
   done
   return 1
@@ -302,17 +485,17 @@ _tr_staggered() {  # <id>: another run was admitted less than TESTRUN_STAGGER se
 
 _tr_stamp() { perl -MTime::HiRes=gettimeofday -e '($s,$u)=gettimeofday; printf "%010d%06d",$s,$u' 2>/dev/null || printf '%010d000000' "$(_tr_now)"; }
 
-# tr_admit <class> <project> [owner-pid]: wait for admission, then export TESTRUN_ID. Returns 0 when
+# tr_admit <class> <project> [owner-pid] [udid]: wait for admission, then export TESTRUN_ID. Returns 0 when
 # admitted (also when nested, disabled or the state dir is unwritable), 75 after TESTRUN_WAIT_MAX.
 tr_admit() {
   tr_enabled || return 0
   _tr_nested && return 0
-  local class=$1 project=$2 owner=${3:-$$} id t0 now waited next_notice=0 active level
+  local class=$1 project=$2 owner=${3:-$$} udid=${4:-} id t0 now waited next_notice=0 active level
   mkdir -p "$(_tr_runs)" "$(_tr_slots)" 2>/dev/null || { echo "testrun: state dir not writable, running without admission" >&2; return 0; }
   id="$(_tr_stamp)-$owner"
   {
-    printf 'pid=%s\nstart=%s\nclass=%s\nstate=waiting\nproject=%s\ncwd=%s\nargs=%s\nsince=%s\n' \
-      "$owner" "$(_tr_lstart "$owner")" "$class" "$project" "$PWD" "$(printf '%s' "${TESTRUN_ARGS:-}" | tr '\n' ' ')" "$(_tr_now)"
+    printf 'pid=%s\nstart=%s\nclass=%s\nstate=waiting\nproject=%s\ncwd=%s\nargs=%s\nsince=%s\nudid=%s\n' \
+      "$owner" "$(_tr_lstart "$owner")" "$class" "$project" "$PWD" "$(printf '%s' "${TESTRUN_ARGS:-}" | tr '\n' ' ')" "$(_tr_now)" "$udid"
   } > "$(_tr_ticket "$id").tmp.$$" && mv "$(_tr_ticket "$id").tmp.$$" "$(_tr_ticket "$id")"
   export TESTRUN_ID=$id TESTRUN_PROJECT=$project TESTRUN_OWNER_PID=$owner
   _tr_install_traps
@@ -320,16 +503,20 @@ tr_admit() {
   while :; do
     tr_reap_dead_groups >/dev/null   # an orphaned group (wrapper died) must not keep its slot for good
     _tr_prune
+    _TR_WHY=""; _TR_OVERRIDE=0; _TR_CAP_BLOCK=0
+    if [ "$class" = xcode ] && [ -n "$udid" ]; then _tr_sim_cap_check "$udid" "$id"; _tr_set "$id" capblocked "$_TR_CAP_BLOCK"; fi
     if _tr_gate_enter; then
       active=$(_tr_active heavy "$id")
-      if _tr_is_head "$id" "$class" && ! _tr_staggered "$id" && tr_pressure_ok "$active" && _tr_slot_take "$class" "$id"; then
+      if _tr_is_head "$id" "$class" && ! _tr_staggered "$id" && tr_pressure_ok "$active" \
+         && _tr_extra_gate "$class" "$udid" "$active" "$(( $(_tr_now) - t0 ))" && _tr_slot_take "$class" "$id"; then
         now=$(_tr_now)
         _tr_set "$id" admitted_at "$now"; _tr_set "$id" progress_at "$now"; _tr_set "$id" state running
         TESTRUN_WORKERS=$(tr_workers "$(_tr_active heavy)"); TESTRUN_BROWSER_WORKERS=$(tr_browser_workers "$TESTRUN_WORKERS")
         export TESTRUN_WORKERS TESTRUN_BROWSER_WORKERS
         _tr_gate_leave
         level=$(_tr_pressure_level)
-        [ "$now" -gt "$t0" ] && tr_event admit waited="$((now - t0))" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)"
+        [ "$now" -gt "$t0" ] && tr_event admit waited="$((now - t0))" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)" swap="$(_tr_swap_pct)"
+        [ "$_TR_OVERRIDE" = 1 ] && tr_event swap_override waited="$((now - t0))" class="$class" swap="$(_tr_swap_pct)"
         return 0
       fi
       _tr_gate_leave
@@ -344,7 +531,7 @@ tr_admit() {
     fi
     if [ "$waited" -ge "$next_notice" ]; then
       level=$(_tr_pressure_level)
-      tr_event wait waited="$waited" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)" heavy="$(_tr_active heavy "$id")"
+      tr_event wait waited="$waited" class="$class" pressure="${level:-unreadable}" free="$(_tr_free_pct)" heavy="$(_tr_active heavy "$id")" reason="$_TR_WHY" swap="$(_tr_swap_pct)"
       next_notice=$((waited + ${TESTRUN_NOTICE:-30}))
     fi
     _tr_nap "${TESTRUN_ADMIT_POLL:-2}"
@@ -654,8 +841,9 @@ tr_exec() {
   local attempt=1 rc a prev udid="" bundle="" restartable=0 top
   if ! tr_enabled || [ -z "${TESTRUN_ID:-}" ]; then "$@"; return $?; fi
   prev=""
+  udid=$(tr_udid_of "$@")
+  [ -n "$udid" ] && _tr_set "$TESTRUN_ID" udid "$udid"
   for a in "$@"; do
-    case "$a" in *id=*) [ -z "$udid" ] && udid=$(printf '%s' "$a" | grep -oE 'id=[0-9A-Fa-f-]+' | head -1 | cut -c4-) ;; esac
     [ "$prev" = -resultBundlePath ] && bundle=$a
     case "$a" in test|test-without-building) [ "$class" = xcode ] && restartable=1 ;; esac
     prev=$a
@@ -683,6 +871,7 @@ tr_exec() {
     fi
     break
   done
+  [ "$class" = xcode ] && [ "$restartable" = 1 ] && tr_sim_release "$udid" "$TESTRUN_ID"
   if [ "$class" = xcode ] && [ "$rc" -ne 0 ] && [ "${_TR_PARALLEL:-0}" = 1 ]; then
     _tr_xcode_guard "$(_tr_ticket "$TESTRUN_ID").out"
   fi
@@ -695,7 +884,7 @@ tr_run() {
   local class=$1 project=$2 rc; shift 2
   tr_enabled || { "$@"; return $?; }
   if _tr_nested; then tr_progress; "$@"; return $?; fi
-  tr_admit "$class" "$project" || return $?
+  tr_admit "$class" "$project" "" "$([ "$class" = xcode ] && tr_udid_of "$@")" || return $?
   tr_exec "$class" "$project" "$@"; rc=$?
   tr_release
   return "$rc"
@@ -863,6 +1052,7 @@ tr_db_drop_name() {
 # names mean a partial run: never cached. Only commands whose runner is known are recognised.
 tr_is_full_run() {
   local line=" $* "
+  _tr_info_run "$@" && return 1
   # The configured gate scripts are full runs by definition: their partial-looking flags (--exclude-group=marketing, --testsuite)
   # live inside composer.json, not on this command line.
   case "$line" in *" composer test "|*" composer test:parallel ") return 0 ;; esac
@@ -874,4 +1064,82 @@ tr_is_full_run() {
     *" --filter"*|*" --group"*|*" --testsuite"*|*" --only"*|*" --dirty"*|*" -k "*|*" -t "*|*" --test-name"*|*" tests/"*|*" test/"*|*".php "*|*".ts "*|*".tsx "*|*".js "*|*".swift "*|*"Test "*|*"Tests "*|*" --bail"*|*" --exclude-group"*|*" --grep"*|*" --testPathPattern"*|*" --shard"*|*" --changed"*|*" --mutate"*|*" --coverage"*|*" --class"*|*" --path"*) return 1 ;;
   esac
   return 0
+}
+
+# _tr_info_run <word...>: --list, --help, --ui and the like only print or open a UI: never a heavy or full run
+_tr_info_run() {
+  local a
+  for a in "$@"; do case "$a" in --list|--list-tests|--help|-h|--ui|--version|-V|--init|--show-report) return 0 ;; esac; done
+  return 1
+}
+
+# tr_is_runner_call <tool> <arg...>: the call IS a test runner in command position, not a mention of one. tool php:
+# the first argument after php's own options is `artisan test|dusk` or a script named pest, paratest or phpunit;
+# tool npx: `playwright test`. `php -r/-S/-f ...`, `php composer.phar require paratest` and a string argument that
+# merely contains "pest" are not.
+tr_is_runner_call() {
+  local tool=${1##*/} a skip=0 first="" second=""
+  shift
+  for a in "$@"; do
+    if [ "$skip" = 1 ]; then skip=0; continue; fi
+    if [ -z "$first" ]; then
+      case "$tool:$a" in
+        php:-d|php:-c|npx:-p|npx:--package) skip=1; continue ;;
+        php:-r|php:-R|php:-B|php:-E|php:-S|php:-f|php:-t|php:-i|npx:-c|npx:--call) return 1 ;;
+        *:-*) continue ;;
+      esac
+      first=$a; continue
+    fi
+    second=$a; break
+  done
+  case "$tool" in
+    php) case "$first" in
+           artisan|*/artisan) case "$second" in test|dusk) return 0 ;; esac ;;
+           pest|*/pest|paratest|*/paratest|phpunit|*/phpunit) return 0 ;;
+         esac ;;
+    npx) [ "$first" = playwright ] && [ "$second" = test ] && return 0 ;;
+  esac
+  return 1
+}
+
+# tr_is_heavy_direct <word...>: a direct browser or parallel run that is not a full run (those are tr_is_full_run) but
+# still starts many processes. The words must contain a runner invocation (`artisan test|dusk`, vendor/bin/pest,
+# paratest, phpunit, `playwright test`); then `--parallel`, `--processes` are heavy always, tests/Browser and a bare
+# `playwright test` unless they name at most TESTRUN_FREE_FILES (3) test files. test-lock.sh and the php/npx shim
+# admit such runs as `suite`, so test-status lists them and the workers come from the budget (tr_with_workers).
+tr_is_heavy_direct() {
+  local line=" $* " w files=0
+  _tr_info_run "$@" && return 1
+  case "$line" in
+    *" artisan test "*|*" artisan dusk "*|*"vendor/bin/pest "*|*"vendor/bin/paratest "*|*"vendor/bin/phpunit "*|*"playwright test"*) ;;
+    *) return 1 ;;
+  esac
+  case "$line" in
+    *" --parallel "*|*" --parallel="*|*" --processes"*) return 0 ;;
+    *"tests/Browser"*|*"playwright test"*|*"artisan dusk"*) ;;
+    *) return 1 ;;
+  esac
+  while IFS= read -r w; do
+    case "$w" in *Test.php|*.spec.[jt]s|*.spec.[jt]sx|*.test.[jt]s|*.test.[jt]sx) files=$((files + 1)) ;; esac
+  done <<<"$(printf '%s\n' "$line" | tr ' ' '\n')"
+  [ "$files" -lt 1 ] || [ "$files" -gt "${TESTRUN_FREE_FILES:-3}" ]
+}
+
+# tr_with_workers cmd...: run the command with the worker counts of the admitted budget (TESTRUN_WORKERS,
+# TESTRUN_BROWSER_WORKERS): `--parallel` gets `--processes=N`, `playwright test` gets `--workers=N`, unless the
+# caller set them. Also works on a command string handed to `bash -c`.
+tr_with_workers() {
+  local n=${TESTRUN_WORKERS:-4} b=${TESTRUN_BROWSER_WORKERS:-4} a prev="" proc=0 wk=0 out=()
+  for a in "$@"; do case "$a" in *--processes*) proc=1 ;; *--workers*) wk=1 ;; esac; done
+  for a in "$@"; do
+    case "$a" in
+      --parallel) out+=("$a"); [ "$proc" = 0 ] && out+=("--processes=$n") ;;
+      *" --parallel"*) [ "$proc" = 0 ] && a=${a// --parallel/ --parallel --processes=$n}; out+=("$a") ;;
+      *"playwright test"*) [ "$wk" = 0 ] && a=${a/playwright test/playwright test --workers=$b}; out+=("$a") ;;
+      test) out+=("$a"); [ "$prev" = playwright ] && [ "$wk" = 0 ] && out+=("--workers=$b") ;;
+      *) out+=("$a") ;;
+    esac
+    prev=$a
+  done
+  "${out[@]}"
 }

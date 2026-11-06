@@ -17,7 +17,11 @@ mkdir -p "$TESTRUN_STATE_DIR/runs" "$TMP/scope" "$TMP/other"
 NOW=$(date +%s)
 ls_start() { ps -o lstart= -p "$1" | sed 's/^ *//;s/ *$//'; }
 
-check "an empty store says so" "no test runs" "$(bash "$STATUS" --scope "$TMP/scope")"
+export TESTRUN_SIMCTL="$HERE/fixtures/fake-simctl" FAKE_SIMCTL_DIR="$TMP/sim"; mkdir -p "$FAKE_SIMCTL_DIR"; : > "$FAKE_SIMCTL_DIR/devices"
+export TESTRUN_SWAPUSAGE="total = 1000.00M  used = 900.00M  free = 100.00M  (encrypted)"
+check "an empty store says so" "no test runs" "$(bash "$STATUS" --scope "$TMP/scope" | head -1)"
+check "no booted simulator says so" "no booted simulators" "$(bash "$STATUS" --scope "$TMP/scope" | grep '^no booted')"
+check "swap use is shown" "swap: 900 of 1000 MB used (90%)" "$(bash "$STATUS" --scope "$TMP/scope" | grep '^swap:')"
 
 # a live fake run
 sleep 300 & LIVE=$!; PIDS="$PIDS $LIVE"
@@ -44,6 +48,14 @@ check "the group without a wrapper is shown as orphan" "yes" "$(printf '%s\n' "$
 check "both reapable things are listed" "1 1" "$(printf '%s\n' "$OUT" | grep -c 'dead-wrapper group') $(printf '%s\n' "$OUT" | grep -c "orphan playwright-server.*cwd=$TMP/scope")"
 check "the orphan outside the scope is not listed" "0" "$(printf '%s\n' "$OUT" | grep -c "cwd=$TMP/other")"
 check "the default scope (/) finds the in-scope orphan too" "1" "$(bash "$STATUS" | grep -c "orphan playwright-server.*cwd=$TMP/scope")"
+U1=AAAAAAAA-0000-0000-0000-000000000001; U2=BBBBBBBB-0000-0000-0000-000000000002
+printf '    zeit-test (%s) (Booted) \n    iPhone Air (%s) (Booted) \n' "$U1" "$U2" > "$FAKE_SIMCTL_DIR/devices"
+printf 'udid=%s\n' "$U1" >> "$TESTRUN_STATE_DIR/runs/0000000000000002-$LIVE"
+export TESTRUN_SIM_AGES="$U1 3725
+$U2 82800"
+OUT=$(bash "$STATUS" --scope "$TMP/scope")
+check "a booted simulator is listed with age and the run that holds it" "yes" "$(printf '%s\n' "$OUT" | grep -q "^$U1 *zeit-test *1h02m *zeit pid $LIVE" && echo yes || echo no)"
+check "a booted simulator without a run says so" "yes" "$(printf '%s\n' "$OUT" | grep -q "^$U2 *iPhone Air *23h00m *no active run" && echo yes || echo no)"
 LINK="$TMP/bin/test-status"; mkdir -p "$TMP/bin"; ln -s "$STATUS" "$LINK"
 check "invoked through a symlink (~/.local/bin/test-status) it still finds the lib" "yes" "$(bash "$LINK" 2>&1 | grep -q '^zeit ' && echo yes || echo no)"
 check "listing alone kills nothing" "alive" "$(kill -0 "$GRP" 2>/dev/null && echo alive || echo dead)"

@@ -87,6 +87,16 @@ if [ "$CACHED" = 0 ] && [ "${TESTRUN_DISABLE:-}" != 1 ] && [ "${TEST_LOCK_NO_AUT
   if ( set -f; tr_is_full_run $FULL_WORDS ); then CACHED=1; fi
 fi
 
+# A direct browser or parallel run (tests/Browser, playwright test, --parallel, ...) is admitted as a `suite` run even
+# when it is filtered, so test-status lists it and its worker count comes from the budget (tr_with_workers). A run of
+# one to three named test files stays free (lib tr_is_heavy_direct).
+HEAVY=0
+if [ "${TESTRUN_DISABLE:-}" != 1 ]; then
+  if [ -n "$CMD_STRING" ]; then HEAVY_WORDS=$CMD_STRING; else HEAVY_WORDS="$*"; fi
+  # shellcheck disable=SC2086
+  if ( set -f; tr_is_heavy_direct $HEAVY_WORDS ); then HEAVY=1; fi
+fi
+
 DEST_KEY=""
 if [ -n "$CMD_STRING" ]; then
   case "$CMD_STRING" in
@@ -129,12 +139,16 @@ if [ "$CACHED" = 1 ] && tr_cache_hit "$REPO_ROOT" "$CACHE_CMD"; then exit 0; fi
 RUN_TREE=""; [ "$CACHED" = 1 ] && RUN_TREE=$(tr_tree "$REPO_ROOT")
 RUN_T0=$(date +%s)
 RUN_CLASS=${TESTRUN_CLASS:-}
-[ "$CACHED" = 1 ] && RUN_CLASS=suite
+[ "$CACHED" = 1 ] || [ "$HEAVY" = 1 ] && RUN_CLASS=suite
 [ "${TESTRUN_DISABLE:-}" = 1 ] && RUN_CLASS=""
 # A command that is or calls xcodebuild (the string, or a script file among the words) runs as class
 # `xcode` (900 s stall limit, ceiling 2): as `suite` its 300 s limit would kill a quiet UI test, and the
 # xcodebuild shim inside is nested and cannot apply the xcode rules on its own.
 if [ -n "$RUN_CLASS" ] && ( set -f; tr_calls_xcodebuild $CMD_STRING "$@" ); then RUN_CLASS=xcode; fi
+# The workers are only known after admission, so the flags are added by a wrapper that runs inside the admitted command.
+if [ "$HEAVY" = 1 ] && [ -n "$RUN_CLASS" ]; then
+  set -- bash -c '. "$0" && tr_with_workers "$@"' "$_TR_LIB_DIR/lib-testrun.sh" "$@"
+fi
 run_cmd() { if [ -n "$RUN_CLASS" ]; then TESTRUN_RESTARTABLE=1 tr_run "$RUN_CLASS" "${TESTRUN_PROJECT:-$(tr_project "$REPO_ROOT")}" "$@"; else "$@"; fi; }
 
 # Reentrant for children of the holder: a wrapped command that calls this script again (deploy's
@@ -259,7 +273,8 @@ fi
 # back to running the command directly exactly as before.
 ENV_CHECK=$(mktemp "${TMPDIR:-/tmp}/audit-test-lock-output.XXXXXX" 2>/dev/null) || ENV_CHECK=""
 if [ -n "$ENV_CHECK" ]; then
-  run_cmd "$@" 2>&1 | tee "$ENV_CHECK"
+  # A heavy direct run (browser, parallel) is not a simulator run: its stderr stays on stderr, only stdout is kept for the cache.
+  if [ "$HEAVY" = 1 ]; then run_cmd "$@" | tee "$ENV_CHECK"; else run_cmd "$@" 2>&1 | tee "$ENV_CHECK"; fi
   STATUS=${PIPESTATUS[0]}
   [ "$STATUS" -eq 0 ] && [ "$CACHED" = 1 ] && tr_cache_put "$REPO_ROOT" "$CACHE_CMD" "$RUN_T0" "$ENV_CHECK" "$RUN_TREE"
   if [ "$STATUS" -ne 0 ] && grep -qiE 'never finished bootstrapping|crashed with signal kill|Early unexpected exit' "$ENV_CHECK" 2>/dev/null; then

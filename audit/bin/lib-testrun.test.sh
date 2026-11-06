@@ -35,6 +35,7 @@ fresh_state() {
   export TESTRUN_STATE_DIR="$TMP/state"
   unset TEST_GATE_STATE_DIR TESTRUN_DISABLE TESTRUN_ID TESTRUN_PRESSURE TESTRUN_FREE_PCT
   export TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_ADMIT_POLL=0.2 TESTRUN_WAIT_MAX=2 TESTRUN_NOTICE=1
+  export TESTRUN_SWAPUSAGE="total = 1000.00M  used = 0.00M  free = 1000.00M  (encrypted)" TESTRUN_SIM_GRACE=1   # not this Mac's swap, and short reapers
 }
 # adm <class> <project> <owner-pid>: admit in a subshell, print the exit code and the ticket id
 adm() { ( . "$LIB"; tr_admit "$1" "$2" "$3" 2>>"$TMP/stderr"; rc=$?; echo "$rc ${TESTRUN_ID:-}" ); }
@@ -240,7 +241,7 @@ rm -f "$TMP/hc"
 R=$(run xcode bash -c "$HANG_ONCE" test -resultBundlePath "$TMP/r.xcresult" -destination "platform=iOS Simulator,id=ABC-123")
 check "a restarted xcode test run succeeds on the second try" "0 1" "$R $(count '^TEST_RESTART' "$TMP/err")"
 check "the half-written result bundle is removed" "gone" "$([ -e "$TMP/r.xcresult" ] && echo there || echo gone)"
-check "the target simulator is shut down and booted" "shutdown ABC-123 boot ABC-123" "$(tr '\n' ' ' < "$TMP/simctl.log" | sed 's/ $//')"
+check "the target simulator is shut down and booted" "shutdown ABC-123 boot ABC-123" "$(grep -v '^list' "$TMP/simctl.log" | tr '\n' ' ' | sed 's/ $//')"
 check "only the worktree's own databases lose their sessions" "1 0" "$(count "datname = 'zeit_testing_$SLUG'" "$TMP/psql.log") $(count other_testing "$TMP/psql.log")"
 check "the paratest workers of that database are covered by an exact regex" "yes" "$(grep -q "datname ~ '^zeit_testing_${SLUG}_test_\[0-9\]+\$'" "$TMP/psql.log" && echo yes || echo no)"
 

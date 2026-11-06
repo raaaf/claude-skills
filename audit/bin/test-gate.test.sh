@@ -7,6 +7,7 @@
 # failed count are varied per case.
 # Usage: bash audit/bin/test-gate.test.sh
 set -u
+export TESTRUN_SWAPUSAGE="total = 1000.00M  used = 0.00M  free = 1000.00M  (encrypted)" TESTRUN_SIM_GRACE=1   # not this Mac's swap, short simulator reapers
 HERE=$(cd "$(dirname "$0")" && pwd)
 GATE="$HERE/test-gate.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-gate-test.XXXXXX")

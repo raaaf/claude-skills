@@ -1,0 +1,9 @@
+#!/bin/bash
+# Fake `xcrun simctl` for the test-infra tests. $FAKE_SIMCTL_DIR/devices holds the text `list devices` prints;
+# `shutdown <udid>` is logged to $FAKE_SIMCTL_DIR/log and flips that device to Shutdown. FAKE_SIMCTL_HANG=1 makes
+# `list` hang (a stuck CoreSimulatorService). Nothing else is supported.
+d=${FAKE_SIMCTL_DIR:?FAKE_SIMCTL_DIR not set}
+case "${1:-}" in
+  list) [ -n "${FAKE_SIMCTL_HANG:-}" ] && exec sleep 30; cat "$d/devices" ;;
+  shutdown) echo "shutdown $2" >> "$d/log"; sed "s/($2) (Booted)/($2) (Shutdown)/" "$d/devices" > "$d/devices.tmp" && mv "$d/devices.tmp" "$d/devices" ;;
+esac

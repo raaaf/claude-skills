@@ -2,7 +2,8 @@
 # Shows the test runs of this Mac and cleans up what nobody owns any more. Reads the ticket store of
 # lib-testrun.sh (~/.local/state/claude/runs, or $TESTRUN_STATE_DIR).
 #
-# Usage: test-status.sh                    one line per run: project, class, state, age, progress age, holder
+# Usage: test-status.sh                    one line per run: project, class, state, age, progress age, holder;
+#                                          then swap use and the booted simulators with age and owner run
 #        test-status.sh --reap [--scope DIR]   also kill what the listing marks as reapable:
 #                                          - process groups whose wrapper is dead (state `orphan`)
 #                                          - `playwright run-server` with ppid 1, older than 10 min, cwd inside
@@ -54,6 +55,21 @@ else
       "$(human $((now - $(_tr_field since "$f"))))" "$([ -n "$prog" ] && human $((now - prog)) || echo -)" \
       "$(_tr_field pid "$f")" "$(_tr_field cwd "$f")"
   done
+fi
+
+# Booted simulators (age, and the run that holds each) and swap: what the caps in lib-testrun.sh act on.
+echo
+_tr_swap_raw | awk '{ for (i = 1; i < NF; i++) { if ($i == "total") t = $(i + 2) + 0; if ($i == "used") u = $(i + 2) + 0 } }
+  END { if (t > 0) printf "swap: %d of %d MB used (%d%%)\n", u, t, u * 100 / t; else print "swap: unreadable" }'
+sims=$(_tr_booted_sims)
+if [ -z "$sims" ]; then
+  echo "no booted simulators"
+else
+  printf '%-38s %-24s %-8s %s\n' UDID SIMULATOR BOOTED OWNER
+  while IFS='|' read -r udid name; do
+    age=$(tr_sim_age "$udid")
+    printf '%-38s %-24s %-8s %s\n' "$udid" "$name" "$([ -n "$age" ] && human "$age" || echo ?)" "$(tr_sim_owner "$udid" || echo "no active run")"
+  done <<<"$sims"
 fi
 
 if [ "$REAP" = 1 ]; then
