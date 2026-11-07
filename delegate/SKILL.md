@@ -75,7 +75,7 @@ Inline (no file; when a plan's `## Delegate spec` exists, reuse it verbatim, see
 2. ...
 **Bugfix?** Step 1 is ALWAYS: write a repro test that's red. Fix afterward, test green.
 **Logic test steps:** mark every step whose verify names a new or changed test for a calculation, parsing, validation, date, status or matching rule, or a bugfix repro, with `[logic test]`. Rendering, wiring and mock-call tests never qualify.
-**Done criteria (all):** {test command → exit 0; new tests only where a step names one, 0 is a valid count; lint/typecheck → exit 0; git status: only affected files}
+**Done criteria (all):** {affected-test command → exit 0 (the filtered variant the project CLAUDE.md names, on the changed and new test files; never the full suite, that is /ship's job); new tests only where a step names one, 0 is a valid count; lint/typecheck → exit 0; git status: only affected files}
 **STOP conditions:** {current state deviates; verify fails twice; fix would need an out-of-scope file; core assumption wrong}
 ```
 

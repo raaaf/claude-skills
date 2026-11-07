@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pins the AUDIT_SKIP_TESTS guard of SKILL.md Phase 4: the daemon runs the suite itself, so the audit must not.
+# Pins the test block of SKILL.md Phase 4: AUDIT_SKIP_TESTS (the daemon runs the suite itself, so the audit must not)
+# and the affected-tests dispatch (run -> filtered command, none -> nothing, full/missing -> cached full suite).
 # The guard lines are cut out of SKILL.md and run against a stub test-lock.sh.
 # Usage: bash audit/bin/audit-skip-tests.test.sh
 set -u
@@ -11,10 +12,21 @@ check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected 
 printf '#!/bin/bash\necho ran >> "%s/calls"\n' "$TMP" > "$TMP/test-lock.sh"
 GUARD=$(grep -A1 '^if \[ "${AUDIT_SKIP_TESTS:-}" = 1 \]' "$SKILL")
 [ -n "$GUARD" ] || { echo "FAIL guard not found in SKILL.md"; exit 1; }
-run() { : > "$TMP/calls"; ( AUDIT_BIN="$TMP" TEST_COMMAND="make test" bash -c "$GUARD" ) 2>&1; }
+run() { : > "$TMP/calls"; ( AUDIT_BIN="$TMP" ROOT="$TMP" BASE_REF=HEAD TEST_COMMAND="make test" bash -c "$GUARD" ) 2>&1; }
 OUT=$(AUDIT_SKIP_TESTS=1 run)
 check "AUDIT_SKIP_TESTS=1 runs no test" "0" "$(grep -c ran "$TMP/calls")"
 check "the skip is reported" "yes" "$(printf '%s' "$OUT" | grep -q 'TESTS_EXIT=skipped' && echo yes || echo no)"
 OUT=$(run)
-check "without the flag the suite runs through test-lock" "1" "$(grep -c ran "$TMP/calls")"
+check "without affected-tests.sh the full suite runs through test-lock" "1" "$(grep -c ran "$TMP/calls")"
+# affected-tests.sh says run: test-lock gets the filtered command, without --cached
+printf '#!/bin/bash\necho "ran $*" >> "%s/calls"\n' "$TMP" > "$TMP/test-lock.sh"
+printf '#!/bin/bash\necho AFFECTED=run; echo "AFFECTED_CMD=bun test ./a.test.ts"\n' > "$TMP/affected-tests.sh"
+OUT=$(run)
+check "AFFECTED=run hands the filtered command to test-lock" "ran --cmd bun test ./a.test.ts" "$(cat "$TMP/calls")"
+printf '#!/bin/bash\necho AFFECTED=none\n' > "$TMP/affected-tests.sh"
+OUT=$(run)
+check "AFFECTED=none runs nothing and reports green" "0|yes" "$(grep -c ran "$TMP/calls")|$(printf '%s' "$OUT" | grep -q 'TESTS_EXIT=0' && echo yes || echo no)"
+printf '#!/bin/bash\necho AFFECTED=full\n' > "$TMP/affected-tests.sh"
+OUT=$(run)
+check "AFFECTED=full runs the cached full suite" "ran --cached --cmd make test" "$(cat "$TMP/calls")"
 [ "$FAIL" -eq 0 ] && echo "AUDIT_SKIP_TESTS_TEST=OK" || { echo "AUDIT_SKIP_TESTS_TEST=FAIL ($FAIL)"; exit 1; }

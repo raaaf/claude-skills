@@ -68,6 +68,20 @@ check "the main checkout keeps the shared key even with the flag" "KEYED" \
   "$(bash "$LOCK" --cmd "[ -d '$GC/claude-audit-test-lock' ] && echo KEYED" 2>&1)"
 rm -rf "$TMP/.claude" "$TMP/wt/.claude"
 
+# test-isolation: process (every run has its own DB) takes no repo lock: a held lock does not block it,
+# while a simulator destination and TEST_LOCK_KEY=common still lock.
+mkdir -p "$TMP/.claude"; printf 'test-isolation: process\n' > "$TMP/.claude/ship.md"
+mkdir "$GC/claude-audit-test-lock"
+check "process isolation runs past a held lock without taking it" "RAN" \
+  "$(TEST_LOCK_NOTICE_SECONDS=2 bash "$LOCK" --cmd "echo RAN" 2>&1 | head -1)"
+check "process isolation leaves the other holder's lock alone" "held" "$([ -d "$GC/claude-audit-test-lock" ] && echo held || echo gone)"
+rmdir "$GC/claude-audit-test-lock"
+check "process isolation still locks a simulator destination" "KEYED" \
+  "$(bash "$LOCK" --cmd "[ -d '$GC/claude-audit-test-lock-CCC' ] && echo KEYED; : xcodebuild test -destination 'platform=iOS Simulator,id=CCC'" 2>&1)"
+check "process isolation still locks for TEST_LOCK_KEY=common" "KEYED" \
+  "$(TEST_LOCK_KEY=common bash "$LOCK" --cmd "[ -d '$GC/claude-audit-test-lock' ] && echo KEYED" 2>&1)"
+rm -rf "$TMP/.claude"
+
 # Admission: TESTRUN_CLASS=suite runs the command as an admitted suite run, TESTRUN_DISABLE=1 does not.
 export TESTRUN_STATE_DIR="$TMP/trstate" TESTRUN_PRESSURE=1 TESTRUN_FREE_PCT=50 TESTRUN_STAGGER=0 TESTRUN_TOOL_VERSIONS=fixed
 COUNT_CMD='ls "$TESTRUN_STATE_DIR/runs" 2>/dev/null | grep -vc "\\." ; :'

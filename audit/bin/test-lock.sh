@@ -122,6 +122,14 @@ if [ "${TEST_LOCK_KEY:-}" != common ] && [ "${TESTRUN_DISABLE:-}" != 1 ] && [ -n
     LOCK_BASE=$GIT_OWN
   fi
 fi
+# `test-isolation: process` says every test run gets its own database (in-memory SQLite and the like), so two runs
+# of the repo never share state and need no repo lock: a filtered run in a second worktree no longer waits up to
+# WAIT_MAX behind a suite (decided 2026-11-07). Admission (tr_run) still budgets suites machine-wide. A run with a
+# simulator destination and mutate.sh (TEST_LOCK_KEY=common) keep the lock.
+NO_LOCK=0
+if [ "${TEST_LOCK_KEY:-}" != common ] && [ -z "$DEST_KEY" ] && [ "$(tr_ship_value test-isolation "$REPO_ROOT" 2>/dev/null)" = process ]; then
+  NO_LOCK=1
+fi
 if [ -n "$LOCK_BASE" ] && [ -d "$LOCK_BASE" ] && [ -w "$LOCK_BASE" ]; then
   LOCK_DIR="$LOCK_BASE/claude-audit-test-lock${DEST_KEY}"
 else
@@ -243,7 +251,7 @@ release() {
 }
 
 HB_PID=""
-if [ "$HELD_BY_PARENT" = 0 ]; then
+if [ "$HELD_BY_PARENT" = 0 ] && [ "$NO_LOCK" = 0 ]; then
 acquire
 export TEST_LOCK_HELD="$LOCK_DIR"
 trap release EXIT INT TERM

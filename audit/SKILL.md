@@ -134,16 +134,17 @@ Nothing to fix: straight to Phase 5. Otherwise one `spec-executor` (`model: sonn
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again
 orch_resolve_audit_root || { echo "Abgebrochen: audit-Root nicht gefunden."; orch_progress_release; exit 1; }
+orch_state_load
 ROOT="$(git rev-parse --show-toplevel)"
 TEST_COMMAND=$(orch_test_command "$ROOT") || TEST_COMMAND=""   # .claude/ship.md test-command:, else the manifest's own
 echo "TEST_COMMAND=${TEST_COMMAND:-<none>}"
 if [ "${AUDIT_SKIP_TESTS:-}" = 1 ]; then echo "TESTS_EXIT=skipped (AUDIT_SKIP_TESTS=1, the caller runs the suite)"
-elif [ -n "$TEST_COMMAND" ]; then bash "$AUDIT_BIN/test-lock.sh" --cached --cmd "$TEST_COMMAND"; echo "TESTS_EXIT=$?"; fi   # every test run goes through the lock, also a hand-assembled xcodebuild; --cached = full suite, a green run on an identical tree is reused
+elif [ -n "$TEST_COMMAND" ]; then AFF=$(bash "$AUDIT_BIN/affected-tests.sh" "$ROOT" "$BASE_REF" "$TEST_COMMAND"); echo "$AFF"; case "$(printf '%s\n' "$AFF" | sed -n 's/^AFFECTED=//p')" in run) bash "$AUDIT_BIN/test-lock.sh" --cmd "$(printf '%s\n' "$AFF" | sed -n 's/^AFFECTED_CMD=//p')"; echo "TESTS_EXIT=$?" ;; none) echo "TESTS_EXIT=0 (no affected tests)" ;; *) bash "$AUDIT_BIN/test-lock.sh" --cached --cmd "$TEST_COMMAND"; echo "TESTS_EXIT=$?" ;; esac; fi   # affected tests only; full suite (cached) only on AFFECTED=full; every run goes through the lock
 bash "$AUDIT_BIN/pre-checks.sh" | grep -E '^(SECRET|SECRET_SCAN_RESULT)'; bash "$AUDIT_BIN/check-silencing.sh" "$ROOT"   # the fix may have added a secret or silenced a check
 orch_progress_touch
 ```
 
-`AUDIT_SKIP_TESTS=1` (set by the Feierabend daemon, which runs the suite itself after the audit) skips the run and counts as "tests handled by the caller" for the marker. Otherwise the run is the full suite, cached: a green, flake-free run on an identical tree within 30 minutes (same test command, tool versions and lockfiles; `/ship` and `deploy <app> test` write the same entries) prints `TEST_CACHE_HIT <key>` instead of running again. A hang is killed and restarted once by the lib (`TEST_RESTART`, then `TEST_STALLED_TWICE` and exit 124). `test-status` lists running tests.
+`AUDIT_SKIP_TESTS=1` (set by the Feierabend daemon, which runs the suite itself after the audit) skips the run and counts as "tests handled by the caller" for the marker. Otherwise `/audit` runs only the tests the diff touches (decided 2026-11-07: the full suite runs once, in `/ship` Phase 2b or `deploy <app> test`, so a push no longer waits on it). `affected-tests.sh` picks them: changed test files plus tests named after changed source files (`foo.ts` -> `foo.test.ts`, `Foo.php` -> `FooTest.php`). `AFFECTED=none` (no test belongs to the change) counts as green. It falls back to `AFFECTED=full`, the cached full suite as before, on an unsupported runner (Swift, xcodebuild), a config, lockfile, test-helper or migration change, or more than 25 test files. The full run is cached: a green, flake-free run on an identical tree within 30 minutes (same test command, tool versions and lockfiles; `/ship` and `deploy <app> test` write the same entries) prints `TEST_CACHE_HIT <key>` instead of running again. A hang is killed and restarted once by the lib (`TEST_RESTART`, then `TEST_STALLED_TWICE` and exit 124). `test-status` lists running tests.
 
 Red: one REVISE round to the same executor, then re-run. Still red: those findings stay open and no marker is written. A `SECRET` or `SILENCING_HIT` on a line the executor wrote is an open Critical/Important.
 
@@ -160,7 +161,7 @@ orch_usage_report   # AUDIT_COST_USD, AUDIT_COST_WEEK_PCT, WEEK_USD, WEEK_PCT_ES
 
 **Report format.** Severity is `Critical`, `Important` or `Minor`; source is `code_review`, `sensitive` or `pre-check`. Each finding is exactly one physical line, never wrapped, no numbered list, no table. Never reproduce a secret value or file content: name `file:line` and the type. Recompute every count by counting the itemized bullets right before writing the summary, never hand-tally; write `0` explicitly.
 
-**Marker** only when ALL hold: pre-checks clean (no open secret), every review that was dispatched completed (the sensitive one only if it ran), no open Critical/Important, tests green, handed to the caller (`AUDIT_SKIP_TESTS=1`) or no test command. Adapted counts: `selected` = reviews run (prose diff: 1), `incomplete` = failed reviews plus open Critical/Important findings. Run it as its own Bash call, never together with `git push`:
+**Marker** only when ALL hold: pre-checks clean (no open secret), every review that was dispatched completed (the sensitive one only if it ran), no open Critical/Important, tests green (the affected tests, or the full suite on `AFFECTED=full`), handed to the caller (`AUDIT_SKIP_TESTS=1`) or no test command. Adapted counts: `selected` = reviews run (prose diff: 1), `incomplete` = failed reviews plus open Critical/Important findings. Run it as its own Bash call, never together with `git push`:
 
 ```bash
 for c in "${CLAUDE_SKILL_DIR}/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block: source the lib again

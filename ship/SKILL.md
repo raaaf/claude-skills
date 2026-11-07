@@ -359,7 +359,7 @@ Re-derived here, not carried over from Phase 0: every block is a fresh shell.
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
 TEST_COMMAND=$(orch_test_command_declared) || { SHIP_TESTS=not_configured; orch_state_save SHIP_TESTS; echo "SHIP_TESTS=not_configured"; exit 0; }
 orch_resolve_audit_root || { echo "Abgebrochen: audit-Root nicht gefunden."; SHIP_TESTS=failed; orch_state_save SHIP_TESTS; exit 0; }
-# --cached: the declared command is the full suite; a green run on an identical tree (e.g. from /audit) within 30 min is reused (TEST_CACHE_HIT)
+# --cached: the declared command is the full suite; a green run on an identical tree (deploy test, or an /audit that fell back to full) within 30 min is reused (TEST_CACHE_HIT)
 if bash "$AUDIT_BIN/test-lock.sh" --cached --cmd "$TEST_COMMAND"; then SHIP_TESTS=passed; else SHIP_TESTS=failed; fi
 orch_state_save SHIP_TESTS; echo "SHIP_TESTS=$SHIP_TESTS"
 ```
