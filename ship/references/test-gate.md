@@ -10,14 +10,15 @@ killing each other with "Early unexpected exit ... signal kill", a failure that 
 crash and is not one.
 
 `--cached` marks the declared command as the full suite: a green, flake-free run on an identical tree within
-30 minutes (same command, tool versions, lockfiles) is reused, whether `/audit`, `/ship` or `deploy <app> test`
-ran it, and prints `TEST_CACHE_HIT <key>`. The run is admitted as a `suite` (or `xcode`) run, watched for stalls
+30 minutes (same command, tool versions, lockfiles) is reused, whether `/ship`, `deploy <app> test` or an
+`/audit` that fell back to the full suite (`AFFECTED=full`) ran it, and prints `TEST_CACHE_HIT <key>`. The run is admitted as a `suite` (or `xcode`) run, watched for stalls
 and restarted once (`TEST_RESTART`). Details: `audit/CLAUDE.md`.
 
 ## Why this phase exists
 
-Why this phase exists: `/audit` deliberately runs only the *affected* tests, on the assumption
-that CI runs the full suite on every push. That assumption does not hold for repos whose CI only
+Why this phase exists: `/audit` deliberately runs only the *affected* tests (`affected-tests.sh`,
+since 2026-11-07 again), so this phase is the one place before production where the full suite runs. CI is no
+substitute: the assumption that it runs the full suite on every push That assumption does not hold for repos whose CI only
 runs on pull requests while work is pushed straight to `main` — there, nothing would ever run the
 full suite before production. `TEST_COMMAND` closes that hole.
 
