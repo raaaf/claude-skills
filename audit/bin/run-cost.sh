@@ -40,8 +40,10 @@ command -v jq >/dev/null 2>&1 || unavailable jq_missing
 # Claude Code uses the 1h cache TTL, so cache_write = 2 x input for every model.
 PRICE_JSON='{
   "claude-fable-5-1": {"input": 10,   "cache_write": 20,   "cache_read": 0.25, "output": 50},
+  "claude-fable-5-2": {"input": 8,    "cache_write": 16,   "cache_read": 0.2,  "output": 40},
   "claude-opus-5-5":  {"input": 4,    "cache_write": 8,    "cache_read": 0.2,  "output": 20},
   "claude-opus-5":    {"input": 5,    "cache_write": 10,   "cache_read": 0.5,  "output": 25},
+  "claude-sonnet-5-5": {"input": 2,   "cache_write": 4,    "cache_read": 0.1,  "output": 10},
   "claude-sonnet-5":  {"input": 2,    "cache_write": 4,    "cache_read": 0.2,  "output": 10},
   "claude-haiku-4-5": {"input": 1,    "cache_write": 2,    "cache_read": 0.1,  "output": 5},
   "claude-haiku-5-5": {"input": 0.1,  "cache_write": 0.2,  "cache_read": 0.01, "output": 0.5}
@@ -50,8 +52,10 @@ PRICE_JSON='{
 JQ_DEFS='
 def prefix($m):
   if   ($m | test("^claude-fable-5-1")) then "claude-fable-5-1"
+  elif ($m | test("^claude-fable-5-2")) then "claude-fable-5-2"
   elif ($m | test("^claude-opus-5-5")) then "claude-opus-5-5"
   elif ($m | test("^claude-opus-5")) then "claude-opus-5"
+  elif ($m | test("^claude-sonnet-5-5")) then "claude-sonnet-5-5"
   elif ($m | test("^claude-sonnet-5")) then "claude-sonnet-5"
   elif ($m | test("^claude-haiku-4-5")) then "claude-haiku-4-5"
   elif ($m | test("^claude-haiku-5-5")) then "claude-haiku-5-5"
