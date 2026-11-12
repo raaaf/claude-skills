@@ -457,7 +457,9 @@ orch__usage_compute() (
   if [ -f "$rc" ]; then
     if [ -n "$t0" ]; then
       f=""
-      [ -n "${AUDIT_USAGE_MARK:-}" ] && f=$(grep -lF "$AUDIT_USAGE_MARK" "$root"/*/*.jsonl 2>/dev/null | head -1)
+      # The mark was printed after t0, so the session file was modified since t0: prefilter by mtime. An
+      # unfiltered grep over every transcript of every project (17 GB, 2026-11-12) took over 100 s.
+      [ -n "${AUDIT_USAGE_MARK:-}" ] && f=$(find "$root" -mindepth 2 -maxdepth 2 -type f -name '*.jsonl' -mmin "-$(( (now - t0) / 60 + 2 ))" -exec grep -lF "$AUDIT_USAGE_MARK" {} + 2>/dev/null | head -1)
       if [ -n "$f" ]; then
         usd=$(bash "$rc" "$(dirname "$f")" "$(basename "$f" .jsonl)" --since "$t0" 2>/dev/null | sed -n 's/.* usd=\([0-9.]*\) .*/\1/p')
       else
@@ -486,7 +488,17 @@ orch_usage_report() {
   # Always computed in bash: the Bash tool runs zsh, where an unmatched glob ("$root"/*audit-review*) aborts.
   local out="" lib="${AUDIT_BIN:-}/lib-orchestrator.sh"
   [ -f "$lib" ] || { orch_resolve_audit_root >/dev/null 2>&1 || true; lib="${AUDIT_BIN:-}/lib-orchestrator.sh"; }
-  [ -f "$lib" ] && out=$(ORCH_USAGE_LIB="$lib" bash -c '. "$ORCH_USAGE_LIB"; orch__usage_compute' 2>/dev/null)
+  # Bounded (ORCH_USAGE_TIMEOUT, default 20 s): a slow transcript scan must print n/a, never block Phase 5.
+  local tmo="${ORCH_USAGE_TIMEOUT:-20}" tcmd=""
+  command -v gtimeout >/dev/null 2>&1 && tcmd=gtimeout
+  [ -z "$tcmd" ] && command -v timeout >/dev/null 2>&1 && tcmd=timeout
+  if [ -f "$lib" ]; then
+    if [ -n "$tcmd" ]; then
+      out=$(ORCH_USAGE_LIB="$lib" "$tcmd" "$tmo" bash -c '. "$ORCH_USAGE_LIB"; orch__usage_compute' 2>/dev/null)
+    else
+      out=$(ORCH_USAGE_LIB="$lib" perl -e 'alarm shift; exec @ARGV' "$tmo" bash -c '. "$ORCH_USAGE_LIB"; orch__usage_compute' 2>/dev/null)
+    fi
+  fi
   case "$out" in AUDIT_COST_USD=*) echo "$out" ;; *) echo "AUDIT_COST_USD=n/a AUDIT_COST_WEEK_PCT=n/a WEEK_USD=n/a WEEK_PCT_EST=n/a" ;; esac
   return 0
 }

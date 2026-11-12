@@ -812,7 +812,7 @@ _tr_attempt() {
     now=$(_tr_now)
     [ "$now" -ge "$next_sample" ] || continue
     next_sample=$((now + ${TESTRUN_WATCH_POLL:-15}))
-    size=$(wc -c < "$out" | tr -d ' ')
+    size=$([ -f "$out" ] && wc -c < "$out" | tr -d ' '); size=${size:-0}   # file may be missing (cleaned): treat as 0
     if [ "$size" -gt "$lastsize" ]; then lastsize=$size; last_prog=$now; outchg=$now; warned=0; fi
     cpu=$(tr_group_cpu "$pid")
     if [ $((cpu - maxcpu)) -gt "$delta" ]; then maxcpu=$cpu; last_prog=$now; fi
@@ -829,7 +829,7 @@ _tr_attempt() {
       _TR_STALLED=1
       tr_event stall idle_s="$((now - last_prog))" class="$class" pgid="$pid"
       echo "[testrun] no progress for $((now - last_prog)) s, last output:" >&2
-      tail -n 3 "$out" >&2
+      tail -n 3 "$out" 2>/dev/null >&2
       tr_kill_tree "$pid" stall
       break
     fi
