@@ -1358,7 +1358,11 @@ test('phpFixedClockEnv: fixed_now configured on a laravel project -> PHP_INI_SCA
   const stubRunner = () => ({ stdout: 'Scan for additional .ini files in: (none)\n', status: 0 });
   const env = phpFixedClockEnv(root, config, stubRunner);
   assert.equal(env.SCREENS_FIXED_NOW, '2026-05-12T09:41:00+02:00');
-  assert.equal(env.PHP_INI_SCAN_DIR, join(root, '.screens/web/php'));
+  assert.equal(env.PHP_INI_SCAN_DIR, join(root, '.screens/.run/php'));
+  assert.equal(
+    readFileSync(join(root, '.screens/.run/php/zz-screens.ini'), 'utf8').includes(`auto_prepend_file=${join(root, '.screens/web/fixed-clock.php')}`),
+    true,
+  );
 });
 
 // --- trust: changed command hash -> NEEDS_CONFIRM --------------------------

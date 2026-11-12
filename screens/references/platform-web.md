@@ -103,12 +103,13 @@ determinism (a real dashboard KPI changed between run 2a and run 2b on `apps/zei
 - `screens/templates/php/fixed-clock.php` is instantiated verbatim into `<project>/.screens/web/fixed-clock.php`
   by the Phase 2 scaffold (no project source file changes); it calls `Carbon::setTestNow()` when
   `SCREENS_FIXED_NOW` is set, otherwise it is a no-op.
-- `screens/templates/php/zz-screens.ini` is instantiated into `<project>/.screens/web/php/zz-screens.ini`
-  with `{{PROJECT_ROOT}}` replaced by the pilot's absolute path; it sets `auto_prepend_file` to the
+- `screens/templates/php/zz-screens.ini` is not scaffolded. `phpFixedClockEnv` writes the equivalent ini at run
+  time into `<project>/.screens/.run/php/zz-screens.ini` (gitignored) with the current project root, so a git
+  worktree loads its own `fixed-clock.php`, never the main checkout's; it sets `auto_prepend_file` to the
   fixed-clock file above.
 - `screens.mjs up`'s `phpFixedClockEnv` (framework `laravel`, `config.web.fixed_now` set) runs `php
   --ini` to find the project's own ini scan dir, composes `PHP_INI_SCAN_DIR=<existing scan
-  dir>:<project>/.screens/web/php` (or just the second half when the existing dir is `(none)`,
+  dir>:<project>/.screens/.run/php` (or just the second half when the existing dir is `(none)`,
   `composePhpIniScanDir`), and sets `SCREENS_FIXED_NOW` to the same instant as
   `capture.spec.ts`'s `FIXED_TIME`. Applied to both the `start_command` (serve) and the
   `seed_command` (migrate/seed) env, since the seed process is a separate `runner` call, not a

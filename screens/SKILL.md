@@ -113,9 +113,9 @@ seeder and the platform driver files the plan's "Per-project files" table names
 "Invocation"), etc.; driver templates for stages d/e are not present in this repo yet, and when a
 template is missing, the executor writes only the seeder and reports which drivers it deferred). On a PHP
 project, also instantiate `screens/templates/php/fixed-clock.php` verbatim into
-`.screens/web/fixed-clock.php` and `screens/templates/php/zz-screens.ini` into
-`.screens/web/php/zz-screens.ini` with `{{PROJECT_ROOT}}` replaced by the project's absolute path,
-and set `config.web.fixed_now` to the same instant as `capture.spec.ts`'s `FIXED_TIME`
+`.screens/web/fixed-clock.php` (the ini is not scaffolded: `phpFixedClockEnv` generates it at run time into
+the gitignored `.screens/.run/php/zz-screens.ini` with the current root, so git worktrees work; the project's
+`.gitignore` must cover `/.screens/.run/`), and set `config.web.fixed_now` to the same instant as `capture.spec.ts`'s `FIXED_TIME`
 (`screens/references/platform-web.md` "Server-side fixed clock"), also instantiate
 `screens/templates/php/FixedClockDateTime.php` into `.screens/web/php/FixedClockDateTime.php` and
 have the demo seeder require it and register it on `fake()` and `app(\Faker\Generator::class)`
