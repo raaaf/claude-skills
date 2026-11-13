@@ -39,14 +39,24 @@ forced worktree-remove git command whenever it is typed into a Bash call.
 ONE `Agent` call, `subagent_type: general-purpose`, `model: sonnet`, `run_in_background: false`:
 
 ```text
-cd {REVIEW_WORKTREE}. It is a temporary worktree whose uncommitted diff is exactly the change to review.
-Invoke the Skill tool with skill "code-review" and args "high" on the current diff. Pass no --comment
-and no --fix. Do not edit any file, do not post comments, do not leave {REVIEW_WORKTREE}.
+The change to review is the uncommitted diff of the temporary worktree {REVIEW_WORKTREE}, and nothing else.
+Your shell does not start there and a `cd` does not persist between commands: run every git command as
+`git -C {REVIEW_WORKTREE} ...` and read files by absolute path under that directory.
+First run `git -C {REVIEW_WORKTREE} diff HEAD` (it includes new files). Then invoke the Skill tool with skill
+"code-review" and args "high". Pass no --comment and no --fix. The skill may show or collect a diff from
+another directory (your start directory, or a branch against main): discard that and review only the diff
+you just read. A finding on a file that is not listed by `git -C {REVIEW_WORKTREE} diff HEAD --name-only`
+is out of scope: drop it. Do not edit any file and do not post comments.
 Reply with ONLY this JSON (an empty list is valid):
 {"findings":[{"id":"code_review-0-N","dimension":"code_quality","files":[{"path":"...","lines":"12-18"}],
 "issue":"max 50 words, file:line references, no code, never a secret value","severity":null}]}
 severity is the skill's own wording (Critical|Important|Minor) or null.
 ```
+
+The prompt never says `cd {REVIEW_WORKTREE}`: the worktree lies under `$TMPDIR`, outside the session's
+working directories, so a `cd` there does not persist and the skill collected its diff in the agent's
+start directory (the session's project root). Observed 2026-11-13: three audits reviewed older commits
+of the main checkout instead of the scope; reproduced with a scratch repo.
 
 ## Checklist agent (b)
 
