@@ -195,9 +195,9 @@ Only for visual tasks (the mini-spec's affected files contain a frontend file, o
 screen, page or component) and only after the verdict is APPROVE. Non-visual tasks skip this phase
 silently, no note in the report.
 
-Load the needed tools via `ToolSearch` in one batch before starting: for a web project,
-`mcp__claude-in-chrome__*` (`tabs_context_mcp`, `tabs_create_mcp`, `navigate`, `computer`,
-`read_page`); an iOS project needs no browser tools.
+For a web project, pick the browser by the global CLAUDE.md section "Web live walkthroughs: pick the browser"
+(first that works: `ardia browse` CLI, then the `chrome-devtools` MCP loaded via `ToolSearch`, else the
+owner clicks from a URL you give). An iOS project needs no browser tools.
 
 - **Web:** start the dev server via the project's own mechanism (`.claude/launch.json` or the
   project's run command) if nothing is serving, and confirm the URL responds before opening a tab.
