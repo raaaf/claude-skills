@@ -58,6 +58,9 @@ import {
   androidDeviceSetup,
   cmdUp,
   cmdDown,
+  cmdRefresh,
+  computeFingerprint,
+  defaultDriver,
   cmdAndroidNavigate,
   killPortListeners,
   androidAppUrlEnv,
@@ -2483,4 +2486,181 @@ test('regenerateTopIndex: no project catalogs -> zero projects, still writes an 
   const count = regenerateTopIndex(centralRoot);
   assert.equal(count, 0);
   assert.ok(existsSync(join(centralRoot, 'index.html')));
+});
+
+// --- refresh: unattended iOS recapture ---------------------------------------
+
+const REFRESH_IOS = { scheme: 'App', ui_test_target: 'AppUITests', project: 'App.xcodeproj', device_class: 'iphone' };
+
+// A trusted iOS project with one never-captured entry. `log` collects every
+// runner and driver call in order; `driverResult` decides what the driver does.
+function refreshFixture({ ios = REFRESH_IOS, trusted = true, freeGb = 26, driver } = {}) {
+  const root = fixture();
+  const config = {
+    output_dir: '${PROJECT_ROOT}/screenshots', project: 'demo', platforms: ['ios'],
+    axes: { themes: ['light', 'dark'] }, ios,
+  };
+  writeJson(join(root, '.screens/config.json'), config);
+  writeJson(join(root, '.screens/manifest.json'), {
+    entries: [{ id: 'home', platform: 'ios', area: 'a', view: 'home', sources: [] }],
+  });
+  writeJson(join(root, '.screens/state.json'), trusted ? { entries: {}, command_hash: computeCommandHash(config) } : { entries: {} });
+  const log = [];
+  const name = simulatorNameForDevice(repoHash(root), 'iphone');
+  const runner = (cmd, args) => {
+    log.push([cmd, ...args].join(' '));
+    if (cmd === 'df') return { stdout: `Filesystem 1G-blocks Used Available Capacity\n/dev/x 100 74 ${freeGb} 74%\n`, status: 0 };
+    if (args[1] === 'list' && args[2] === 'devices') {
+      return { stdout: JSON.stringify({ devices: { 'iOS-18': [{ name, udid: 'UDID-1', state: 'Shutdown' }] } }), status: 0 };
+    }
+    return { stdout: '', status: 0 };
+  };
+  const drivenWith = [];
+  const stubDriver = driver || ((cmd, args, opts) => {
+    // Writes the capture the real test target would leave in SCREENSHOT_DIR.
+    const theme = opts.env.TEST_RUNNER_SCREENS_THEME;
+    writeFileSync(join(opts.env.TEST_RUNNER_SCREENSHOT_DIR, `home__filled__guest__iphone__${theme}.png`), `png-${theme}`);
+    return { status: 0, timedOut: false };
+  });
+  const loggedDriver = async (cmd, args, opts) => {
+    log.push(`driver ${opts.env.TEST_RUNNER_SCREENS_THEME}`);
+    drivenWith.push({ cmd, args, opts });
+    return stubDriver(cmd, args, opts);
+  };
+  return { root, log, drivenWith, deps: { runner, driver: loggedDriver } };
+}
+
+test('refresh: happy path runs up, driver per theme, promote, then down, and reports the changed count', async () => {
+  const f = refreshFixture();
+  const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, f.deps);
+  const steps = f.log.filter((l) => /simctl boot|simctl ui|^driver|simctl shutdown/.test(l))
+    .map((l) => l.replace(/ UDID-1/, ''));
+  assert.deepEqual(steps, [
+    'xcrun simctl boot', 'xcrun simctl ui appearance light', 'driver light',
+    'xcrun simctl ui appearance dark', 'driver dark', 'xcrun simctl shutdown',
+  ]);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(result, { project: 'demo', platform: 'ios', refreshed: true, changed: 2, reason: null });
+  assert.ok(existsSync(join(f.root, 'screenshots/ios/iphone/a/home/filled__guest__light.png')), 'promote ran');
+});
+
+test('refresh: nothing stale -> refreshed false, no up, no driver', async () => {
+  const f = refreshFixture();
+  const config = readJson(join(f.root, '.screens/config.json'), {});
+  const pngRel = 'ios/iphone/a/home/filled__guest__light.png';
+  writeFile(f.root, join('screenshots', pngRel), 'png');
+  writeJson(join(f.root, '.screens/state.json'), {
+    command_hash: computeCommandHash(config),
+    entries: { home: { fingerprint: computeFingerprint(f.root, [], []), pngs: { [pngRel]: 'x' } } },
+  });
+  const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(result, { project: 'demo', platform: 'ios', refreshed: false, changed: 0, reason: null });
+  assert.ok(!f.log.some((l) => l.startsWith('df ') || l.startsWith('driver') || l.includes('simctl boot')), f.log.join('\n'));
+});
+
+for (const [reason, setup] of [
+  ['needs_confirm', () => refreshFixture({ trusted: false })],
+  ['locked', () => {
+    const f = refreshFixture();
+    writeFile(f.root, '.screens/.lock', String(process.pid));
+    return f;
+  }],
+  ['disk', () => refreshFixture({ freeGb: 3 })],
+  ['config_incomplete', () => refreshFixture({ ios: { device_class: 'iphone', project: 'App.xcodeproj' } })],
+]) {
+  test(`refresh: ${reason} -> non-zero exit, named reason, driver never called`, async () => {
+    const f = setup();
+    const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, f.deps);
+    assert.equal(result.reason, reason);
+    assert.equal(result.refreshed, false);
+    assert.notEqual(exitCode, 0);
+    assert.equal(f.drivenWith.length, 0);
+    if (reason === 'config_incomplete') {
+      assert.deepEqual(result.missing, ['ios.scheme', 'ios.ui_test_target']);
+      assert.ok(!f.log.some((l) => l.startsWith('df ')), 'no up before the config check');
+    }
+  });
+}
+
+test('refresh: locked leaves the other run\'s lock file alone', async () => {
+  const f = refreshFixture();
+  writeFile(f.root, '.screens/.lock', String(process.pid));
+  await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.ok(existsSync(join(f.root, '.screens/.lock')));
+});
+
+test('refresh: platform web -> web_unsupported, non-zero, nothing run', async () => {
+  const f = refreshFixture();
+  const { result, exitCode } = await cmdRefresh(['--project', f.root, '--platform', 'web'], undefined, f.deps);
+  assert.equal(result.reason, 'web_unsupported');
+  assert.notEqual(exitCode, 0);
+  assert.equal(f.log.length, 0);
+});
+
+test('refresh: a failing driver ends with driver_failed, runs down, skips promote', async () => {
+  const f = refreshFixture({ driver: () => ({ status: 65, timedOut: false }) });
+  const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.equal(result.reason, 'driver_failed');
+  assert.notEqual(exitCode, 0);
+  assert.equal(f.log[f.log.length - 1], 'xcrun simctl shutdown UDID-1');
+  assert.equal(f.drivenWith.length, 1, 'no second theme after a failure');
+  assert.ok(!existsSync(join(f.root, 'screenshots/ios')));
+});
+
+test('refresh: a driver timeout ends with timeout and runs down', async () => {
+  const f = refreshFixture({ driver: () => ({ status: null, timedOut: true }) });
+  const { result, exitCode } = await cmdRefresh(['--project', f.root, '--timeout-min', '2'], undefined, f.deps);
+  assert.equal(result.reason, 'timeout');
+  assert.notEqual(exitCode, 0);
+  assert.equal(f.log[f.log.length - 1], 'xcrun simctl shutdown UDID-1');
+  assert.ok(f.drivenWith[0].opts.timeoutMs <= 2 * 60 * 1000 && f.drivenWith[0].opts.timeoutMs > 119 * 1000);
+});
+
+test('refresh: driver command line and env for one theme follow platform-apple.md', async () => {
+  const f = refreshFixture({ ios: { ...REFRESH_IOS, workspace: undefined } });
+  await cmdRefresh(['--project', f.root], undefined, f.deps);
+  const { cmd, args, opts } = f.drivenWith[0];
+  const derived = join(f.root, '.screens/.build/ios');
+  assert.equal(cmd, 'nice');
+  assert.deepEqual(args, [
+    '-n', '10', 'xcodebuild', 'test',
+    '-project', 'App.xcodeproj', '-scheme', 'App',
+    '-destination', 'platform=iOS Simulator,id=UDID-1',
+    '-derivedDataPath', derived,
+    '-only-testing:AppUITests/ScreensCatalogTests',
+  ]);
+  assert.equal(opts.cwd, f.root);
+  assert.deepEqual(opts.env, {
+    TEST_RUNNER_SCREENS_MANIFEST_PATH: join(f.root, '.screens/manifest.json'),
+    TEST_RUNNER_SCREENS_CONFIG_PATH: join(f.root, '.screens/config.json'),
+    TEST_RUNNER_SCREENS_ENTRIES: 'home',
+    TEST_RUNNER_SCREENSHOT_DIR: join(f.root, '.screens/.incoming/ios'),
+    TEST_RUNNER_SCREENS_THEME: 'light',
+    TEST_RUNNER_SCREENS_VIEWPORT_ID: 'iphone',
+    TEST_RUNNER_SCREENS_PROJECT_ROOT: f.root,
+  });
+});
+
+test('refresh: a workspace replaces -project in the driver command', async () => {
+  const f = refreshFixture({ ios: { ...REFRESH_IOS, project: undefined, workspace: 'App.xcworkspace' } });
+  await cmdRefresh(['--project', f.root], undefined, f.deps);
+  const { args } = f.drivenWith[0];
+  assert.ok(args.join(' ').includes('-workspace App.xcworkspace -scheme App'));
+  assert.ok(!args.includes('-project'));
+});
+
+test('defaultDriver: a timeout kills the whole process group', async () => {
+  const started = Date.now();
+  const run = await defaultDriver('sh', ['-c', 'sleep 30 & wait'], { env: {}, cwd: tmpdir(), timeoutMs: 200 });
+  assert.equal(run.timedOut, true);
+  assert.ok(Date.now() - started < 10000);
+});
+
+test('refresh: a capture left in .incoming by an earlier run is not promoted', async () => {
+  const f = refreshFixture();
+  writeFile(f.root, '.screens/.incoming/ios/home__stale__guest__iphone__light.png', 'old');
+  await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.ok(!existsSync(join(f.root, 'screenshots/ios/iphone/a/home/stale__guest__light.png')));
+  assert.ok(existsSync(join(f.root, 'screenshots/ios/iphone/a/home/filled__guest__light.png')));
 });

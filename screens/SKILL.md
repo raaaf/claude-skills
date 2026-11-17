@@ -314,3 +314,24 @@ Fill `{ok|partial|fail}` and the `{N_...}` placeholders with the outcome and cou
 this phase's own report table before running the block (same convention as `audit/SKILL.md`
 Phase 4's `{N_CRITICAL}` placeholders: the orchestrator writes literal values, not a shell
 variable read from an earlier block).
+
+## Unattended refresh (`refresh`, iOS only)
+
+`node "$SCREENS_BIN" refresh --project <root> [--platform ios] [--timeout-min 45]` recaptures the
+entries `plan` reports stale or new without a Claude session; it is meant for unattended jobs
+(launchd, cron), not for the interactive flow above. Order: `down` sweep of leftovers, trust check,
+`plan`, then (only when an entry needs a capture) `up`, the `xcodebuild` driver once per theme,
+`promote`, `index`; `down` runs in a `finally` after `up`. Nothing stale ends with
+`refreshed: false`. No discovery: entries missing from the manifest stay missing. No prompts.
+
+It prints exactly one JSON line `{project, platform, refreshed, changed, reason}` (`changed` = screens
+`promote` reported as changed or new; `config_incomplete` adds `missing`) and exits non-zero whenever
+`reason` is set: `needs_confirm` (command hash not confirmed: run `trust --confirm` once by hand),
+`locked` (another run holds `.screens/.lock`), `disk` (under 8 GB free), `config_incomplete`,
+`driver_failed`, `timeout` (wall clock; kills the driver's whole process group), `web_unsupported`
+(any platform except `ios` in this version). The project root may be a subfolder of the git root
+(`ios/`): `--project` points at the folder that holds `.screens/`.
+
+Extra optional keys in `.screens/config.json` under `ios` (read only by `refresh`): `scheme`,
+`ui_test_target` (the UI test target holding `ScreensCatalogTests`), and one of `project`
+(`.xcodeproj`) or `workspace`, both relative to the project root.

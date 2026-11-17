@@ -10,6 +10,7 @@ instantiated into the project's UI test target (Phase 2 scaffold).
 - [Launch-arg vocabulary reuse](#launch-arg-vocabulary-reuse)
 - [XcodeGen target addition](#xcodegen-target-addition)
 - [Invocation](#invocation)
+- [Unattended refresh (`screens.mjs refresh`)](#unattended-refresh-screensmjs-refresh)
 - [Filtering](#filtering)
 - [Determinism notes](#determinism-notes)
 - [Known limits](#known-limits)
@@ -156,6 +157,23 @@ of `{testIdentifier, attachments: [{exportedFileName, suggestedHumanReadableName
 `.screens/.build/macos/`, and `down`'s existing `.screens/.build/<platform>` removal (the same disk
 guard cleanup that deletes the derivedDataPath) deletes it along with everything else under that
 directory.
+
+## Unattended refresh (`screens.mjs refresh`)
+
+`refresh` assembles the iOS command above itself (one `nice -n 10 xcodebuild test` per theme with the
+`TEST_RUNNER_*` variables listed there, `-derivedDataPath` and the simulator from `up`'s output) and
+runs it from the project root, so it needs what the orchestrator otherwise decides by hand. Optional
+keys under `ios` in `.screens/config.json`, paths relative to the project root; a missing one is the
+refusal `config_incomplete`:
+
+| Key | Meaning |
+|---|---|
+| `ios.scheme` | `-scheme` value |
+| `ios.ui_test_target` | UI test target for `-only-testing:<target>/ScreensCatalogTests` |
+| `ios.project` or `ios.workspace` | `-project <x>.xcodeproj` or `-workspace <x>.xcworkspace` (workspace wins) |
+
+Themes come from `axes.themes`, the viewport id from `ios.device_class` (default `iphone`). The
+incoming folder `.screens/.incoming/ios` is emptied before the first pass.
 
 ## Filtering
 

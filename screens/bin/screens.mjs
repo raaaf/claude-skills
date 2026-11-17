@@ -4,7 +4,8 @@
 //
 // Node >=20, built-ins only (no npm, no package.json in this repo).
 //
-// Subcommands: plan, up, down, promote, marketing, index, trust, affected.
+// Subcommands: plan, up, down, promote, marketing, index, trust, affected,
+// refresh (unattended iOS recapture; JSON line + exit code, see cmdRefresh).
 // Each subcommand emits `KEY=value` lines and, from the second-to-last
 // point on, one final `SCREENS_RESULT=OK|SKIP (reason)|FAIL (reason)`-style
 // result line per the audit/bin output contract: environment gaps are SKIP, safety guard failures are FAIL, both
@@ -2768,11 +2769,202 @@ function cmdAffected(args, root = process.cwd()) {
 }
 
 // ---------------------------------------------------------------------
+// refresh: unattended recapture of the known entries (iOS only)
+// ---------------------------------------------------------------------
+
+// Spawns the driver in its own process group so a wall-clock timeout can
+// kill xcodebuild together with everything it started. The driver's stdout
+// goes to stderr: stdout carries exactly one JSON line. Resolves
+// `{status, timedOut}`; injectable in `cmdRefresh` for tests.
+function defaultDriver(cmd, args, { env, cwd, timeoutMs }) {
+  return new Promise((resolveRun) => {
+    let timedOut = false;
+    const child = spawn(cmd, args, {
+      cwd,
+      env: { ...process.env, ...env },
+      detached: true,
+      stdio: ['ignore', 2, 2],
+    });
+    const killGroup = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        // group already gone
+      }
+    };
+    let killTimer;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killGroup('SIGTERM');
+      killTimer = setTimeout(() => killGroup('SIGKILL'), 5000);
+    }, timeoutMs);
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolveRun({ status: 127, timedOut: false });
+    });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      killGroup('SIGKILL');
+      resolveRun({ status: code, timedOut });
+    });
+  });
+}
+
+// Config keys the iOS driver command needs (platform-apple.md "Unattended
+// refresh"). `project` and `workspace` are alternatives.
+function missingRefreshKeys(iosConfig) {
+  const missing = [];
+  if (!iosConfig.scheme) missing.push('ios.scheme');
+  if (!iosConfig.ui_test_target) missing.push('ios.ui_test_target');
+  if (!iosConfig.project && !iosConfig.workspace) missing.push('ios.project|ios.workspace');
+  return missing;
+}
+
+function outLineValue(lines, key) {
+  const hit = lines.find((l) => l.startsWith(`${key}=`));
+  return hit ? hit.slice(key.length + 1) : undefined;
+}
+
+// One themed xcodebuild pass: the documented command of platform-apple.md
+// "Invocation", with its TEST_RUNNER_* environment.
+function iosDriverCommand(root, config, { udid, derivedData, projectRoot, entryIds, theme }) {
+  const iosConfig = config.ios || {};
+  const container = iosConfig.workspace
+    ? ['-workspace', iosConfig.workspace]
+    : ['-project', iosConfig.project];
+  const args = [
+    '-n', '10', 'xcodebuild', 'test',
+    ...container,
+    '-scheme', iosConfig.scheme,
+    '-destination', `platform=iOS Simulator,id=${udid}`,
+    '-derivedDataPath', derivedData,
+    `-only-testing:${iosConfig.ui_test_target}/ScreensCatalogTests`,
+  ];
+  const env = {
+    TEST_RUNNER_SCREENS_MANIFEST_PATH: join(root, '.screens/manifest.json'),
+    TEST_RUNNER_SCREENS_CONFIG_PATH: join(root, '.screens/config.json'),
+    TEST_RUNNER_SCREENS_ENTRIES: entryIds.join(','),
+    TEST_RUNNER_SCREENSHOT_DIR: join(root, '.screens/.incoming/ios'),
+    TEST_RUNNER_SCREENS_THEME: theme,
+    TEST_RUNNER_SCREENS_VIEWPORT_ID: iosConfig.device_class || 'iphone',
+    TEST_RUNNER_SCREENS_PROJECT_ROOT: projectRoot,
+  };
+  return { cmd: 'nice', args, env };
+}
+
+// Result of a refresh: `{result, exitCode}`. `result` is the one JSON line
+// `main` prints. `deps.runner` (sync, used by up/down) and `deps.driver`
+// (async, the xcodebuild spawn) are injectable.
+async function cmdRefresh(args, root = process.cwd(), deps = {}) {
+  const runner = deps.runner || defaultRunner;
+  const driver = deps.driver || defaultDriver;
+  const projectArg = argValue(args, '--project');
+  if (projectArg) root = resolve(projectArg);
+  const platform = argValue(args, '--platform') || 'ios';
+  const timeoutMin = parseFloat(argValue(args, '--timeout-min'));
+  const timeoutMs = (timeoutMin > 0 ? timeoutMin : 45) * 60 * 1000;
+  const config = readJson(join(root, '.screens/config.json'), {});
+  const project = config.project || basename(resolve(root));
+  const finish = (reason, extra = {}) => ({
+    result: { project, platform, refreshed: false, changed: 0, reason, ...extra },
+    exitCode: reason ? 1 : 0,
+  });
+
+  if (platform !== 'ios') return finish('web_unsupported');
+  // A live run holds the lock: sweeping first would shut its simulator down.
+  if (checkLock(root)) return finish('locked');
+
+  const downSweep = () => {
+    try {
+      cmdDown(['--platform', platform], root, runner);
+    } catch {
+      // nothing running, nothing to sweep
+    }
+  };
+  downSweep();
+
+  if (cmdTrust([], root).some((l) => l.startsWith('TRUST_RESULT=NEEDS_CONFIRM'))) {
+    return finish('needs_confirm');
+  }
+
+  const planned = cmdPlan([], root)
+    .filter((l) => l.startsWith('PLAN_ENTRY '))
+    .map((l) => l.split(' '))
+    .filter((p) => p[2] !== 'unchanged')
+    .map((p) => p[1]);
+  if (planned.length === 0) return finish(null);
+
+  const missing = missingRefreshKeys(config.ios || {});
+  if (missing.length) return finish('config_incomplete', { missing });
+
+  const upLines = cmdUp(['--platform', platform], root, runner);
+  const upResult = upLines.find((l) => l.startsWith('UP_RESULT=')) || '';
+  if (upResult.includes('(locked)')) return finish('locked');
+  try {
+    if (upResult !== 'UP_RESULT=OK') {
+      return finish(upResult.includes('low disk') ? 'disk' : 'driver_failed');
+    }
+    const udid = outLineValue(upLines, 'SIMULATOR_UDID');
+    const derivedData = join(root, outLineValue(upLines, 'DERIVED_DATA_PATH') || '.screens/.build/ios');
+    const projectRoot = outLineValue(upLines, 'PROJECT_ROOT') || resolve(root);
+    const themes = (config.axes && config.axes.themes) || ['light'];
+
+    // A leftover capture of an earlier run must not reach `promote`.
+    const incomingDir = join(root, '.screens/.incoming/ios');
+    rmSync(incomingDir, { recursive: true, force: true });
+    mkdirSync(incomingDir, { recursive: true });
+
+    const deadline = Date.now() + timeoutMs;
+    for (const theme of themes) {
+      runner('xcrun', appearanceArgs(udid, theme), {});
+      const { cmd, args: cmdArgs, env } = iosDriverCommand(root, config, {
+        udid, derivedData, projectRoot, entryIds: planned, theme,
+      });
+      const run = await driver(cmd, cmdArgs, { env, cwd: root, timeoutMs: Math.max(deadline - Date.now(), 1) });
+      if (run.timedOut) return finish('timeout');
+      if (run.status !== 0) return finish('driver_failed');
+    }
+
+    const promoteLines = cmdPromote(['--platform', platform], root);
+    const promoteResult = promoteLines.find((l) => l.startsWith('PROMOTE_RESULT=OK'));
+    if (!promoteResult) return finish('driver_failed');
+    const num = (key) => parseInt((promoteResult.match(new RegExp(`${key}=(\\d+)`)) || [])[1], 10) || 0;
+    cmdIndex([], root);
+    return {
+      result: { project, platform, refreshed: true, changed: num('changed') + num('new'), reason: null },
+      exitCode: 0,
+    };
+  } finally {
+    downSweep();
+  }
+}
+
+// `refresh` prints exactly one JSON line on stdout; the handlers it calls
+// log to stdout, so those go to stderr meanwhile. Returns the exit code.
+async function runRefresh(args) {
+  const realLog = console.log;
+  console.log = (...a) => console.error(...a);
+  let out;
+  try {
+    out = await cmdRefresh(args);
+  } catch (err) {
+    console.error(err && err.message);
+    out = { result: { project: null, platform: null, refreshed: false, changed: 0, reason: 'driver_failed' }, exitCode: 1 };
+  } finally {
+    console.log = realLog;
+  }
+  console.log(JSON.stringify(out.result));
+  return out.exitCode;
+}
+
+// ---------------------------------------------------------------------
 // CLI entrypoint
 // ---------------------------------------------------------------------
 
 function main(argv) {
   const [cmd, ...rest] = argv;
+  if (cmd === 'refresh') return runRefresh(rest);
   const handlers = {
     plan: cmdPlan,
     up: cmdUp,
@@ -2802,7 +2994,12 @@ const isMain = process.argv[1] && (() => {
     return false;
   }
 })();
-if (isMain) main(process.argv.slice(2));
+if (isMain) {
+  // Only `refresh` returns an exit code (via a promise); every other subcommand returns nothing.
+  Promise.resolve(main(process.argv.slice(2))).then((code) => {
+    if (code) process.exitCode = code;
+  });
+}
 
 export {
   matchesGlob,
@@ -2916,6 +3113,9 @@ export {
   cmdMigrateOutput,
   computeCommandHash,
   cmdTrust,
+  cmdRefresh,
+  defaultDriver,
+  iosDriverCommand,
   affectedIds,
   cmdAffected,
   readJson,
