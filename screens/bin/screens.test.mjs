@@ -59,6 +59,8 @@ import {
   cmdUp,
   cmdDown,
   cmdRefresh,
+  makeAbortHandler,
+  iosDriverCommand,
   computeFingerprint,
   defaultDriver,
   cmdAndroidNavigate,
@@ -2663,4 +2665,119 @@ test('refresh: a capture left in .incoming by an earlier run is not promoted', a
   await cmdRefresh(['--project', f.root], undefined, f.deps);
   assert.ok(!existsSync(join(f.root, 'screenshots/ios/iphone/a/home/stale__guest__light.png')));
   assert.ok(existsSync(join(f.root, 'screenshots/ios/iphone/a/home/filled__guest__light.png')));
+});
+
+test('refresh: stale entries of another platform are not planned -> refreshed false, no reason, no up', async () => {
+  const f = refreshFixture();
+  writeJson(join(f.root, '.screens/manifest.json'), {
+    entries: [{ id: 'home', platform: 'web', area: 'a', view: 'home', sources: [] }],
+  });
+  const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.equal(exitCode, 0);
+  assert.equal(result.refreshed, false);
+  assert.equal(result.reason, null);
+  assert.equal(f.drivenWith.length, 0);
+  assert.ok(!f.log.some((l) => l.includes('simctl boot')));
+});
+
+test('refresh: only entries of the requested platform reach the driver', async () => {
+  const f = refreshFixture();
+  writeJson(join(f.root, '.screens/manifest.json'), {
+    entries: [
+      { id: 'home', platform: 'ios', area: 'a', view: 'home', sources: [] },
+      { id: 'site', platform: 'web', area: 'a', view: 'site', sources: [] },
+    ],
+  });
+  await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.equal(f.drivenWith[0].opts.env.TEST_RUNNER_SCREENS_ENTRIES, 'home');
+});
+
+test('refresh: a --project path without .screens/config.json -> no_project, non-zero, nothing run', async () => {
+  const f = refreshFixture();
+  const { result, exitCode } = await cmdRefresh(['--project', join(f.root, 'does-not-exist')], undefined, f.deps);
+  assert.equal(result.reason, 'no_project');
+  assert.notEqual(exitCode, 0);
+  assert.equal(f.log.length, 0);
+});
+
+test('refresh: a driver that exits 0 without any PNG -> driver_failed, nothing promoted', async () => {
+  const f = refreshFixture({ driver: () => ({ status: 0, timedOut: false }) });
+  const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, f.deps);
+  assert.equal(result.reason, 'driver_failed');
+  assert.equal(result.refreshed, false);
+  assert.notEqual(exitCode, 0);
+  assert.ok(!existsSync(join(f.root, 'screenshots/ios')));
+});
+
+test('makeAbortHandler: kills the driver group, sweeps, exits non-zero per signal', () => {
+  const calls = [];
+  const handler = makeAbortHandler({
+    killGroup: (sig) => calls.push(`kill ${sig}`),
+    sweep: () => calls.push('sweep'),
+    exit: (code) => calls.push(`exit ${code}`),
+  });
+  handler('SIGTERM');
+  handler('SIGINT');
+  assert.deepEqual(calls, ['kill SIGKILL', 'sweep', 'exit 143', 'kill SIGKILL', 'sweep', 'exit 130']);
+});
+
+test('makeAbortHandler: still exits when the sweep throws', () => {
+  let code;
+  const handler = makeAbortHandler({ killGroup: () => {}, sweep: () => { throw new Error('x'); }, exit: (c) => { code = c; } });
+  assert.throws(() => handler('SIGTERM'));
+  assert.equal(code, 143);
+});
+
+test('defaultDriver: signal handlers are installed only while the driver runs', async () => {
+  const before = process.listenerCount('SIGTERM');
+  const pending = defaultDriver('sh', ['-c', 'sleep 0.2'], { env: {}, cwd: tmpdir(), timeoutMs: 5000 });
+  assert.equal(process.listenerCount('SIGTERM'), before + 1);
+  await pending;
+  assert.equal(process.listenerCount('SIGTERM'), before);
+});
+
+test('refresh: deadline already passed before the second theme -> timeout, no second pass', async () => {
+  const f = refreshFixture({
+    driver: async (cmd, args, opts) => {
+      await new Promise((r) => setTimeout(r, 80));
+      writeFileSync(join(opts.env.TEST_RUNNER_SCREENSHOT_DIR, 'home__filled__guest__iphone__light.png'), 'p');
+      return { status: 0, timedOut: false };
+    },
+  });
+  const { result, exitCode } = await cmdRefresh(['--project', f.root, '--timeout-min', '0.0005'], undefined, f.deps);
+  assert.equal(result.reason, 'timeout');
+  assert.notEqual(exitCode, 0);
+  assert.equal(f.drivenWith.length, 1);
+  assert.equal(f.log[f.log.length - 1], 'xcrun simctl shutdown UDID-1');
+});
+
+test('refresh: a failed up that is neither locked nor disk -> up_failed, driver never called', async () => {
+  const f = refreshFixture();
+  const runner = (cmd, args) => {
+    // No simulator and no iOS runtime: `up` ends in SKIP, not FAIL, and never boots.
+    if (cmd === 'xcrun' && args[1] === 'list') return { stdout: '{}', status: 0 };
+    return f.deps.runner(cmd, args);
+  };
+  const { result, exitCode } = await cmdRefresh(['--project', f.root], undefined, { ...f.deps, runner });
+  assert.equal(result.reason, 'up_failed');
+  assert.notEqual(exitCode, 0);
+  assert.equal(f.drivenWith.length, 0);
+});
+
+test('computeCommandHash: ios scheme/target/project/workspace are part of the hash, absent keys change nothing', () => {
+  const base = { web: { start_command: 'x' } };
+  const withIos = (ios) => computeCommandHash({ ...base, ios });
+  assert.equal(computeCommandHash(base), computeCommandHash({ ...base, ios: { device_class: 'iphone' } }));
+  const ref = withIos({ scheme: 'A', ui_test_target: 'T', project: 'P.xcodeproj' });
+  assert.notEqual(ref, computeCommandHash(base));
+  for (const [key, value] of [['scheme', 'B'], ['ui_test_target', 'U'], ['project', 'Q.xcodeproj']]) {
+    assert.notEqual(withIos({ scheme: 'A', ui_test_target: 'T', project: 'P.xcodeproj', [key]: value }), ref, key);
+  }
+  assert.notEqual(withIos({ scheme: 'A', ui_test_target: 'T', project: 'P.xcodeproj', workspace: 'W.xcworkspace' }), ref);
+});
+
+test('iosDriverCommand: ${PROJECT_ROOT} in ios.project and ios.workspace is expanded', () => {
+  const run = (ios) => iosDriverCommand('/r', { ios }, { udid: 'U', derivedData: '/d', projectRoot: '/r', entryIds: ['a'], theme: 'light' });
+  assert.ok(run({ scheme: 'S', ui_test_target: 'T', project: '${PROJECT_ROOT}/A.xcodeproj' }).args.includes('/r/A.xcodeproj'));
+  assert.ok(run({ scheme: 'S', ui_test_target: 'T', workspace: '${PROJECT_ROOT}/A.xcworkspace' }).args.includes('/r/A.xcworkspace'));
 });

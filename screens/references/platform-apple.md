@@ -172,6 +172,13 @@ refusal `config_incomplete`:
 | `ios.ui_test_target` | UI test target for `-only-testing:<target>/ScreensCatalogTests` |
 | `ios.project` or `ios.workspace` | `-project <x>.xcodeproj` or `-workspace <x>.xcworkspace` (workspace wins) |
 
+These four keys (`scheme`, `ui_test_target`, `project`, `workspace`) are part of the `trust` hash,
+like the `*command` keys: a change needs `trust --confirm` again; a config without them keeps its
+hash. Other refusals and failures: `no_project` (no `.screens/config.json` under `--project`),
+`up_failed` (`up` failed for a reason other than lock or disk, the driver never ran),
+`internal_error` (unexpected exception), `driver_failed` also when the driver exits 0 without a
+PNG in the incoming folder.
+
 Themes come from `axes.themes`, the viewport id from `ios.device_class` (default `iphone`). The
 incoming folder `.screens/.incoming/ios` is emptied before the first pass.
 

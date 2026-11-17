@@ -2714,6 +2714,12 @@ function computeCommandHash(config) {
       else if (typeof v === 'object') walk(v);
     }
   })(config);
+  // `refresh` runs xcodebuild unattended from these, so they are trusted too.
+  // Absent keys add nothing: a config without them keeps its earlier hash.
+  const iosConfig = (config && config.ios) || {};
+  for (const key of ['scheme', 'ui_test_target', 'project', 'workspace']) {
+    if (typeof iosConfig[key] === 'string') values.push(`ios.${key}=${iosConfig[key]}`);
+  }
   values.sort();
   return createHash('sha256').update(values.join('\n')).digest('hex');
 }
@@ -2772,11 +2778,26 @@ function cmdAffected(args, root = process.cwd()) {
 // refresh: unattended recapture of the known entries (iOS only)
 // ---------------------------------------------------------------------
 
+// A killed refresh (the supply job's 50-minute limit) must not orphan
+// xcodebuild, leave the simulator booted or keep the lock: kill the driver's
+// group, sweep, exit non-zero (128 + signal number).
+function makeAbortHandler({ killGroup, sweep, exit }) {
+  return (signal) => {
+    killGroup('SIGKILL');
+    try {
+      sweep();
+    } finally {
+      exit(signal === 'SIGINT' ? 130 : 143);
+    }
+  };
+}
+
 // Spawns the driver in its own process group so a wall-clock timeout can
 // kill xcodebuild together with everything it started. The driver's stdout
 // goes to stderr: stdout carries exactly one JSON line. Resolves
-// `{status, timedOut}`; injectable in `cmdRefresh` for tests.
-function defaultDriver(cmd, args, { env, cwd, timeoutMs }) {
+// `{status, timedOut}`; injectable in `cmdRefresh` for tests. While it runs,
+// SIGTERM/SIGINT kill the group and run `sweep` (see `makeAbortHandler`).
+function defaultDriver(cmd, args, { env, cwd, timeoutMs, sweep = () => {} }) {
   return new Promise((resolveRun) => {
     let timedOut = false;
     const child = spawn(cmd, args, {
@@ -2792,6 +2813,13 @@ function defaultDriver(cmd, args, { env, cwd, timeoutMs }) {
         // group already gone
       }
     };
+    const onSignal = makeAbortHandler({ killGroup, sweep, exit: (code) => process.exit(code) });
+    process.on('SIGTERM', onSignal);
+    process.on('SIGINT', onSignal);
+    const removeSignalHandlers = () => {
+      process.off('SIGTERM', onSignal);
+      process.off('SIGINT', onSignal);
+    };
     let killTimer;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -2800,11 +2828,13 @@ function defaultDriver(cmd, args, { env, cwd, timeoutMs }) {
     }, timeoutMs);
     child.on('error', () => {
       clearTimeout(timer);
+      removeSignalHandlers();
       resolveRun({ status: 127, timedOut: false });
     });
     child.on('exit', (code) => {
       clearTimeout(timer);
       clearTimeout(killTimer);
+      removeSignalHandlers();
       killGroup('SIGKILL');
       resolveRun({ status: code, timedOut });
     });
@@ -2829,7 +2859,7 @@ function outLineValue(lines, key) {
 // One themed xcodebuild pass: the documented command of platform-apple.md
 // "Invocation", with its TEST_RUNNER_* environment.
 function iosDriverCommand(root, config, { udid, derivedData, projectRoot, entryIds, theme }) {
-  const iosConfig = config.ios || {};
+  const iosConfig = expandProjectRoot(config.ios || {}, root);
   const container = iosConfig.workspace
     ? ['-workspace', iosConfig.workspace]
     : ['-project', iosConfig.project];
@@ -2864,13 +2894,15 @@ async function cmdRefresh(args, root = process.cwd(), deps = {}) {
   const platform = argValue(args, '--platform') || 'ios';
   const timeoutMin = parseFloat(argValue(args, '--timeout-min'));
   const timeoutMs = (timeoutMin > 0 ? timeoutMin : 45) * 60 * 1000;
-  const config = readJson(join(root, '.screens/config.json'), {});
+  const configPath = join(root, '.screens/config.json');
+  const config = readJson(configPath, {});
   const project = config.project || basename(resolve(root));
   const finish = (reason, extra = {}) => ({
     result: { project, platform, refreshed: false, changed: 0, reason, ...extra },
     exitCode: reason ? 1 : 0,
   });
 
+  if (!existsSync(configPath)) return finish('no_project');
   if (platform !== 'ios') return finish('web_unsupported');
   // A live run holds the lock: sweeping first would shut its simulator down.
   if (checkLock(root)) return finish('locked');
@@ -2888,10 +2920,12 @@ async function cmdRefresh(args, root = process.cwd(), deps = {}) {
     return finish('needs_confirm');
   }
 
+  const manifest = readJson(join(root, '.screens/manifest.json'), { entries: [] });
+  const platformIds = new Set((manifest.entries || []).filter((e) => e.platform === platform).map((e) => e.id));
   const planned = cmdPlan([], root)
     .filter((l) => l.startsWith('PLAN_ENTRY '))
     .map((l) => l.split(' '))
-    .filter((p) => p[2] !== 'unchanged')
+    .filter((p) => p[2] !== 'unchanged' && platformIds.has(p[1]))
     .map((p) => p[1]);
   if (planned.length === 0) return finish(null);
 
@@ -2903,7 +2937,7 @@ async function cmdRefresh(args, root = process.cwd(), deps = {}) {
   if (upResult.includes('(locked)')) return finish('locked');
   try {
     if (upResult !== 'UP_RESULT=OK') {
-      return finish(upResult.includes('low disk') ? 'disk' : 'driver_failed');
+      return finish(upResult.includes('low disk') ? 'disk' : 'up_failed');
     }
     const udid = outLineValue(upLines, 'SIMULATOR_UDID');
     const derivedData = join(root, outLineValue(upLines, 'DERIVED_DATA_PATH') || '.screens/.build/ios');
@@ -2917,13 +2951,20 @@ async function cmdRefresh(args, root = process.cwd(), deps = {}) {
 
     const deadline = Date.now() + timeoutMs;
     for (const theme of themes) {
+      if (Date.now() >= deadline) return finish('timeout');
       runner('xcrun', appearanceArgs(udid, theme), {});
       const { cmd, args: cmdArgs, env } = iosDriverCommand(root, config, {
         udid, derivedData, projectRoot, entryIds: planned, theme,
       });
-      const run = await driver(cmd, cmdArgs, { env, cwd: root, timeoutMs: Math.max(deadline - Date.now(), 1) });
+      const run = await driver(cmd, cmdArgs, {
+        env, cwd: root, timeoutMs: Math.max(deadline - Date.now(), 1), sweep: downSweep,
+      });
       if (run.timedOut) return finish('timeout');
       if (run.status !== 0) return finish('driver_failed');
+    }
+    // A driver that exits 0 without a capture must not count as refreshed.
+    if (!listDirFiles(root, '.screens/.incoming/ios').some((f) => f.toLowerCase().endsWith('.png'))) {
+      return finish('driver_failed');
     }
 
     const promoteLines = cmdPromote(['--platform', platform], root);
@@ -2945,12 +2986,14 @@ async function cmdRefresh(args, root = process.cwd(), deps = {}) {
 async function runRefresh(args) {
   const realLog = console.log;
   console.log = (...a) => console.error(...a);
+  const project = basename(resolve(argValue(args, '--project') || process.cwd()));
+  const platform = argValue(args, '--platform') || 'ios';
   let out;
   try {
     out = await cmdRefresh(args);
   } catch (err) {
     console.error(err && err.message);
-    out = { result: { project: null, platform: null, refreshed: false, changed: 0, reason: 'driver_failed' }, exitCode: 1 };
+    out = { result: { project, platform, refreshed: false, changed: 0, reason: 'internal_error' }, exitCode: 1 };
   } finally {
     console.log = realLog;
   }
@@ -3114,6 +3157,7 @@ export {
   computeCommandHash,
   cmdTrust,
   cmdRefresh,
+  makeAbortHandler,
   defaultDriver,
   iosDriverCommand,
   affectedIds,

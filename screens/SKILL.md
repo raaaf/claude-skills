@@ -328,10 +328,15 @@ It prints exactly one JSON line `{project, platform, refreshed, changed, reason}
 `promote` reported as changed or new; `config_incomplete` adds `missing`) and exits non-zero whenever
 `reason` is set: `needs_confirm` (command hash not confirmed: run `trust --confirm` once by hand),
 `locked` (another run holds `.screens/.lock`), `disk` (under 8 GB free), `config_incomplete`,
-`driver_failed`, `timeout` (wall clock; kills the driver's whole process group), `web_unsupported`
-(any platform except `ios` in this version). The project root may be a subfolder of the git root
+`no_project` (`--project` has no `.screens/config.json`), `up_failed` (`up` failed for another
+reason, the driver never ran), `driver_failed` (also: the driver passed but captured no PNG),
+`internal_error` (unexpected exception), `timeout` (wall clock, checked before every theme pass;
+kills the driver's whole process group), `web_unsupported` (any platform except `ios` in this
+version). SIGTERM/SIGINT while the driver runs kill its process group, run the `down` sweep and
+exit non-zero. Only entries of the requested platform count as stale. The project root may be a subfolder of the git root
 (`ios/`): `--project` points at the folder that holds `.screens/`.
 
 Extra optional keys in `.screens/config.json` under `ios` (read only by `refresh`): `scheme`,
 `ui_test_target` (the UI test target holding `ScreensCatalogTests`), and one of `project`
-(`.xcodeproj`) or `workspace`, both relative to the project root.
+(`.xcodeproj`) or `workspace`, both relative to the project root. These four keys are part of the
+`trust` hash (as the `*command` keys are): changing one needs `trust --confirm` again.
