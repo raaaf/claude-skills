@@ -530,7 +530,7 @@ Response: {curl output}
 Check: app logs, recent error monitoring, or reproduce the failure locally with a regression test.
 ```
 
-The run stops here: print the project's rollback hint if `.claude/ship.md` (a `rollback:` line, read with `orch_ship_value rollback`) or the deploy tool offers one, and do not continue to any later phase (no Phase 5.5, no Phase 5.8, no Summary).
+The run stops here: print the project's rollback hint if `.claude/ship.md` (a `rollback:` line, read with `orch_ship_value rollback`) or the deploy tool offers one, and do not continue to any later phase (no Phase 5.5, no Phase 5.8).
 
 ## Summary Output
 

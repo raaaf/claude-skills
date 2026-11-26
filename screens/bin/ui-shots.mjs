@@ -14,8 +14,8 @@
 //   --creds-file <path>             two lines: user, then password (never pass credentials as arguments)
 //   --measure <css selector>        repeatable. For every shot, print one JSON line per selector:
 //                                   {"measure","viewport","count","boxes":[{x,y,width,height,centerOffsetX,centerOffsetY}]}
-//                                   for up to 20 matches. centerOffset is the element's centre minus its offsetParent's
-//                                   (parent element's when there is none) centre, in CSS px rounded to 0.1. No match: count 0.
+//                                   for up to 20 matches. centerOffset is the element's centre minus its parent element's
+//                                   centre, in CSS px rounded to 0.1. No match: count 0. A selector that throws gives count 0 and an "error" field.
 //                                   Assert position and size claims (centred, same height, same gap) from these numbers.
 //
 // Prints the image paths, the final URL and the page title. If the final URL looks like a login page
@@ -91,14 +91,14 @@ async function isLoginPage(page) {
 
 const MAX_MEASURED = 20;
 
-/** Boxes of every element matching the selector (max 20), with the centre offset to its offsetParent or parent. */
+/** Boxes of every element matching the selector (max 20), with the centre offset to its parent element. */
 export async function measureBoxes(page, selector) {
   const boxes = await page.evaluate(([sel, max]) => {
     const round = (n) => Math.round(n * 10) / 10;
     const all = [...document.querySelectorAll(sel)];
     const boxes = all.slice(0, max).map((el) => {
       const r = el.getBoundingClientRect();
-      const ref = (el.offsetParent || el.parentElement)?.getBoundingClientRect();
+      const ref = el.parentElement?.getBoundingClientRect();
       return {
         x: round(r.x),
         y: round(r.y),
@@ -164,7 +164,11 @@ async function shoot(browser, shot, opts, state, outDir) {
     await page.screenshot({ path: file, fullPage: true });
     const measures = [];
     for (const selector of opts.measure ?? []) {
-      measures.push({ measure: selector, viewport: shot.name, ...(await measureBoxes(page, selector)) });
+      try {
+        measures.push({ measure: selector, viewport: shot.name, ...(await measureBoxes(page, selector)) });
+      } catch (error) {
+        measures.push({ measure: selector, viewport: shot.name, count: 0, boxes: [], error: String(error.message).split('\n')[0] });
+      }
     }
     return { file, finalUrl: page.url(), title: await page.title(), loginPage: await isLoginPage(page), measures };
   } finally {

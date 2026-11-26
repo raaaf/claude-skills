@@ -54,7 +54,7 @@ test('parseArgs collects repeatable --measure selectors', () => {
   assert.throws(() => parseArgs(['--url', 'http://x/', '--measure']), /needs a value/);
 });
 
-test('measureBoxes reports the centre offset to the offsetParent and count 0 for no match', async () => {
+test('measureBoxes reports the centre offset to the parent element and count 0 for no match', async () => {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
   try {
@@ -71,6 +71,11 @@ test('measureBoxes reports the centre offset to the offsetParent and count 0 for
     assert.ok(Math.abs(off.boxes[0].centerOffsetY) <= 0.5);
     const shifted = await measureBoxes(page, '#nope');
     assert.deepEqual(shifted, { count: 0, boxes: [] });
+    await page.setContent(`<body style="margin:0"><div style="position:relative;width:400px;height:200px">
+      <div style="display:flex;align-items:center;justify-content:center;width:200px;height:100px;margin-left:150px;margin-top:70px">
+      <i id="inStatic" style="width:50px;height:20px"></i></div></div></body>`);
+    const inStatic = await measureBoxes(page, '#inStatic');
+    assert.ok(Math.abs(inStatic.boxes[0].centerOffsetX) <= 0.5 && Math.abs(inStatic.boxes[0].centerOffsetY) <= 0.5);
   } finally {
     await browser.close();
   }
