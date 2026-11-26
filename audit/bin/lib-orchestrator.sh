@@ -53,6 +53,10 @@
 #                             numeric host that is not a canonical dotted quad (decimal, octal, hex, short forms)
 #   orch_run_log <args...>    calls run-log.sh if present; never fails the caller
 #   orch_ship_value <key> [root]   prints `<key>:` from .claude/ship.md (test-command, deploy-command, health-check), else nothing (rc 1)
+#   orch_ship_grant         prints `present` when this session holds a fresh ship grant (written by a UserPromptSubmit hook when the user typed /ship himself), else `absent`; rc 0
+#   orch_tidy_branches [root]   prints, sorted, the local branches safe for `git branch -d`: not the default branch, not checked out in any worktree, tip an ancestor of origin/<default> as last fetched; read-only, no fetch, rc 0
+#   orch_deploy_approve <command> [root]    records the sha256 of the exact deploy command for the repo root (one line per root)
+#   orch_deploy_approved <command> [root]   rc 0 only when that exact command was approved for the root, rc 1 otherwise
 #   orch_test_command_declared [root]   = orch_ship_value test-command
 #   orch_test_command [root]  declared value, else a manifest guess (composer/npm/swift/pytest), else nothing (rc 1)
 #   orch_unaudited_record   records the base a quick-fix /ship run's unpushed commits sit on (the
@@ -315,6 +319,71 @@ orch_unaudited_clear() {
 }
 
 orch_test_command_declared() { orch_ship_value test-command "${1:-}"; }
+
+# Ship grant: a hook writes the epoch of the user's own /ship (or authorizing phrase) to
+# $SHIP_GRANT_DIR/<session id>; a grant counts for one hour, with 60 s of clock skew into the future.
+# Without CLAUDE_CODE_SESSION_ID or without a valid file the answer is `absent`.
+orch_ship_grant() {
+  local dir="${SHIP_GRANT_DIR:-$HOME/.local/state/claude/ship-grant}" sid="${CLAUDE_CODE_SESSION_ID:-}" g now age
+  printf '%s' "$sid" | grep -Eq '^[A-Za-z0-9_-]+$' || { echo absent; return 0; }
+  g=$(head -1 "$dir/$sid" 2>/dev/null)
+  case "$g" in '' | *[!0-9]*) echo absent; return 0 ;; esac
+  now=$(date +%s)
+  age=$((now - g))
+  if [ "$age" -le 3600 ] && [ "$age" -ge -60 ]; then echo present; else echo absent; fi
+}
+
+# Read-only: prints the local branches of the repo at [root] that /ship's tidy phase may delete with `git branch -d`:
+# not the default branch (from refs/remotes/origin/HEAD, else main), not checked out in any worktree, and
+# the tip is an ancestor of origin/<default> as last fetched (no fetch here). Sorted; nothing on any failure.
+orch_tidy_branches() {
+  local root="${1:-.}" def ref b
+  def=$(git -C "$root" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || def=""
+  def="${def#origin/}"
+  [ -n "$def" ] || def=main
+  git -C "$root" rev-parse --verify -q "refs/remotes/origin/$def" >/dev/null 2>&1 || return 0
+  {
+    git -C "$root" for-each-ref --format='%(refname)' refs/heads 2>/dev/null | while IFS= read -r ref; do
+      b="${ref#refs/heads/}"
+      [ "$b" = "$def" ] && continue
+      git -C "$root" worktree list --porcelain 2>/dev/null | grep -qxF "branch $ref" && continue
+      git -C "$root" merge-base --is-ancestor "$ref" "refs/remotes/origin/$def" 2>/dev/null || continue
+      printf '%s\n' "$b"
+    done
+  } | sort
+  return 0
+}
+
+orch__sha256() { # stdin -> hex digest
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+  else sha256sum | cut -d' ' -f1
+  fi
+}
+
+# Deploy approval store: one `<root><TAB><sha256 of the command>` line per repo root. The command
+# is only hashed, never executed or printed; a changed command text is a different hash.
+orch__deploy_store() { printf '%s' "${SHIP_DEPLOY_APPROVED_FILE:-$HOME/.local/state/claude/ship-deploy-approved}"; }
+orch__deploy_root() { printf '%s' "${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; }
+
+orch_deploy_approve() {
+  local store root hash tmp
+  store=$(orch__deploy_store)
+  root=$(orch__deploy_root "${2:-}")
+  hash=$(printf '%s' "$1" | orch__sha256)
+  mkdir -p "$(dirname "$store")" || return 1
+  tmp="$store.tmp.$$"
+  { [ -f "$store" ] && ORCH_ROOT="$root" awk -F'\t' '$1 != ENVIRON["ORCH_ROOT"]' "$store"; printf '%s\t%s\n' "$root" "$hash"; } > "$tmp" || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$store"
+}
+
+orch_deploy_approved() {
+  local store root hash
+  store=$(orch__deploy_store)
+  [ -f "$store" ] || return 1
+  root=$(orch__deploy_root "${2:-}")
+  hash=$(printf '%s' "$1" | orch__sha256)
+  ORCH_ROOT="$root" ORCH_HASH="$hash" awk -F'\t' 'BEGIN { rc = 1 } $1 == ENVIRON["ORCH_ROOT"] && $2 == ENVIRON["ORCH_HASH"] { rc = 0 } END { exit rc }' "$store"
+}
 
 # /audit's variant: the declared command, else the manifest's own. /ship deliberately
 # uses only the declared one, so a repo that never configured a test gate does not

@@ -70,8 +70,14 @@ The prompt MUST include:
 > `SELF-CHECK: unreachable` (exit 2) report it as is: no workaround, no other login route; the
 > reviewer pass still runs. Otherwise open all three images (Read tool) and walk the guide's
 > checklist against them: clipped or overflowing text, edges, spacing order, hierarchy, dark mode.
-> Fix what fails and re-shoot exactly once; never a third run. Native: no screenshot loop; review
-> the code against the guide and report `SELF-CHECK: code review only`. Add the fields
+> Fix what fails and re-shoot exactly once; never a third run. Assert every position or size claim
+> (centred, same height, same gap) from `ui-shots.mjs --measure <selector>` numbers within 1 px and
+> put the numbers in the report. A defect the owner reported is fixed for every occurrence of the
+> pattern in the repo (grep first, list the places). Native: with a `/screens` capture driver, capture
+> the changed views once on the project's test simulator through the test lock (wait at most 10
+> minutes, then fall back to code review), inspect them against the guide, re-shoot at most once,
+> never open Device Hub, and report `SELF-CHECK: simulator shot`; without a driver review the code
+> against the guide and report `SELF-CHECK: code review only`. Add the fields
 > `SELF-CHECK` (paths, URL, title, what the images showed) and `DEVIATIONS` to the report.
 
 3. The report format:
@@ -82,7 +88,7 @@ STEPS: per step — done/skipped + verify result
 STOPPED BECAUSE: (only if STOPPED) which STOP condition, what was observed
 FILES CHANGED: list
 NOTES: deviations, surprises, judgment calls
-SELF-CHECK: (UI tasks only) image paths, final URL, page title, or unreachable / code review only
+SELF-CHECK: (UI tasks only) image paths, final URL, page title, or unreachable / simulator shot / code review only
 DEVIATIONS: (UI tasks only) each guide rule not followed with the reason, or none
 ```
 

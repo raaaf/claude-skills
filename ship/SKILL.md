@@ -6,10 +6,9 @@ description: |
   generates a conventional commit message (or uses the provided one), enforces audit and (where the
   project configures one) the full test suite before push, deploys via project-specific method, and
   verifies the deploy. Use when ready to ship completed work. Push requires a fresh audit marker
-  and a green suite; bypassing either is only possible as an explicit, logged user decision,
-  never silently.
+  and a green suite; the audit is skipped only by the explicit `--quick` token, never silently.
 when_to_use: "/ship, committe das und pushe, fertig zum deployen, jetzt live stellen, push und deploy machen, ab damit, ready to ship, commit and deploy, commit push deploy, ship this, release this"
-argument-hint: "[optional: commit message]"
+argument-hint: "[--quick] [optional: commit message]"
 model: sonnet
 effort: medium
 allowed-tools:
@@ -26,7 +25,7 @@ allowed-tools:
 
 Docs -> Commit -> Audit -> Tests -> Push -> Deploy -> Verify. In that order. No skipping.
 (The test phase runs only when the project sets `test-command:` in `.claude/ship.md`. The audit
-phase is skipped only when the user picks the quick-fix mode in Phase 0.5.)
+phase is skipped only in quick-fix mode, selected by the `--quick` token, see Phase 0.5.)
 
 ## Phase 0: Pre-flight
 
@@ -49,6 +48,7 @@ for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestra
 orch_state_clear   # /ship has no in-progress claim; start this run's cross-block state empty
 DEPLOY_COMMAND=$(orch_ship_value deploy-command) || DEPLOY_COMMAND=""
 HEALTH_URL=$(orch_ship_value health-check) || HEALTH_URL=""
+SHIP_GRANT=$(orch_ship_grant)   # read once: a long audit must not expire it mid-run (Phase 4)
 
 # 2. Detect deploy method from known files
 if [ -z "$DEPLOY_COMMAND" ]; then
@@ -133,8 +133,12 @@ if [ -z "$HEALTH_URL" ]; then
   # Fastlane / iOS: no HTTP health check applicable
   # Xcode Cloud / TestFlight: no HTTP health check applicable
 fi
-orch_state_save DEPLOY_COMMAND HEALTH_URL
+orch_state_save DEPLOY_COMMAND HEALTH_URL SHIP_GRANT
 ```
+
+`SHIP_GRANT` is `present` when a UserPromptSubmit hook recorded that the user typed `/ship` (or an
+authorizing phrase such as "zieh durch") himself in this session within the last hour; where no such
+hook is installed the value is `absent` and the deploy ask in Phase 4 stays.
 
 Log what was detected:
 ```
@@ -184,17 +188,27 @@ orch_run_log --start --skill ship
 UB=$(orch_unaudited_base) && echo "UNAUDITED_COUNT=$(git rev-list --count "$UB"..HEAD 2>/dev/null)"   # collected quick-fix commits (references/audit-collection.md)
 ```
 
-Every later "run the log call" below means, in a block that starts with the lib source line and `orch_state_load`: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`. Every `SHIP_*=` assignment this file names happens inside a sourced block that ends with `orch_state_save <that name>`; without that, every block read `n/a` (fresh shell per block) and the ledger recorded a gate that never fired.
+A non-zero `UNAUDITED_COUNT` is reported in the Summary's `Audit:` line as pending collected commits.
+
+Every later "run the log call" below means, in a block that starts with the lib source line and `orch_state_load`: `orch_run_log --skill ship --outcome {outcome} --gate "${SHIP_GATE:-n/a}" --counts "tests=${SHIP_TESTS:-n/a},deploy=${SHIP_DEPLOY:-n/a},docs=${SHIP_DOCS:-n/a},grant=${SHIP_GRANT:-n/a},deployapproval=${SHIP_DEPLOY_APPROVAL:-n/a}"`, substituting that step's outcome. Never in the same Bash call as `git push`. Every `SHIP_*=` assignment this file names happens inside a sourced block that ends with `orch_state_save <that name>`; without that, every block read `n/a` (fresh shell per block) and the ledger recorded a gate that never fired.
 
 ## Phase 0.5: Audit Mode
 
-Ask once, before anything is committed, so the user knows up front whether this run takes minutes
-or includes the audit gate. AskUserQuestion (header "Audit"):
-- "Mit Audit (Recommended)" → Phase 2 runs as written (a fresh marker from an earlier `/audit` is still accepted there); mention `UNAUDITED_COUNT` pending commits when printed above. Nothing to save.
-- "Schneller Fix, ohne Audit" → `SHIP_GATE=skipped` in a sourced block ending with `orch_state_save SHIP_GATE`. Phase 2 is skipped. The secret scan in Phase 1 and the test gate in Phase 2b still run.
+No question. The default is the run with audit: Phase 2 runs as written (a fresh marker from an
+earlier `/audit` is still accepted there). Quick-fix mode is selected only by `--quick` as the first
+token of `$ARGUMENTS`; when it is, run this block (otherwise do not):
 
-`skipped` is a deliberate up-front choice and is logged as such; it is not `bypassed` (which stays
-reserved for declining the audit after the gate fired).
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+SHIP_GATE=skipped
+orch_state_save SHIP_GATE
+```
+
+Phase 2 is then skipped. The secret scan in Phase 1 and the test gate in Phase 2b still run.
+
+`skipped` is a deliberate up-front choice and is logged as such. `bypassed` stays in the ledger
+vocabulary for older rows, but no path of this skill sets it any more: the audit can no longer be
+declined after the gate fired (the push-guard hook still guards a push without a fresh marker).
 
 ## Phase 0.8: Docs Sync
 
@@ -275,18 +289,18 @@ git diff --stat HEAD 2>/dev/null
 git status --short
 ```
 
-**If `$ARGUMENTS` is non-empty:** use it verbatim as the commit message (skip generation).
+**Arguments:** if the first token of `$ARGUMENTS` is `--quick`, it selects quick-fix mode (Phase 0.5) and is stripped before this branch; the rest, possibly empty, is the commit message.
+
+**If the remaining `$ARGUMENTS` is non-empty:** use it verbatim as the commit message (skip generation).
 
 `$ARGUMENTS`, not a named argument: a commit message is free text, and named or indexed arguments map to shell-quoted *positions*, so `/ship fix: broken login` would bind only `fix:`. `$ARGUMENTS` expands to the full argument string as typed.
 
-**If `$ARGUMENTS` is empty:** read the diff and generate a conventional commit message:
+**If the remaining `$ARGUMENTS` is empty:** read the diff and generate a conventional commit message:
 - Format: `{type}({optional-scope}): {what changed in imperative mood}`
 - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`
 - One line, max 72 chars, no period at end
 
-Show the generated message. AskUserQuestion:
-- "Commit with this message" (default)
-- "Edit the message" → user provides the correct message in the next turn
+Print the generated message and commit with it, no question.
 
 Stage all tracked modified files (not untracked):
 ```bash
@@ -316,7 +330,7 @@ If commit fails (hook rejection, empty): run the log call (`outcome=commit_faile
 
 ## Phase 2: Audit Gate
 
-If Phase 0.5 set `SHIP_GATE=skipped`: print `Audit skipped (quick-fix mode chosen in Phase 0.5).`
+If Phase 0.5 set `SHIP_GATE=skipped`: print `Audit skipped (quick-fix mode, --quick).`
 and go straight to Phase 2b. Do not run the block below, it would overwrite the saved value.
 Phase 3's `git push` then triggers the push-guard hook's permission prompt (no fresh marker); that
 prompt is expected in this mode.
@@ -342,11 +356,9 @@ fi
 orch_state_save SHIP_GATE
 ```
 
-If marker missing or stale: AskUserQuestion:
-- "Run /audit now" → invoke the audit skill (`/audit`), then re-check marker. `SHIP_GATE=passed-after-rerun` on success (not `passed`: the gate DID fire, the ledger must show that, otherwise the ledger reads as a gate that never blocks even when it blocked-and-reran every time; 17 such runs on 2026-08-28). On failure: `SHIP_GATE=blocked`, run the log call (`outcome=audit_failed`), then stop.
-- "Push without audit (risky)" → `SHIP_GATE=bypassed`, log the bypass and continue with a warning in the output
+If marker missing or stale: no question, invoke the audit skill (`/audit`), then re-check the marker. `SHIP_GATE=passed-after-rerun` on success (not `passed`: the gate DID fire, the ledger must show that, otherwise the ledger reads as a gate that never blocks even when it blocked-and-reran every time; 17 such runs on 2026-08-28). On failure: `SHIP_GATE=blocked`, run the log call (`outcome=audit_failed`), then stop.
 
-Never silently skip the audit. The bypass must be an explicit user choice. Each of these is set in a sourced block ending with `orch_state_save SHIP_GATE` (4a).
+Never silently skip the audit: the only skip is the explicit `--quick` token. Each of these is set in a sourced block ending with `orch_state_save SHIP_GATE` (4a).
 
 ## Phase 2b: Test Gate
 
@@ -369,8 +381,7 @@ new work: the user commits the fixes, then re-runs `/ship` (which re-audits and 
 
 Why this phase exists: `references/test-gate.md`.
 
-Never silently skip a red suite. A bypass must be an explicit user choice, logged like the audit
-bypass.
+Never silently skip a red suite.
 
 ## Phase 3: Push
 
@@ -389,20 +400,33 @@ If push fails:
 If `DEPLOY_COMMAND` is `ci`: skip this phase (`SHIP_DEPLOY=ci`, sourced block, `orch_state_save SHIP_DEPLOY`). CI/CD will deploy from the push. Phase 5 waits for that CI run before the health check.
 
 `DEPLOY_COMMAND` is read from the audited repo's own `.claude/ship.md` (same trust boundary as
-`TEST_COMMAND` in Phase 2b — see CLAUDE.md Gotchas). Everywhere else in this pipeline, a
-repo-supplied step that is in its expected green state runs without asking; deploy is the
-exception, because it is the one step that is both irreversible and production-facing, and
-because `DEPLOY_COMMAND` is persisted once (Phase 0) and then reused silently on every later run —
-nothing else in the pipeline shows it again before it executes. AskUserQuestion:
-- "Deploy" (default) — show the resolved `{DEPLOY_COMMAND}` in the question text
+`TEST_COMMAND` in Phase 2b, see CLAUDE.md Gotchas). It is repo-supplied config and the one step that
+is both irreversible and production-facing, so it runs unseen only under two conditions: the user
+typed `/ship` himself (`SHIP_GRANT` is `present`), and this exact command text was approved once for
+this repo (sha256 stored per repo root, the same pattern as the screens trust). A changed text is a
+new approval. Always print the resolved command first, then decide:
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+orch_state_load   # DEPLOY_COMMAND, SHIP_GRANT from Phase 0
+echo "Deploy command: $DEPLOY_COMMAND"
+if [ "$SHIP_GRANT" = present ] && orch_deploy_approved "$DEPLOY_COMMAND"; then SHIP_DEPLOY_APPROVAL=approved; else SHIP_DEPLOY_APPROVAL=asked; fi
+orch_state_save SHIP_DEPLOY_APPROVAL; echo "SHIP_DEPLOY_APPROVAL=$SHIP_DEPLOY_APPROVAL"
+```
+
+`approved`: run without a question. `asked` (no grant, new or changed command): one AskUserQuestion, showing the resolved `{DEPLOY_COMMAND}` in the question text:
+- "Deploy" (default)
 - "Skip deploy" → `SHIP_DEPLOY=skipped` (sourced block, `orch_state_save SHIP_DEPLOY`), skip Phase 5 (nothing new was deployed, a health check would only re-check the
   old version) and go straight to Summary Output with `Deploy: skipped by user`
 
-Otherwise run the detected/configured deploy command:
+On "Deploy" the next block records the approval and runs the command:
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
-orch_state_load   # DEPLOY_COMMAND as Phase 0 saved it, after the questions
-eval "$DEPLOY_COMMAND"   # the value the AskUserQuestion above showed; same trust boundary as the test gate's eval
+orch_state_load   # DEPLOY_COMMAND as Phase 0 saved it, after the questions; SHIP_DEPLOY_APPROVAL from above
+[ "$SHIP_DEPLOY_APPROVAL" = asked ] && orch_deploy_approve "$DEPLOY_COMMAND"   # the user just said yes to this exact text
+RUN_COMMAND="$DEPLOY_COMMAND"
+printf '%s' "$DEPLOY_COMMAND" | grep -Eq '^deploy [A-Za-z0-9._-]+$' && RUN_COMMAND="$DEPLOY_COMMAND --yes"   # --yes only for the exact form `deploy <app>`
+eval "$RUN_COMMAND"   # the value shown above; same trust boundary as the test gate's eval
 SHIP_DEPLOY=$([ $? -eq 0 ] && echo executed || echo failed); orch_state_save SHIP_DEPLOY; echo "SHIP_DEPLOY=$SHIP_DEPLOY"
 ```
 
@@ -454,9 +478,32 @@ fi
 ```bash
 for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done; orch_state_load; [ "$SHIP_GATE" = "skipped" ] && COLLECTED_BASE=$(orch_unaudited_base) && echo "COLLECTED_COUNT=$(git rev-list --count "$COLLECTED_BASE"..HEAD 2>/dev/null)"   # fresh shell per block; SHIP_GATE
 ```
-Only in quick-fix mode, AskUserQuestion (header "Audit") when `$SHIP_GATE` is `skipped` (detail: `references/audit-collection.md`):
-- "Sammeln, später auditieren (Recommended)" → keep the base; Summary reports the collected count.
-- "Jetzt nachträglich auditieren" → invoke `/audit` with `AUDIT_BASE_REF=$COLLECTED_BASE`; its fixes need their own `/ship`.
+Only in quick-fix mode (`$SHIP_GATE` is `skipped`), no question (detail: `references/audit-collection.md`): keep the recorded base and collect; the Summary reports the collected count. A later `/audit` picks the collected commits up on its own.
+
+## Phase 5.8: Tidy
+
+Runs only after a successful push and a successful deploy with a passed (or not configured) health check; never after a failed push, deploy or health check (Phase 6 path). No questions in this phase.
+
+```bash
+for c in "$(dirname "${CLAUDE_SKILL_DIR:-/nonexistent}")/audit/bin/lib-orchestrator.sh" "$HOME/.claude/skills/audit/bin/lib-orchestrator.sh"; do [ -f "$c" ] && { . "$c"; break; }; done   # fresh shell per block
+git fetch --prune origin
+DEF=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##'); DEF="${DEF:-main}"
+orch_tidy_branches | while IFS= read -r B; do
+  git branch -d "$B" || echo "TIDY_LEFT local $B: git branch -D $B (after checking it is merged)"
+  if git merge-base --is-ancestor "origin/$B" "origin/$DEF" 2>/dev/null; then echo "TIDY_LEFT remote $B: git push origin --delete $B (merged into origin/$DEF)"
+  elif git rev-parse --verify -q "refs/remotes/origin/$B" >/dev/null; then echo "TIDY_LEFT remote $B: git push origin --delete $B (not merged into origin/$DEF)"; fi
+done
+```
+
+Never `git branch -D`. A remote branch is never deleted here, only listed: a long-lived branch (staging, production) that merely lags the default looks the same as a merged feature branch.
+
+Then, each step only when it applies, never by a broad `pkill`:
+- This run's own worktree (one this session created): `bash "$AUDIT_BIN/worktree-cleanup.sh" <worktree>` (`orch_resolve_audit_root` sets `AUDIT_BIN`), unless that worktree is the current directory. The script refuses on uncommitted or unpushed work (exit 1, one `refused` line) and removes the worktree and its branch itself; a refusal is a `Tidy:` entry.
+- Dev servers this session started through Bash: stop only those, by their known PID or background task.
+- The project's test simulator: shut it down only when a `test-status` command exists and shows no other lock; otherwise leave it running.
+- In T3 Code, as the last step: settle the thread (tool `t3_thread_organize`, action `settle`).
+
+Everything not removed (branches whose `-d` failed, remote branches kept, other worktrees, a simulator left running) goes into the Summary's `Tidy:` line, each with the command that removes it; `TIDY_LEFT` lines above are those entries. Nothing left: `Tidy: clean`.
 
 ## Phase 6: Failure Handling
 
@@ -483,6 +530,8 @@ Response: {curl output}
 Check: app logs, recent error monitoring, or reproduce the failure locally with a regression test.
 ```
 
+The run stops here: print the project's rollback hint if `.claude/ship.md` (a `rollback:` line, read with `orch_ship_value rollback`) or the deploy tool offers one, and do not continue to any later phase (no Phase 5.5, no Phase 5.8, no Summary).
+
 ## Summary Output
 
 Run the log call (`outcome=shipped`).
@@ -492,9 +541,10 @@ Shipped.
 
 Docs:     {n files updated, listed / "none needed"}
 Commit:   {short SHA} {message}
-Audit:    {passed / passed after rerun / skipped (quick fix) / skipped, collected (N commits pending) / audited retroactively / bypassed}
+Audit:    {passed / passed after rerun / skipped (quick fix) / skipped, collected (N commits pending)}
 Push:     origin/{branch}
 Deploy:   {command or "CI/CD triggered" or "skipped by user"}
 Health:   {OK / FAILED / not configured}
 CI run:   {url or "n/a"}
+Tidy:     {clean / what is left, each with the command to remove it}
 ```

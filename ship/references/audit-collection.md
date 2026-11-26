@@ -1,7 +1,7 @@
 # Quick-fix collection (audit-collection)
 
 Detail behind Phase 0.5, Phase 3, and Phase 5.5 in `ship/SKILL.md`. A quick fix shipped without an
-audit (Phase 0.5's "Schneller Fix, ohne Audit") is not gone forever: the base it sits on is recorded
+audit (quick-fix mode, selected with `--quick` in Phase 0.5) is not gone forever: the base it sits on is recorded
 so several quick fixes accumulate and can be audited together in one later `/audit` run, instead of
 each shipping unaudited forever or forcing a full audit on every single small fix.
 
@@ -16,17 +16,15 @@ absent), `orch_unaudited_clear` removes it.
 
 ## Ship side
 
-- **Phase 0.5** reads the file (if any) up front, purely to inform the "Mit Audit" option's
-  description with how many commits are already pending collection.
+- **Phase 0 (run log setup)** reads the file (if any) up front and prints `UNAUDITED_COUNT`, the
+  number of commits already pending collection; the Summary's `Audit:` line reports it.
 - **Phase 3** calls `orch_unaudited_record` right before `git push`, but only when `SHIP_GATE`
   is `skipped` — a run that goes through the normal audit gate never needs this, its tree is
   already certified by a fresh marker.
-- **Phase 5.5** (quick-fix mode only) offers the choice: keep collecting, or invoke `/audit` now
-  with `AUDIT_BASE_REF=$COLLECTED_BASE` so it covers every commit collected so far, not just this
-  run's. A fix wave that `/audit` runs there produces working-tree changes on top of already-pushed
-  commits — those changes were never part of this `/ship` run's own push, so they need their own
-  `/ship` afterward. Say so explicitly in the output; do not imply the just-finished push already
-  includes them.
+- **Phase 5.5** (quick-fix mode only) asks nothing: it keeps collecting and the Summary reports the
+  collected count. The audit of the collected range is a later, separate `/audit` run (which picks
+  the base up on its own, see below); its fix wave produces working-tree changes on top of
+  already-pushed commits, so those changes need their own `/ship`.
 
 ## Audit side
 

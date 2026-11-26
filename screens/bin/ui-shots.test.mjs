@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseArgs, isLoginUrl } from './ui-shots.mjs';
+import { parseArgs, isLoginUrl, measureBoxes, loadPlaywright } from './ui-shots.mjs';
 
 const creds = join(mkdtempSync(join(tmpdir(), 'ui-shots-test-')), 'creds');
 writeFileSync(creds, 'user\npass\n');
@@ -47,4 +47,31 @@ test('isLoginUrl leaves ordinary pages alone', () => {
     assert.equal(isLoginUrl(`http://x${p}`), false, p);
   }
   assert.equal(isLoginUrl('not a url'), false);
+});
+
+test('parseArgs collects repeatable --measure selectors', () => {
+  assert.deepEqual(parseArgs(['--url', 'http://x/', '--measure', '.a', '--measure', '#b > i']).measure, ['.a', '#b > i']);
+  assert.throws(() => parseArgs(['--url', 'http://x/', '--measure']), /needs a value/);
+});
+
+test('measureBoxes reports the centre offset to the offsetParent and count 0 for no match', async () => {
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<body style="margin:0"><div id="box" style="position:relative;display:flex;align-items:center;justify-content:center;width:200px;height:100px">
+      <i id="centred" style="width:50px;height:20px"></i></div>
+      <div id="box2" style="position:relative;width:200px;height:100px"><i id="off" style="position:absolute;left:10px;top:40px;width:50px;height:20px"></i></div></body>`);
+    const centred = await measureBoxes(page, '#centred');
+    assert.equal(centred.count, 1);
+    assert.ok(Math.abs(centred.boxes[0].centerOffsetX) <= 0.5 && Math.abs(centred.boxes[0].centerOffsetY) <= 0.5);
+    assert.equal(centred.boxes[0].width, 50);
+    const off = await measureBoxes(page, '#off');
+    assert.ok(Math.abs(off.boxes[0].centerOffsetX - (10 + 25 - 100)) <= 0.5);
+    assert.ok(Math.abs(off.boxes[0].centerOffsetY) <= 0.5);
+    const shifted = await measureBoxes(page, '#nope');
+    assert.deepEqual(shifted, { count: 0, boxes: [] });
+  } finally {
+    await browser.close();
+  }
 });

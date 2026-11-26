@@ -12,6 +12,11 @@
 //   --form-login <url> <user-field> <pass-field>
 //                                   fill and submit a login form; needs --creds-file
 //   --creds-file <path>             two lines: user, then password (never pass credentials as arguments)
+//   --measure <css selector>        repeatable. For every shot, print one JSON line per selector:
+//                                   {"measure","viewport","count","boxes":[{x,y,width,height,centerOffsetX,centerOffsetY}]}
+//                                   for up to 20 matches. centerOffset is the element's centre minus its offsetParent's
+//                                   (parent element's when there is none) centre, in CSS px rounded to 0.1. No match: count 0.
+//                                   Assert position and size claims (centred, same height, same gap) from these numbers.
 //
 // Prints the image paths, the final URL and the page title. If the final URL looks like a login page
 // the result is "SELF-CHECK: unreachable" and the exit code is 2. Every shot's final URL is checked, plus a
@@ -46,6 +51,10 @@ export function parseArgs(argv) {
       const value = argv[++i];
       if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
       opts[VALUE_FLAGS[arg]] = value;
+    } else if (arg === '--measure') {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith('--')) throw new Error('--measure needs a value');
+      (opts.measure ??= []).push(value);
     } else if (arg === '--form-login') {
       const [url, userField, passField] = argv.slice(i + 1, i + 4);
       if (!url || !userField || !passField || [url, userField, passField].some((v) => v.startsWith('--'))) {
@@ -80,7 +89,31 @@ async function isLoginPage(page) {
   return (await page.locator('input[type="password"]:visible').count()) > 0;
 }
 
-async function loadPlaywright() {
+const MAX_MEASURED = 20;
+
+/** Boxes of every element matching the selector (max 20), with the centre offset to its offsetParent or parent. */
+export async function measureBoxes(page, selector) {
+  const boxes = await page.evaluate(([sel, max]) => {
+    const round = (n) => Math.round(n * 10) / 10;
+    const all = [...document.querySelectorAll(sel)];
+    const boxes = all.slice(0, max).map((el) => {
+      const r = el.getBoundingClientRect();
+      const ref = (el.offsetParent || el.parentElement)?.getBoundingClientRect();
+      return {
+        x: round(r.x),
+        y: round(r.y),
+        width: round(r.width),
+        height: round(r.height),
+        centerOffsetX: ref ? round(r.x + r.width / 2 - (ref.x + ref.width / 2)) : 0,
+        centerOffsetY: ref ? round(r.y + r.height / 2 - (ref.y + ref.height / 2)) : 0,
+      };
+    });
+    return { count: all.length, boxes };
+  }, [selector, MAX_MEASURED]);
+  return boxes;
+}
+
+export async function loadPlaywright() {
   const prefix = path.join(CACHE_ROOT, 'npm');
   const pkgDir = path.join(prefix, 'node_modules', 'playwright');
   mkdirSync(prefix, { recursive: true });
@@ -129,7 +162,11 @@ async function shoot(browser, shot, opts, state, outDir) {
     await page.goto(opts.url, { waitUntil: 'networkidle' });
     const file = path.join(outDir, `${shot.name}.png`);
     await page.screenshot({ path: file, fullPage: true });
-    return { file, finalUrl: page.url(), title: await page.title(), loginPage: await isLoginPage(page) };
+    const measures = [];
+    for (const selector of opts.measure ?? []) {
+      measures.push({ measure: selector, viewport: shot.name, ...(await measureBoxes(page, selector)) });
+    }
+    return { file, finalUrl: page.url(), title: await page.title(), loginPage: await isLoginPage(page), measures };
   } finally {
     await context.close();
   }
@@ -176,6 +213,7 @@ async function main() {
 
   for (const r of results) console.log(`${r.file}  ${r.finalUrl}`);
   console.log(`title: ${results[0].title}`);
+  for (const r of results) for (const m of r.measures) console.log(JSON.stringify(m));
   if (results.some((r) => r.loginPage)) {
     console.log('SELF-CHECK: unreachable (a shot landed on a login page)');
     return 2;
