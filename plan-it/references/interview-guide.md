@@ -5,6 +5,18 @@ Detail for Phase 1 (understanding). Read by the orchestrator when the assessment
 > `Evidence:` notes below are counts from a retired plan-it retro over per-project plan
 > logs (removed 2026-10-02); see `plan-it/SKILL.md` Phase 1.
 
+## Contents
+- Interview limits
+- Step B: Codebase Scan Table
+- Step C: Depth Pass (Detail)
+- Question Format with Own Assessment
+- Step A Addendum: Comparing Two Systems
+- Number-Reduction Check
+- Mandatory Questions (Red Flags)
+- Detecting Dependencies
+- Tone
+- Default assumption: single pass
+
 ## Interview limits
 
 Scan first, then ask: at most 3 questions per round, each with a recommended default, at most 3 rounds,
@@ -47,6 +59,52 @@ Before the questions — codebase state:
 - {Fact 1, e.g. "Push channels: APNs, FCM, NativePushChannel — the latter is the only active implementation"}
 - {Fact 2}
 - {Fact 3}
+```
+
+## Step C: Depth Pass (Detail)
+
+Runs once, after the facts map exists, so every answer can name a real file, table, command or
+source. Generic answers ("write tests", "follow best practices") fail the step: each line must be
+specific enough that an executor could act on it.
+
+**Output format,** shown directly below the facts map, before the round-1 questions:
+
+```
+Deeper, not bigger:
+1. A top {field} professional would also: {addition, 1-2 lines}
+2. Raw material: {primary source} instead of {digested source}
+3. Methods/tools: {named method, command, test type, standard}
+4. External proof: {test, metric, data set, spec or validator that decides it}
+
+Deepened brief:
+> {the user's request, rewritten to ask for exactly 1-4, in the user's language, 2-5 sentences}
+
+→ My assessment: plan against this brief. Correct it if it misses your intent.
+```
+
+**Rules:**
+- The brief stays inside the user's goal. If point 1 changes the goal or adds a feature, it is a
+  scope question for round 1 ("also X? → My assessment: ..."), not part of the brief.
+- Point 2 is a scan instruction for the main thread: go read that raw material before round 1 if
+  the facts map has not, and add what it shows to the map.
+- Point 4 has to name something that can fail. If no external proof exists for the task, say so
+  and ask for one in round 1; the Done Criteria depend on it.
+- The confirmed brief goes verbatim into the plan's `## Brief` section (template:
+  `references/plan-templates.md`), next to the original request.
+
+**Example** (request: "add CSV export to the invoice list"):
+
+```
+Deeper, not bigger:
+1. A top finance-software developer would also: match the column layout and encoding the tax
+   advisor's import expects, not invent one.
+2. Raw material: the DATEV/advisor import spec and a real exported file instead of the Invoice model docs.
+3. Methods/tools: a golden-file test against a fixture CSV, UTF-8 with BOM check, `php artisan test --filter=InvoiceCsv`.
+4. External proof: the advisor's import tool accepts the file without a mapping step.
+
+Deepened brief:
+> Build a CSV export of the invoice list in the column layout and encoding the advisor's import
+> expects, verified by a golden-file test and one accepted import.
 ```
 
 ## Question Format with Own Assessment

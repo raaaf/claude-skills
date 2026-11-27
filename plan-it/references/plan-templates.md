@@ -28,6 +28,10 @@ File: `docs/plans/{YYYY-MM-DD}-{slug}.md`
 - Challengers: {ran: names + why; skipped: names + why}. Drift check: {ran by the orchestrator | manual-only}
 - Status: {omit or leave as "Spec" while planning; set to "Implemented"/past tense only after the implementation commit has actually landed, never in the same session that writes the code, so the line never claims a status the codebase does not yet have (3rd confirmed occurrence of this doc going stale immediately)}
 
+## Brief
+- **Request:** {the user's original request, verbatim}
+- **Deepened brief:** {the brief from Phase 1 Step C as the user confirmed or corrected it}
+
 ## Problem
 {What is the problem — in 1-3 sentences. The PROBLEM, not the solution.}
 
