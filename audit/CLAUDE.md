@@ -69,7 +69,7 @@ cwd-hash families `orch_hash_passed`/`orch_hash_progress`, `orch_progress_claim`
 | `bash audit/bin/unaudited-base.test.sh` | Pins the quick-fix collection (`orch_unaudited_*`) |
 | `bash audit/bin/check-silencing.test.sh` | Pins `check-silencing.sh` (planted assertions-removed, test-disabled, error-swallowed and suppression hits; prose by extension (md, mdx, markdown, txt, rst, adoc, any case) stays silent, a test file under `docs/` still hits; threshold in `CONSTRAINTS.md` still hits) |
 | `bash audit/bin/classify-diff.test.sh` | Pins the prose/code classification of path lists |
-| `bash audit/hooks/block-unsafe-push.test.sh` | Pins the push guard: a push without a fresh marker asks on every branch, with a fresh marker it passes, and a marker over a then-untracked file still matches (same `tree-hash.sh` as the marker) |
+| `bash audit/hooks/block-unsafe-push.test.sh` | Pins the push guard: a push to main/master without a fresh marker asks, other branches pass, with a fresh marker it passes, and a marker over a then-untracked file still matches (same `tree-hash.sh` as the marker) |
 
 Every test is a single script; there is no wrapper that runs all of them.
 
@@ -85,7 +85,7 @@ Every test is a single script; there is no wrapper that runs all of them.
 
 - **Every Bash block in a SKILL.md is a fresh shell; nothing sourced or assigned survives into the next block.** Every block that calls an `orch_` function starts with the one-line source loop from the lib header, and every value a later block needs is saved with `orch_state_save` and re-read with `orch_state_load`. Enforced by `check-fresh-shell.sh`.
 - **Marker hash families.** `/tmp/claude-audit-passed-*` hashes the cwd WITHOUT trailing newline, `/tmp/claude-audit-in-progress-*` WITH newline (`pre-compact.sh` recomputes the latter). Never mix them (root `CLAUDE.md`).
-- **Push guard: every push needs a fresh marker.** `hooks/block-unsafe-push.sh` asks for any `git push` without a marker younger than 30 minutes, whatever the branch name; pinned by `hooks/block-unsafe-push.test.sh`.
+- **Push guard: only pushes to main/master need a fresh marker.** `hooks/block-unsafe-push.sh` asks for a `git push` that lands on main/master (explicit destination, `--all`/`--mirror`, or no destination while on main/master) without a marker younger than 30 minutes; other branches push freely (owner decision 2026-11-27). Pinned by `hooks/block-unsafe-push.test.sh`.
 - **Pre-push marker and `git push` must be separate Bash calls.** The PreToolUse hook scans the command string for `git push` and blocks before a marker write in the same call would execute.
 - **Review worktree helpers by name only.** `hooks/block-worktree-wide-git.sh` denies the forced worktree-remove git command whenever it appears in a Bash call (it also blocks a heredoc that merely contains it); use `orch_review_worktree_create`/`orch_review_worktree_remove`.
 - **The prose gate is the audit's stopping rule.** Fixing what an audit finds in prose creates the next diff that deserves an audit, a loop with no exit (2026-08-05). `classify-diff.sh` emits `DIFF_CLASS`; a `prose` diff runs the deterministic checks only. `references/prose-gate.md`.

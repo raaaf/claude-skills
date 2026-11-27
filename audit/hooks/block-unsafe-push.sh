@@ -145,6 +145,56 @@ fi
 
 cwd=$(echo "$input" | jq -r '.cwd')
 
+# Owner decision 2026-11-27: agents push feature branches freely; only a push that lands on
+# main/master (where a push can deploy) needs the audit marker or the owner's confirmation.
+# Every push segment of the command (split on ; & | and newlines) is checked. Protected: an
+# explicit main/master destination, --all/--mirror, or no destination (or HEAD) while the push
+# target of the repo's current branch (@{push}, else its name) is main/master. Fail closed: a
+# destination built from $, a backtick or a glob, or a push with no destination whose repo the
+# static parse cannot pin (cd/pushd, --git-dir, --work-tree, GIT_DIR=), counts as protected.
+protected=0
+uncertain_repo=0
+printf '%s' "$cmd" | grep -qE '(^|[^[:alnum:]_-])(cd|pushd)[[:space:]]|--git-dir|--work-tree|GIT_DIR=|GIT_WORK_TREE=' && uncertain_repo=1
+while IFS= read -r seg; do
+  echo "$seg" | grep -qiE "${GIT_ANCHOR}${WRAPPER}${BIN_PATH}git\s+${OPTS}push" || continue
+  read -ra toks <<< "$seg"
+  repo="$cwd" state=pre remote_seen=0 skip_next=0 refspecs=()
+  for t in ${toks[@]+"${toks[@]}"}; do
+    t="${t//[\"\']/}"
+    case "$state" in
+      pre) case "$t" in git|*/git|\\git) state=git ;; esac ;;
+      git)
+        if [ "$skip_next" = c ]; then
+          t="${t/#\~/$HOME}"; case "$t" in /*) repo="$t" ;; *) repo="$cwd/$t" ;; esac; skip_next=0
+        elif [ "$t" = -C ]; then skip_next=c
+        elif [ "$t" = push ]; then state=args
+        fi ;;
+      args)
+        if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
+        case "$t" in
+          --all|--mirror) protected=1 ;;
+          -o|--push-option|--repo|--receive-pack|--exec) skip_next=1 ;;
+          -*) ;;
+          *) if [ "$remote_seen" = 0 ]; then remote_seen=1; else refspecs+=("$t"); fi ;;
+        esac ;;
+    esac
+  done
+  current=$(git -C "$repo" branch --show-current 2>/dev/null || true)
+  if [ "${#refspecs[@]}" = 0 ]; then
+    [ "$uncertain_repo" = 1 ] && protected=1
+    target=$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{push}' 2>/dev/null || true)
+    target="${target#*/}"; target="${target:-$current}"
+    case "$target" in main|master) protected=1 ;; esac
+  fi
+  for r in ${refspecs[@]+"${refspecs[@]}"}; do
+    case "$r" in *'$'*|*'`'*|*'*'*) protected=1; continue ;; esac
+    dst="${r##*:}"; dst="${dst#+}"; dst="${dst#refs/heads/}"
+    [ "$dst" = HEAD ] && dst="$current"
+    case "$dst" in main|master) protected=1 ;; esac
+  done
+done <<< "$(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')"
+[ "$protected" = 1 ] || exit 0
+
 hash=$(echo -n "$cwd" | md5 2>/dev/null || echo -n "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
 marker="/tmp/claude-audit-passed-$hash"
 

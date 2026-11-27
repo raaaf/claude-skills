@@ -332,7 +332,7 @@ If commit fails (hook rejection, empty): run the log call (`outcome=commit_faile
 
 If Phase 0.5 set `SHIP_GATE=skipped`: print `Audit skipped (quick-fix mode, --quick).`
 and go straight to Phase 2b. Do not run the block below, it would overwrite the saved value.
-Phase 3's `git push` then triggers the push-guard hook's permission prompt (no fresh marker); that
+Phase 3's `git push` then triggers the push-guard hook's permission prompt when it lands on main/master (no fresh marker); that
 prompt is expected in this mode.
 
 ```bash
